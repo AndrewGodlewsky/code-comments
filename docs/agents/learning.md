@@ -31,6 +31,8 @@ agent's preference alone does not settle it.
    a working-tree diff alone does not check untracked additions.
    Report the knowledge files changed and any unverified claim that remains.
    If there is no new durable lesson, leave the instructions alone.
+6. Complete the [checkpoint and cleanup workflow](git-workflow.md), including
+   remote verification and a handoff for resources that must remain.
 
 Completion means the relevant knowledge was reconciled with its existing owner,
 or the agent determined there was nothing durable to add. Producing a session

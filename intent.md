@@ -82,6 +82,11 @@ The learning process is defined in [docs/agents/learning.md](docs/agents/learnin
 It maintains repository knowledge through explicit file changes that can be
 reviewed in Git. The user wants this maintenance to happen as part of normal work.
 
+With multiple agents contributing, stable progress should be committed and pushed
+automatically so it remains recoverable across sessions. Agents should clean up
+their completed task resources while preserving active and unmerged work. The
+operational rules live in [docs/agents/git-workflow.md](docs/agents/git-workflow.md).
+
 ## Decisions still open
 
 Research and experiments should inform activation, comment categories, language

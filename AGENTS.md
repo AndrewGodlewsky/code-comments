@@ -10,6 +10,14 @@ For research, evaluation design, or changes to skill behavior, also read
 Resolve explicitly requested skills to their actual `SKILL.md` before choosing
 a workflow. Search the installed package if the visible skill catalog omits one.
 
+## Checkpoint and clean up
+
+Before editing, checkpointing, handing off, or cleaning up, read
+[docs/agents/git-workflow.md](docs/agents/git-workflow.md). Automatically commit
+and push verified checkpoints on the owned task branch. Retire completed task
+resources after verifying preservation, integration, and inactivity; protect
+other agents' work and retain unmerged branches with an explicit handoff.
+
 ## Keep knowledge current
 
 During work and before task completion, follow

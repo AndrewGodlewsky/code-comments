@@ -30,6 +30,10 @@ lessons and update the relevant context through the
 [learning workflow](docs/agents/learning.md). Client loading and compliance still
 need to be verified in each supported tool.
 
+The [Git workflow](docs/agents/git-workflow.md) directs agents to commit and push
+stable checkpoints automatically, coordinate ownership, and retire completed
+branches and temporary worktrees once their work is safely preserved and integrated.
+
 Use `research` to gather evidence first. When ready to settle the design, use
 `ask-matt` to choose a workflow or `grill-with-docs` to work through the decisions.
 
