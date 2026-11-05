@@ -116,6 +116,7 @@ versions, artifact availability, rights, and adaptations. Start with these roles
 | --- | --- | --- |
 | Repeated edits to an evolving implementation | SlopCodeBench | Add matched knowledge conditions and inspect quality metrics for comment-length bias |
 | Dependent repository fixes across fresh sessions | ChainSWE | Add context treatments while preserving cumulative code state and fair task exposure |
+| Prior knowledge and cross-session memory | VibeMemBench / DreamBench-SWE | Add matched placement controls; account for selection, curated recall, and restricted evaluator artifacts |
 | Regression-sensitive evolution | SWE-CI | Control its adaptive requirement-generation mechanism before attributing differences to placement |
 | External real-repository robustness check | Version-pinned SWE-bench family tasks | Add an appropriate maintenance design; isolated issue success does not establish longevity |
 | Retrieval or comment-quality diagnostics | RepoQA and documentation-specific evaluations | Use as mechanism checks, not the product's primary success metric |

@@ -36,7 +36,7 @@ Their Java-method corpus begins with 116,372 bug/fix pairs before further filter
 
 Holding no-comment fine-tuning fixed, adding inference comments increases exact match **3.26%→3.73%** and **5.57%→7.90%**. Changing both fine-tuning and inference yields **9.80%** and **12.77%**. Thus the large headline gain cannot all be attributed to a deployment-time annotation skill. Exact match measures reference-patch agreement, not execution-based resolution. [§5.1, Table 3](https://arxiv.org/html/2601.23059v1#S5.SS1).
 
-SHAP analysis ranks implementation explanations highly; it is not a randomized comparison establishing that rationale is the best category. [§5.2](https://arxiv.org/html/2601.23059v1#S5.SS2). The [Zenodo package](https://zenodo.org/records/17408251) is a useful replication lead, not a verified runnable setup here.
+The authors' negative control generates comments from buggy code instead: results are unchanged or slightly worse, including CodeT5+ **3.26%→2.92%**. This directly limits the inference that automatically explaining existing code supplies useful repair knowledge. [§6.1](https://arxiv.org/html/2601.23059v1#S6.SS1). The [Zenodo package](https://zenodo.org/records/17408251) is a replication lead, not a verified runnable setup here.
 
 ### PInG: editable comments can carry human correction
 

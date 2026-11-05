@@ -33,6 +33,8 @@ establishes correctness against that evaluator, not all possible requirements.
 | [SWE-bench Pro V2, Scale AI](https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/v2/README.md), layout/protocol | 642 public tasks; HARD-51 subset; independent tasks, not repeated maintenance | Fresh-sandbox patch replay; oracle/empty-patch release checks | Strong isolation practices; requires new sequences and factual annotations |
 | [SWE-ContextBench, Zhu, Hu, Wu](https://github.com/jiayuanz3/SWEContextBench), README | Current repository: 1,007 base and 362 related tasks, 53 repositories, nine languages | SWE-bench-style patch evaluation and related-task images | Experience-reuse pairs; must distinguish retrieved prior solutions from persistent project knowledge |
 | [CTXbench, Gloaguen et al., v3](https://arxiv.org/html/2602.11988v3), §3 | 138 tasks in 12 repositories with developer context files; independent tasks | Generated/reviewed task tests plus repository tests | Existing context-file comparisons; replace unequal content with matched inline/external facts |
+| [VibeMemBench, Fan et al., v1](https://arxiv.org/html/2609.23570v1), §§3–4 | 111 target tasks, 90 repositories, 3,634 prior trajectories; outcome-selected memory-sensitive tasks | Executable target resolution, memory-on/off comparison | Prior-experience construction and retrieval controls; account for selection and full memory costs |
+| [DreamBench-SWE, Singh, v1](https://arxiv.org/html/2608.20664v1), §§5–6 | 60 curated three-session traps, three seeds; prior knowledge absent from final request | Hidden behavioral oracles and memory/no-memory contrasts | Cross-session diagnostic patterns; curated recall and incomplete public evaluator limit generalization |
 | [ContextBench, Li et al.](https://github.com/EuniAI/ContextBench), overview | Current README: 1,136 issues, 66 repositories, eight languages; gold retrieval context | Trace coverage/precision at multiple granularities; supplements task success | Retrieval instrumentation; add comment/document fact IDs and actual use checks |
 | [RepoQA, EvalPlus team](https://github.com/evalplus/repoqa), SNF | 500 function-retrieval cases in five languages; no evolution | Parsed function similarity, not execution | Cheap retrieval diagnostic; cannot establish editing correctness |
 | [CrossCodeEval, Ding et al.](https://github.com/amazon-science/cceval) / [RepoBench, Liu, Xu, McAuley](https://arxiv.org/abs/2306.03091) | Cross-file completion/retrieval; independent masked snippets | Completion similarity/retrieval metrics; no successive regression suite | Context selection diagnostics; requires an entirely new maintenance layer |
@@ -191,6 +193,40 @@ preserving the facts necessary for later edits. It does not supply matched exter
 documentation or multi-session repository outcomes.
 [Paper, task and dataset](https://arxiv.org/abs/2004.12169).
 
+## Two closer memory-specific benchmarks
+
+**VibeMemBench** selects tasks where a reference memory configuration improved
+resolution. Its 111 targets therefore describe a selected population, not ordinary
+repository tasks. Held-out solvers show directional gains of 1.1–4.5 percentage
+points for four of five models, but all five reported confidence intervals cross
+zero; 11 of 12 tested memory systems do not outperform the no-memory baseline.
+Retrieval occurs only initially, and solver token/step accounting excludes memory
+construction and retrieval costs. Gold target patches enter offline candidate
+screening, not runtime memory distillation. These distinctions matter for fair
+reuse. [Paper v1, §§3–4, Tables 1–2](https://arxiv.org/html/2609.23570v1).
+
+The [official artifact directory](https://github.com/AlibabaResearch/DAMO-ConvAI/tree/main/VibeMemBench)
+was verified through GitHub's read-only API to contain README, LICENSE, scripts
+and assets after the rendered page failed. Executability and content rights were
+not audited. Reuse its experience comparisons while adding matched inline/external
+facts, maintenance costs, and an independently selected task population.
+
+**DreamBench-SWE** places useful knowledge in earlier sessions and removes it
+from the final task prompt. The original hybrid-versus-verbatim contrast is null
+(p=.518); successor v2.1.0 separates memory conditions from no memory without
+establishing superiority between the memory systems. These are curated tasks
+often requiring exact recall, not a representative longitudinal repository sample.
+Its paper distinguishes the original and successor configurations.
+[Paper v1, §§5.1, 6.2, 6.6, 8](https://arxiv.org/html/2608.20664v1).
+
+The [official repository](https://github.com/iroiro147/dreambench-swe) provides
+Apache-2.0 public fixtures and analysis; hidden oracles and reference solutions
+are excluded. Public smoke runs therefore cannot reproduce the full experiment.
+The inspected main tree identifies v2.0.5, with v2.1.0 successor release assets
+separate. Reuse its session-boundary and stale-memory patterns with independently
+authored hidden checks, rather than treating its restricted evaluator as a
+ready-to-run primary benchmark.
+
 ## Artifact rights and practical limits
 
 These are observed release declarations, not a legal determination. Repository
@@ -243,6 +279,9 @@ audit. Evidence above comes from versioned arXiv papers, author/project reposito
 official dataset cards, and the primary Verified audit. Secondary search results
 were discovery leads only. GitHub's read-only license API was used to cross-check
 repository LICENSE identification; no upstream issues or files were changed.
+Follow-up searches for coding-agent memory benchmarks added VibeMemBench and
+DreamBench-SWE; their selected methods, result sections, and artifact availability
+were inspected, not their complete implementations.
 
 Access date for every external link: **2026-11-05**. Paper versions and section
 locators are named above. Repository `main` links are mutable inspection points,
