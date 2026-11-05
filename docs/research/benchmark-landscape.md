@@ -199,7 +199,7 @@ documentation or multi-session repository outcomes.
 resolution. Its 111 targets therefore describe a selected population, not ordinary
 repository tasks. Held-out solvers show directional gains of 1.1–4.5 percentage
 points for four of five models, but all five reported confidence intervals cross
-zero; 11 of 12 tested memory systems do not outperform the no-memory baseline.
+zero; 11 of 12 solver/system pairings do not outperform the no-memory baseline.
 Retrieval occurs only initially, and solver token/step accounting excludes memory
 construction and retrieval costs. Gold target patches enter offline candidate
 screening, not runtime memory distillation. These distinctions matter for fair
