@@ -83,7 +83,14 @@ It maintains repository knowledge through explicit file changes that can be
 reviewed in Git. The user wants this maintenance to happen as part of normal work.
 
 With multiple agents contributing, stable progress should be committed and pushed
-automatically so it remains recoverable across sessions. The user defines task
+automatically so it remains recoverable across sessions. Agents should interpret
+incoming requests by task intent: continuations and scope adjustments stay with
+the existing task, while independent work gets its own branch. Switching tasks
+does not complete the previous one. Unfinished branches and worktrees remain
+available with enough recorded context to resume; cleanup applies to completed
+tasks. The routing procedure lives in [task tracking](docs/agents/task-tracking.md).
+
+The user defines task
 completion as independent verification of the entire branch purpose, integration
 into remote `main`, reconciliation of associated issues, and removal of the task's
 local/remote branches and temporary worktrees. A separate agent reviews before

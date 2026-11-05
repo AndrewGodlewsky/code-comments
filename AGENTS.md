@@ -2,6 +2,10 @@
 
 ## Start a task
 
+For each incoming request, use [task tracking](docs/agents/task-tracking.md) to
+classify its intent and select the owning task branch. Preserve unfinished tasks
+when switching to independent work; only completed tasks enter closeout.
+
 Read [intent.md](intent.md) for the user's goals and
 [architecture.md](architecture.md) for the current structure and open boundaries.
 For research, evaluation design, or changes to skill behavior, also read

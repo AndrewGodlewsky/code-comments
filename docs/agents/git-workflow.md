@@ -15,8 +15,9 @@ instruction-driven workflow, not a background scheduler.
    existing changes, and any owner already using them.
 2. Use an assigned task branch or create a uniquely named branch such as
    `agent/<task>` from the appropriate base. Keep an existing manager-assigned
-   branch name. Before editing or delegating, establish the durable issue-to-branch
-   assignment using [task tracking](task-tracking.md); keep it current through
+   branch name. Before editing, delegating, or switching tasks, follow the request
+   routing and unfinished-work rules in [task tracking](task-tracking.md).
+   Establish the durable issue-to-branch assignment and keep it current through
    closeout. Record the workspace in the local handoff.
 3. Independently editing agents should have separate task branches and worktrees.
    Reuse an appropriate owned workspace rather than creating redundant ones. Use
@@ -96,14 +97,16 @@ the coordinator retains Git and tracker mutation ownership. Require it to:
 
 Record the review in the tracking issue. Fix blocking findings, push, and obtain
 another independent review of the updated candidate. Approval applies only to
-the reviewed head and main SHAs: any new commit, target movement, or conflict
-resolution requires updated checks and renewed review before integration. If a
+the reviewed head and main SHAs and acceptance criteria: any new commit, target
+movement, conflict resolution, or scope adjustment requires updated checks and
+renewed review before integration. If a
 separate agent is unavailable, retain the checkpoint and report review blocked;
 self-review does not satisfy this gate.
 
 ## Integrate reviewed work into main
 
-1. Confirm independent review passed, required checks passed, and contributors
+1. Confirm independent review passed for the current acceptance criteria,
+   required checks passed, and contributors
    have finished. Fetch and verify the task tip and `origin/main` still match the
    reviewed SHAs. Return to review if either changed.
 2. Inspect local `main` and its relationship to the reviewed candidate. Preserve
@@ -128,8 +131,11 @@ Record integration evidence and reconcile issue states according to
 A pending review, failed check, unresolved conflict, denied push, or uncertain
 ownership keeps the task incomplete. Preserve the work and report the specific
 blocker; continue when it can be resolved. Do not present "ready to merge" as
-task completion. An explicit user request to pause, hand off, or leave a draft
-can stop this workflow, with the remaining integration work stated clearly.
+task completion. A switch to independent work may leave the prior task unfinished
+under the [task tracking rules](task-tracking.md). An explicit user request to
+pause, hand off, or leave a draft can also stop this workflow, with the remaining
+work stated clearly. Retained unfinished branches/worktrees are expected; cleanup
+targets tasks that have fulfilled their purpose and passed the integration gates.
 
 ## Clean up after integration
 
