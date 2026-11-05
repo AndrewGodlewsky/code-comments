@@ -10,6 +10,8 @@ structure, proposed boundaries, and open decisions.
 
 Start with the [research index](docs/research/README.md) for historical sources,
 empirical studies, the proposed evaluation protocol, and portability findings.
+For a review of the problem, existing systems, and benchmark options, read the
+[deep-dive synthesis](docs/research/deep-dive-summary.md).
 
 ## Agent workflow setup
 

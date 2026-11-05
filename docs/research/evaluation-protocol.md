@@ -1,8 +1,11 @@
 # Research protocol: comments as persistent context for coding agents
 
 Status: proposed research design, not an approved benchmark or implemented skill.
-The research question was clarified by the user on 2026-11-04. No model trials
-have been run in this repository.
+Expanded 2026-11-05 after the user's request for deep benchmarks. No model trials
+have been run in this repository. The goal is to establish or reject specific
+claims, with uncertainty, rather than design a benchmark guaranteed to confirm
+the initial intuition. Corpus choices, budgets, and release thresholds below are
+proposals to settle before confirmatory runs.
 
 ## The question to answer
 
@@ -57,6 +60,13 @@ structure, tool access, and task instructions should otherwise match.
 Do not handicap the external-doc condition by hiding the files, disabling search,
 using vague document names, or giving it outdated material while giving the
 inline condition perfect material.
+
+The baseline omits the added experimental fact inventory, not every comment in a
+repository. Preserve license headers, compiler/linter directives, type annotations,
+and other operational comments across arms. Docstrings can affect runtime
+introspection and doctests: treating their removal as automatically semantics-free
+would confound the experiment. Validate equivalent baseline behavior and account
+for any treatment-visible test or line-number differences before using a fixture.
 
 ## Phase 2: test the writer and maintainer
 
@@ -129,9 +139,11 @@ reliability over months of real development; a later field trial is still needed
 
 ## Outcomes and costs
 
-The primary outcome should be a **correct maintenance task without breaking
-previously required behavior**, judged by independent acceptance checks. Also
-report completion of whole sequences; per-task success can hide cumulative harm.
+Score each task as **correct maintenance without breaking previously required
+behavior**, judged by independent acceptance checks. For the main roll-forward
+study, use strict completion of whole sequences as the primary endpoint, defined
+below; per-task success can hide cumulative harm. Controlled-transition studies
+can use task success as their separately declared primary endpoint.
 
 Secondary outcomes:
 
@@ -151,6 +163,215 @@ and failure modes; treat the sequence as a grouping unit when analyzing results.
 For a claim about saving money, compare total cost per successful task and per
 successful sequence against a stronger-model baseline. A cheaper model with many
 failed retries may not be the cheaper workflow.
+
+## Operational definition of a successful sequence
+
+For the main roll-forward study, define success before running agents:
+
+1. Each step implements its visible request within the same fixed resource policy.
+2. Each step passes independently maintained acceptance checks and all still-valid
+   prior behavioral requirements. A requirement deliberately superseded by the
+   next request is retired explicitly in evaluator metadata, not by the agent.
+3. The agent does not weaken the evaluator, access forbidden future solutions,
+   or require unbudgeted human rescue.
+
+All steps must pass for a sequence to count as strict success. Report time to first
+failure and per-step results alongside this endpoint. If a failed sequence stops,
+its strict outcome is failure; later unattempted steps are not observations of
+individual task failures. Predeclare whether a separate diagnostic run continues
+after failure or uses a recorded repair. Keep repaired runs out of unassisted
+success counts and include their costs in any assisted-workflow result.
+
+For context maintenance, annotate a private fact ledger with each fact's evidence,
+scope, owner, introduction time, and validity interval. At each transition, score
+supported retained facts, missed updates, obsolete claims, contradictions, and
+unsupported new explanations. The denominator is the required fact/update set,
+not total comment count. Report precision of asserted claims and recall of required
+context separately; otherwise an agent can win by deleting all explanation.
+Allow legitimate relocation or paraphrase and count each underlying fact once.
+
+Use executable outcomes for behavioral correctness. Supplement them with blinded
+human assessment of rationale support and a calibrated rubric for facts that
+tests cannot adjudicate. A model judge can assist, but must not be the sole judge
+of its own model's claims. Record disagreements and adjudication. This follows the
+distinction between outcome and transcript grading in Anthropic's engineering
+guide; it is a proposed design, not an experimentally validated rubric here.
+[Guide, grader types and coding-agent evaluation](https://www.anthropic.com/research/demystifying-evals-for-ai-agents)
+
+## Sampling, uncertainty, and what "significantly better" means
+
+An apparent improvement can come from run randomness or an unusually favorable
+set of repositories. Bjarnason, Silva, and Monperrus observed 2.2-6.0 percentage-point
+differences between single-run benchmark scores in a 60,000-trajectory study,
+including variation at temperature zero. Their configurations and benchmark are
+not our target population; the result motivates replication rather than a
+universal noise allowance. [*On Randomness in Agentic Evals*, v1, sections 2-3](https://arxiv.org/html/2602.07150v1)
+
+Zhou et al. distinguish uncertainty over repeated generations on fixed problems
+from uncertainty about new problems. In their 99-problem, 16-model study, repeating
+the same problems cannot eliminate the latter. Their numerical ceilings are
+specific to that benchmark. This motivates spending a pilot budget on both task
+diversity and repetitions. [*How Much Can Repeated Running Buy?*, v2, sections 3-5](https://arxiv.org/html/2606.00920v2)
+
+Use the following analysis plan as a starting proposal:
+
+- **Population and unit:** name the target repository/task families, languages,
+  horizons, model snapshots, and harness. A complete trajectory is an observation;
+  repositories containing related trajectories are the highest sampling cluster.
+  Repeated attempts, steps, and tests are not independent new repositories.
+- **Paired comparison:** run the same scenario families under all conditions with
+  isolated state. Average repeated outcomes within each condition and scenario;
+  compare matched conditions, preserving repository clusters and equal weighting
+  as specified before the study. Block/randomize execution order to reduce time,
+  service-version, and cache effects. Sharing a numeric seed does not guarantee
+  identical random paths after prompts diverge.
+- **Primary contrast:** for a preselected reader model/harness, compare strict
+  sequence success for inline versus equivalent external context. Report the
+  difference in percentage points and its confidence interval. Code-only versus
+  context estimates information value as a separate contrast. If the external
+  condition wins, report it as a result, not a failed benchmark.
+- **Intervals and inference:** use a paired repository-cluster bootstrap or a
+  prespecified hierarchical analysis that retains repeated trajectories and
+  arm pairing. Validate its coverage with simulated pilot-like clustered data
+  before relying on it. With very few repositories, report descriptive pilot
+  results and uncertainty limits rather than precise generalization claims.
+  State whether inference concerns this fixed benchmark or new repositories.
+- **Multiplicity:** predeclare the primary comparison and a small family of
+  confirmatory secondary claims. Use a stated familywise procedure such as Holm
+  adjustment, or a predeclared testing hierarchy. Treat taxonomy/model subgroup
+  exploration as exploratory, especially after inspecting outcomes.
+- **Power:** estimate within-scenario variance, paired discordance, repository
+  heterogeneity, trajectory attrition, and costs in the pilot. Simulate power for
+  the full clustered design over plausible effects and choose the number of
+  repositories and repeats before confirmatory data collection. Do not plug the
+  number of individual test assertions into an independent-binomial calculation.
+
+These are our proposed methods; they are not claims that the cited papers validate
+this exact longitudinal design. A statistical improvement and a useful improvement
+are different thresholds. For example, a proposed practical minimum might be
+**5 percentage points more strict sequence success**. A confidence interval wholly
+above zero supports a directional benefit; wholly above that minimum supports the
+stronger practical claim. These illustrative numbers are not accepted release
+criteria. Choose the margin based on failure impact and costs before seeing the
+confirmatory results. An interval crossing zero is inconclusive, not proof of
+equivalence or proof that comments have no value.
+
+For the weaker-model substitution claim, predeclare a separate noninferiority
+margin against a stronger model using the best justified comparison workflow.
+For example, a proposed margin of 3 percentage points would require the interval's
+lower bound for weak-plus-skill minus strong-baseline to exceed -3 points, along
+with a prespecified cost advantage and acceptable critical-failure rate. An
+ordinary nonsignificant difference cannot establish noninferiority. Also run
+strong-plus-skill when feasible so improvements available to both tiers are visible.
+
+Report first-attempt performance and all-attempt reliability, not just the best
+of several tries. `pass@k` measures at-least-one success; `pass^k` measures all-k
+successes on repeated attempts, not survival across k dependent maintenance steps.
+Estimate whole-sequence reliability from actual trajectories rather than raising
+an average step pass rate to a power. [Bjarnason et al., section 2.3](https://arxiv.org/html/2602.07150v1#S2.SS3)
+
+## Concrete staged pilot proposal
+
+The [benchmark landscape](benchmark-landscape.md) supplies candidate artifacts;
+this protocol owns experimental choices. Adopt a versioned subset only after
+checking task rights, reproducible installation, hidden-test separation, and
+whether the task genuinely needs knowledge not recoverable from local syntax.
+
+| Stage | Proposed scope | What it decides |
+| --- | --- | --- |
+| Fixture audit | Independently review facts, baseline behavior, hidden checks, and task exposure; run known-correct and deliberately wrong patches | Whether the experiment can detect real constraint violations and reject evaluator tampering |
+| Smoke run | 3 sequences x 3 edits x 3 conditions x 1 model x 1 repeat = 27 edit sessions | Whether state isolation, logging, grading, and fresh-session resets work; no efficacy claim |
+| Placement pilot | 12 independent scenario sequences, preferably from distinct repositories, x 5 edits x 3 conditions x 2 model tiers x 3 repeats = 1,080 edit sessions | Variance, retrieval failure modes, plausible effect/cost, and confirmatory sample size; no conclusive significance claim |
+| Authoring/maintenance pilot | Compare verified reference context with generated context under equal evidence; use both oracle-updated and agent-maintained arms | Whether an implementable skill can create and sustain the context that helped |
+| Held-out confirmation | New repository families and tasks, frozen design and powered sample, followed by a second harness/language replication | Which narrow claims reproduce outside the development set |
+| Field validation | Consented real project histories over longer calendar time, with recorded interventions and human effort | Whether laboratory gains survive actual development and team use |
+
+These counts are planning examples, not a claim that 12 sequences suffice for
+statistical power. The larger pilot entails 216 complete trajectories before
+writer runs, reruns, or human review. Price a smoke run and extrapolate all-in costs
+before committing to a paid campaign. No model API campaign or corpus installation
+has been performed as part of the literature review.
+
+Candidate scenario families should include a non-obvious ordering requirement,
+domain representation distinction, cross-file contract, compatibility workaround
+whose removal becomes valid later, and a genuinely obsolete constraint. Include
+straightforward changes where added explanation should provide little benefit.
+Stratify results by knowledge type and locality; do not select only fixtures that
+were chosen because comments already helped the model under test.
+
+## Prevent knowledge leakage and unfair baselines
+
+For every exposed fact, record the source and earliest time it was knowable. A
+writer may use contemporaneous requirements, tests, callers, and recorded design
+decisions available to both arms. It may not see future bug fixes, later requests,
+hidden tests, benchmark answer patches, or the evaluator's private fact ledger.
+Keep oracle-written reference context labeled as a feasibility upper bound.
+
+Check Git history, remotes, neighboring files, issue links, caches, global agent
+memory, inherited instructions, and network access for alternate answer channels.
+Use isolated evaluation workspaces with equal access policy; research notes and
+this repository's coordination records are not agent-visible experimental facts.
+Keep normal visible tests and discovery pointers equivalent across arms. Log which
+facts were actually returned by tools and retained after truncation/compaction.
+Present-but-unread context cannot explain a demonstrated information-use mechanism.
+
+Retain both controlled-exposure and natural-discovery experiments. In the former,
+provide matched facts directly to isolate use; in the latter, allow ordinary search
+under matched limits to test discoverability. The physical location can affect
+retrieval, context length, and cache reuse: measure those mechanisms instead of
+asserting they are automatically controlled by equal word counts.
+
+For the product comparison, use an equally capable external-document writer with
+the same evidence and maintenance budget. For a smaller diagnostic study, use
+human-reviewed equivalent wording in both locations. An external arm should have
+useful structure and navigation; a hybrid arm may be the best practical outcome.
+Keep executable tests/specifications as a serious alternative for facts that can
+be enforced, not just explained. Comments supplement those checks in every arm.
+
+Treat stale, irrelevant, and deliberately conflicting context as separate
+robustness conditions. Label them explicitly; do not silently contaminate the main
+accurate-information comparison. Include migrations where the correct action is
+to change or delete a formerly valid explanation rather than obey it forever.
+
+## Cost ledger, artifacts, and decision gates
+
+Track input/output/cache tokens, model versions and prices at run time, tool and
+container costs, wall time, writer/reviewer passes, retries, repairs, and measured
+human minutes. Report tokens and time alongside money so pricing changes do not
+erase the finding. Count failed runs in total costs. Cost per successful sequence
+is total treatment cost divided by successful sequences; if none succeed, report
+that the ratio is undefined rather than hiding the failures. Separate research
+corpus-construction expense from deployment cost, and show amortization assumptions
+for reusable comments across project horizons.
+
+Ariño de la Rubia and Pafka's intensive study used one machine-learning engineering
+task across 584 runs. Agent/model pairing, compliance, and prompt caching changed
+the interpretation of quality and cost. Its one-task setting cannot establish
+general coding superiority; it reinforces logging these factors rather than
+equating model price with workflow cost. [*Identical Runs, Different Results*, v1,
+sections 3-5](https://arxiv.org/html/2609.33812v1)
+
+The minimum reproducibility bundle is a pinned manifest of repository and task
+versions, rights/provenance, model/harness/prompt settings, treatment preparation,
+fact equivalence audit, hidden evaluator version, declared analysis, run IDs and
+randomization, sanitized raw traces/tool outputs, resulting patches, per-step
+scores, resource ledger, exclusions, and analysis scripts. Store hidden artifacts
+separately from agent-visible data; release them only under a planned test-set
+rotation policy. Failed and timed-out agent runs remain outcomes; independently
+verified infrastructure failures follow a prespecified rerun/exclusion rule.
+
+| Observation | Supported next decision |
+| --- | --- |
+| Verified context helps, but inline and external placement are comparable | Pursue knowledge quality/retrieval; do not market inline superiority |
+| Inline helps on selected fact categories only | Narrow the skill and state its replacement boundary |
+| Ideal comments help but generated/maintained ones fail | Improve writer provenance and maintenance before claiming product efficacy |
+| A weaker model improves but remains worse or more costly overall | Report an improvement, not model substitution or savings |
+| Gains disappear under hidden regression checks or held-out tasks | Revisit validity/generalization; do not ship an unsupported benchmark claim |
+| Maintained inline context improves sequence success beyond the chosen margin and meets cost/robustness gates | Make the limited claim for tested models, tasks, horizons and harnesses; replicate before broadening |
+
+An attractive comment score, single best run, or higher public leaderboard number
+cannot substitute for these outcomes. Keep the intent's open hypotheses intact
+until a recorded experiment supplies the required evidence.
 
 ## Which documents might be replaceable?
 

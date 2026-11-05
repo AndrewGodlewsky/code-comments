@@ -2,6 +2,11 @@
 
 Research date: 2026-11-04. This is a targeted primary-source review, not a systematic literature review. Numeric claims were checked against the linked papers' methods, tables, or results. No experiments were rerun. Percentage-point changes below are distinguished from relative percentage changes.
 
+The [2026-11-05 expanded review](comment-context-deep-dive.md) rechecks key claims
+and adds inference-only contrasts, further comment studies, and artifact/reporting
+caveats. For current benchmark release differences rather than the paper snapshots
+below, read the [benchmark landscape](benchmark-landscape.md).
+
 The hypothesis under investigation is that selected comments preserving intent, constraints, and relationships can make successive changes more reliable, particularly for less capable models, and can replace some information currently kept in separate shared documents.
 
 **Assessment:** There is causal evidence that correct, task-relevant comment content can help weaker models on bounded coding tasks. There is also controlled evidence of null effects and harm from misleading or irrelevant documentation. The reviewed literature does **not** establish that selectively maintained inline comments outperform equivalent separate documentation over long-running project evolution, or that this strategy makes a cheaper model as dependable as a stronger one after total authoring and maintenance costs. That remains a plausible, testable hypothesis.

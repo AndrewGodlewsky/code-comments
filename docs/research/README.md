@@ -3,6 +3,11 @@
 Current phase: investigate the hypothesis before deciding the skill's workflow.
 No skill implementation or model experiments have been completed.
 
+Start with the [2026-11-05 deep-dive synthesis](deep-dive-summary.md) for the
+problem breakdown, evidence assessment, existing systems, benchmark shortlist,
+and review order. The expanded review includes counterevidence and a proposed
+statistical/cost design; it does not claim the product hypothesis is established.
+
 ## Research question
 
 Can selected, well-maintained code comments replace some separate shared
@@ -17,10 +22,14 @@ establish the others.
 
 | Read | Purpose |
 | --- | --- |
+| [Deep-dive synthesis](deep-dive-summary.md) | Human review guide: what the problem contains, what is supported, who is working on it, and what would justify a product claim |
+| [Direct comment evidence, expanded](comment-context-deep-dive.md) | Primary-source checks, additional interventions and maintenance studies, null/harm findings, and reporting/access limitations |
+| [Related systems and researchers](related-systems-and-researchers.md) | Existing inline writers, rationale skills, generated documentation, retrieval and memory systems; capabilities distinguished from outcome evidence |
+| [Benchmark landscape](benchmark-landscape.md) | Longitudinal and diagnostic benchmarks, current versus paper versions, artifacts/rights, grading hazards, and proposed reuse |
 | [Historical foundations](historical-comment-design.md) | Selected passages from eight historical primary works; competing ideas about good explanation, precise access limits, and candidate comment categories |
 | [Human comprehension and maintenance evidence](comment-maintenance-and-evaluation.md) | Three empirical studies, limits on generalization, and candidate evaluation fixtures |
 | [Coding-agent evidence](agent-context-evidence.md) | Eight empirical papers distinguishing single-task effects, training, retrieval, repository instructions, and successive edits |
-| [Proposed evaluation protocol](evaluation-protocol.md) | The canonical draft experiment design: hypotheses, controls, repeated changes, costs, and failure conditions |
+| [Proposed evaluation protocol](evaluation-protocol.md) | Canonical draft design: matched knowledge, repeated changes, cluster-aware analysis, practical/noninferiority thresholds, pilot stages, costs, and decision gates |
 | [Skill portability](skill-portability.md) | Verified documentation and local tool evidence for eventual distribution across Orca, Codex, Claude Code, and Copilot |
 
 The literature reports contain citations and separate findings from our
