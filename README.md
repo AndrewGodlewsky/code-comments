@@ -31,8 +31,9 @@ lessons and update the relevant context through the
 need to be verified in each supported tool.
 
 The [Git workflow](docs/agents/git-workflow.md) directs agents to commit and push
-stable checkpoints automatically, coordinate ownership, and retire completed
-branches and temporary worktrees once their work is safely preserved and integrated.
+stable checkpoints automatically and coordinate ownership. A task is complete only
+after its work is verified on remote `main` and its task branches and temporary
+worktrees are removed. Primary checkouts and other agents' active work are preserved.
 
 Use `research` to gather evidence first. When ready to settle the design, use
 `ask-matt` to choose a workflow or `grill-with-docs` to work through the decisions.

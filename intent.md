@@ -83,9 +83,13 @@ It maintains repository knowledge through explicit file changes that can be
 reviewed in Git. The user wants this maintenance to happen as part of normal work.
 
 With multiple agents contributing, stable progress should be committed and pushed
-automatically so it remains recoverable across sessions. Agents should clean up
-their completed task resources while preserving active and unmerged work. The
-operational rules live in [docs/agents/git-workflow.md](docs/agents/git-workflow.md).
+automatically so it remains recoverable across sessions. The user defines task
+completion as verified integration into remote `main` followed by removal of the
+task's local/remote branches and temporary worktrees. Agents are authorized to
+carry that lifecycle through without another permission request, subject to
+required checks and repository protection. Preserve the primary checkout and
+other agents' active work. The operational rules live in
+[docs/agents/git-workflow.md](docs/agents/git-workflow.md).
 
 ## Decisions still open
 

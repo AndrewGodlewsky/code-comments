@@ -1,10 +1,11 @@
 # Agent checkpoints and cleanup
 
-The user authorizes agents working on this repository to commit and push their
-own work at stable checkpoints without asking again, and to clean up their own
-completed, safely integrated task resources. Preserve recoverable work and respect
-other agents' ownership throughout. This is an instruction-driven workflow, not
-a background scheduler or a guarantee that every client obeys it.
+The user authorizes agents to commit and push their own stable checkpoints,
+integrate finished work into `main`, push `main`, and clean up their task branches
+and temporary worktrees without asking again. A task is complete only after all
+of those applicable steps are verified. A pushed feature branch is a checkpoint.
+Preserve recoverable work and other agents' ownership throughout. This is an
+instruction-driven workflow, not a background scheduler.
 
 ## Start with ownership
 
@@ -59,8 +60,8 @@ For each checkpoint:
 A rejected push is unresolved work. Fetch and inspect divergence; coordinate if
 another agent has written to the branch. Use a history-preserving resolution and
 rerun affected checks. This policy does not authorize force-pushing, rewriting
-shared history, bypassing branch protection, or merging into the default branch.
-Integration follows the separately authorized review/merge workflow.
+shared history, or bypassing branch protection. Finish integration using the
+process below and satisfy any required review or CI checks.
 
 If a session must stop before a stable point, preserve meaningful work in a clearly
 marked WIP commit on the owned task branch and push it when possible. Record the
@@ -69,18 +70,39 @@ not a verified checkpoint. If pushing is unavailable, retain the local branch an
 worktree, report the exact failure and commit, and retry when access is restored.
 An unpushed commit, local stash, or untracked file is not a remote backup.
 
-## Finish and clean up
+## Integrate finished work into main
 
-Before declaring the objective complete, checkpoint the final changes and verify
-their remote availability. Stop temporary processes started for this task and
-remove task-owned disposable files after preserving deliverables and useful
-experiment evidence. Inspect the final status so unexplained leftovers are visible.
+1. Review and validate the complete task changes, reconcile knowledge updates,
+   commit them, and verify the pushed task branch. Confirm all task contributors
+   have finished before integrating their shared branch.
+2. Fetch current remote state and inspect the relationship between the task branch,
+   local `main`, and `origin/main`. Include current main changes without losing
+   either side's work. Resolve conflicts and rerun affected checks.
+3. Integrate through the repository's required review/PR process when applicable.
+   If direct integration is permitted, use an available clean integration checkout,
+   switch to `main`, incorporate the fetched main and the finished task branch,
+   and validate the integrated result. A fast-forward is sufficient when possible.
+   Coordinate access if another agent owns the checkout; use an isolated integration
+   workspace if necessary rather than switching another agent's branch.
+4. Push `main` normally. If it advanced remotely, fetch, reconcile, and revalidate
+   before retrying. Never force-push to complete integration.
+5. Fetch again and verify that remote `main` contains the completed work. For a
+   history-preserving merge, verify the task tip is an ancestor of `origin/main`.
+   For a squash/rebase merge, verify the merged PR's final head and resulting
+   changes against the fetched target, including any post-review commits.
 
-Completed implementation is not necessarily integrated implementation. Keep an
-unmerged task branch on the remote for review or handoff. An owned temporary
-worktree may be removed before merge only when its complete deliverable is pushed,
-the tree is clean, relevant untracked/ignored files have been preserved, and no
-agent or process still needs it. Leave a handoff identifying the surviving branch.
+A pending review, failed check, unresolved conflict, denied push, or uncertain
+ownership keeps the task incomplete. Preserve the work and report the specific
+blocker; continue when it can be resolved. Do not present "ready to merge" as
+task completion. An explicit user request to pause, hand off, or leave a draft
+can stop this workflow, with the remaining integration work stated clearly.
+
+## Clean up after integration
+
+Stop temporary processes started for this task and remove task-owned disposable
+files after preserving deliverables and useful experiment evidence. Inspect the
+final status so unexplained leftovers are visible. Preserve unmerged work while
+resolving a blocker; it does not satisfy the completion criterion.
 
 After verified integration, clean up the task branch and its temporary worktree:
 
@@ -104,15 +126,18 @@ After verified integration, clean up the task branch and its temporary worktree:
    after confirming its workspace was actually removed; a temporarily unavailable
    or locked worktree is not evidence that it is abandoned.
 
-The agent performing or observing an authorized merge should finish the associated
-cleanup when ownership and inactivity are established. Cleanup is not permission
-to merge an unreviewed branch or to sweep unrelated branches by age. Never use
-forced worktree removal, `git clean -fd`, or `git branch -D` as routine cleanup.
+The integrating agent owns this cleanup before reporting completion. Keep the
+primary checkout on `main` when it is owned and available. If no temporary
+worktree was created, record cleanup as not applicable; never remove the primary
+checkout to satisfy the rule. Leave other agents' active branches and worktrees
+alone. Never use forced worktree removal, `git clean -fd`, or `git branch -D` as
+routine cleanup.
 
 ## Completion report
 
-Report the checkpoint commit, remote branch, checks performed, and resources
-removed. Identify anything retained with a concrete reason, such as awaiting
-merge, active owner, unpushed work, or unverified integration. A clean repository
-can legitimately contain active and unmerged task branches; the goal is accounted
-for, recoverable work with completed resources retired promptly.
+Report the integrated commit, verified remote `main`, checks performed, and task
+branches/worktrees removed (or temporary worktree not applicable). Completion
+requires validated work on remote `main`, deletion of the finished task's local
+and remote branches, removal of its temporary worktrees, and a clean owned
+checkout. If any required step remains, report the task as incomplete with the
+concrete blocker. Unrelated active work is outside this task's cleanup scope.

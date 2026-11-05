@@ -32,11 +32,13 @@ agent's preference alone does not settle it.
    Report the knowledge files changed and any unverified claim that remains.
    If there is no new durable lesson, leave the instructions alone.
 6. Complete the [checkpoint and cleanup workflow](git-workflow.md), including
-   remote verification and a handoff for resources that must remain.
+   verified integration into remote `main` and removal of task branches and
+   temporary worktrees. Report unresolved integration or cleanup as incomplete.
 
-Completion means the relevant knowledge was reconciled with its existing owner,
-or the agent determined there was nothing durable to add. Producing a session
-summary or appending a generic lesson does not satisfy that criterion by itself.
+Knowledge maintenance is complete when the relevant knowledge was reconciled with
+its existing owner, or the agent determined there was nothing durable to add.
+Task completion additionally requires the integration and cleanup in step 6.
+Producing a session summary does not satisfy either criterion by itself.
 
 ## Where each lesson belongs
 
