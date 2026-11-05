@@ -14,10 +14,12 @@ a workflow. Search the installed package if the visible skill catalog omits one.
 
 Before editing, checkpointing, handing off, or cleaning up, read
 [docs/agents/git-workflow.md](docs/agents/git-workflow.md). Automatically commit
-and push verified checkpoints on the owned task branch. Before declaring the task
-complete, integrate into `main`, push and verify remote `main`, and delete the
-task's local/remote branches and temporary worktrees. Preserve the primary checkout
-and other agents' active work. Report blocked integration or cleanup as incomplete.
+and push verified checkpoints on the owned task branch. Before assigning work,
+record its issue/branch ownership using [task tracking](docs/agents/task-tracking.md).
+Completion requires a separate agent's review, verified remote `main` integration,
+issue reconciliation, branch/worktree cleanup, and independent final audit.
+Preserve the primary checkout and other agents' active work. Report blocked gates
+as incomplete.
 
 ## Keep knowledge current
 

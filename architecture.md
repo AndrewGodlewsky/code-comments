@@ -25,6 +25,7 @@ Its operations and triage vocabulary are documented under `docs/agents/`.
 | `CLAUDE.md` | Claude Code import of the common instructions | A verified client discovery requirement |
 | `.github/copilot-instructions.md` | Copilot entry point to the common instructions | A verified client discovery requirement |
 | `docs/agents/` | Tracker conventions, domain-document rules, checkpoint/cleanup policy, and learning workflow | A change to how work is performed |
+| GitHub branch tracking issues | Branch purpose, assignments, associated issue scope, and review/closeout evidence; format in [task tracking](docs/agents/task-tracking.md) | Assignment, checkpoint, review, integration, or cleanup changes |
 | `docs/research/README.md` | Evidence navigation and research status | A report is added, revised, superseded, or reproduced |
 | Research reports | Source findings, limitations, and project interpretations | New evidence or a correction to a claim |
 | `docs/research/evaluation-protocol.md` | Canonical proposed experiment design | An experimental design decision or measured limitation |

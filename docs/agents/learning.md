@@ -31,9 +31,9 @@ agent's preference alone does not settle it.
    a working-tree diff alone does not check untracked additions.
    Report the knowledge files changed and any unverified claim that remains.
    If there is no new durable lesson, leave the instructions alone.
-6. Complete the [checkpoint and cleanup workflow](git-workflow.md), including
-   verified integration into remote `main` and removal of task branches and
-   temporary worktrees. Report unresolved integration or cleanup as incomplete.
+6. Complete the [Git workflow](git-workflow.md), including independent review,
+   remote `main` integration, issue reconciliation, cleanup, and final audit.
+   Report any unresolved gate as incomplete.
 
 Knowledge maintenance is complete when the relevant knowledge was reconciled with
 its existing owner, or the agent determined there was nothing durable to add.

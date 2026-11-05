@@ -10,6 +10,10 @@ repository that distributes the skills.
 
 ## Conventions
 
+Before assigning branch work, follow [task tracking](task-tracking.md) to record
+its purpose, ownership, associated issues, and closeout evidence. Use that process
+to reconcile branch-backed issue closures after integration.
+
 - **Create**: `gh issue create --title "..." --body-file <path>`.
 - **Read**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List**: `gh issue list --state open --limit 100 --json number,title,body,labels,assignees`.

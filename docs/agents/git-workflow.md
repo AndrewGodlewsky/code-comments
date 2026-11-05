@@ -2,8 +2,9 @@
 
 The user authorizes agents to commit and push their own stable checkpoints,
 integrate finished work into `main`, push `main`, and clean up their task branches
-and temporary worktrees without asking again. A task is complete only after all
-of those applicable steps are verified. A pushed feature branch is a checkpoint.
+and temporary worktrees without asking again. A separate agent must verify the
+whole task before integration and audit closeout afterward. A task is complete
+only after all applicable steps are verified. A pushed branch is a checkpoint.
 Preserve recoverable work and other agents' ownership throughout. This is an
 instruction-driven workflow, not a background scheduler.
 
@@ -14,7 +15,9 @@ instruction-driven workflow, not a background scheduler.
    existing changes, and any owner already using them.
 2. Use an assigned task branch or create a uniquely named branch such as
    `agent/<task>` from the appropriate base. Keep an existing manager-assigned
-   branch name. Record the branch and workspace in the task handoff or status.
+   branch name. Before editing or delegating, establish the durable issue-to-branch
+   assignment using [task tracking](task-tracking.md); keep it current through
+   closeout. Record the workspace in the local handoff.
 3. Independently editing agents should have separate task branches and worktrees.
    Reuse an appropriate owned workspace rather than creating redundant ones. Use
    the native workspace manager when one manages the worktree.
@@ -55,7 +58,7 @@ For each checkpoint:
    Publish task branches rather than pushing directly to `main` by default.
 5. Verify the push succeeded and the remote branch tip matches the local commit
    (for example, compare `git rev-parse HEAD` with `git ls-remote --heads origin
-   refs/heads/<task-branch>`). Report the branch and checkpoint commit.
+   refs/heads/<task-branch>`). Record the checkpoint in the tracking issue.
 
 A rejected push is unresolved work. Fetch and inspect divergence; coordinate if
 another agent has written to the branch. Use a history-preserving resolution and
@@ -70,26 +73,57 @@ not a verified checkpoint. If pushing is unavailable, retain the local branch an
 worktree, report the exact failure and commit, and retry when access is restored.
 An unpushed commit, local stash, or untracked file is not a remote backup.
 
-## Integrate finished work into main
+## Independent completion review
 
-1. Review and validate the complete task changes, reconcile knowledge updates,
-   commit them, and verify the pushed task branch. Confirm all task contributors
-   have finished before integrating their shared branch.
-2. Fetch current remote state and inspect the relationship between the task branch,
-   local `main`, and `origin/main`. Include current main changes without losing
-   either side's work. Resolve conflicts and rerun affected checks.
+When the entire branch purpose is implemented, finish and push the final
+checkpoint, confirm contributors have stopped editing, and fetch remote `main`.
+Incorporate current main into the task branch if necessary, resolve conflicts,
+rerun affected checks, and push the resulting candidate before review.
+
+Spawn a separate agent with fresh context that did not implement the task. Give
+it the tracking issue, all associated issues, exact pushed head SHA, fetched main
+SHA, relevant instructions, and validation evidence. The reviewer works read-only;
+the coordinator retains Git and tracker mutation ownership. Require it to:
+
+1. Read the instructions and issue bodies/comments independently. Compare the
+   entire branch diff and delivered behavior with every acceptance criterion.
+2. Inspect changes and reproduce applicable checks. Distinguish observed results
+   from untested assumptions; report missing work, regressions, and stale guidance.
+3. Reconcile every associated issue using [task tracking](task-tracking.md),
+   identifying which can close after integration and which must remain open.
+4. Return a pass or blocking findings, with the exact head and main SHAs, evidence
+   for each criterion, and a proposed issue disposition and cleanup inventory.
+
+Record the review in the tracking issue. Fix blocking findings, push, and obtain
+another independent review of the updated candidate. Approval applies only to
+the reviewed head and main SHAs: any new commit, target movement, or conflict
+resolution requires updated checks and renewed review before integration. If a
+separate agent is unavailable, retain the checkpoint and report review blocked;
+self-review does not satisfy this gate.
+
+## Integrate reviewed work into main
+
+1. Confirm independent review passed, required checks passed, and contributors
+   have finished. Fetch and verify the task tip and `origin/main` still match the
+   reviewed SHAs. Return to review if either changed.
+2. Inspect local `main` and its relationship to the reviewed candidate. Preserve
+   any additional local work; coordinate its ownership before integration.
 3. Integrate through the repository's required review/PR process when applicable.
    If direct integration is permitted, use an available clean integration checkout,
    switch to `main`, incorporate the fetched main and the finished task branch,
    and validate the integrated result. A fast-forward is sufficient when possible.
    Coordinate access if another agent owns the checkout; use an isolated integration
    workspace if necessary rather than switching another agent's branch.
-4. Push `main` normally. If it advanced remotely, fetch, reconcile, and revalidate
-   before retrying. Never force-push to complete integration.
+4. Push `main` normally. If it advanced remotely, fetch, reconcile, revalidate,
+   and renew independent review before retrying. Never force-push to integrate.
 5. Fetch again and verify that remote `main` contains the completed work. For a
    history-preserving merge, verify the task tip is an ancestor of `origin/main`.
    For a squash/rebase merge, verify the merged PR's final head and resulting
-   changes against the fetched target, including any post-review commits.
+   changes against the fetched target. Any integration changes beyond the reviewed
+   candidate require checks and independent review before publishing.
+
+Record integration evidence and reconcile issue states according to
+[task tracking](task-tracking.md), keeping the tracking issue open for cleanup.
 
 A pending review, failed check, unresolved conflict, denied push, or uncertain
 ownership keeps the task incomplete. Preserve the work and report the specific
@@ -135,9 +169,16 @@ routine cleanup.
 
 ## Completion report
 
-Report the integrated commit, verified remote `main`, checks performed, and task
-branches/worktrees removed (or temporary worktree not applicable). Completion
-requires validated work on remote `main`, deletion of the finished task's local
-and remote branches, removal of its temporary worktrees, and a clean owned
-checkout. If any required step remains, report the task as incomplete with the
-concrete blocker. Unrelated active work is outside this task's cleanup scope.
+After cleanup, send the separate reviewer the integration SHA and issue/cleanup
+evidence for a read-only final audit. It must verify remote `main` contains the
+reviewed work, associated issues have the correct disposition, finished task
+branches and temporary worktrees are gone, and the owned checkout is clean.
+The tracking issue remains open pending this audit and its final closure; record
+that expected state explicitly. Fix any findings and repeat the audit as needed.
+Then record the passing audit, close the tracking issue, and read back its state.
+
+Report the integrated commit, independent review result, checks, issue closures
+or justified open remainders, and removed branches/worktrees (or temporary worktree
+not applicable). Completion requires every gate above, including verified closure
+of the tracking issue. Otherwise report the concrete remaining blocker. Unrelated
+active work is outside this task's cleanup scope.

@@ -84,8 +84,11 @@ reviewed in Git. The user wants this maintenance to happen as part of normal wor
 
 With multiple agents contributing, stable progress should be committed and pushed
 automatically so it remains recoverable across sessions. The user defines task
-completion as verified integration into remote `main` followed by removal of the
-task's local/remote branches and temporary worktrees. Agents are authorized to
+completion as independent verification of the entire branch purpose, integration
+into remote `main`, reconciliation of associated issues, and removal of the task's
+local/remote branches and temporary worktrees. A separate agent reviews before
+integration and audits closeout. GitHub tracking issues retain branch assignments,
+scope, and evidence across sessions. Agents are authorized to
 carry that lifecycle through without another permission request, subject to
 required checks and repository protection. Preserve the primary checkout and
 other agents' active work. The operational rules live in
