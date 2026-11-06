@@ -23,6 +23,13 @@ establish the others.
 
 ## Reading map
 
+The [imported paper collection](ai-code-comments/README.md) adds four full-text
+reviews and one explicitly limited evidence brief, with source files and a
+[transfer handoff](ai-code-comments/chat-context/HANDOFF.md). The
+[reading-list access guide](../reading-list-access.md) indexes local books,
+historical papers and external access options. These are reading resources, not
+new experiments or changes to the evaluation protocol.
+
 | Read | Purpose |
 | --- | --- |
 | [Deep-dive synthesis](deep-dive-summary.md) | Human review guide: what the problem contains, what is supported, who is working on it, and what would justify a product claim |

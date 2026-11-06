@@ -44,6 +44,11 @@ or task completion. During a long task, assess progress periodically instead of
 deferring all commits until the entire objective is finished. Avoid empty commits
 and commits consisting only of incidental churn.
 
+Documentation, research reports, downloaded source material, copied deliverables,
+and agent instructions follow the same checkpoint rule as code. Checkpointing
+is independent of issue completion and main integration: unfinished acceptance
+criteria keep the task open, not its finished deliverables uncommitted.
+
 For each checkpoint:
 
 1. Run the applicable checks, review the diff, and include relevant knowledge
@@ -73,6 +78,29 @@ failing or unrun checks and next step in the handoff. Treat this as recovery dat
 not a verified checkpoint. If pushing is unavailable, retain the local branch and
 worktree, report the exact failure and commit, and retry when access is restored.
 An unpushed commit, local stash, or untracked file is not a remote backup.
+
+## Before a final work report or handoff
+
+1. Run `git status --short --untracked-files=all`, inspect staged and unstaged
+   diffs, and check task-created ignored paths when relevant. Include deliverables
+   copied into the checkout by another project or agent; `git diff` alone omits
+   untracked files.
+2. Reconcile every changed path with the task inventory. Commit and push owned
+   deliverables, using the WIP procedure above if validation is unfinished. For
+   foreign or uncertain work, identify its owner and destination branch using
+   [task tracking](task-tracking.md); record the exact unresolved paths and next
+   owner if coordination cannot finish. Preserve the files while resolving this.
+3. Verify the remote branch contains the checkpoint and rerun status. The handoff
+   passes only when every owned deliverable is remotely checkpointed or an exact
+   blocking failure is reported. List any intentionally uncommitted paths with
+   ownership and reason; unexplained leftovers fail this gate.
+4. Report checkpoint SHA/branch, push verification, and remaining dirty paths
+   separately from review, merge and task-completion status. A successful commit
+   of some files does not establish that all deliverables were committed.
+
+These instructions require the executing agent to run the gate; they do not
+install an unattended auto-commit service. Stage explicit paths after review,
+rather than using a blanket commit to make the status display clean.
 
 ## Independent completion review
 

@@ -95,6 +95,15 @@ assignments change; preserve the history of transfers in a comment.
 
 ## Checkpoints and recovery
 
+For cross-project imports, assign the destination issue, branch and coordinator
+before copying when practical. The importing agent owns the destination checkpoint
+unless a named receiving coordinator explicitly accepts it. A commit in the source
+repository does not protect an untracked destination copy. A copy-only handoff
+must list transferred paths and the receiving assignment, and remain unfinished
+until that coordinator acknowledges and checkpoints them. When discovering an
+unassigned import, recover its provenance and establish ownership instead of
+leaving it indefinitely classified as unrelated work.
+
 At each pushed checkpoint or handoff, comment with the branch and commit, completed
 criteria, checks and results, remaining work/blockers, and next owner. Keep the
 assignment fields current. Record new issues and scope changes as they arise.

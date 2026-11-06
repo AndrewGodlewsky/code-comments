@@ -16,9 +16,11 @@ a workflow. Search the installed package if the visible skill catalog omits one.
 
 ## Checkpoint and clean up
 
-Before editing, checkpointing, handing off, or cleaning up, read
+Before editing, importing deliverables, sending a final work report, or cleaning up, read
 [docs/agents/git-workflow.md](docs/agents/git-workflow.md). Automatically commit
-and push verified checkpoints on the owned task branch. Before assigning work,
+and push checkpoints on the owned task branch, including documents and imports;
+account for every remaining modified or untracked file before handing off.
+Checkpointing does not wait for the full task or a merge. Before assigning work,
 record its issue/branch ownership using [task tracking](docs/agents/task-tracking.md).
 Completion requires a separate agent's review, verified remote `main` integration,
 issue reconciliation, branch/worktree cleanup, and independent final audit.
