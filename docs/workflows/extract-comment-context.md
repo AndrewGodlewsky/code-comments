@@ -130,6 +130,12 @@ needs a coverage file explaining its actual traversal and scope boundaries.
 7. Render the human views and run deterministic checks for source hashes,
    source/unit IDs, bounded line spans, unique record IDs and coverage accounting.
    These checks establish traceability, not semantic completeness.
+   Run `python -B scripts/comment_context.py render`, then
+   `python -B scripts/comment_context.py check` from the repository root.
+   Use `--source <id>` for one completed batch, or `--allow-pending` during work.
+   The final check rejects pending units; partial/unreadable units remain explicit
+   limitations rather than silently being called read. Tool regression checks are
+   `python -B -m unittest discover -s tests -p test_comment_context.py`.
 8. Assign an independent agent to check fidelity and omissions against originals,
    including negative/mixed passages, low-hit units, tables and extraction gaps.
    Record the scope of its audit and fix findings without turning the review into
