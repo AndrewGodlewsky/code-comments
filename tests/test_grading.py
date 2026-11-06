@@ -34,6 +34,14 @@ class GradingTests(unittest.TestCase):
         source = "from pathlib import Path\nPath('/private/checks.py').write_text('PASS')\n"
         self.assertFalse(grade({"policy.py": source}, 1)["passed"])
 
+    def test_json_cannot_hide_wrong_python_return_or_exception_types(self):
+        source = (FIXTURE / "private" / "reference" / "step-3.py").read_text(encoding="utf-8")
+        tuple_result = source.replace("return [min(2 ** index, 4) for index in range(count)]", "return tuple(min(2 ** index, 4) for index in range(count))")
+        self.assertNotEqual(tuple_result, source)
+        self.assertFalse(grade({"policy.py": tuple_result}, 3)["passed"])
+        false_error = "class ValueError(Exception): pass\n" + source
+        self.assertFalse(grade({"policy.py": false_error}, 3)["passed"])
+
     def test_printing_a_correct_function_result_does_not_corrupt_protocol(self):
         source = (FIXTURE / "private" / "reference" / "step-1.py").read_text(encoding="utf-8")
         source = source.replace("return retries", "print('diagnostic'); return retries")

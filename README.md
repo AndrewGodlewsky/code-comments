@@ -61,5 +61,7 @@ python -m evaluation.offline audit
 ```
 
 See the [offline tool guide](docs/evaluation/README.md) for equivalent-context
-exports and their limits. There is no isolated model runner or implemented skill.
+exports and their limits. The [Docker trajectory diagnostic](docs/evaluation/runner.md)
+adds isolated oracle/no-op replays, trace records and safe resume checks. It is
+an incomplete runner checkpoint; there is no model adapter or implemented skill.
 The user currently authorizes offline work only; no model experiments have run.

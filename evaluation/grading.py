@@ -10,14 +10,20 @@ CALL_SCRIPT = """import contextlib,json,os,runpy,sys
 requests=json.load(sys.stdin)
 required_error=ValueError
 is_expected=isinstance
+value_type=type
+integer_type=int
+list_type=list
 results=[]
 with open(os.devnull,'w') as sink, contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
  try:
   namespace=runpy.run_path('/workspace/policy.py')
   for request in requests:
-   try: results.append({'value':namespace[request['function']](**request['arguments'])})
+   try:
+    value=namespace[request['function']](**request['arguments'])
+    valid=(value_type(value) is integer_type if request['function']=='resolve_retries' else value_type(value) is list_type and all(value_type(item) is integer_type for item in value))
+    results.append({'value':value} if valid else {'invalid_return_type':value_type(value).__name__})
    except BaseException as error:
-    results.append({'exception':'ValueError' if is_expected(error,required_error) else type(error).__name__})
+    results.append({'exception':'ValueError' if is_expected(error,required_error) else 'unexpected:'+value_type(error).__name__})
  except BaseException as error: results={'load_error':type(error).__name__}
 print(json.dumps(results,allow_nan=False))
 """

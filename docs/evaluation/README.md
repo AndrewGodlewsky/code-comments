@@ -5,6 +5,10 @@ in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). The user cho
 offline work only. There are no model calls, credentials, API adapters or new
 package dependencies. These checks are not benchmark results for a model or skill.
 
+The separate [Docker trajectory diagnostic](runner.md) now exercises isolated
+oracle/no-op replays, grading and resume records. It remains a partial #7 runner
+checkpoint and does not introduce a model adapter.
+
 ## Run locally
 
 From the repository root, use Python 3.12 or newer:

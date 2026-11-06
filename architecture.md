@@ -8,8 +8,9 @@ instructions in their owning files.
 ## Current system
 
 The repository contains research, agent workflow configuration, and a small
-offline fixture audit/export tool. There is no implemented Code Comments skill,
-isolated model runner, application runtime, or published package. No model
+offline fixture audit/export tool and Docker trajectory diagnostic. There is no
+implemented Code Comments skill, real model adapter, application runtime, or
+published package. No model
 experiments have been run here. Current work is offline-only by user direction.
 
 `evaluation/offline.py` audits a trusted original fixture and exports its first
@@ -18,6 +19,15 @@ task under baseline, inline and external-context conditions. The fixture's
 in this repository; this is not a security sandbox. `tests/test_offline.py` owns
 automated behavioral/export checks. See the [tool guide](docs/evaluation/README.md)
 and [roadmap](docs/roadmap.md) for current boundaries and remaining issues.
+
+`evaluation/runner.py` carries code through fresh Docker workspaces, records
+deterministic oracle/no-op trajectories, and guards resume with configuration
+hashes, exclusive records and interruption markers. `sandbox.py` owns bounded
+execution/snapshots; `grading.py` keeps expected outcomes on the host and runs
+candidate calls separately. The result collector still shares the candidate's
+interpreter and is not tamper-proof. See the [runner guide](docs/evaluation/runner.md)
+for verified commands, boundary limitations and remaining #7 work. Docker CI
+exercises the development fixture; it does not establish model efficacy.
 
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.

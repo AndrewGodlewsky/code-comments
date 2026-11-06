@@ -73,16 +73,30 @@ print(json.dumps(r))
                 sandbox.snapshot()
 
     def test_snapshot_stops_background_writers(self):
-        program = """import subprocess,sys
+        program = """import subprocess,sys,time
 from pathlib import Path
 Path('counter').write_text('0')
-subprocess.Popen([sys.executable,'-I','-B','-c',"from pathlib import Path; import time; n=0\\nwhile True:\\n n+=1;Path('counter').write_text(str(n));time.sleep(0.001)"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+child=subprocess.Popen([sys.executable,'-I','-B','-c',"from pathlib import Path; import time; n=0\\nwhile True:\\n n+=1;Path('/tmp/next').write_text(str(n));Path('counter').write_text(str(n));time.sleep(0.01)"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+deadline=time.monotonic()+2
+while time.monotonic()<deadline:
+ if Path('counter').read_text() not in ('','0'): break
+ if child.poll() is not None: raise RuntimeError('writer died')
+ time.sleep(0.01)
+else: raise RuntimeError('writer never progressed')
+print(child.pid)
 """
         with DockerSandbox({}) as sandbox:
             result = sandbox.run(["python", "-I", "-B", "-c", program])
             self.assertEqual(result.returncode, 0, result.output)
+            pid = int(result.output)
             files = sandbox.snapshot()
-            self.assertTrue(files["counter"].isdigit())
+            # A stopped write may be partial; assert quiescence, not atomic writes.
+            import subprocess
+            probe = f"from pathlib import Path; import time; p=Path('/proc/{pid}/stat'); print(p.read_text().rsplit(')',1)[1].split()[0]); a=Path('counter').read_text(); time.sleep(0.05); print(a==Path('counter').read_text())"
+            stopped = subprocess.run(['docker', 'exec', sandbox.name, 'python', '-I', '-B', '-c', probe], capture_output=True, text=True, timeout=5)
+            self.assertEqual(stopped.returncode, 0, stopped.stderr)
+            self.assertEqual(stopped.stdout.splitlines(), ['T', 'True'])
+            self.assertIn('counter', files)
 
     def test_timeout_closes_container(self):
         with DockerSandbox({}, timeout=1) as sandbox:
