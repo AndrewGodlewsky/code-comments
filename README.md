@@ -4,7 +4,8 @@ Code Comments is a planned portable agent skill for preserving useful knowledge
 beside the code it explains. Target tools are Orca, Codex, Claude Code, and GitHub
 Copilot.
 
-The project is in the research phase. Read [intent.md](intent.md) for the user's
+The project has completed an initial research review and begun an offline
+evaluation foundation. Read [intent.md](intent.md) for the user's
 goals and hypotheses, and [architecture.md](architecture.md) for the current
 structure, proposed boundaries, and open decisions.
 
@@ -12,6 +13,10 @@ Start with the [research index](docs/research/README.md) for historical sources,
 empirical studies, the proposed evaluation protocol, and portability findings.
 For a review of the problem, existing systems, and benchmark options, read the
 [deep-dive synthesis](docs/research/deep-dive-summary.md).
+
+The [product roadmap](docs/roadmap.md) links the remaining GitHub issues and
+dependencies. The first [offline fixture audit](docs/evaluation/README.md) is
+executable; model trials and the portable skill are still future work.
 
 ## Agent workflow setup
 
@@ -48,6 +53,13 @@ Shared editor settings live in `.editorconfig`. Text files use LF, with CRLF for
 Windows batch scripts. Local `.env` files are ignored; example environment files
 can be committed.
 
-There is currently no implemented skill or evaluation runner. The research phase
-precedes packaging, workflow selection, and model experiments. Add verified
-validation and evaluation commands here when those tools exist.
+Python 3.12+ is sufficient for the offline tools; no packages need installing:
+
+```text
+python -m unittest discover -s tests -v
+python -m evaluation.offline audit
+```
+
+See the [offline tool guide](docs/evaluation/README.md) for equivalent-context
+exports and their limits. There is no isolated model runner or implemented skill.
+The user currently authorizes offline work only; no model experiments have run.

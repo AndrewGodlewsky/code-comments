@@ -7,9 +7,17 @@ instructions in their owning files.
 
 ## Current system
 
-The repository currently contains research and agent workflow configuration.
-There is no implemented Code Comments skill, evaluation runner, application
-runtime, or published package. No model experiments have been run here.
+The repository contains research, agent workflow configuration, and a small
+offline fixture audit/export tool. There is no implemented Code Comments skill,
+isolated model runner, application runtime, or published package. No model
+experiments have been run here. Current work is offline-only by user direction.
+
+`evaluation/offline.py` audits a trusted original fixture and exports its first
+task under baseline, inline and external-context conditions. The fixture's
+`private/` assets are excluded from exports but remain public development material
+in this repository; this is not a security sandbox. `tests/test_offline.py` owns
+automated behavioral/export checks. See the [tool guide](docs/evaluation/README.md)
+and [roadmap](docs/roadmap.md) for current boundaries and remaining issues.
 
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
@@ -29,14 +37,16 @@ Its operations and triage vocabulary are documented under `docs/agents/`.
 | `docs/research/README.md` | Evidence navigation and research status | A report is added, revised, superseded, or reproduced |
 | Research reports | Source findings, limitations, and project interpretations | New evidence or a correction to a claim |
 | `docs/research/evaluation-protocol.md` | Canonical proposed experiment design | An experimental design decision or measured limitation |
+| `docs/roadmap.md` | Milestone order and gates, linking GitHub's live assignments/status | A change to product execution scope or dependencies |
+| `docs/evaluation/README.md` | Runnable offline tools, provenance and validity limits | A verified tool or evaluation boundary changes |
 
 Use references between these owners. A summary should point to the authoritative
 detail rather than create another independently maintained specification.
 
 ## Proposed future boundaries
 
-These are candidate responsibilities for planning, not implemented modules or
-accepted choices of language, framework, or directory structure.
+These responsibilities remain proposed beyond the small Python offline diagnostic.
+That diagnostic does not select the final runner framework or skill languages.
 
 | Boundary | Responsibility | Separation to preserve |
 | --- | --- | --- |
@@ -58,8 +68,8 @@ a consequential, non-obvious trade-off deserves a durable decision record. An AD
 records the reasoning; this overview records the resulting structural state and
 links to it.
 
-Create corpus, runner, result, skill, and CI directories with their first actual
-contents. Add judgment-based review standards when there are concrete standards
+Create additional corpus, runner, result, skill, and CI directories with their first
+actual contents. Add judgment-based review standards when there are concrete standards
 to enforce; put mechanically checkable requirements in executable checks when
 the relevant tooling exists. This keeps the tree representative of real work.
 

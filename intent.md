@@ -103,6 +103,11 @@ other agents' active work. The operational rules live in
 
 ## Decisions still open
 
+Current execution constraint (2026-11-05): the user chose **offline work only**
+when asked about the first model smoke-run budget. Continue local development
+and validation; do not start model campaigns until the user changes that direction.
+The [roadmap](docs/roadmap.md) links the remaining work and spending decision.
+
 Research and experiments should inform activation, comment categories, language
 coverage, model selection, corpus selection, release thresholds, and the balance
 between inline context and separate documents. Neither an always-on writer nor

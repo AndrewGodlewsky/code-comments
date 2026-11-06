@@ -1,7 +1,10 @@
 # Code Comments research
 
-Current phase: investigate the hypothesis before deciding the skill's workflow.
-No skill implementation or model experiments have been completed.
+Current phase: move the researched hypothesis into offline evaluation development
+before deciding the skill's workflow. No skill implementation or model experiments
+have been completed. The [roadmap](../roadmap.md) tracks remaining work; the
+[offline fixture guide](../evaluation/README.md) documents the first executable
+diagnostic. Its results validate plumbing, not the product hypothesis.
 
 Start with the [2026-11-05 deep-dive synthesis](deep-dive-summary.md) for the
 problem breakdown, evidence assessment, existing systems, benchmark shortlist,
