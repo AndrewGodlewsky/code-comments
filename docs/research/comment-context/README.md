@@ -40,7 +40,6 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 - The reading text linearizes HTML inline markup, table cells and lists and does not preserve every code indentation or table column. Original HTML remains the authority; structural checks covered the two ch07 tables and preformatted specimens in ch08/ch10/ch12/ch18, not every page rendered in a browser.
 - Figure 17-4 has a horizontally clipped query. Its visible portion and embedded code are supplemented; absent text is not reconstructed. Figure 20-1 supplement omits UI controls and the naming-warning regular expression, distinguishing the human review comment from source comments.
 - Figures 23-4 and 23-5 were visually inspected as context for tracked test disablement, but graph curves remain in the original images; no data values were inferred or fully transcribed.
-- Independent fidelity/omission audit has not yet been performed by a separate agent.
 
 ### A Philosophy of Software Design, second-edition extract
 
