@@ -164,6 +164,7 @@ def run_diagnostic(destination: Path, *, seed: int = 0, mode: str = 'discovery',
         # after a gap or terminal failure. Checksums detect damage, not malicious hosts.
         existing = {path.name: read_record(path) for path in destination.glob('step-*.json')}
         states, records, expected_names = {}, [], set()
+        incomplete_condition = False
         for condition in config['condition_order']:
             previous = {'policy.py': (FIXTURE / 'initial' / 'policy.py').read_text(encoding='utf-8')}
             next_step = 1
@@ -171,6 +172,8 @@ def run_diagnostic(destination: Path, *, seed: int = 0, mode: str = 'discovery',
                 name = f'step-{condition}-{step}.json'
                 if name not in existing:
                     break
+                if incomplete_condition:
+                    raise ValueError('later condition records follow an incomplete earlier condition')
                 before = context_files(previous, condition, step)
                 record = existing[name]
                 if (record.get('run_id') != manifest['run_id'] or record.get('condition') != condition
@@ -186,6 +189,8 @@ def run_diagnostic(destination: Path, *, seed: int = 0, mode: str = 'discovery',
                     break
                 previous = record['after']
             states[condition] = (previous, next_step)
+            if next_step < 4:
+                incomplete_condition = True
         if set(existing) != expected_names:
             raise ValueError('records exist after a gap or terminal failure')
         attempts = 0

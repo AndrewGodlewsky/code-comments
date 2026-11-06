@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from evaluation.runner import context_files, read_record, run_diagnostic
+from evaluation.runner import _hash, context_files, read_record, run_diagnostic
 
 
 class RunnerRecordTests(unittest.TestCase):
@@ -80,6 +80,23 @@ class RunnerRecordTests(unittest.TestCase):
             checksum = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
             (path / 'step-inline-3.json').write_text(json.dumps({'sha256': checksum, 'payload': payload}), encoding='utf-8')
             with patch('evaluation.runner._attempt') as adapter:
+                with self.assertRaises(ValueError):
+                    run_diagnostic(path, resume=True)
+                adapter.assert_not_called()
+
+    def test_later_conditions_expose_a_missing_record_in_an_earlier_condition(self):
+        def recorded_attempt(before, condition, step, config, run_id):
+            return {'run_id': run_id, 'condition': condition, 'step': step,
+                    'before': before, 'before_sha256': _hash(before), 'after': before,
+                    'status': 'passed', 'wall_seconds': 0}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'run'
+            with patch('evaluation.runner._attempt', side_effect=recorded_attempt):
+                report = run_diagnostic(path)
+            first_condition = report['trajectories'][0]['condition']
+            (path / f'step-{first_condition}-3.json').unlink()
+            with patch('evaluation.runner._attempt', side_effect=recorded_attempt) as adapter:
                 with self.assertRaises(ValueError):
                     run_diagnostic(path, resume=True)
                 adapter.assert_not_called()

@@ -53,6 +53,11 @@ Resume validates configuration/source hashes and saved trajectory prefixes befor
 new work; it refuses records after a gap or terminal failure. All attempts,
 including failures, contribute to summaries; later steps remain unattempted.
 Success requires all three steps, not merely the last successful check.
+Conditions must also form one execution prefix: later conditions cannot have
+records while an earlier condition is incomplete. Independent review caught a
+missing-record replay that per-condition checks alone allowed. Loss of a trailing
+record with no later evidence is not detectable by these local checksum files;
+durable provider reconciliation/idempotency is still future work.
 
 `run.lock` excludes concurrent writers. `inflight.json` is flushed before an
 attempt. Interrupted attempts or leftover locks block automatic resume: inspect
