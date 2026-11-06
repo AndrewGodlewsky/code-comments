@@ -125,9 +125,9 @@ def render_source(root, source, data):
         out.extend([f"<a id=\"{record['id']}\"></a>", f"## {record['id']} — {record['heading']}", "",
                     f"Source: [{unit['location']}]({original}); reading unit `{unit['id']}`, "
                     f"lines {record['start_line']}–{record['end_line']}.", "",
-                    f"Attribution: {record['attribution']}", "", f"Context: {record['context']}", ""])
+                    f"Attribution: {record['attribution'].strip()}", "", f"Context: {record['context'].strip()}", ""])
         if record["notes"]:
-            out.extend([f"Transcription/context notes: {record['notes']}", ""])
+            out.extend([f"Transcription/context notes: {record['notes'].strip()}", ""])
         if record["related_record_ids"]:
             out.extend(["Related: " + ", ".join(f"[{rid}](#{rid})" for rid in record["related_record_ids"]), ""])
         out.extend([fence + "text", body, fence, ""])

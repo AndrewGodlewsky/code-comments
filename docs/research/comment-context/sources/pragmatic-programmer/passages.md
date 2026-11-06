@@ -22,7 +22,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The opening account places documentation alongside code, design and teamwork, then describes documenting work so others can understand and build on it, with pragmatic context-sensitive qualifications. The surrounding preface discusses defining jargon and explicitly limits applicability of its advice.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [00:14:35] Feel free to listen to the topics in any order. Every now and then we'll drop in a tip. As well as emphasizing points in the book, we feel the tips have a life of their own. Live by them daily. Scattered throughout the book, you'll find various bits of jargon, either perfectly good English words that have been corrupted to mean something technical.
@@ -52,7 +52,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Opening responsibility discussion says problems can occur despite thorough tests, good documentation and automation.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [00:32:56] and take them. Topic 2. The cat ate my source code One of the cornerstones of the pragmatic philosophy is the idea of taking responsibility for yourself and your actions in terms of your career advancement, your learning and education, your project and your day-to-day work. Pragmatic programmers take charge of their own career and aren't afraid to admit ignorance or error.
@@ -68,7 +68,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The broken-window analogy includes commenting out offending code when there is insufficient time for a proper fix, alongside placeholders and later repair.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [00:39:05] I'd probably not use them again in future. When you find yourself saying, I don't know, be sure to follow it up with, but I'll find out. It's a great way to admit what you don't know, but then take responsibility like a pro. 3. Software entropy While software development is immune from almost all physical laws, the inexorable increase in entropy hits us hard.
@@ -97,7 +97,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Communication chapter develops audience, style and writing context before recommending source comments on modules/exported functions, rejecting mechanical comments on every declaration, and describing rationale and discarded alternatives.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-011](#pragmatic-programmer-011), [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-037](#pragmatic-programmer-037), [pragmatic-programmer-047](#pragmatic-programmer-047)
 
@@ -139,7 +139,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Design discussion connects readable names with change, and suggests engineering-daybook entries, source tags or code notes explaining uncertain decisions and later feedback.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-020](#pragmatic-programmer-020), [pragmatic-programmer-037](#pragmatic-programmer-037), [pragmatic-programmer-050](#pragmatic-programmer-050)
 
@@ -214,7 +214,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Continuation discusses generated API documentation, specifications, schemas and tests, then source/documentation reading and recorded team knowledge for reuse.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-009](#pragmatic-programmer-009), [pragmatic-programmer-019](#pragmatic-programmer-019), [pragmatic-programmer-035](#pragmatic-programmer-035)
 
@@ -242,7 +242,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Executable EJB transaction annotations, separate from ordinary prose comments, illustrate representation outside methods; the following coding discussion connects explicit context with understandability.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [01:58:11] What happens when the phone company reassigns area codes? Postal codes, social security numbers or government IDs, email addresses and domains are all external identifiers that you have no control over and could change at any time for any reason. Don't rely on the properties of things you can't control. Toolkits and Libraries Be careful to preserve the orthogonality of your system as you introduce third-party toolkits and libraries.
@@ -265,7 +265,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Testing, recorded change trends and separation of documentation content from presentation lead into DRY and orthogonality as aids to understanding and maintenance.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-007](#pragmatic-programmer-007), [pragmatic-programmer-019](#pragmatic-programmer-019), [pragmatic-programmer-035](#pragmatic-programmer-035)
 
@@ -288,7 +288,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Tracer-bullet development is contrasted with exhaustive up-front specification and disposable prototypes. Tracer code retains production structuring, documentation and self-checking, and communicates architecture through working interactions.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-011](#pragmatic-programmer-011), [pragmatic-programmer-012](#pragmatic-programmer-012), [pragmatic-programmer-037](#pragmatic-programmer-037)
 
@@ -330,7 +330,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The purpose and disposable nature of prototypes qualify the statement that prototype code should have little commenting or documentation, although experience with it may generate substantial documentation.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-004](#pragmatic-programmer-004), [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-010](#pragmatic-programmer-010), [pragmatic-programmer-012](#pragmatic-programmer-012), [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-037](#pragmatic-programmer-037), [pragmatic-programmer-047](#pragmatic-programmer-047)
 
@@ -357,7 +357,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Continuation clarifies that architectural models need not be code and that the prototype's disposable, incomplete status must be communicated to prevent production use.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-010](#pragmatic-programmer-010), [pragmatic-programmer-011](#pragmatic-programmer-011), [pragmatic-programmer-037](#pragmatic-programmer-037)
 
@@ -415,7 +415,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Knowledge in designs, implementations, tests and documents introduces plain text. The spoken field-name example distinguishes human-readable from human-understandable representation and discusses longevity and tooling.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [02:59:28] As pragmatic programmers, our base material isn't wood or iron, it's knowledge. We gather requirements as knowledge and then express that knowledge in our designs, implementations, tests and documents. And we believe that the best format for storing knowledge persistently is plain text. With plain text, we give ourselves the ability to manipulate knowledge both manually and programmatically, using virtually every tool at our disposal.
@@ -446,7 +446,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Shell discussion places writing documentation among the developer's tasks, discusses tool limitations, and asks whether step-by-step instructions to colleagues can be automated.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-055](#pragmatic-programmer-055), [pragmatic-programmer-057](#pragmatic-programmer-057), [pragmatic-programmer-058](#pragmatic-programmer-058)
 
@@ -474,7 +474,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Editor advice revises an earlier single-editor recommendation and lists commenting/uncommenting code blocks among fluency operations.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 ```text
 [03:12:39] Topic 18. Power Editing We've talked before about tools being an extension of your hand. Well, this applies to editors more than to any other software tool. You need to be able to manipulate text as effortlessly as possible, because text is the basic raw material of programming. In the first edition of this book,
@@ -502,7 +502,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Version-control history preserves source and documentation changes and supports tracing, with explicit inclusion of documentation even in short or throwaway projects.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-046](#pragmatic-programmer-046)
 
@@ -524,7 +524,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Failing tests inform the solution and notes preserve the route of a debugging investigation.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-018](#pragmatic-programmer-018), [pragmatic-programmer-020](#pragmatic-programmer-020)
 
@@ -546,7 +546,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Diagnostic messages and rubber-duck explanations externalize runtime behavior and assumptions. A SELECT anecdote concerns reading existing API documentation; the closing checklist includes detailed explanation and team communication of misunderstandings.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-017](#pragmatic-programmer-017), [pragmatic-programmer-020](#pragmatic-programmer-020)
 
@@ -581,7 +581,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The book-production example uses tested source segments, generation and syntax highlighting to avoid duplicated or stale code examples and indexes. This is documentation production, not a claim about inline prose comments.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-007](#pragmatic-programmer-007), [pragmatic-programmer-009](#pragmatic-programmer-009), [pragmatic-programmer-035](#pragmatic-programmer-035)
 
@@ -604,7 +604,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Notes preserve unfinished work, debugging state and ideas; writing is described as reflective rubber ducking. The passage explicitly recommends paper rather than a file or wiki.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-005](#pragmatic-programmer-005), [pragmatic-programmer-017](#pragmatic-programmer-017), [pragmatic-programmer-018](#pragmatic-programmer-018), [pragmatic-programmer-037](#pragmatic-programmer-037), [pragmatic-programmer-050](#pragmatic-programmer-050)
 
@@ -668,7 +668,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Examples distinguish caller responsibility, stable semantic guarantees and changing policy, and recommend clear widely known documentation of invariants. Dynamic-agent discussion qualifies the earlier fixed-contract framing.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-025](#pragmatic-programmer-025), [pragmatic-programmer-038](#pragmatic-programmer-038), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-044](#pragmatic-programmer-044)
 
@@ -698,7 +698,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The crash-early discussion contrasts verbose log-and-reraise code with propagation, including readability and staleness reasons; spoken code is an example of executable diagnostics rather than prose comments.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-024](#pragmatic-programmer-024), [pragmatic-programmer-045](#pragmatic-programmer-045)
 
@@ -743,7 +743,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Comments are included among places where impossible-event assumptions appear. Assertions express and test assumptions; limitations, side effects, performance exceptions and an anecdote about diagnostic feedback are preserved.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-022](#pragmatic-programmer-022), [pragmatic-programmer-038](#pragmatic-programmer-038), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-044](#pragmatic-programmer-044)
 
@@ -774,7 +774,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: A spoken customer-file example shows how implicit resource dependencies mislead maintenance changes, then refactors toward visible ownership/scope and explains exceptions needing explicit semantic invariants.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-027](#pragmatic-programmer-027), [pragmatic-programmer-034](#pragmatic-programmer-034)
 
@@ -853,7 +853,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Event handling is expressed through states, diagrams and table-driven data. These are alternative program representations; the transcript describes rather than reproduces the diagrams.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-029](#pragmatic-programmer-029), [pragmatic-programmer-033](#pragmatic-programmer-033), [pragmatic-programmer-035](#pragmatic-programmer-035)
 
@@ -909,7 +909,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Spoken Unix/anagram examples show a chain of named transformations representing requirements; the discussion calls this close to literate code and includes coupling and error-handling qualifications.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-013](#pragmatic-programmer-013), [pragmatic-programmer-041](#pragmatic-programmer-041), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-044](#pragmatic-programmer-044), [pragmatic-programmer-056](#pragmatic-programmer-056)
 
@@ -953,7 +953,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The inheritance discussion critiques class-hierarchy diagrams and explains interfaces as explicit behavioral/type declarations, a representation distinct from comments.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-032](#pragmatic-programmer-032)
 
@@ -980,7 +980,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: A validation example ends by distinguishing the purposes of interfaces, delegation and mixins, and relating choice of technique to expression of intent.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-031](#pragmatic-programmer-031)
 
@@ -1012,7 +1012,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Workflow notation exposes ordering and potential concurrency, with a cocktail example and a book-processing pipeline. Diagrams are described orally; applicability limits are retained.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-028](#pragmatic-programmer-028), [pragmatic-programmer-029](#pragmatic-programmer-029), [pragmatic-programmer-035](#pragmatic-programmer-035)
 
@@ -1076,7 +1076,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: After blackboard examples, the authors qualify actor/blackboard benefits with reasoning difficulties and describe central message/API formats, generated documentation and tracing as aids.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-007](#pragmatic-programmer-007), [pragmatic-programmer-009](#pragmatic-programmer-009), [pragmatic-programmer-019](#pragmatic-programmer-019), [pragmatic-programmer-028](#pragmatic-programmer-028), [pragmatic-programmer-029](#pragmatic-programmer-029), [pragmatic-programmer-033](#pragmatic-programmer-033)
 
@@ -1098,7 +1098,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Chapter introduction rejects mechanical transcription of a design and situates tests, readability, naming and semantic drift in continual coding decisions.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-039](#pragmatic-programmer-039), [pragmatic-programmer-040](#pragmatic-programmer-040), [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-053](#pragmatic-programmer-053)
 
@@ -1124,7 +1124,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Doodles and spoken explanation precede a prototype exercise explicitly beginning with a one-sentence comment. The continuation discusses notes and patterns when interpreting other developers' choices.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-004](#pragmatic-programmer-004), [pragmatic-programmer-005](#pragmatic-programmer-005), [pragmatic-programmer-006](#pragmatic-programmer-006), [pragmatic-programmer-010](#pragmatic-programmer-010), [pragmatic-programmer-011](#pragmatic-programmer-011), [pragmatic-programmer-012](#pragmatic-programmer-012), [pragmatic-programmer-020](#pragmatic-programmer-020), [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-050](#pragmatic-programmer-050)
 
@@ -1155,7 +1155,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The coincidence narrative distinguishes observed from intended behavior, recommends documented interfaces/contracts and explicit assumptions when depending on undocumented behavior, and describes assertions as code documentation.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-022](#pragmatic-programmer-022), [pragmatic-programmer-025](#pragmatic-programmer-025), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-044](#pragmatic-programmer-044)
 
@@ -1199,7 +1199,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The definition attributed to Martin Fowler is followed by duplicated/outdated knowledge as triggers, small behavior-preserving changes, tests and communication of interface changes. The next unit continues with automatic refactoring and names.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-036](#pragmatic-programmer-036), [pragmatic-programmer-040](#pragmatic-programmer-040), [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-053](#pragmatic-programmer-053)
 
@@ -1238,7 +1238,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Continuation notes tools that propagate renaming, movement and function-splitting changes.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-036](#pragmatic-programmer-036), [pragmatic-programmer-039](#pragmatic-programmer-039), [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-053](#pragmatic-programmer-053)
 
@@ -1256,7 +1256,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Testing discussion uses an ambiguous viewing requirement to show interface/design feedback, then includes TDD redundancy, maintenance costs and limitations. Jeffries and Norvig stories are reported comparisons, not direct excerpts of those authors' sources.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-013](#pragmatic-programmer-013), [pragmatic-programmer-030](#pragmatic-programmer-030), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-044](#pragmatic-programmer-044), [pragmatic-programmer-056](#pragmatic-programmer-056)
 
@@ -1299,7 +1299,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Contracts define behavior and test cases, including square-root boundary conditions. Diagnostics and test windows expose state; readable consistent logs, retained tests, test timing alternatives and test maintenance qualifications are included.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-013](#pragmatic-programmer-013), [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-022](#pragmatic-programmer-022), [pragmatic-programmer-025](#pragmatic-programmer-025), [pragmatic-programmer-030](#pragmatic-programmer-030), [pragmatic-programmer-038](#pragmatic-programmer-038), [pragmatic-programmer-041](#pragmatic-programmer-041), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-044](#pragmatic-programmer-044), [pragmatic-programmer-045](#pragmatic-programmer-045), [pragmatic-programmer-056](#pragmatic-programmer-056)
 
@@ -1358,7 +1358,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Shared mistaken assumptions in code/tests motivate property-based testing. The example aliases a strategy module for readability and links contract/invariant thinking with design insight and complementary unit tests.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-013](#pragmatic-programmer-013), [pragmatic-programmer-021](#pragmatic-programmer-021), [pragmatic-programmer-022](#pragmatic-programmer-022), [pragmatic-programmer-025](#pragmatic-programmer-025), [pragmatic-programmer-030](#pragmatic-programmer-030), [pragmatic-programmer-038](#pragmatic-programmer-038), [pragmatic-programmer-041](#pragmatic-programmer-041), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-045](#pragmatic-programmer-045), [pragmatic-programmer-056](#pragmatic-programmer-056)
 
@@ -1388,7 +1388,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Security discussion links simpler code to reasoning about weaknesses, and qualifies diagnostic/test-window benefits by explaining how exposed debugging information can aid attacks.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-023](#pragmatic-programmer-023), [pragmatic-programmer-024](#pragmatic-programmer-024), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-044](#pragmatic-programmer-044), [pragmatic-programmer-056](#pragmatic-programmer-056)
 
@@ -1413,7 +1413,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The security section explicitly qualifies the earlier recommendation to put all project material in version control by excluding secrets and credentials.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-016](#pragmatic-programmer-016)
 
@@ -1469,7 +1469,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Chapter introduction contrasts solving problems together while coding with massive requirements documents, copied emails and meetings, and rejects replacing thought with a method.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-048](#pragmatic-programmer-048), [pragmatic-programmer-049](#pragmatic-programmer-049), [pragmatic-programmer-051](#pragmatic-programmer-051), [pragmatic-programmer-052](#pragmatic-programmer-052), [pragmatic-programmer-059](#pragmatic-programmer-059), [pragmatic-programmer-063](#pragmatic-programmer-063)
 
@@ -1490,7 +1490,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The requirements discussion contrasts historical staged specifications/design documents/flowcharts/pseudocode with uncertainty, using a free-shipping dialogue to illustrate hidden assumptions and prototypes as explanatory feedback.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-049](#pragmatic-programmer-049), [pragmatic-programmer-059](#pragmatic-programmer-059), [pragmatic-programmer-062](#pragmatic-programmer-062), [pragmatic-programmer-063](#pragmatic-programmer-063)
 
@@ -1524,7 +1524,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Policy/metadata distinction precedes a mixed account of documentation: working code as requirements documentation, continued need to write developer understanding, limits of detailed sign-off documents, short user stories, semantic invariants and a maintained shared glossary.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-048](#pragmatic-programmer-048), [pragmatic-programmer-054](#pragmatic-programmer-054), [pragmatic-programmer-059](#pragmatic-programmer-059), [pragmatic-programmer-062](#pragmatic-programmer-062), [pragmatic-programmer-063](#pragmatic-programmer-063)
 
@@ -1561,7 +1561,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Puzzle discussion distinguishes real from imagined constraints and recommends enumerating/explaining rejected paths, rubber-duck conversation and daybook feedback.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-005](#pragmatic-programmer-005), [pragmatic-programmer-020](#pragmatic-programmer-020), [pragmatic-programmer-037](#pragmatic-programmer-037)
 
@@ -1593,7 +1593,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: A legacy replacement anecdote describes an available expert filling gaps in undocumented behavior. Pair/mob programming is contrasted with heavy documents, with naming and communication benefits; discussion continues next unit.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-052](#pragmatic-programmer-052), [pragmatic-programmer-062](#pragmatic-programmer-062)
 
@@ -1624,7 +1624,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Continuation stresses different effective collaboration styles and learning their advantages/pitfalls before trying them.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-051](#pragmatic-programmer-051), [pragmatic-programmer-062](#pragmatic-programmer-062)
 
@@ -1669,7 +1669,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: A user/owner/email naming monologue illustrates clarification of intent feeding back into design; the surrounding account treats feedback and change as contextual.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-036](#pragmatic-programmer-036), [pragmatic-programmer-039](#pragmatic-programmer-039), [pragmatic-programmer-040](#pragmatic-programmer-040), [pragmatic-programmer-047](#pragmatic-programmer-047)
 
@@ -1694,7 +1694,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Team communication contrasts inconsistent project documents/terminology with accurate consistent documentation, then connects frictionless knowledge exchange to avoiding duplication.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-047](#pragmatic-programmer-047), [pragmatic-programmer-049](#pragmatic-programmer-049)
 
@@ -1718,7 +1718,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The starter-kit discussion explains ambiguity and inconsistency in manual build/test/project procedures and substitutes versioned repeatable automation.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-057](#pragmatic-programmer-057), [pragmatic-programmer-058](#pragmatic-programmer-058), [pragmatic-programmer-061](#pragmatic-programmer-061)
 
@@ -1742,7 +1742,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Testing subsystems against contracts is followed by validation of tests themselves, state-versus-line coverage limits, property-based tests and preservation of discovered bugs as regressions.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-013](#pragmatic-programmer-013), [pragmatic-programmer-030](#pragmatic-programmer-030), [pragmatic-programmer-041](#pragmatic-programmer-041), [pragmatic-programmer-042](#pragmatic-programmer-042), [pragmatic-programmer-043](#pragmatic-programmer-043), [pragmatic-programmer-044](#pragmatic-programmer-044), [pragmatic-programmer-045](#pragmatic-programmer-045)
 
@@ -1777,7 +1777,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: An IDE-installation anecdote contrasts pages of click/drag instructions and resulting environment differences with versioned scripts; the discussion continues in the next unit.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-055](#pragmatic-programmer-055), [pragmatic-programmer-058](#pragmatic-programmer-058), [pragmatic-programmer-061](#pragmatic-programmer-061)
 
@@ -1797,7 +1797,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: Continuation connects automatic deployment/testing with reproducibility and asks whether acceptable results and testability are clearly defined.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-055](#pragmatic-programmer-055), [pragmatic-programmer-057](#pragmatic-programmer-057), [pragmatic-programmer-061](#pragmatic-programmer-061)
 
@@ -1816,7 +1816,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The user-delight section distinguishes incomplete specifications or implementation plans from underlying business expectations and shared team understanding.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. 
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax.
 
 Related: [pragmatic-programmer-048](#pragmatic-programmer-048), [pragmatic-programmer-049](#pragmatic-programmer-049), [pragmatic-programmer-062](#pragmatic-programmer-062), [pragmatic-programmer-063](#pragmatic-programmer-063)
 

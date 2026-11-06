@@ -19,7 +19,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-002](#philosophy-of-software-design-002)
 
@@ -70,7 +70,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-001](#philosophy-of-software-design-001), [philosophy-of-software-design-003](#philosophy-of-software-design-003)
 
@@ -120,7 +120,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-002](#philosophy-of-software-design-002), [philosophy-of-software-design-004](#philosophy-of-software-design-004)
 
@@ -169,7 +169,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-003](#philosophy-of-software-design-003), [philosophy-of-software-design-005](#philosophy-of-software-design-005)
 
@@ -215,7 +215,7 @@ Attribution: John Ousterhout; Robert C. Martin quoted or reported explicitly, fo
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-004](#philosophy-of-software-design-004), [philosophy-of-software-design-006](#philosophy-of-software-design-006)
 
@@ -349,7 +349,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-007](#philosophy-of-software-design-007), [philosophy-of-software-design-009](#philosophy-of-software-design-009)
 
@@ -387,7 +387,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-008](#philosophy-of-software-design-008), [philosophy-of-software-design-010](#philosophy-of-software-design-010)
 
@@ -437,7 +437,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-009](#philosophy-of-software-design-009), [philosophy-of-software-design-011](#philosophy-of-software-design-011)
 
@@ -484,7 +484,7 @@ Attribution: John Ousterhout
 
 Context: Available extract only. Adjacent records retain examples, opposing views and continuations; intervening unrelated chapter pages are not reconstructed.
 
-Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong. 
+Transcription/context notes: Windows OCR from the available extract; spacing, punctuation and code identifiers may be wrong.
 
 Related: [philosophy-of-software-design-010](#philosophy-of-software-design-010)
 
