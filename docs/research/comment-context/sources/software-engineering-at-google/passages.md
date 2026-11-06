@@ -7,7 +7,7 @@ Extent: `local_html_book`. Text SHA-256: `5c5462904b2ff5dac9acb7da4700990f8ee291
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
 - Local HTML files preserve source text; images require separate inspection. One inherited email-deobfuscation script is absent.
-- Extraction in progress: pending units, second-pass search, and relevant original-image inspection remain.
+- All 35 text units read. Broad lexical second pass and original layout/meaningful image checks remain in progress; independent audit not performed.
 
 <a id="software-engineering-at-google-ch01-001"></a>
 ## software-engineering-at-google-ch01-001 — Hyrum?s Law and the limits of published contracts
@@ -5070,4 +5070,975 @@ Because VCS has become so thoroughly embedded in the process of software enginee
 In addition to the technical and regulatory aspects of tracking source over time and handling sync/branch/merge operations, version control triggers some nontechnical changes in behavior. The ritual of committing to version control and producing a commit log is a trigger for a moment of reflection: what have you accomplished since your last commit? Is the source in a state that you’re happy with? The moment of introspection associated with committing, writing up a summary, and marking a task complete might have value on its own for many people. The start of the commit process is a perfect time to run through a checklist, run static analyses (see
 Static Analysis
 ), check test coverage, run tests and dynamic analysis, and so on.
+```
+
+<a id="software-engineering-at-google-ch17-001"></a>
+## software-engineering-at-google-ch17-001 — Code understanding and linked bug identifiers
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 7–51.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Describes reading-oriented tooling, comment-aware search, and linking bug IDs in comments to reports.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Code Search is a tool for browsing and searching
+
+code at Google that consists of a frontend UI and various backend elements. Like many of the development tools at Google, it arose directly out of a need to scale to the size of the codebase. Code Search began as a combination of a grep-type tool
+1
+ for internal code with the ranking and UI of external Code Search.
+2
+ Its place as a key tool for Google developers was cemented by the integration of Kythe/Grok,
+3
+ which added cross-references and the ability to jump to symbol definitions.
+
+That integration changed its focus from searching to browsing code, and later development of Code Search was partly guided by a principle of "answering the next question about code in a single click." Now such questions as "Where is this symbol defined?", "Where is it used?", "How do I include it?", "When was it added to the codebase?", and even ones like "Fleet-wide, how many CPU cycles does it consume?" are all answerable with one or two clicks.
+
+In contrast to integrated development environments (IDEs) or code editors, Code Search is optimized for the use case of reading, understanding, and exploring code at scale. To do so, it relies heavily on cloud-based backends for searching content and resolving cross-references.
+
+In this chapter, we’ll look at Code Search in more detail, including how Googlers use it as part of their developer workflows, why we chose to develop a separate web tool for code searching, and examine how it addresses the challenges of searching and browsing code at Google repository scale.
+
+The Code Search UI
+
+The search box is a central
+
+ element of the Code Search UI (see
+Figure 17-1
+), and like web search, it has "suggestions" that developers can use for quick navigation to files, symbols, or directories. For more complex use cases, a results page with code snippets is returned.
+
+The search itself can be thought of as an instant “find in files” (like the Unix
+grep
+ command) with relevance ranking and some code-specific enhancements like proper syntax highlighting, scope awareness, and awareness of comments and string literals. Search is also available from the command line and can be incorporated into other tools via a Remote Procedure Call (RPC) API. This comes in handy when post-processing is required or if the result set is too large for manual
+inspection.
+
+Figure 17-1.
+The Code Search UI
+
+When viewing a single file, most tokens are clickable to let the user quickly navigate to related information. For example, a function call will link to its function definition, an imported filename to the actual source file, or a bug ID in a comment to the corresponding bug report. This is powered by compiler-based indexing tools like
+Kythe
+. Clicking the symbol name opens a panel with all the places the
+symbol
+ is used. Similarly, hovering over local variables in a function will highlight all occurrences of that variable in the implementation.
+
+Code Search also shows the history of a file, via its integration
+
+ with Piper (see
+Version Control and Branch Management
+). This means seeing older versions of the file, which changes have affected it, who wrote them, jumping to them in Critique (see
+Critique: Google’s Code Review Tool
+), diffing versions of files, and the classic "blame" view if desired. Even deleted files can be seen from a directory view.
+```
+
+<a id="software-engineering-at-google-ch17-002"></a>
+## software-engineering-at-google-ch17-002 — Finding examples, explanations, and history
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 53–105.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Preserves the documented search intents and documentation links, including how, why, who and when questions.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+How Do Googlers Use Code Search?
+
+Although similar functionality is available
+
+ in other tools, Googlers still make heavy use of the Code Search UI for searching and file viewing and ultimately for understanding code.
+4
+ The tasks engineers try to complete with Code Search can be thought of answering questions about code, and recurring intents become visible.
+5
+
+Where?
+
+About 16% of Code Searches try to answer the
+
+question of where a specific piece of information exists in the codebase; for example, a function definition or configuration, all usages of an API, or just where a specific file is in the repository. These questions are very targeted and can be very precisely answered with either search queries or by following semantic links, like "jump to symbol definition." Such questions often arise during larger tasks like refactorings/cleanups or when collaborating with other engineers on a project. Therefore, it is essential that these small knowledge gaps are addressed efficiently.
+
+Code Search provides two ways of helping: ranking the results, and a rich query language. Ranking addresses the common cases, and searches can be made very specific (e.g., restricting code paths, excluding languages, only considering functions) to deal with rarer cases.
+
+The UI makes it easy to share a Code Search result with colleagues. So, for code reviews, you can simply include the link—for example, "Have you considered using this specialized hash map: cool_hash.h?" This is also very useful for documentation, in bug reports, and in postmortems and is the canonical way of referring to code within Google. Even older versions of the code can be referenced, so links can stay valid as the codebase evolves.
+
+What?
+
+Roughly one quarter of Code Searches are classic file browsing, to answer the question of what a specific part of the codebase is doing.
+
+ These kinds of tasks are usually more exploratory, rather than locating a specific result. This is using Code Search to read the source, to better understand code before making a change, or to be able to understand someone else’s change.
+
+To ease these kinds of tasks, Code Search introduced browsing via call hierarchies and quick navigation between related files (e.g., between header, implementation, test, and build files). This is about understanding code by easily answering each of the many questions a developer has when looking at it.
+
+How?
+
+The most frequent use case—about one third of Code Searches—are about seeing examples of how others have done something.
+
+Typically, a developer has already found a specific API (e.g., how to read a file from remote storage) and wants to see how the API should be applied to a particular problem (e.g., how to set up the remote connection robustly and handle certain types of errors). Code Search is also used to find the proper library for specific problems in the first place (e.g., how to compute a fingerprint for integer values efficiently) and then pick the most appropriate implementation. For these kinds of tasks, a combination of searches and cross-reference browsing are typical.
+
+Why?
+
+Related to
+what
+ code is doing, there are more targeted queries around
+why
+ code is behaving differently than expected.
+
+About 16% of Code Searches try to answer the question of why a certain piece of code was added, or why it behaves in a certain way. Such questions often arise during debugging; for example, why does an error occur under these particular circumstances?
+
+An important capability here is being able to search and explore the exact state of the codebase at a particular point in time. When debugging a production issue, this can mean working with a state of the codebase that is weeks or months old, while debugging test failures for new code usually means working with changes that are only minutes old. Both are possible with Code Search.
+
+Who and When?
+
+About 8% of Code Searches try
+
+to answer questions around who or when someone introduced a certain piece of code, interacting with the version control system. For example, it’s possible to see when a particular line was introduced (like Git’s "blame") and jump to the relevant code review.
+
+ This history panel can also be very useful in finding the best person to ask about the code, or to review a change to it.
+6
+```
+
+<a id="software-engineering-at-google-ch17-003"></a>
+## software-engineering-at-google-ch17-003 — Live code embedded in documentation
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 171–184.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Documentation links survive file restructuring and embedded snippets avoid extra source documentation markers.
+
+Transcription/context notes: Figure 17-4 contains the original integration example and requires image inspection.
+
+```text
+Compilation errors and tests also typically refer back to a code location (e.g., test X in
+file
+ at
+line
+). These can be linkified even for unsubmitted code given that most development happens in specific cloud-visible workspaces that are accessible and searchable by Code Search.
+
+Finally, codelabs and other documentation refer to APIs, examples, and implementations.
+
+ Such links can be search queries referencing a specific class or function, which remain valid when the file structure changes. For code snippets, the most recent implementation at head can easily be embedded into a documentation page, as demonstrated in
+Figure 17-4
+, without the need to pollute the source file with additional documentation markers.
+
+Figure 17-4.
+Code Search integration in documentation
+```
+
+<a id="software-engineering-at-google-ch17-004"></a>
+## software-engineering-at-google-ch17-004 — Investing in code understanding
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 469–492.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Conclusion relates working examples and semantic navigation to code understanding and productivity.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Conclusion
+
+Code Search grew from an organic replacement for
+grep
+ into a central tool boosting developer productivity, leveraging Google’s web search technology along the way. What does this mean for you, though? If you are on a small project that easily fits in your IDE, probably not much. If you are responsible for the productivity of engineers on a larger codebase, there are probably some insights to be gained.
+
+The most important one is perhaps obvious: understanding code is key to developing and maintaining it, and this means that investing in understanding code will yield dividends that might be difficult to measure, but are real. Every feature we added to Code Search was and is used by developers to help them in their daily work (admittedly some more than others). Two of the most important features, Kythe integration (i.e., adding semantic code understanding) and finding working examples, are also the most clearly tied to understanding code (versus, for example, finding it, or seeing how it’s changed). In terms of tool impact, no one uses a tool that they don’t know exists, so it is also important to make developers aware of the available tooling—at Google, it is part of "Noogler" training, the onboarding training for newly hired software engineers.
+
+For you, this might mean setting up a standard indexing profile for IDEs, sharing knowledge about egrep, running ctags, or setting up some custom indexing tooling, like Code Search. Whatever you do, it will almost certainly be used, and used more, and in different ways than you expected—and your developers will benefit.
+
+TL;DRs
+
+Helping your developers understand code can be a big boost to engineering productivity. At Google, the key tool for this is Code Search.
+
+Code Search has additional value as a basis for other tools and as a central, standard place that all documentation and developer tools link to.
+
+The huge size of the Google codebase made a custom tool—as opposed to, for example,
+grep
+ or an IDE’s indexing—necessary.
+
+As an interactive tool, Code Search must be fast, allowing a "question and answer" workflow. It is expected to have low latency in every respect: search, browsing, and indexing.
+
+It will be widely used only if it is trusted, and will be trusted only if it indexes all code, gives all results, and gives the desired results first. However, earlier, less powerful, versions were both useful and used, as long as their limits were
+understood.
+```
+
+<a id="software-engineering-at-google-ch17-005"></a>
+## software-engineering-at-google-ch17-005 — Browsable code and limits of blame
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 504–513.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Footnotes preserve naming/types and shallow hierarchy advice, plus caveat about machine-generated changes diminishing naive blame.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+4
+There is an interesting virtuous cycle that a ubiquitous code browser encourages: writing code that is easy to browse. This can mean things like not nesting hierarchies too deep, which requires many clicks to move from call sites to actual implementation, and using named types rather than generic things like strings or integers, because it’s then easy to find all usages.
+5
+Sadowski, Caitlin, Kathryn T. Stolee, and Sebastian Elbaum. “How Developers Search for Code: A Case Study” In
+Proceedings of the 2015 10th Joint Meeting on Foundations of Software Engineering (ESEC/FSE 2015)
+.
+https://doi.org/10.1145/2786805.2786855
+.
+6
+That said, given the rate of commits for machine-generated changes, naive “blame” tracking has less value than it does in more change-averse ecosystems.
+```
+
+<a id="software-engineering-at-google-ch18-001"></a>
+## software-engineering-at-google-ch18-001 — Ant buildfile with explanatory XML comments
+
+Source: [ch18.html](../../../../books/software-engineering-at-google/ch18.html); reading unit `ch18`, lines 147–216.
+
+Attribution: Erik Kuefler; example attributed to the Ant manual
+
+Context: Preserves the complete commented buildfile, its source attribution, and interpretation. The chapter does not separately evaluate these comments.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Task-Based Build Systems
+
+The shell scripts we started developing in the
+
+previous
+
+section were an example of a primitive
+task-based build system
+. In a task-based build system, the fundamental unit of work is the task. Each task is a script of some sort that can execute any sort of logic, and tasks specify other tasks as dependencies that must run before them. Most major build systems in use today, such as Ant, Maven, Gradle, Grunt, and Rake, are task based.
+
+Instead of shell scripts, most modern build systems require engineers to create
+buildfiles
+ that describe how to perform the build.
+
+ Take this example from the
+Ant manual
+:
+
+<project name="MyProject" default="dist" basedir=".">
+  <description>
+    simple example build file
+  </description>
+  <!-- set global properties for this build -->
+  <property name="src" location="src"/>
+  <property name="build" location="build"/>
+  <property name="dist" location="dist"/>
+
+  <target name="init">
+    <!-- Create the time stamp -->
+    <tstamp/>
+    <!-- Create the build directory structure used by compile -->
+    <mkdir dir="${build}"/>
+  </target>
+
+  <target name="compile" depends="init"
+        description="compile the source">
+    <!-- Compile the Java code from ${src} into ${build} -->
+    <javac srcdir="${src}" destdir="${build}"/>
+  </target>
+
+  <target name="dist" depends="compile"
+        description="generate the distribution">
+    <!-- Create the distribution directory -->
+    <mkdir dir="${dist}/lib"/>
+
+    <!-- Put everything in ${build} into the MyProject-${DSTAMP}.jar file -->
+    <jar jarfile="${dist}/lib/MyProject-${DSTAMP}.jar" basedir="${build}"/>
+  </target>
+
+  <target name="clean"
+        description="clean up">
+    <!-- Delete the ${build} and ${dist} directory trees -->
+    <delete dir="${build}"/>
+    <delete dir="${dist}"/>
+  </target>
+</project>
+
+The buildfile is written in XML and defines some simple metadata about the build along with a list of tasks (the
+<target>
+ tags in the XML
+3
+). Each task executes a list of possible commands defined by Ant, which here include creating and deleting directories, running
+javac
+, and creating a JAR file.
+
+This set of commands can be extended by user-provided plug-ins to cover any sort of logic. Each task can also define the tasks it depends on via the
+depends
+ attribute. These dependencies form an acyclic graph (see
+Figure 18-1
+).
+```
+
+<a id="software-engineering-at-google-ch18-002"></a>
+## software-engineering-at-google-ch18-002 — Buildfile compared with stripped-down shell commands
+
+Source: [ch18.html](../../../../books/software-engineering-at-google/ch18.html); reading unit `ch18`, lines 261–283.
+
+Attribution: Erik Kuefler
+
+Context: Connected comparison following the commented Ant example.
+
+Transcription/context notes: Keep connected to ch18-001; this comparison concerns build systems, not a statement that removing comments improves code.
+
+```text
+In the end, the code executed by Ant when running the
+dist
+ task is equivalent to the following shell script:
+
+./createTimestamp.sh
+mkdir build/
+javac src/* -d build/
+mkdir -p dist/lib/
+jar cf dist/lib/MyProject-$(date --iso-8601).jar build/*
+
+When the syntax is stripped away, the buildfile and the build script actually aren’t too different.
+
+ But we’ve already gained a lot by doing this. We can create new buildfiles in other directories and link them together. We can easily add new tasks that depend on existing tasks in arbitrary and complex ways. We need only pass the name of a single task to the
+ant
+ command-line tool, and it will take care of determining everything that needs to be run.
+
+Ant is a very old piece of software, originally released in 2000—not what many people would consider a "modern" build system today!
+
+Other tools like Maven and Gradle have improved on Ant in the intervening years and essentially
+
+replaced it by adding features like automatic management of external dependencies and a cleaner syntax without any XML. But the nature of these newer systems remains the same: they
+
+ allow engineers to write build scripts in a principled and modular way as tasks and provide tools for executing those tasks and managing dependencies among them.
+```
+
+<a id="software-engineering-at-google-ch19-001"></a>
+## software-engineering-at-google-ch19-001 — Review history when inline explanations are absent
+
+Source: [ch19.html](../../../../books/software-engineering-at-google/ch19.html); reading unit `ch19`, lines 7–35.
+
+Attribution: Caitlin Sadowski, Ilham Kurnia, and Ben Rohlfs
+
+Context: Review interactions can preserve technical decisions missing from inline comments; tooling supports communication but does not solve it.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+As you saw in
+Code Review
+, code review is a vital part of software development, particularly when working at scale.
+
+ The main goal of code review is to improve the readability and maintainability of the code base, and this is supported fundamentally by the review process. However, having a well-defined code review process is only one part of the code review story. Tooling that supports that process also plays an important part in its success.
+
+In this chapter, we’ll look at what makes successful code review tooling via Google’s well-loved in-house system,
+Critique
+. Critique has explicit support for the primary motivations of code review, providing reviewers and authors with a view of the review and ability to comment on the change. Critique also has support for gatekeeping what code is checked into the codebase, discussed in the section on "scoring" changes. Code review information from Critique also can be useful when doing code archaeology, following some technical decisions that are explained in code review interactions (e.g., when inline comments are lacking). Although Critique is not the only code review tool used at Google, it is the most popular one by a large margin.
+
+Code Review Tooling Principles
+
+We mentioned above that Critique provides functionality to support the goals of code review (we look at this functionality in more detail later in this chapter), but why is it so successful?
+
+ Critique has been shaped by Google’s development culture, which includes code review as a core part of the workflow. This cultural influence translates into a set of guiding principles that Critique was designed to emphasize:
+
+Simplicity
+
+Critique’s user interface (UI) is based around making it easy to do code review without a lot of unnecessary choices, and with a smooth interface. The UI loads fast, navigation is easy and hotkey supported, and there are clear visual markers for the overall state of whether a change has been reviewed.
+
+Foundation of trust
+
+Code review is not for slowing others down; instead, it is for empowering others. Trusting colleagues as much as possible makes it work.
+
+ This might mean, for example, trusting authors to make changes and not requiring an additional review phase to double check that minor comments are actually addressed. Trust also plays out by making changes openly accessible (for viewing and reviewing) across Google.
+
+Generic communication
+
+Communication problems are rarely solved through tooling. Critique prioritizes generic ways for users to comment on the code changes, instead of complicated protocols. Critique encourages users to spell out what they want in their comments or even suggests some edits instead of making the data model and process more complex. Communication can go wrong even with the best code review tool because the users are humans.
+```
+
+<a id="software-engineering-at-google-ch19-002"></a>
+## software-engineering-at-google-ch19-002 — Providing change context to reviewers
+
+Source: [ch19.html](../../../../books/software-engineering-at-google/ch19.html); reading unit `ch19`, lines 114–124.
+
+Attribution: Caitlin Sadowski, Ilham Kurnia, and Ben Rohlfs
+
+Context: Author review comments and bug links convey questions and context. These are review discussion comments, distinguished from source comments.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Stage 1: Create a Change
+
+A code review tool should provide support at all stages of the review process and should not be the bottleneck for committing changes.
+
+ In the prereview step, making it easier for change authors to polish a change before sending it out for review helps reduce the time taken by the reviewers to inspect the change. Critique displays change diffs with knobs to ignore whitespace changes and highlight move-only changes. Critique also surfaces the results from builds, tests, and static analyzers, including style checks (as discussed in
+Code Review
+).
+
+Showing an author the diff of a change gives them the opportunity to wear a different hat: that of a code reviewer. Critique lets a change author see the diff of their changes as their reviewer will, and also see the automatic analysis results. Critique also supports making lightweight modifications to the change from within the review tool and suggests appropriate reviewers. When sending out the request, the author can also include preliminary comments on the change, providing the opportunity to ask reviewers directly about any open questions. Giving authors the chance to see a change just as their reviewers do prevents misunderstanding.
+
+To provide further context for the reviewers, the author can also link the change to a specific bug. Critique uses an autocomplete service to show relevant bugs, prioritizing bugs that are assigned to the author.
+```
+
+<a id="software-engineering-at-google-ch19-003"></a>
+## software-engineering-at-google-ch19-003 — Post-commit history and additional context
+
+Source: [ch19.html](../../../../books/software-engineering-at-google/ch19.html); reading unit `ch19`, lines 375–384.
+
+Attribution: Caitlin Sadowski, Ilham Kurnia, and Ben Rohlfs
+
+Context: Review history and later comments explain why changes were made and how bugs arose.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+After Commit: Tracking History
+
+In addition to the core use of Critique as a tool for reviewing source code changes before they are committed to the repository, Critique is also used as a tool for change archaeology.
+
+For most files, developers can view a list of the past history of changes that modified a particular file in the Code Search system (see
+Code Search
+), or navigate directly to a change. Anyone at Google can browse the history of a change to generally viewable files, including the comments on and evolution of the change. This enables future auditing and is used to understand more details about why changes were made or how bugs were introduced. Developers can also use this feature to learn how changes were engineered, and code review data in aggregate is used to produce
+trainings.
+
+Critique also supports the ability to comment after a change is committed; for example, when a problem is discovered later or additional context might be useful for someone investigating the change at another time. Critique also supports the ability to roll back changes and see whether a particular change has already been rolled back.
+```
+
+<a id="software-engineering-at-google-ch20-001"></a>
+## software-engineering-at-google-ch20-001 — Clearer method names and understood warnings
+
+Source: [ch20.html](../../../../books/software-engineering-at-google/ch20.html); reading unit `ch20`, lines 85–95.
+
+Attribution: Caitlin Sadowski
+
+Context: containsValue versus contains clarifies intent even when the original behavior was correct; confusing messages can act like false positives.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Furthermore,
+perception
+ is a key aspect of the false-positive rate. If a static analysis tool is producing warnings that are technically correct but misinterpreted by users as false positives (e.g., due to confusing messages), users will react the same as if those warnings were in fact false positives. Similarly, warnings that are technically correct but unimportant in the grand scheme of things provoke the same reaction. We call the user-perceived false-positive rate the “effective false positive” rate. An issue is an “effective false positive” if developers did not take some positive action after seeing the issue. This means that if an analysis incorrectly reports an issue, yet the developer happily makes the fix anyway to improve code readability or maintainability, that is not an effective false positive. For example, we have a Java analysis that flags cases in which a developer calls the
+contains
+ method on a hash table (which is equivalent to
+containsValue
+) when they actually meant to call
+containsKey
+—even if the developer correctly meant to check for the value, calling
+containsValue
+ instead is clearer. Similarly, if an analysis reports an actual fault, yet the developer did not understand the fault and therefore took no action, that is an effective false positive.
+```
+
+<a id="software-engineering-at-google-ch20-002"></a>
+## software-engineering-at-google-ch20-002 — Keeping code references and paired files current
+
+Source: [ch20.html](../../../../books/software-engineering-at-google/ch20.html); reading unit `ch20`, lines 194–198.
+
+Attribution: Caitlin Sadowski
+
+Context: Analyzers warn on deleted source referenced by documentation and on paired regions that were not updated together.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Other analyzers showcase relationships between disparate files in a corpus. The Deleted Artifact Analyzer warns if a source file is deleted that is referenced by other non-code places in the codebase (such as inside checked-in documentation). IfThisThenThat allows developers to specify that portions of two different files must be changed in tandem (and warns if they are not). Chrome’s Finch analyzer runs on configuration files for A/B experiments in Chrome, highlighting common problems including not having the right approvals to launch an experiment or crosstalk with other currently running experiments that affect the same population. The Finch analyzer makes Remote Procedure Calls (RPCs) to other services in order to provide this information.
+
+In addition to the source code itself, some analyzers run on other artifacts produced by that source code; many projects have enabled a binary size checker that warns when changes significantly affect a binary size.
+
+Almost all analyzers are intraprocedural, meaning that the analysis results are based on code within a procedure (function). Compositional or incremental interprocedural analysis techniques are technically feasible but would require additional infrastructure investment (e.g., analyzing and storing method summaries as analyzers run).
+```
+
+<a id="software-engineering-at-google-ch20-003"></a>
+## software-engineering-at-google-ch20-003 — Diagnostic explanation and fixes as documentation
+
+Source: [ch20.html](../../../../books/software-engineering-at-google/ch20.html); reading unit `ch20`, lines 200–243.
+
+Attribution: Caitlin Sadowski
+
+Context: Preserves concrete confusing-message example, its correction, and automated fixes as an additional documentation source.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Integrated Feedback Channels
+
+As mentioned earlier, establishing
+
+a feedback
+
+ loop between
+
+analysis consumers and analysis writers is critical to track and maintain developer happiness. With Tricorder, we display the option to click a “Not useful” button on an analysis result; this click provides the option to file a bug
+directly against the analyzer writer
+ about why the result is not useful with information about analysis result prepopulated. Code reviewers can also ask change authors to address analysis results by clicking a “Please fix” button. The Tricorder team tracks analyzers with high “Not useful” click rates, particularly relative to how often reviewers ask to fix analysis results, and will disable analyzers if they don’t work to address problems and improve the “not useful” rate. Establishing and tuning this feedback loop took a lot of work, but has paid dividends many times over in improved analysis results and a better user experience (UX)—before we established clear feedback channels, many developers would just ignore analysis results they did not understand.
+
+And sometimes the fix is pretty simple—such as updating the text of the message an analyzer outputs! For example, we once rolled out an Error Prone check that flagged when too many arguments were being passed to a
+printf
+-like function in Guava that accepted only
+%s
+ (and no other
+printf
+ specifiers). The Error Prone team received weekly "Not useful" bug reports claiming the analysis was incorrect because the number of format specifiers matched the number of arguments—all due to users trying to pass specifiers other than
+%s
+. After the team changed the diagnostic text to state directly that the function accepts only the
+%s
+ placeholder, the influx of bug reports stopped. Improving the message produced by an analysis provides an explanation of what is wrong, why, and how to fix it exactly at the point where that is most relevant and can make the difference for developers learning something when they read the message.
+
+Suggested Fixes
+
+Tricorder
+
+ checks also,
+
+when possible,
+provide fixes
+, as
+
+ shown in
+Figure 20-2
+.
+
+Figure 20-2.
+View of an example static analysis fix in Critique
+
+Automated fixes serve as an additional documentation source when the message is unclear and, as mentioned earlier, reduce the cost to addressing static analysis issues. Fixes can be applied directly from within Critique, or over an entire code change via a command-line tool. Although not all analyzers provide fixes, many do. We take the approach that
+style
+ issues in particular should be fixed automatically; for example, by formatters that automatically reformat source code files. Google has style guides for each language that specify formatting issues; pointing out formatting errors is not a good use of a human reviewer’s time. Reviewers click “Please Fix” thousands of times per day, and authors apply the automated fixes approximately 3,000 times per day. And Tricorder analyzers received “Not useful” clicks 250 times per day.
+```
+
+<a id="software-engineering-at-google-ch21-001"></a>
+## software-engineering-at-google-ch21-001 — Expressing compatibility promises
+
+Source: [ch21.html](../../../../books/software-engineering-at-google/ch21.html); reading unit `ch21`, lines 142–204.
+
+Attribution: Titus Winters
+
+Context: Preserves comparison of documented, implicit, and absent promises for C++, Go, Abseil, and Boost, including limits on extrapolating from code that happens to work.
+
+Transcription/context notes: Boost quotation is attributed to the Boost project in the chapter; claims are historical source claims.
+
+```text
+Compatibility Promises
+
+When we start
+
+considering time, the situation gains some complicated trade-offs. Just because you get to avoid a
+development
+ cost doesn’t mean importing a dependency is the correct choice. In a software engineering organization that is aware of time and change, we need to also be mindful of its ongoing maintenance costs. Even if we import a dependency with no intent of upgrading it, discovered security vulnerabilities, changing platforms, and evolving dependency networks can conspire to force that upgrade, regardless of our intent. When that day comes, how expensive is it going to be? Some dependencies are more explicit than others about the expected maintenance cost for merely using that dependency: how much compatibility is assumed? How much evolution is assumed? How are changes handled? For how long are releases supported?
+
+We suggest that a dependency provider should be clearer about the answers to these questions. Consider the example set by large infrastructure projects with millions of users and their compatibility promises.
+
+C++
+
+For the C++ standard library, the model is one of nearly indefinite backward compatibility.
+
+Binaries built against an older version of the standard library are expected to build and link with the newer standard: the standard provides not only API compatibility, but ongoing backward compatibility
+
+ for the binary artifacts, known as
+ABI compatibility
+. The extent to which this has been upheld varies from platform to platform. For users of gcc on Linux, it’s likely that most code works fine over a range of roughly a decade. The standard doesn’t explicitly call out its commitment to ABI compatibility—there are no public-facing policy documents on that point. However, the standard does publish
+Standing Document 8
+ (SD-8), which calls out a small set of types of change that the standard library can make between versions, defining implicitly what type of changes to be prepared for. Java is similar: source is compatible between language versions, and JAR files from older releases will readily work with newer versions.
+
+Go
+
+Not all languages prioritize the same amount of compatibility.
+
+ The Go programming language explicitly promises source compatibility between most releases, but no binary compatibility. You cannot build a library in Go with one version of the language and link that library into a Go program built with a different version of the language.
+
+Abseil
+
+Google’s Abseil
+
+project is much like Go, with an important caveat about time. We are unwilling to commit to compatibility
+indefinitely
+: Abseil lies at the foundation of most of our most computationally heavy services internally, which we believe are likely to be in use for many years to come. This means we’re careful to reserve the right to make changes, especially in implementation details and ABI, in order to allow better performance. We have experienced far too many instances of an API turning out to be confusing and error prone after the fact; publishing such known faults to tens of thousands of developers for the indefinite future feels wrong. Internally, we already have roughly 250 million lines of C++ code that depend on this library—we aren’t going to make API changes lightly, but it must be possible. To that end, Abseil explicitly does not promise ABI compatibility, but does promise a slightly limited form of API compatibility: we won’t make a breaking API change without also
+providing
+ an automated refactoring tool that will transform code from the old API to the new transparently. We feel that shifts the risk of unexpected costs significantly in favor of users: no matter what version a dependency was written against, a user of that dependency and Abseil should be able to use the most current version. The highest cost should be “run this tool,” and presumably send the resulting patch for review in the mid-level dependency (
+liba
+ or
+libb
+, continuing our example from earlier). In practice, the project is new enough that we haven’t had to make any significant API breaking changes. We can’t say how well this will work for the ecosystem as a whole, but in theory, it seems like a good balance for stability versus ease of upgrade.
+
+Boost
+
+By comparison, the Boost C++ library makes no
+
+ promises
+
+of
+compatibility between versions
+. Most code doesn’t change, of course, but “many of the Boost libraries are actively maintained and improved, so backward compatibility with prior version isn’t always possible.” Users are advised to upgrade only at a period in their project life cycle in which some change will not cause problems. The goal for Boost is fundamentally different than the standard library or Abseil: Boost is an experimental proving ground. A particular release from the Boost stream is probably perfectly stable and appropriate for use in many projects, but Boost’s project goals do not prioritize compatibility between versions—other long-lived projects might experience some friction keeping up to date. The Boost developers are every bit as expert as the developers for the standard library
+4
+—none of this is about technical expertise: this is purely a matter of what a project does or does not promise and prioritize.
+
+Looking at the libraries in this discussion, it’s important to recognize that these compatibility issues are
+software engineering
+ issues, not
+programming
+ issues. You can download something like Boost with no compatibility promise and embed it deeply in the most critical, long-lived systems in your organization; it will
+work
+ just fine. All of the concerns here are about how those dependencies will change over time, keeping up with updates, and the difficulty of getting developers to worry about maintenance instead of just getting features working. Within Google, there is a constant stream of guidance directed to our engineers to help them consider this difference between “I got it to work” and “this is working in a supported fashion.” That’s unsurprising: it’s basic application of Hyrum’s Law, after all.
+
+Put more broadly: it is important to realize that dependency management has a wholly different nature in a programming task versus a software engineering task. If you’re in a problem space for which maintenance over time is relevant, dependency management is difficult. If you’re purely developing a solution for today with no need to ever update anything, it is perfectly reasonable to grab as many readily available dependencies as you like with no thought of how to use them responsibly or plan for upgrades. Getting your program to work today by violating everything in SD-8 and also relying on binary compatibility from Boost and Abseil works fine…so long as you never upgrade the standard library, Boost, or Abseil, and neither does anything that depends on you.
+```
+
+<a id="software-engineering-at-google-ch21-002"></a>
+## software-engineering-at-google-ch21-002 — Documentation and prohibitive names do not ensure safe changes
+
+Source: [ch21.html](../../../../books/software-engineering-at-google/ch21.html); reading unit `ch21`, lines 472–490.
+
+Attribution: Titus Winters; Hyrum Law quotation attributed to Hyrum Wright
+
+Context: Explicit warnings in documentation or an internal-use name do not eliminate real dependencies on observable behavior.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+SemVer Might Overpromise
+
+On the flip side, the application of SemVer makes the
+
+explicit assumption
+
+ that an API provider’s estimate of compatibility can be fully predictive and that changes fall into three buckets: breaking (by modification or removal), strictly additive, or non-API-impacting. If SemVer is a perfectly faithful representation of the risk of a change by classifying syntactic and semantic changes, how do we characterize a change that adds a one-millisecond delay to a time-sensitive API? Or, more plausibly: how do we characterize a change that alters the format of our logging output? Or that alters the order that we import external dependencies? Or that alters the order that results are returned in an “unordered” stream? Is it reasonable to assume that those changes are “safe” merely because those aren’t part of the syntax or contract of the API in question? What if the documentation said “This may change in the future”? Or the API was named “ForInternalUseByLibBaseOnlyDoNotTouchThisIReallyMeanIt?”
+11
+
+The idea that SemVer patch versions, which in theory are only changing implementation details, are “safe” changes absolutely runs afoul of Google’s experience with Hyrum’s Law—“With a sufficient number of users, every observable behavior of your system will be depended upon by someone.” Changing the order that dependencies are imported, or changing the output order for an “unordered” producer will, at scale, invariably break assumptions that some consumer was (perhaps incorrectly) relying upon. The very term “breaking change” is misleading: there are changes that are theoretically breaking but safe in practice (removing an unused API). There are also changes that are theoretically safe but break client code in practice (any of our earlier Hyrum’s Law examples). We can see this in any SemVer/dependency-management system for which the version-number requirement system allows for restrictions on the patch number: if you can say
+liba requires libbase >1.1.14
+ rather than
+liba requires libbase 1.1
+, that’s clearly an admission that there are observable differences in patch versions.
+
+A change in isolation isn’t breaking or nonbreaking—
+that statement can be evaluated only in the context of how it is being used. There is no absolute truth in the notion of “This is a breaking change”; a change can been seen to be breaking for only a (known or unknown) set of existing users and use cases. The reality of how we evaluate a change inherently relies upon information that isn’t present in the SemVer formulation of dependency management: how are downstream users consuming this dependency?
+
+Because of this, a SemVer constraint solver might report that your dependencies work together when they don’t, either because a bump was applied incorrectly or because something in your dependency network had a Hyrum’s Law dependence on something that wasn’t considered part of the observable API surface. In these cases, you might have either build errors or runtime bugs, with no theoretical upper bound on their severity.
+```
+
+<a id="software-engineering-at-google-ch21-003"></a>
+## software-engineering-at-google-ch21-003 — Publishing intent despite its limits
+
+Source: [ch21.html](../../../../books/software-engineering-at-google/ch21.html); reading unit `ch21`, lines 492–519.
+
+Attribution: Titus Winters
+
+Context: Clear statements of compatibility intent provide a starting point even if nonbinding or ignored; preserves surrounding incentives and human-error caveats.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Motivations
+
+There is a further argument that SemVer doesn’t always incentivize the creation of stable code.
+
+ For a maintainer of an arbitrary dependency, there is variable systemic incentive to
+not
+ make breaking changes and bump major versions. Some projects care deeply about compatibility and will go to great lengths to avoid a major-version bump. Others are more aggressive, even intentionally bumping major versions on a fixed schedule. The trouble is that most users of any given dependency are indirect users—they wouldn’t have any significant reasons to be aware of an upcoming change. Even most direct users don’t subscribe to mailing lists or other release
+notifications.
+
+All of which combines to suggest that no matter how many users will be inconvenienced by adoption of an incompatible change to a popular API, the maintainers bear a tiny fraction of the cost of the resulting version bump. For maintainers who are also users, there can also be an incentive
+toward
+ breaking: it’s always easier to design a better interface in the absence of legacy constraints. This is part of why we think projects should publish clear statements of intent with respect to compatibility, usage, and breaking changes. Even if those are best-effort, nonbinding, or ignored by many users, it still gives us a starting point to reason about whether a breaking change/major version bump is “worth it,” without bringing in these conflicting incentive structures.
+
+Go
+ and
+Clojure
+ both handle this nicely: in their standard package management ecosystems, the equivalent of a major-version bump is expected to be a fully new package.
+
+This has a certain sense of justice to it: if you’re willing to break backward compatibility for your package, why do we pretend this is the same set of APIs? Repackaging and renaming everything seems like a reasonable amount of work to expect from a provider in exchange for them taking the nuclear option and throwing away backward
+compatibility.
+
+Finally, there’s the human fallibility of the process. In general, SemVer version bumps should be applied to
+semantic
+ changes just as much as syntactic ones; changing the behavior of an API matters just as much as changing its structure. Although it’s plausible that tooling could be developed to evaluate whether any particular release involves syntactic changes to a set of public APIs, discerning whether there are meaningful and intentional semantic changes is computationally infeasible.
+12
+ Practically speaking, even the potential tools for identifying syntactic changes are limited. In almost all cases, it is up to the human judgement of the API provider whether to bump major, minor, or patch versions for any given change. If you’re relying on only a handful of professionally maintained dependencies, your expected exposure to this form of SemVer clerical error is probably low.
+13
+ If you have a network of thousands of dependencies underneath your product, you should be prepared for some amount of chaos simply from human error.
+```
+
+<a id="software-engineering-at-google-ch21-004"></a>
+## software-engineering-at-google-ch21-004 — Private access and behavioral intention footnotes
+
+Source: [ch21.html](../../../../books/software-engineering-at-google/ch21.html); reading unit `ch21`, lines 776–779.
+
+Attribution: Titus Winters
+
+Context: Footnote qualifies long prohibitive names and recommends language access controls; next footnote distinguishes intentional behavior changes from fixes.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+11
+It’s worth noting: in our experience, naming like this doesn’t fully solve the problem of users reaching in to access private APIs. Prefer languages that have good control over public/private access to APIs of all forms.
+12
+In a world of ubiquitous unit tests, we could identify changes that required a change in test behavior, but it would still be difficult to algorithmically separate “This is a behavioral change” from “This is a bug fix to a behavior that wasn’t intended/promised.”
+```
+
+<a id="software-engineering-at-google-ch22-001"></a>
+## software-engineering-at-google-ch22-001 — Change rationale and low-value text churn
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 270–289.
+
+Attribution: Hyrum Wright
+
+Context: Oversight for broad edits includes typo cleanup without recurrence prevention and explaining large changes to local owners.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Policies and Culture
+
+As we’ve described in
+Version Control and Branch Management
+, Google stores the bulk
+
+ of its source code in a single monolithic repository (monorepo), and every engineer has visibility into almost all of this code. This high degree of openness means that any engineer can edit any file and send those edits for review to those who can approve them. However, each of those edits has costs, both to generate as well as review.
+
+10
+
+Historically, these costs have been somewhat symmetric, which limited the scope of changes a single engineer or team could generate. As Google’s LSC tooling improved, it became easier to generate a large number of changes very cheaply, and it became equally easy for a single engineer to impose a burden on a large number of reviewers across the company. Even though we want to encourage widespread improvements to our codebase, we want to make sure there is some oversight and thoughtfulness behind them, rather than indiscriminate tweaking.
+11
+
+The end result is a lightweight approval process for teams and individuals seeking to make LSCs across Google. This process is overseen by a group of experienced engineers who are familiar with the nuances of various languages, as well as invited domain experts for the particular change in question. The goal of this process is not to prohibit LSCs, but to help change authors produce the best possible changes, which make the best use of Google’s technical and human capital. Occasionally, this group might suggest that a cleanup just isn’t worth it: for example, cleaning up a common typo without any way of preventing recurrence.
+
+Related to these policies was a shift in cultural norms surrounding LSCs.
+
+ Although it is important for code owners to have a sense of responsibility for their software, they also needed to learn that LSCs were an important part of Google’s effort to scale our software engineering practices. Just as product teams are the most familiar with their own software, library infrastructure teams know the nuances of the infrastructure, and getting product teams to trust that domain expertise is an important step toward social acceptance of LSCs. As a result of this culture shift, local product teams have grown to trust LSC authors to make changes relevant to those authors’ domains.
+
+Occasionally, local owners question the purpose of a specific commit being made as part of a broader LSC, and change authors respond to these comments just as they would other review comments. Socially, it’s important that code owners understand the changes happening to their software, but they also have come to realize that they don’t hold a veto over the broader LSC. Over time, we’ve found that a good FAQ and a solid historic track record of improvements have generated widespread endorsement of LSCs throughout Google.
+```
+
+<a id="software-engineering-at-google-ch22-002"></a>
+## software-engineering-at-google-ch22-002 — Automated changes remain readable
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 343–358.
+
+Attribution: Hyrum Wright
+
+Context: Formatting should make automated changes intelligible to reviewers and future readers.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Language Support
+
+LSCs at Google are typically done on a per-language basis, and some languages support them much more easily than others.
+
+ We’ve found that language features such as type aliasing and forwarding functions are invaluable for allowing existing users to continue to function while we introduce new systems and migrate users to them non-atomically. For languages that lack these features, it is often difficult to migrate systems incrementally.
+12
+
+We’ve also found that statically typed languages are much easier to perform large automated changes in than dynamically typed languages. Compiler-based tools along with strong static analysis provide a significant amount of information that we can use to build tools to affect LSCs and reject invalid transformations before they even get to the testing phase. The unfortunate result of this is that languages like Python, Ruby, and JavaScript that are dynamically typed are extra difficult for maintainers. Language choice is, in many respects, intimately tied to the question of code lifespan: languages that tend to be viewed as more focused on developer productivity tend to be more difficult to maintain. Although this isn’t an intrinsic design requirement, it is where the current state of the art happens to be.
+
+Finally, it’s worth pointing out that automatic language formatters are a crucial part of the LSC infrastructure. Because we work toward optimizing our code for readability, we want to make sure that any changes produced by automated tooling are intelligible to both immediate reviewers and future readers of the code. All of the LSC-generation tools run the automated formatter appropriate to the language being changed as a separate pass so that the change-specific tooling does not need to
+concern
+ itself with formatting specifics. Applying automated formatting, such as
+google-java-format
+ or
+clang-format
+, to our codebase means that automatically produced changes will “fit in” with code written by a human, reducing future development friction. Without automated formatting, large-scale automated changes would never have become the accepted status quo at Google.
+```
+
+<a id="software-engineering-at-google-ch22-003"></a>
+## software-engineering-at-google-ch22-003 — Explaining a migration to unfamiliar engineers
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 393–405.
+
+Attribution: Hyrum Wright
+
+Context: Proposal, FAQ, and change descriptions make reasoning explicit for readers outside the domain.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Authorization
+
+We ask potential authors to fill out a brief document explaining the reason for a proposed change, its estimated impact across
+
+ the codebase (i.e., how many smaller shards the large change would generate), and answers to any questions potential reviewers might have.
+
+ This process also forces authors to think about how they will describe the change to an engineer unfamiliar with it in the form of an FAQ and proposed change description. Authors also get “domain review” from the owners of the API being refactored.
+
+This proposal is then forwarded to an email list with about a dozen people who have oversight over the entire process. After discussion, the committee gives feedback on how to move forward. For example, one of the most common changes made by the committee is to direct all of the code reviews for an LSC to go to a single "global approver." Many first-time LSC authors tend to assume that local project owners should review everything, but for most mechanical LSCs, it’s cheaper to have a single expert understand the nature of the change and build automation around reviewing it properly.
+
+After the change is approved, the author can move forward in getting their change submitted. Historically, the committee has been very liberal with their approval,
+13
+ and often gives approval not just for a specific change, but also for a broad set of related changes. Committee members can, at their discretion, fast-track obvious changes without the need for full deliberation.
+```
+
+<a id="software-engineering-at-google-ch22-004"></a>
+## software-engineering-at-google-ch22-004 — Comment-spelling disputes and rejected changes
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 555–572.
+
+Attribution: Hyrum Wright
+
+Context: Footnotes explicitly mention gray versus grey in comments, British/American spelling edits, and changing approval thresholds.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+10
+There are obvious technical costs here in terms of compute and storage, but the human costs in time to review a change far outweigh the technical ones.
+11
+For example, we do not want the resulting tools to be used as a mechanism to fight over the proper spelling of “gray” or “grey” in comments.
+12
+In fact, Go recently introduced these kinds of language features specifically to support large-scale refactorings (see
+https://talks.golang.org/2016/refactor.article
+).
+13
+The only kinds of changes that the committee has outright rejected have been those that are deemed dangerous, such as converting all
+NULL
+ instances to
+nullptr
+, or extremely low-value, such as changing spelling from British English to American English, or vice versa. As our experience with such changes has increased and the cost of LSCs has dropped, the threshold for approval has as well.
+14
+This happens for many reasons: copy-and-paste from existing examples, committing changes that have been in development for some time, or simply reliance on old habits.
+15
+In actuality, this is the reasoning behind the original work on clang-format for C++.
+```
+
+<a id="software-engineering-at-google-ch23-001"></a>
+## software-engineering-at-google-ch23-001 — Accessible history and readable feedback
+
+Source: [ch23.html](../../../../books/software-engineering-at-google/ch23.html); reading unit `ch23`, lines 114–122.
+
+Attribution: Rachel Tannenbaum
+
+Context: Test and bug history supports learning and diagnosis; test output should make feedback understandable.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Accessible and actionable feedback
+
+It’s also important that feedback from CI be widely accessible. In addition to our open culture around code visibility, we feel similarly about our test reporting. We have a unified test reporting system in which anyone can easily look up a build or test run, including all logs (excluding user Personally Identifiable Information [PII]), whether for an individual engineer’s local run or on an automated development or staging build.
+
+Along with logs, our test reporting system provides a detailed history of when build or test targets began to fail, including audits of where the build was cut at each run, where it was run, and by whom. We also have a system for flake classification, which uses statistics to classify flakes at a Google-wide level, so engineers don’t need to figure this out for themselves to determine whether their change broke another project’s test (if the test is flaky: probably not).
+
+Visibility into test history empowers engineers to share and collaborate on feedback, an essential requirement for disparate teams to diagnose and learn from integration failures between their systems. Similarly, bugs (e.g., tickets or issues) at Google are open with full comment history for all to see and learn from (with the exception, again, of customer PII).
+
+Finally, any feedback from CI tests should not just be accessible but actionable—easy to use to find and fix problems. We’ll look at an example of improving user-unfriendly feedback in our case study later in this chapter. By improving test output readability, you automate the understanding of feedback.
+```
+
+<a id="software-engineering-at-google-ch23-002"></a>
+## software-engineering-at-google-ch23-002 — Indecipherable logs and improved explanation
+
+Source: [ch23.html](../../../../books/software-engineering-at-google/ch23.html); reading unit `ch23`, lines 565–587.
+
+Attribution: Rachel Tannenbaum
+
+Context: Takeout case study retains the diagnostic cost and links in failure messages that reduced manual assistance.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Scenario #2: Indecipherable test logs
+
+Problem:
+ As Takeout incorporated more Google products, it grew into a mature platform that allowed product teams to insert plug-ins, with product-specific data-fetching code, directly into Takeout's binary. For example, the Google Photos plug-in knows how to fetch photos, album metadata, and the like. Takeout expanded from its original “handful” of products to now integrate with more than
+90
+.
+
+Takeout’s end-to-end tests dumped its failures to a log, and this approach didn’t scale to 90 product plug-ins. As more products integrated, more failures were introduced. Even though the team was running the tests earlier and more often with the addition of the post-submit CI, multiple failures would still pile up inside and were easy to miss. Going through these logs became a frustrating time sink, and the tests were almost always failing.
+
+What the team did
+
+The team refactored the tests into a dynamic, configuration-based suite (using a
+parameterized test runner
+) that reported results in a friendlier UI, clearly showing individual test results as green or red: no more digging through logs. They also made failures much easier to debug, most notably, by displaying failure information, with links to logs, directly in the error message. For example, if Takeout failed to fetch a file from Gmail, the test would dynamically construct a link that searched for that file’s ID in the Takeout logs and include it in the test failure message. This automated much of the debugging process for product plug-in engineers and required less of the Takeout team’s assistance in sending them logs, as demonstrated in
+Figure 23-3
+.
+
+Figure 23-3.
+The team’s involvement in debugging client failures
+
+Lesson learned
+
+Accessible, actionable feedback from CI reduces test failures and improves productivity. These initiatives reduced the Takeout team’s involvement in debugging client (product plug-in) test failures by 35%.
+```
+
+<a id="software-engineering-at-google-ch23-003"></a>
+## software-engineering-at-google-ch23-003 — Commenting out tests versus tracked disablement
+
+Source: [ch23.html](../../../../books/software-engineering-at-google/ch23.html); reading unit `ch23`, lines 610–645.
+
+Attribution: Rachel Tannenbaum
+
+Context: Commented-out failures are easy to forget. Preserves bug-tag alternative, automatic cleanup, flaky-test exception, and remaining manual burden.
+
+Transcription/context notes: Figures 23-4 and 23-5 illustrate the reported effects; inspect original figures before claiming graphical coverage.
+
+```text
+Scenario #4: Keeping it green
+
+Problem:
+ As the platform supported more product plug-ins, which each included end-to-end tests, these tests would fail and the end-to-end test suites were nearly always broken. The failures could not all be immediately fixed. Many were due to bugs in product plug-in binaries, which the Takeout team had no control over. And some failures mattered more than others—low-priority bugs and bugs in the test code did not need to block a release, whereas higher-priority bugs did. The team could easily disable tests by commenting them out, but that would make the failures too easy to forget about.
+
+One common source of failures: tests would break when product plug-ins were rolling out a feature. For example, a playlist-fetching feature for the YouTube plug-in might be enabled for testing in dev for a few months before being enabled in prod. The Takeout tests only knew about one result to check, so that often resulted in the test needing to be disabled in particular environments and manually curated as the feature rolled out.
+
+What the team did
+
+The team came up with a strategic way to disable failing tests by tagging them with an associated bug and filing that off to the responsible team (usually a product plug-in team). When a failing test was tagged with a bug, the team’s testing framework would suppress its failure. This allowed the test suite to stay green and still provide confidence that everything else, besides the known issues, was passing, as illustrated in
+Figure 23-4
+.
+
+Figure 23-4.
+Achieving greenness through (responsible) test disablement
+
+For the rollout problem, the team added capability for plug-in engineers to specify the name of a feature flag, or ID of a code change, that enabled a particular feature along with the output to expect both with and without the feature. The tests were equipped to query the test environment to determine whether the given feature was enabled there and verified the expected output accordingly.
+
+When bug tags from disabled tests began to accumulate and were not updated, the team automated their cleanup. The tests would now check whether a bug was closed by querying our bug system’s API. If a tagged-failing test actually passed and was passing for longer than a configured time limit, the test would prompt to clean up the tag (and mark the bug fixed, if it wasn’t already). There was one exception for this strategy: flaky tests. For these, the team would allow a test to be tagged as flaky, and the system wouldn’t prompt a tagged “flaky” failure for cleanup if it passed.
+
+These changes made a mostly self-maintaining test suite, as illustrated in
+Figure 23-5
+.
+
+Figure 23-5.
+Mean time to close bug, after fix submitted
+
+Lessons learned
+
+Disabling failing tests that can’t be immediately fixed is a practical approach to keeping your suite green, which gives confidence that you’re aware of all test failures. Also, automating the test suite’s maintenance, including rollout management and updating tracking bugs for fixed tests, keeps the suite clean and prevents technical debt. In DevOps parlance, we could call the metric in
+Figure 23-5
+ MTTCU: mean time to clean up.
+
+Future improvement
+
+Automating the filing and tagging of bugs would be a helpful next step. This is still a manual and burdensome process. As mentioned earlier, some of our larger teams already do this.
+```
+
+<a id="software-engineering-at-google-ch25-001"></a>
+## software-engineering-at-google-ch25-001 — Configuration documentation deteriorates
+
+Source: [ch25.html](../../../../books/software-engineering-at-google/ch25.html); reading unit `ch25`, lines 385–407.
+
+Attribution: Onufry Wojtaszczyk
+
+Context: Contrasts documentation and tribal knowledge of CLI parameters with checked-in declarative configuration, retaining scale and automation context.
+
+Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
+
+```text
+Submitted Configuration
+
+The Borg scheduler receives the configuration of
+
+ a replicated service or batch job to run in the cell as the contents of a Remote Procedure Call (RPC). It’s possible for the operator of the service to manage it by using a command-line interface (CLI) that sends those RPCs, and have the parameters to the CLI stored in shared documentation, or in their head.
+
+Depending on documentation and tribal knowledge over code submitted to a repository is rarely a good idea in general because both documentation and tribal knowledge have a tendency to deteriorate over time (see
+Knowledge Sharing
+). However, the next natural step in the evolution—wrapping the execution of the CLI in a locally developed script—is still inferior to using a dedicated configuration language to specify the configuration of your service.
+
+Over time, the runtime presence of a logical service will typically grow beyond a single set of replicated containers in one datacenter across many axes:
+
+It will spread its presence across multiple datacenters (both for user affinity and failure resistance).
+
+It will fork into having staging and development environments in addition to the production environment/configuration.
+
+It will accrue additional replicated containers of different types in the form of attached services, like a memcached accompanying the service.
+
+Management of the service is much simplified if this complex setup can be expressed in a standardized configuration language that allows easy expression of standard operations (like “update my service to the new version of the binary, but taking down no more than 5% of capacity at any given time”).
+
+A standardized configuration language provides standard configuration that other teams can easily include in their service definition. As usual, we emphasize the value of such standard configuration over time and scale. If every team writes a different snippet of custom code to stand up their memcached service, it becomes very difficult to perform organization-wide tasks like swapping out to a new memcache implementation (e.g., for performance or licencing reasons) or to push a security update to all the memcache deployments. Also note that such a standardized configuration language is a requirement for automation in deployment (see
+Continuous Delivery
+).
 ```

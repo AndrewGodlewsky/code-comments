@@ -9,18 +9,18 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 | Available source | Extent | Passages | Reading units | Audit entries |
 | --- | --- | ---: | --- | ---: |
 | [The Pragmatic Programmer](sources/pragmatic-programmer/passages.md) | machine_transcript | 63 | [14 read](sources/pragmatic-programmer/coverage.json) | 0 |
-| [Software Engineering at Google](sources/software-engineering-at-google/passages.md) | local_html_book | 81 | [19 pending, 16 read](sources/software-engineering-at-google/coverage.json) | 0 |
+| [Software Engineering at Google](sources/software-engineering-at-google/passages.md) | local_html_book | 106 | [35 read](sources/software-engineering-at-google/coverage.json) | 0 |
 | [A Philosophy of Software Design, second-edition extract](sources/philosophy-of-software-design/passages.md) | available_extract | 11 | [20 read](sources/philosophy-of-software-design/coverage.json) | 0 |
-| Planning and Coding of Problems for an Electronic Computing Instrument | local_scanned_volume | 0 | Pending | 0 |
+| Planning and Coding of Problems for an Electronic Computing Instrument | local_scanned_part_ii_volumes_1_to_3 | 0 | Pending | 0 |
 | FORTRAN Programmer's Reference Manual, IBM 704 | local_manual | 0 | Pending | 0 |
-| Literate Programming | local_paper | 0 | Pending | 0 |
+| [Literate Programming](sources/literate-programming/passages.md) | local_paper | 15 | [15 read](sources/literate-programming/coverage.json) | 0 |
 | [A Rational Design Process: How and Why to Fake It](sources/rational-design-process/passages.md) | local_paper | 12 | [12 read](sources/rational-design-process/coverage.json) | 0 |
 | [Code As Documentation](sources/code-as-documentation/passages.md) | local_essay | 4 | [1 read](sources/code-as-documentation/coverage.json) | 0 |
 | [Beck Design Rules](sources/beck-design-rules/passages.md) | local_essay | 5 | [1 read](sources/beck-design-rules/coverage.json) | 0 |
 | [Testing the Effect of Code Documentation on Large Language Model Code Understanding](sources/documentation-llm-understanding/passages.md) | local_paper | 20 | [7 read](sources/documentation-llm-understanding/coverage.json) | 0 |
-| [Comment Traps: How Defective Commented-out Code Augment Defects in AI-Assisted Code Generation](sources/comment-traps/passages.md) | local_paper | 36 | [21 read](sources/comment-traps/coverage.json) | 0 |
-| [On the Impact of Code Comments for Automated Bug-Fixing: An Empirical Study](sources/comments-bug-fixing/passages.md) | local_paper | 41 | [13 read](sources/comments-bug-fixing/coverage.json) | 0 |
-| [Talking to Itself While Coding](sources/talking-while-coding/passages.md) | local_paper | 70 | [25 read](sources/talking-while-coding/coverage.json) | 0 |
+| [Comment Traps: How Defective Commented-out Code Augment Defects in AI-Assisted Code Generation](sources/comment-traps/passages.md) | local_paper | 49 | [21 read](sources/comment-traps/coverage.json) | 0 |
+| [On the Impact of Code Comments for Automated Bug-Fixing: An Empirical Study](sources/comments-bug-fixing/passages.md) | local_paper | 51 | [13 read](sources/comments-bug-fixing/coverage.json) | 0 |
+| [Talking to Itself While Coding](sources/talking-while-coding/passages.md) | local_paper | 81 | [25 read](sources/talking-while-coding/coverage.json) | 0 |
 | When Comments Mislead | Original unavailable | — | No primary text | — |
 
 ## Scope and unresolved source limits
@@ -37,7 +37,7 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 ### Software Engineering at Google
 
 - Local HTML files preserve source text; images require separate inspection. One inherited email-deobfuscation script is absent.
-- Extraction in progress: pending units, second-pass search, and relevant original-image inspection remain.
+- All 35 text units read. Broad lexical second pass and original layout/meaningful image checks remain in progress; independent audit not performed.
 
 ### A Philosophy of Software Design, second-edition extract
 
@@ -48,10 +48,16 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 ### Planning and Coding of Problems for an Electronic Computing Instrument
 
 - Historical scan with an existing OCR/text layer; sparse and diagram pages require visual inspection. Local volume extent is the scope, not the entire historical publication series.
+- Combined Part II, Volumes 1-3 as confirmed by local title page; dual embedded-text and supplemental Windows OCR views. OCR does not reliably reconstruct mathematical/diagram layout.
 
 ### FORTRAN Programmer's Reference Manual, IBM 704
 
 - Historical scan/text layer; layouts, card columns and specimen comments need visual verification.
+
+### Literate Programming
+
+- Local 15-page manuscript bears submitted to THE COMPUTER JOURNAL and Received September 1983; source filename labels 1984. Physical page locations here refer to this local version, not a different publication layout.
+- Text extraction does not preserve underlining, indentation, mathematical scripts or figure layout. Figures 1-4 and quoted voices checked visually; source pages remain authoritative.
 
 ### A Rational Design Process: How and Why to Fake It
 
@@ -74,21 +80,19 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 
 ### Comment Traps: How Defective Commented-out Code Augment Defects in AI-Assisted Code Generation
 
-- Image-only code specimens in Figures 1 (p2), 3 (p6), 4 (p7) and 8 (p13) are not transcribed by the pinned reading text. Original pages were visually inspected; captions and full surrounding methodological discussion are selected.
-- Figure 2 (p5) methodology graphic, Figures 5?6 (pp11?12) bars, Figure 7 (p13) radar charts and Figure 9 (p17) line plot are visually inspected but graphic labels/values are not fully transcribed. Consult original pages.
-- Algorithm 1 (p14) extraction flattens indentation and math spacing.
+- Code specimens and graphic labels are now visually transcribed in supplemental spans. Indentation and spacing are approximate; generated-block highlighting and UI details are recorded in notes rather than encoded as code.
+- Exact plotted bar/radar/line coordinates are not inferred from pixels. Numerical tables and author interpretations remain in base records; consult Figures 5-7 and 9 for graphical values.
+- Algorithm 1 (physical p14) text flattens indentation and math spacing.
 
 ### On the Impact of Code Comments for Automated Bug-Fixing: An Empirical Study
 
-- Figures 1 (p2), 2 (p7), 4 and 5 (p10) are visually inspected code/comment specimens absent from pinned base text; supplemental transcription pending coordinator integration.
-- Figure 3 (p9) distribution plots are visually inspected but plotted data are not transcribed numerically.
-- Math/model notation in prose and Table 3 is flattened by extraction; consult originals for subscripts and superscripts.
+- Figures 1, 2, 4 and 5 now have supplemental visual transcriptions. Source screenshot clipping and ellipses remain explicit; original figure owns indentation and highlighting.
+- A code-versus-prose category-label discrepancy is preserved in Figure 5 supplement notes; no author intent inferred.
 
 ### Talking to Itself While Coding
 
-- Figure 2 on physical page 9 is concatenated/garbled in base text; visual inspection complete and supplemental transcription pending integration.
-- Tables 4 (p8), 16 and 17 (p24) contain concatenated numeric fields in base extraction. Original tables were visually checked; use original column layout.
-- Bold table emphasis, superscripts and indentation are not preserved by the base extraction. Prompts retain source-rendered typography rather than runnable code-fence syntax.
+- Figure 2 variants and separated Tables 4, 16 and 17 now have supplemental visual transcriptions. Indentation is approximate, and bold/asterisk presentation is described in notes.
+- Exact plotted coordinates are not inferred; consult original graphics. Base two-column extraction still has formula spacing and occasional concatenated fields, with supplemental tables provided where inspected.
 
 ### When Comments Mislead
 

@@ -2,13 +2,12 @@
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
-Extent: `local_paper`. Text SHA-256: `53b51d7911088e22b504568b58ef15a26ffeb9fa1804a0ddc355c575eb7cd9cb`.
+Extent: `local_paper`. Text SHA-256: `903f616c0dc3e38ceefc5a8df9ddb6c6ee786ce8ea7ec1275b587d8aa7241bee`.
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
-- Figures 1 (p2), 2 (p7), 4 and 5 (p10) are visually inspected code/comment specimens absent from pinned base text; supplemental transcription pending coordinator integration.
-- Figure 3 (p9) distribution plots are visually inspected but plotted data are not transcribed numerically.
-- Math/model notation in prose and Table 3 is flattened by extraction; consult originals for subscripts and superscripts.
+- Figures 1, 2, 4 and 5 now have supplemental visual transcriptions. Source screenshot clipping and ellipses remain explicit; original figure owns indentation and highlighting.
+- A code-versus-prose category-label discrepancy is preserved in Figure 5 supplement notes; no author intent inferred.
 
 <a id="comments-bug-fixing-001"></a>
 ## comments-bug-fixing-001 — Abstract
@@ -222,7 +221,7 @@ Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oli
 
 Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
 
-Related: [comments-bug-fixing-005](#comments-bug-fixing-005), [comments-bug-fixing-007](#comments-bug-fixing-007)
+Related: [comments-bug-fixing-005](#comments-bug-fixing-005), [comments-bug-fixing-007](#comments-bug-fixing-007), [comments-bug-fixing-042](#comments-bug-fixing-042)
 
 ```text
 2 Background and Related Work
@@ -264,6 +263,34 @@ task. Thus, we use such a term with this meaning from now on.
 LLMs work in two steps:pre-trainingandfine-tuning. In the
 pre-trainingstep, the model is trained to perform a self-supervised
 task (e.g.,predicting the next token in a sequence). This allows
+```
+
+<a id="comments-bug-fixing-042"></a>
+## comments-bug-fixing-042 — Figure 1: buggy method and added fix (visual transcription)
+
+Source: [physical PDF page 2](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=2); reading unit `p002`, lines 97–108.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 2, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image. The notifyDataSetChanged line is green with a + marker: it is absent in the buggy version and present in the fix.
+
+Related: [comments-bug-fixing-006](#comments-bug-fixing-006)
+
+```text
+/*
+ * Empties the PWO metadata queue and notifies the dataset
+ * change to the nearby devices.
+ */
+private void emptyPwoMetadataQueue() {
+    Collections.sort(mPwoMetadataQueue);
+    for (PwoMetadata pwoMetadata : mPwoMetadataQueue) {
+        mNearbyDeviceAdapter.addItem(pwoMetadata);
+    }
+    mPwoMetadataQueue.clear();
+    mNearbyDeviceAdapter.notifyDataSetChanged();
+}
 ```
 
 <a id="comments-bug-fixing-007"></a>
@@ -1029,7 +1056,7 @@ Context: Paper section in source order; linked records retain cross-page definit
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
-Related: [comments-bug-fixing-022](#comments-bug-fixing-022), [comments-bug-fixing-024](#comments-bug-fixing-024)
+Related: [comments-bug-fixing-022](#comments-bug-fixing-022), [comments-bug-fixing-024](#comments-bug-fixing-024), [comments-bug-fixing-043](#comments-bug-fixing-043)
 
 ```text
 RQ2: Comments Importance.To answer RQ2, we employ post-
@@ -1072,6 +1099,64 @@ to 1. We partitioned the tokens in five classes based on the specific
 comment they belonged to (what,why,how,usage, andproperty).
 We could easily do this because the comments were always gener-
 ated in the same order with our prompt (e.g.,the first comment was
+```
+
+<a id="comments-bug-fixing-043"></a>
+## comments-bug-fixing-043 — Figure 2: first few-shot example (visual transcription)
+
+Source: [physical PDF page 7](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=7); reading unit `p007`, lines 79–89.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 7, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-023](#comments-bug-fixing-023), [comments-bug-fixing-044](#comments-bug-fixing-044)
+
+```text
+Code:
+public int hashCode() {
+    return value.hashCode();
+}
+
+Comment:
+what: Generates a hash code.
+why: Generates code for this object.
+how: A method that generates a hash code based on the contents of the string representations.
+usage: This method is used when this class is used as the code.
+property: Return a hashcode for this text attribute.
+```
+
+<a id="comments-bug-fixing-044"></a>
+## comments-bug-fixing-044 — Figure 2: second few-shot example (visual transcription)
+
+Source: [physical PDF page 7](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=7); reading unit `p007`, lines 91–105.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 7, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-043](#comments-bug-fixing-043)
+
+```text
+Code:
+<T> List<T> onFind(Class<T> modelClass, String[] columns, String[] conditions, String orderBy, String limit, boolean isEager) {
+    BaseUtility.checkConditionsCorrect(conditions);
+    List<T> dataList = query(modelClass, columns, getWhereClause(conditions), getWhereArgs(conditions), null, null,
+                            orderBy, limit, getForeignKeyAssociations(modelClass.getName(), isEager));
+
+    return dataList;
+}
+
+Comment:
+what: Handles the native query of the given table.
+why: The open interface for other classes in CRUD package to query the first record in a table.
+how: Finds generic values by the conditions specified in the backwards conditions object, the where clause is the product of each of the type.
+usage: Method modified just override here before executing your test cases.
+property: Returns the order of the order specified.
 ```
 
 <a id="comments-bug-fixing-024"></a>
@@ -1587,7 +1672,7 @@ Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oli
 
 Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
 
-Related: [comments-bug-fixing-036](#comments-bug-fixing-036), [comments-bug-fixing-038](#comments-bug-fixing-038)
+Related: [comments-bug-fixing-036](#comments-bug-fixing-036), [comments-bug-fixing-038](#comments-bug-fixing-038), [comments-bug-fixing-045](#comments-bug-fixing-045)
 
 ```text
 7 Threats to Validity
@@ -1599,6 +1684,175 @@ the bug-fixing change might be in a method different from the one
 in a given instance. To limit this threat, we used a stricter criterion
 to select instances,i.e.,we only considered commits impacting a
 single method. We defined 𝐷𝑐 leveraging GPT-3.5 to generate the
+```
+
+<a id="comments-bug-fixing-045"></a>
+## comments-bug-fixing-045 — Figure 4: shared comments (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 67–71.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-037](#comments-bug-fixing-037), [comments-bug-fixing-046](#comments-bug-fixing-046)
+
+```text
+// what: Saves an answer object.
+// why: Handles the saving of an answer object to the repository and posts an event.
+// how: Creates a SaveAnswerEvent, attempts to save the answer to the repository, and catches any exceptions to set in the event.
+// usage: Call this method to save an answer object and trigger related events.
+// property: Posts a SaveAnswerEvent after saving the answer.
+```
+
+<a id="comments-bug-fixing-046"></a>
+## comments-bug-fixing-046 — Figure 4: Buggy (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 73–82.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-045](#comments-bug-fixing-045), [comments-bug-fixing-047](#comments-bug-fixing-047)
+
+```text
+public void saveAnswer(Answer answer) {
+    SaveAnswerEvent event = new SaveAnswerEvent();
+    try {
+        long id = repository.saveAnswer(answer);
+        event.setAnswerId(id);
+    } catch (Exception e) {
+        event.setThrowable(e);
+    }
+    bus.post(event);
+}
+```
+
+<a id="comments-bug-fixing-047"></a>
+## comments-bug-fixing-047 — Figure 4: Fixed (oracle) (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 84–92.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-046](#comments-bug-fixing-046), [comments-bug-fixing-048](#comments-bug-fixing-048)
+
+```text
+public void saveAnswer(Answer answer) {
+    SaveAnswerEvent event = new SaveAnswerEvent();
+    try {
+        repository.saveAnswer(answer);
+    } catch (Exception e) {
+        event.setThrowable(e);
+    }
+    bus.post(event);
+}
+```
+
+<a id="comments-bug-fixing-048"></a>
+## comments-bug-fixing-048 — Figure 4: Fixed (prediction) (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 94–103.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image.
+
+Related: [comments-bug-fixing-047](#comments-bug-fixing-047), [comments-bug-fixing-049](#comments-bug-fixing-049)
+
+```text
+public void saveAnswer(Answer answer) {
+    SaveAnswerEvent event = new SaveAnswerEvent();
+    try {
+        repository.saveAnswer(answer);
+        event.setAnswer(answer);
+    } catch (Exception e) {
+        event.setThrowable(e);
+    }
+    bus.post(event);
+}
+```
+
+<a id="comments-bug-fixing-049"></a>
+## comments-bug-fixing-049 — Figure 5: shared comments (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 105–109.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image. The how line contains printed [...] and the usage line is clipped after [ in the original figure. No missing words are reconstructed. Body prose calls the ensures statement property-related, while the screenshot labels it why; both are retained as printed.
+
+Related: [comments-bug-fixing-048](#comments-bug-fixing-048), [comments-bug-fixing-050](#comments-bug-fixing-050)
+
+```text
+// what: Retrieves the aggregation buffer based on the provided grouping key.
+// why:Ensures that an aggregation buffer is available for the specified grouping key.
+// how:Retrieves the aggregation buffer from a hashmap based on the grouping key [...]
+// usage: Call this method to obtain the aggregation buffer for a specific grouping key [
+// property: Returns the aggregation buffer associated with the provided grouping key.
+```
+
+<a id="comments-bug-fixing-050"></a>
+## comments-bug-fixing-050 — Figure 5: Correct fix (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 111–119.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image. The hashMap.put line is the green added line.
+
+Related: [comments-bug-fixing-049](#comments-bug-fixing-049), [comments-bug-fixing-051](#comments-bug-fixing-051)
+
+```text
+public MutableRow getAggregationBufferByKey(MutableRow groupingKey) {
+    MutableRow aggregationBuffer = hashMap.get(groupingKey);
+    if (aggregationBuffer == null) {
+        aggregationBuffer = new SpecificMutableRow(aggregationBufferSchema);
+        aggregationBuffer.copyFrom(emptyAggregationBuffer, aggregationBufferSchema);
+        hashMap.put(groupingKey, aggregationBuffer);
+    }
+    return aggregationBuffer;
+}
+```
+
+<a id="comments-bug-fixing-051"></a>
+## comments-bug-fixing-051 — Figure 5: Wrong fix (visual transcription)
+
+Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 121–129.
+
+Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
+
+Context: Manual visual transcription from original PDF physical page 10, pypdfium2 scale 2.6 render. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Editor line numbers/UI omitted; indentation approximated from image. Diff removes aggregationBuffer = new SpecificMutableRow(aggregationBufferSchema); and adds the factory call plus hashMap.put. Do not infer a runnable project from this isolated specimen.
+
+Related: [comments-bug-fixing-050](#comments-bug-fixing-050)
+
+```text
+public MutableRow getAggregationBufferByKey(MutableRow groupingKey) {
+    MutableRow aggregationBuffer = hashMap.get(groupingKey);
+    if (aggregationBuffer == null) {
+        aggregationBuffer = aggregationBufferFactory.newSpecificMutableRow();
+        aggregationBuffer.copyFrom(emptyAggregationBuffer, aggregationBufferSchema);
+        hashMap.put(groupingKey, aggregationBuffer);
+    }
+    return aggregationBuffer;
+}
 ```
 
 <a id="comments-bug-fixing-038"></a>

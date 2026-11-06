@@ -55,6 +55,11 @@ def validate_source(root, source, allow_pending=False):
         require(unit["source_path"] in inputs, f"{sid}: unit has unpinned source")
         require(isinstance(unit["lines"], list) and all(isinstance(x, str) for x in unit["lines"]),
                 f"{sid}: invalid reading lines")
+        for supplement in unit.get("supplements", []):
+            require(1 <= supplement["start_line"] <= supplement["end_line"] <= len(unit["lines"]),
+                    f"{sid}/{unit['id']}: invalid supplemental span")
+            require(bool(supplement["method"]) and isinstance(supplement["notes"], str),
+                    f"{sid}/{unit['id']}: missing supplemental provenance")
     directory = root / COLLECTION / "sources" / sid
     paths = [directory / "records.json", directory / "coverage.json"]
     if allow_pending and not any(p.exists() for p in paths):

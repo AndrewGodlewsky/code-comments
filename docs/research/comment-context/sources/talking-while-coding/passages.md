@@ -2,13 +2,12 @@
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
-Extent: `local_paper`. Text SHA-256: `89de1fbd2b74f3c7968039a6f19729a5b526b282057ddeb0bf3ce852ddc85baa`.
+Extent: `local_paper`. Text SHA-256: `39b144f16c9352666f54f643404720c9db8500183b110d1ac5cf18aae7a3529f`.
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
-- Figure 2 on physical page 9 is concatenated/garbled in base text; visual inspection complete and supplemental transcription pending integration.
-- Tables 4 (p8), 16 and 17 (p24) contain concatenated numeric fields in base extraction. Original tables were visually checked; use original column layout.
-- Bold table emphasis, superscripts and indentation are not preserved by the base extraction. Prompts retain source-rendered typography rather than runnable code-fence syntax.
+- Figure 2 variants and separated Tables 4, 16 and 17 now have supplemental visual transcriptions. Indentation is approximate, and bold/asterisk presentation is described in notes.
+- Exact plotted coordinates are not inferred; consult original graphics. Base two-column extraction still has formula spacing and occasional concatenated fields, with supplemental tables provided where inspected.
 
 <a id="talking-while-coding-001"></a>
 ## talking-while-coding-001 — Abstract
@@ -1182,7 +1181,7 @@ Context: Main paper and appendices in physical-page order. Neighboring records p
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
-Related: [talking-while-coding-026](#talking-while-coding-026), [talking-while-coding-028](#talking-while-coding-028)
+Related: [talking-while-coding-026](#talking-while-coding-026), [talking-while-coding-028](#talking-while-coding-028), [talking-while-coding-079](#talking-while-coding-079)
 
 ```text
 5 Conclusion
@@ -1190,6 +1189,38 @@ In this paper, we asked whether comments, natural-
 language text an LLM emits in the same forward
 pass as the code it generates, functionally sup-
 port its own pass@1. The natural distribution
+```
+
+<a id="talking-while-coding-079"></a>
+## talking-while-coding-079 — Table 4: separated column transcription (visual transcription)
+
+Source: [physical PDF page 8](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=8); reading unit `p008`, lines 84–99.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 8; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image. Added | separators disambiguate concatenated fields. Bold emphasis omitted; it signifies exceeds base. Source/recipient symbols and caption remain in base text.
+
+Related: [talking-while-coding-027](#talking-while-coding-027)
+
+```text
+Model | base | none | rare | dense | WHAT | WHY | mix | gp-doc | top | inline
+Grok-4.1-Fast | 85.1 | 84.8 | 84.4 | 83.3 | 82.0 | 81.0* | 82.4 | 82.8 | 83.7 | 84.8
+Gemini-3.1-Flash-Lite | 72.5 | 65.6* | 67.0* | 72.4 | 69.8 | 71.6 | 70.7 | 72.3 | 66.7* | 72.7
+GPT-OSS-120B | 69.1 | 72.5 | 71.5 | 70.0 | 74.3* | 75.4* | 76.3* | 73.8 | 55.4* | 55.2*
+GPT-5.1-Codex-Mini | 64.6 | 64.2 | 64.4 | 56.5* | 69.5* | 69.0* | 68.9* | 67.7 | 51.1* | 55.3*
+DeepSeek-V3.2 | 64.3 | 58.2* | 58.8* | 65.9 | 62.7 | 66.7 | 65.7 | 59.2* | 70.4* | 60.5
+Qwen3-235B-A22B | 59.8 | 58.3 | 58.6 | 60.8 | 61.4 | 65.5* | 63.2 | 61.6 | 61.3 | 58.7
+GPT-5.4-Nano | 59.6 | 46.1* | 57.0 | 65.4* | 63.0 | 63.3 | 62.3 | 61.4 | 57.6 | 64.8*
+MiMo-V2-Flash | 55.9 | 56.3 | 56.2 | 61.6* | 58.8 | 63.1* | 58.9 | 57.9 | 46.9* | 60.2
+Gemma-4-E4B-IT | 53.7 | 39.2* | 46.1* | 42.2* | 47.4* | 52.5 | 50.9 | 49.7* | 54.2 | 52.2
+Llama-4-Maverick | 45.3 | 43.5 | 45.2 | 44.6 | 32.6* | 45.4 | 42.9 | 38.5* | 33.7* | 45.6
+Mistral-Small-2603 | 44.2 | 42.5 | 42.9 | 48.5* | 44.2 | 46.2 | 46.5 | 46.6 | 45.4 | 46.8
+Seed-Coder-8B | 33.4 | 35.4 | 33.9 | 29.5 | 35.1 | 31.7 | 34.2 | 31.5 | 32.3 | 36.1
+Qwen3-8B | 37.0 | 35.4 | 36.4 | 41.3* | 39.7 | 40.1 | 38.5 | 39.2 | 39.2 | 39.6
+CodeGeeX4-9B | 22.1 | 20.2 | 20.3 | 19.8 | 17.7* | 17.1* | 18.6 | 20.7 | 19.4 | 21.5
+* Holm-significant at alpha=0.05 (paired McNemar, m=126; 38/126 survive).
 ```
 
 <a id="talking-while-coding-028"></a>
@@ -1280,7 +1311,7 @@ Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
 Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
 
-Related: [talking-while-coding-029](#talking-while-coding-029), [talking-while-coding-031](#talking-while-coding-031)
+Related: [talking-while-coding-029](#talking-while-coding-029), [talking-while-coding-031](#talking-while-coding-031), [talking-while-coding-071](#talking-while-coding-071)
 
 ```text
 Limitations
@@ -1300,6 +1331,235 @@ by publicly available LLMs on a public bench-
 mark (LiveCodeBench-v6) under its public release
 terms. No human subjects research was conducted.
 The 100-snippet calibration set used to validate
+```
+
+<a id="talking-while-coding-071"></a>
+## talking-while-coding-071 — Figure 2: rare (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 68–74.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-030](#talking-while-coding-030), [talking-while-coding-072](#talking-while-coding-072)
+
+```text
+# one-pass with hash map
+seen = {}
+for i, n in enumerate(nums):
+    if target - n in seen:
+        return [seen[target - n], i]
+    seen[n] = i
+return []
+```
+
+<a id="talking-while-coding-072"></a>
+## talking-while-coding-072 — Figure 2: dense (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 76–92.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-071](#talking-while-coding-071), [talking-while-coding-073](#talking-while-coding-073)
+
+```text
+# Build a hash map from value to
+# index for O(1) complement lookup.
+# Naive O(n^2) search -> O(n).
+seen = {}
+# Walk (index, value) pairs once.
+# Complement of n is target - n.
+for i, n in enumerate(nums):
+    # Check complement BEFORE add
+    # Avoid pairing same index
+    # with itself if target = 2*n.
+    if target - n in seen:
+        return [seen[target - n], i]
+    # Insert after lookup to keep
+    # the invariant.
+    seen[n] = i
+# No valid pair satisfies the sum.
+return []
+```
+
+<a id="talking-while-coding-073"></a>
+## talking-while-coding-073 — Figure 2: WHAT (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 94–105.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-072](#talking-while-coding-072), [talking-while-coding-074](#talking-while-coding-074)
+
+```text
+# initialize hash map value -> index
+seen = {}
+# iterate over (index, value) pairs
+for i, n in enumerate(nums):
+    # check if complement was stored
+    if target - n in seen:
+        # return matching indices
+        return [seen[target - n], i]
+    # record value with its index
+    seen[n] = i
+# no pair found
+return []
+```
+
+<a id="talking-while-coding-074"></a>
+## talking-while-coding-074 — Figure 2: WHY (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 107–118.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-073](#talking-while-coding-073), [talking-while-coding-075](#talking-while-coding-075)
+
+```text
+# use a hash map to reduce time
+# complexity from O(n^2) to O(n)
+seen = {}
+for i, n in enumerate(nums):
+    # complement lookup is O(1),
+    # avoiding inner loop scan
+    if target - n in seen:
+        return [seen[target - n], i]
+    # store after lookup to avoid
+    # using the same index twice
+    seen[n] = i
+return []
+```
+
+<a id="talking-while-coding-075"></a>
+## talking-while-coding-075 — Figure 2: mix (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 120–132.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-074](#talking-while-coding-074), [talking-while-coding-076](#talking-while-coding-076)
+
+```text
+# use a hash map for O(n) lookups
+# instead of an O(n^2) double loop
+seen = {}  # maps value -> index
+for i, n in enumerate(nums):
+    # scan each value once, in order
+    complement = target - n
+    # has the complement been seen?
+    if complement in seen:
+        return [seen[complement], i]
+    # store only after the check so
+    # an index never pairs with self
+    seen[n] = i
+return []
+```
+
+<a id="talking-while-coding-076"></a>
+## talking-while-coding-076 — Figure 2: gp-doc (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 134–149.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image.
+
+Related: [talking-while-coding-075](#talking-while-coding-075), [talking-while-coding-077](#talking-while-coding-077)
+
+```text
+"""Return indices of two numbers in
+nums that sum to target.
+Args:
+    nums: list of integers.
+    target: integer sum.
+Returns:
+    list[int]: pair of indices i < j
+    with nums[i] + nums[j] == target,
+    or [] if no such pair exists.
+"""
+seen = {}
+for i, n in enumerate(nums):
+    if target - n in seen:
+        return [seen[target - n], i]
+    seen[n] = i
+return []
+```
+
+<a id="talking-while-coding-077"></a>
+## talking-while-coding-077 — Figure 2: top (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 151–168.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image. The earliest-index claim is retained as printed; no attempt is made to repair or evaluate its consistency with code.
+
+Related: [talking-while-coding-076](#talking-while-coding-076), [talking-while-coding-078](#talking-while-coding-078)
+
+```text
+# Core Strategy: one-pass hash-map
+# lookup - O(n) time, O(n) space.
+# State Mapping: seen[v] = earliest
+# index where value v was observed.
+# Invariant: when testing target - n
+# at index i, all j < i are in seen.
+# Complexity: O(1) amortized per
+# op, O(n) total.
+# Corner Cases:
+#   - no pair found -> return []
+#   - duplicate values: store after
+#     lookup to avoid reuse
+seen = {}
+for i, n in enumerate(nums):
+    if target - n in seen:
+        return [seen[target - n], i]
+    seen[n] = i
+return []
+```
+
+<a id="talking-while-coding-078"></a>
+## talking-while-coding-078 — Figure 2: inline (visual transcription)
+
+Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 170–175.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 9; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image. Long inline comments visually wrap in the figure; logical line grouping follows its six numbered code lines.
+
+Related: [talking-while-coding-077](#talking-while-coding-077)
+
+```text
+seen = {}  # value -> first index seen
+for i, n in enumerate(nums):  # walk left to right
+    if target - n in seen:  # complement already stored?
+        return [seen[target - n], i]  # match found
+    seen[n] = i  # record current for later complements
+return []  # no pair exists
 ```
 
 <a id="talking-while-coding-031"></a>
@@ -2946,7 +3206,7 @@ Context: Main paper and appendices in physical-page order. Neighboring records p
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Table 16 last numeric fields and Table 17 none row have concatenated values in pinned text; original column layout governs.
 
-Related: [talking-while-coding-068](#talking-while-coding-068), [talking-while-coding-070](#talking-while-coding-070)
+Related: [talking-while-coding-068](#talking-while-coding-068), [talking-while-coding-070](#talking-while-coding-070), [talking-while-coding-080](#talking-while-coding-080)
 
 ```text
 Model base none rare dense WHAT WHY mix gp-doc top inline
@@ -2967,6 +3227,64 @@ CodeGeeX4-9B 210/11.8 176/7.1 202/14.7 265/40.6 279/44.7 296/46.0 282/47.4 276/4
 Table 18: Per-cell mean output code tokens and tok-cmt% across the 14×10 self-elicit grid (Section 4.2), sorted by
 basepass@1 descending. Each cell shows tok/cmt%: mean output code tokens under cl100k_base, and the mean
 fraction of those tokens that fall inside a comment.
+```
+
+<a id="talking-while-coding-080"></a>
+## talking-while-coding-080 — Table 16: separated column transcription (visual transcription)
+
+Source: [physical PDF page 24](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=24); reading unit `p024`, lines 51–65.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 24; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image. Added separators; delta glyph rendered as word in header. Bold Holm-significant extremes: all Worst except Qwen3-235B, Mistral-Small, Qwen3-8B, Seed-Coder-8B; Best bold for GPT-OSS, GPT-5.1, DeepSeek, Qwen3-235B, GPT-5.4, MiMo, Mistral-Small, Qwen3-8B. Statistical caption remains in base text.
+
+Related: [talking-while-coding-069](#talking-while-coding-069), [talking-while-coding-081](#talking-while-coding-081)
+
+```text
+Model (base %) | Best (variant, delta %) | Worst (variant, delta %) | #sig
+Grok-4.1-Fast (85.1) | inline -0.3 | WHY -4.1 | 1
+Gemini-3.1-Flash-Lite (72.5) | inline +0.2 | none -6.9 | 3
+GPT-OSS-120B (69.1) | mix +7.2 | inline -13.9 | 5
+GPT-5.1-Codex-Mini (64.6) | WHAT +4.9 | top -13.5 | 6
+DeepSeek-V3.2 (64.3) | top +6.2 | none -6.1 | 4
+Qwen3-235B (59.8) | WHY +5.7 | none -1.5 | 1
+GPT-5.4-Nano (59.6) | dense +5.8 | none -13.6 | 3
+MiMo-V2-Flash (55.9) | WHY +7.2 | top -9.0 | 3
+Gemma-4-E4B-IT (53.7) | top +0.5 | none -14.5 | 5
+Llama-4-Maverick (45.3) | inline +0.3 | WHAT -12.7 | 3
+Mistral-Small (44.2) | dense +4.4 | none -1.7 | 1
+Qwen3-8B (37.0) | dense +4.4 | none -1.6 | 1
+Seed-Coder-8B (33.4) | inline +2.8 | dense -3.9 | 0
+CodeGeeX4-9B (22.1) | inline -0.6 | WHY -5.0 | 2
+```
+
+<a id="talking-while-coding-081"></a>
+## talking-while-coding-081 — Table 17: separated column transcription (visual transcription)
+
+Source: [physical PDF page 24](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=24); reading unit `p024`, lines 67–77.
+
+Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
+
+Context: Manual visual transcription from original PDF physical page 24; pypdfium2 render scale 1.6. Supplemental reading text appended after the extracted page text; consult the original figure for layout.
+
+Transcription/context notes: Figure line numbers omitted; code indentation approximated from rendered image. Added column separators. Caption defines means across 14 models and is retained in base text.
+
+Related: [talking-while-coding-080](#talking-while-coding-080)
+
+```text
+Variant | Mean tokens | Mean tok-cmt%
+base | 463 | 22.7
+none | 368 | 6.3
+rare | 411 | 14.9
+dense | 740 | 55.4
+WHAT | 566 | 49.6
+WHY | 658 | 54.6
+mix | 685 | 55.6
+gp-doc | 594 | 45.5
+top | 655 | 57.3
+inline | 604 | 56.7
 ```
 
 <a id="talking-while-coding-070"></a>

@@ -91,6 +91,14 @@ class CollectionTests(unittest.TestCase):
             cc.validate_source(self.root, self.source)
         cc.validate_source(self.root, self.source, allow_pending=True)
 
+    def test_supplement_requires_a_valid_range_and_provenance(self):
+        self.text["units"][0]["supplements"] = [
+            {"start_line": 4, "end_line": 3, "method": "OCR", "notes": ""}]
+        self.write("text.json", self.text)
+        self.source["text_sha256"] = cc.sha256(self.root / "text.json")
+        with self.assertRaisesRegex(ValueError, "invalid supplemental span"):
+            cc.validate_source(self.root, self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

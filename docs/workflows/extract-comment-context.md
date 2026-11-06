@@ -40,6 +40,15 @@ page numbers are mandatory; add printed-page labels when observed. HTML units
 name their chapter/file, and transcript units retain cue timestamps. Untranscribed
 figures retain original-page/image references and an explicit unresolved gap.
 
+If a legible figure or scan is missing from extracted text, append its OCR or
+manual transcription to that physical-page unit. Store its inclusive range,
+`method` and `notes` in the unit's `supplements` array, then repin catalog,
+records and coverage together. Preserve original extraction lines and check every
+existing span before repinning. Label supplemental passage headings explicitly;
+record approximate indentation, clipped source text and untranscribed graphics.
+Do not infer numerical plot values from pixels or silently repair source errors.
+Empty OCR results have no supplemental span and remain noted in page coverage.
+
 ## Inclusion rule
 
 Capture every located passage about writing, reading, changing, omitting,
