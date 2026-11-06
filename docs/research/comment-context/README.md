@@ -11,8 +11,8 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 | [The Pragmatic Programmer](sources/pragmatic-programmer/passages.md) | machine_transcript | 63 | [14 read](sources/pragmatic-programmer/coverage.json) | 0 |
 | [Software Engineering at Google](sources/software-engineering-at-google/passages.md) | local_html_book | 106 | [35 read](sources/software-engineering-at-google/coverage.json) | 0 |
 | [A Philosophy of Software Design, second-edition extract](sources/philosophy-of-software-design/passages.md) | available_extract | 11 | [20 read](sources/philosophy-of-software-design/coverage.json) | 0 |
-| Planning and Coding of Problems for an Electronic Computing Instrument | local_scanned_part_ii_volumes_1_to_3 | 0 | Pending | 0 |
-| FORTRAN Programmer's Reference Manual, IBM 704 | local_manual | 0 | Pending | 0 |
+| [Planning and Coding of Problems for an Electronic Computing Instrument](sources/planning-and-coding/passages.md) | local_scanned_part_ii_volumes_1_to_3 | 76 | [100 pending, 94 read](sources/planning-and-coding/coverage.json) | 0 |
+| [FORTRAN Programmer's Reference Manual, IBM 704](sources/fortran-1956/passages.md) | local_manual | 8 | [54 read](sources/fortran-1956/coverage.json) | 0 |
 | [Literate Programming](sources/literate-programming/passages.md) | local_paper | 15 | [15 read](sources/literate-programming/coverage.json) | 0 |
 | [A Rational Design Process: How and Why to Fake It](sources/rational-design-process/passages.md) | local_paper | 12 | [12 read](sources/rational-design-process/coverage.json) | 0 |
 | [Code As Documentation](sources/code-as-documentation/passages.md) | local_essay | 4 | [1 read](sources/code-as-documentation/coverage.json) | 0 |
@@ -49,10 +49,14 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 
 - Historical scan with an existing OCR/text layer; sparse and diagram pages require visual inspection. Local volume extent is the scope, not the entire historical publication series.
 - Combined Part II, Volumes 1-3 as confirmed by local title page; dual embedded-text and supplemental Windows OCR views. OCR does not reliably reconstruct mathematical/diagram layout.
+- Visual representations were read, but OCR does not preserve complete diagram topology, coding/explanatory column alignment or mathematical symbols; consult original physical PDF pages.
+- Pages95?194 and final broad lexical pass remain pending.
 
 ### FORTRAN Programmer's Reference Manual, IBM 704
 
 - Historical scan/text layer; layouts, card columns and specimen comments need visual verification.
+- Physical pages 9 and 48 code sheets are now transcribed in supplemental spans; alignment, faint characters and handwritten/source anomalies retain explicit notes. No certified transcription of other manual formulas is claimed.
+- Reading text has OCR defects in mathematical notation, code and table alignment. Relevant comment rules/specimens were visually inspected; this is full sequential traversal of the available 54-page manual, not a certified transcription of every formula.
 
 ### Literate Programming
 

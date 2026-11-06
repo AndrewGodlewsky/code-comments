@@ -22,6 +22,12 @@ and [roadmap](docs/roadmap.md) for current boundaries and remaining issues.
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
 
+The [comment-context collection](docs/research/comment-context/README.md) stores
+pinned local sources, derived reading units, author-passage selections and
+coverage ledgers. `scripts/comment_context.py` validates traceability and renders
+the reading views; it does not judge authors' advice or demonstrate model outcomes.
+New sources follow the [extraction workflow](docs/workflows/extract-comment-context.md).
+
 ## Knowledge ownership
 
 | Source | Owns | Update trigger |
@@ -36,6 +42,8 @@ Its operations and triage vocabulary are documented under `docs/agents/`.
 | GitHub branch tracking issues | Branch purpose, assignments, associated issue scope, and review/closeout evidence; format in [task tracking](docs/agents/task-tracking.md) | Assignment, checkpoint, review, integration, or cleanup changes |
 | `docs/research/README.md` | Evidence navigation and research status | A report is added, revised, superseded, or reproduced |
 | Research reports | Source findings, limitations, and project interpretations | New evidence or a correction to a claim |
+| `docs/research/comment-context/` | Source passages, exact input versions, reading coverage and transcription limits, before evaluative synthesis | A local source is added or an extraction omission/error is found |
+| `docs/workflows/extract-comment-context.md` | Reusable source-extraction procedure and data contract | A verified extraction or traceability requirement changes |
 | `docs/research/evaluation-protocol.md` | Canonical proposed experiment design | An experimental design decision or measured limitation |
 | `docs/roadmap.md` | Milestone order and gates, linking GitHub's live assignments/status | A change to product execution scope or dependencies |
 | `docs/evaluation/README.md` | Runnable offline tools, provenance and validity limits | A verified tool or evaluation boundary changes |

@@ -1,0 +1,4921 @@
+# Planning and Coding of Problems for an Electronic Computing Instrument: source passages
+
+Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
+
+Extent: `local_scanned_part_ii_volumes_1_to_3`. Text SHA-256: `c69a7937c855d86515f9ae40ced880c1efd62f656c462b6c31b2e53ced2f2963`.
+
+[Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
+
+- Historical scan with an existing OCR/text layer; sparse and diagram pages require visual inspection. Local volume extent is the scope, not the entire historical publication series.
+- Combined Part II, Volumes 1-3 as confirmed by local title page; dual embedded-text and supplemental Windows OCR views. OCR does not reliably reconstruct mathematical/diagram layout.
+- Visual representations were read, but OCR does not preserve complete diagram topology, coding/explanatory column alignment or mathematical symbols; consult original physical PDF pages.
+- Pages95?194 and final broad lexical pass remain pending.
+
+<a id="planning-and-coding-001"></a>
+## planning-and-coding-001 — Preface: provisional coding method and comparison criteria (physical page 9)
+
+Source: [physical PDF page 9](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=9); reading unit `p009`, lines 10–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-002](#planning-and-coding-002)
+
+```text
+PREFACE
+This report was prepared in accordance with the terms of Contract
+bk). betæen the Research and [kve opment Serv ice, U. S. Army
+Ordnance Depar#rent and the Institute for Advanced Study. It is essent ial ly the
+Secord paper referred to in tre Preface of the earl ier report entitled,
+"Prel iminary Discussion of the Log ical Design of an Electronic Cornput ing
+Inst rutrent", by A. W. Burks, H. H. Goldstine and John von Neurønn, dated 28 June
+1946.
+(Ming the t inp which has intervened it has beconp clear that the
+issuance of a greater nurrber of reports 'Ai II be desirable. In this sense the
+report, "Prel imi nary Discussion Of the Logical Cksign of an Electronic Comput ing
+Instrurent't shoUld be viewed as part I Of the seqænce Of Our reports on the
+Electronic Corrputer. The present report is Volume I of Part l. A Vol une I Of
+Part II will follON within a months.
+Part II is intended to give an account of our methods of cod ing
+and of the pni losophy which governs it.
+It conta ins what bel ieve to be an
+adequate number of typical going from the simplest case up to several
+of high it y, and in reasonable didactic ccyrpleteness. On the other hand,
+Part I I in its present form is prel iminary in certaih signifi Zant ways. On this
+account the fol 'cuing ought to be said.
+We do not discuss the orders control ing the inputs and outputs
+ard the stopping of the nvtchine. (Ihe i nputs and outputs are, hovever, d iscussed
+to the extent which is required for the treatrrpnt of the binary—dec imal and
+decirral—binary conversions in Chapter VI The reason for this is that in this
+direction soræ eng ineering alternatives seem porth keeping Open, arvi it does not
+affect the nujor problen•s of coding relevantly.
+The use of the input—output npdium as a subsidiary nvmry• is not
+discussed. This will probably be taken up in Part I II.
+The code is not final in every respect. Several mi nor changes are
+clearly cat led for, and even style major ores are conce Vable, depend inq upon various
+'n all cases *ere changes are indi—
+eng ineerirq possibi I ities that are still open.
+catad or possible, there are several ternative ones, between which it is not yet
+easy to chtnse with mch assurance. bel i eve that our present code is correct in
+its basic idea, arui at any rate a reasonable basis för the discussion of other
+proposals. Tat is, the examples which have ccded, nay serve as standards in
+this code with variants or with more basical ly di f ferent systeræ.
+It should be noted that in canpaöir*ä codes, four vie•.vpoints be
+Sia-VI icity and rel iability
+kept in mi M, all of then of car,parable importarce:
+of the engineerirq soluti ons required by the code; (2) S imol icity, compactness and
+1 3' Ease ard speed of the human procedure of translating
+cmpleteness of the code;
+'23503
+```
+
+<a id="planning-and-coding-002"></a>
+## planning-and-coding-002 — Preface: provisional coding method and comparison criteria (physical page 10)
+
+Source: [physical PDF page 10](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=10); reading unit `p010`, lines 7–20.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-001](#planning-and-coding-001)
+
+```text
+rratherrat conceived into the code, and also of fit-ding correct ing
+errors in cod ing or of applying to it changes that have been dec ided upon at a
+late stage; (4) Efficiency of the code in operating the nechine near its full
+intrinsic speed.
+We propose to carry our ccynpari sons of various variants and codes
+under these aspects.
+The authors wish to express thei r thanks to Professor Arthur W.
+Burks, of the University of Michigan, for trany valuable discussions, as wel.l as
+for his help in coding certain of the problems in the text.
+H.
+Inst i tute for Advanced Study
+I April 1947
+H. Goldstine
+von Neurrann
+```
+
+<a id="planning-and-coding-003"></a>
+## planning-and-coding-003 — 7.1?7.3: dynamic coding and instruction notation (physical page 11)
+
+Source: [physical PDF page 11](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=11); reading unit `p011`, lines 7–55.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-004](#planning-and-coding-004)
+
+```text
+PLANNING AND COOING PROBLEMS AN ELECTRONIC co,4PUTlNG INSTRUMENT
+7.0 GENERAL •FRINCIPLES CODING AND FLO#-OIAGRAWINS.
+In the first part of this report we discussed in broad outline
+7.1
+Our basic point Of view in regard to the electronic ccynput ing machine nov envision-
+There is ircll_ßed in •that discussion a tabulation of the orders the n-achine will be
+In this, the second part of the report, interli to sh(M hcw the orders
+able to obey _
+may be used in the actual Of rune rical problems.
+Before proceeding to the actual programning of such proble-rs, consider
+it aesirable to discuss the nature Of ccxiing per Se ard in doing this to lay dwan a
+modus operandi for hard ling specific problem'. We attempt therefore in this chapter
+to are tyze the ccding of a problem in a detailed fashion, to shov where the difficulties
+ie, ard hcw they are best resolved.
+The actual (Ade for a problem is that sequence Of ccded symbols (express—
+ing a seqænce of vords, or rather of ha I f *lords ard words) that has to be placed into
+the selectron remory in order to cause the machine to perform the desired arZ planned
+sequence of operations, which arrount to solving the problem in quest ion. Or to be mre
+prec ise: This sequence of codes wili impose the desi-Ted seqænce of actions on C by
+the fol lawing rechanism: C Scans the seqænce of codes, and effects the inst rut ions,
+which they ccntain, one by one. If this were just a linear scanning of the coded
+sequence, the latter in Ing throughout the procedure unchanged in form, then ratters
+wou ld be quite simple. (Äding a problem for the rechine would rrerely be what its nalæ
+indicates: Translating a reaningful text (the i rustræt ions that govern solving the
+problem under cons iderat ion) f rcrn one language (the language of ics, in which
+the planner will have conceived the problem, or rather the nurrerica' procedure by *'ich
+he has decided to solve the problem) into another language (that one Of aur ccde).
+This, ho.sever, is not the case. are convinced, both on general grounds
+and fram our actual experience with the Cal ing of spec i fic nurnerical prob that the
+rain difficulty lies just at this point.
+Let us trerefore describe the process that
+takes place mre ly.
+The control scans the instruct ions in the se lectron netrory as a
+rule linearly, i .e. beginning, say, with word No. O, and præeeding fran mrd No. y
+to word No. y + I lard within each word f ran its first half to its second half), but
+there are except ions: The transfer orders xC, xC', xCC, xCct (Cf. Table I at the end
+Of the first part Of the report, or Table I I be 1m' cause C to jump fran vard y to the
+arbitrarily prescribed word x (uncord it imally or subject to the fulfil In-ent of certain
+cond it ions)- Also, these transfer orders are among the mst critical constituents of
+a coded sequence. Furthermre, the subst i tut ion orders xSp, xSp' (ard also xS, cf. as
+above) permit C to rxdify any part of the coded sequerx:e as it goes a long. Again,
+these substitution orders are usual ly of great inportaæe.
+To sun up: C will,
+in gerpral, not scan the sequerce of irstrtx—
+t ions i nearly.
+It ray junp occasionally forward or backyard, anitting Ifor the tire
+being, but probably not pemanent ly) scre parts of the sequerte, and going repeatedly
+through nthers. It mdify sore parts of the seqænce while obeying the instructions
+in another pmt of the seq•ææe. Thus when it scans a part of the seqtknce several
+```
+
+<a id="planning-and-coding-004"></a>
+## planning-and-coding-004 — 7.1?7.3: dynamic coding and instruction notation (physical page 12)
+
+Source: [physical PDF page 12](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=12); reading unit `p012`, lines 8–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-003](#planning-and-coding-003), [planning-and-coding-005](#planning-and-coding-005)
+
+```text
+2.
+t i nes, it may actual ly find a different set Of instruct ions there at each passage.
+Al I these displacerrents and rod i ficat ions may be cory} it ionat upon the nature Of
+interned iate results obtained by the machine itself in the course of this procedure.
+Hence it will not be pcssib'e in general to foresee in advance and ccmpleteLy the
+actual course of C, its character and the sequence of its cyniss ions On one haru and
+of its multiple passages over the place on the other, as welt as the actual
+instructions it firÉs along this course, ard their changes through various scccessive
+occas ions at the sane place, if that place is mult i ply traversed by the course of C.
+These ci rcuTEtances develop in their actual ly asstned fortrE on ly during the process
+(the calculation) itself, i.e. while C actual 'y runs through its gradually unfolding
+course.
+Thus the relat ion of the coded instruct ion seqærEe to the iCal ly
+conce ived procedure Of (nun-ericar ) solut ion is not a stat iCal one, that of a trans—
+ion, but highly dynamical : A coded order stands not simply for its present contents
+at its present locat ion, but more ful ly for any succession Of passages Of C through it,
+in connect ion with any succession of modified contents to be found by C there, all of
+this being determined by all other orders of the sequence in conjunction with the one
+under cons ideration) This ent ire, potentially very involved, i inter—
+act ions evolves SunceSs ively whi le C runs through the operat ions control led and
+di rected by these cont inuasl,y chanq ing instruct icns.
+These cunpl icat ions are, fur-thenmre, not hypothet icat or except ional.
+It does not require a deep ana lysis of any induct ive or iterative mthénøt icat prcx:ess
+to see that they are indeed the norrn. Also, the flexibil i ty ard efficiercy of our
+ccrie is essent ial (y due to them, i . e. to the extensive combinatorial pcEsibi I ities
+which they indicate.
+Final ly, those rratherrat iCal problens, which by their cornplex it y
+justify the use of the rechine that we envis ion, require an appl ication of these control
+procedures at a rather high level of ccmp( icat ion' and of mult icity of the course of
+C am of the sccessive changes in the orders.
+All these assert ions wi be arrply just ified and elaborated in detail
+by the specific ccÉed examples which const i tute the hulk of this report, and by the
+nethods that are going to evolve to ccde
+air problem is then to f irri Simple, step—by—step hy which
+these difficulties can be overcorne. Sirce codirq is not a static process of trans-
+(at ion, but rather the technique of prov id•ihg a dynamic backgrourd to control the
+au-tonetic evolution Of a tæaning, it has to be viewed as a loqical problem am one
+that represents a new brarEh Of format logics. propose to sha•.' in the course of
+this report ho." this task is mastered.
+Tte balarce of this chapter gives a rigorous and complete descript ion
+of our rrethod of cod ing, and of the auxi jar-y corcepts which we found convenient to
+introduce in order to expound this method. (The subsequent chapters of the report
+deaf with specific examp les, and with the rrethcds Of ccynbining already exist ing
+ccded seqænces.' Since this is the first report on this subject, we felt justified
+to st ress rigor am completeness rather than didactic simpl icity. A later presenta—
+t ion will be written from the didact ic point Of view, which, we be' ieve, will show
+that our TEth0dS are fairly easy to 'earn.
+```
+
+<a id="planning-and-coding-005"></a>
+## planning-and-coding-005 — 7.1?7.3: dynamic coding and instruction notation (physical page 13)
+
+Source: [physical PDF page 13](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=13); reading unit `p013`, lines 6–60.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-004](#planning-and-coding-004), [planning-and-coding-006](#planning-and-coding-006)
+
+```text
+3.
+7.2 Table on page 5 is essentially a repetition of Table I at
+the end of Part I of this report, i.e. it is a table of orders with their abbreviat ions
+and explanat ions. fourd it convenient to Take certain minor changes. They are as
+follcms:
+First :
+II has been changed, so to express the round off rule dis-
+cussed in 5.11 in Part I of this report. In accord with the discussion carried out
+loc. cit. , we use the fi rst round off rule described there. As far as the left-hand
+39 digits are concerned, this consists Of adding one to digit 40, ard effecting the
+resulting carries, thereby possibly modifying the eft-haM 39 dig its. Since we keep
+track of the right—hand 39 digits, too, it is desi rable to compensate for this within
+the extreme left 'non sign) digit of the right—hand 39 digits. This arrounts to adding
+in the The nuTber there is O (sign digit O), hence a carry results if
+ard only if that number is i.e. if its extreme left (non sign) digit is l.
+In
+this case the carry adds
+in the accumul ator and subtracts I in the register.
+Herx:e instead of adding in tre reg ister we actually subtract there. Hopever,
+the aggregate result (on the 78 digit numberl is in any event the addition Of in
+the register (i.e. of one to digit 40), hence it Tust be cornpensated by subtracting
+in the reg ister. Consequently we do nothing or subtract in the register, accord—
+ing to whether its extrene left Inon sign) digit is O or l. Arri, as saw above, we
+in the accumulator Note, that t he operation
+correspondingly do nothing or add 2-
++2-0 , which cause carries, takes place in the accumulator, which can indeed effect
+carries; whi le the operation -l, which can cause no carries, takes place in the register,
+which cannot effect carries. Indeed: Subtracting I in 2he register, where the sign
+digit is O (cf. above J rerely amounts to replacing the sign digit by l. The new
+for-rulat ion of expresses exactly these rules.
+Second :
+19 have been changed sornexhat for reasons set forth in
+8.2 belcw. We note that 1B, 19 assure, both in -their old form I Tab 'e J and their
+nex fom {Table II ) , that in each order the nET0ry posit ion number x cccupies the 12
+left digits (cf. 6.6.5 in Part of this report).
+Third : 20, 21 have a! so been changed. The forTn of 20 is a right
+shift, which is so arranged that it halves the number in the accurrulator, including
+an arithret ically correct treatment of sign digit. The ne.•,' form Of 21 is a left
+shift, which is arrarged that it douthes the number in the accumlator (provided
+that that number I ies betæen and i rx: Iud ing an arithrrpt iCal ly correct treat—
+At the same time, ho.vever, 21 tin its form) is so
+rent of the sign digit.
+arrarged that the extrerTe left digit (after the sign digit J in the accurwlator is
+It is inserted there at the extreap
+not lost, but transferred into the reQister.
+right, ard the orig inal contents of the register are shifted left correspondingly.
+The imediate uses of 20, 21 are arithmet ical, but the last rent ioned features of
+21 are required for other, ratter cont inatorial uses of 20, 21. For these uses there
+will be typical examples in 9.5 and 9.6.
+It should be added, that various elaborations ard refinerents of i),
+21 miaht oe cons idered. Shifts by a given number of places, shifts until certain
+sizes have been reachai, etc. do not cons ider the t im rreture as yet as to rMke
+any definite choices in this respect, variants have certain
+advantages in various situations. wili,. for the t irre being, use the sirnplest
+for-rib of 20, 21 as given in Table t l.
+```
+
+<a id="planning-and-coding-006"></a>
+## planning-and-coding-006 — 7.1?7.3: dynamic coding and instruction notation (physical page 14)
+
+Source: [physical PDF page 14](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=14); reading unit `p014`, lines 6–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-005](#planning-and-coding-005), [planning-and-coding-007](#planning-and-coding-007)
+
+```text
+4.
+7.3 he no'* proceed to aralyze . the procedures by which one can bui ld up
+the appropriate coded sequerce for a given problem — or rather for a given nurerica'
+to solve that problem. As was pointed out in 7. l, this Is not a aere question
+Of translat ion {of a rrathenut iCal text into a code), but rather a quest ion Of providing
+a control schere for a highly dynamical process, all parts of which nay undergo repeated
+and relevant changes in the course of this process.
+Let us therefore apprczch the problem in this sense.
+It Should be Clear fran the prel iminary analysis of 7. l, that in planning
+a Ccded seqLErce the thing that should keep prinarily in mi rxi is not the orig inal
+( init appear-arce of that sequence, but rather its funct ioning and cont inued changing
+whi le the process that it controls goes through its course. It is therefore advisable
+to begin the planning at this er6, i to plan first the course Of the præess
+relationship of its successive stages to ttE•ir changirg codes, and to extract fro-n this
+Furthermore, it seerrE equally
+the original ccded seqt*r-xze as a secondary operation.
+clear, that the basic feature of the furctioning of the code in conjurct ion with the
+evolut ion of the præess that it controls, is to be seen in the course VWIich the control
+C takes thrdugh the ceded sequence, paral lel ' irg the evolut ion of that process.
+therefore' Öropose to begin the planning of a ccxied sequerce by laying out a scherøtic
+of the course Of C through that sequence, i . e. throuæh the requi red reaion of the
+select ron memory. This scheretic is the diagræn Of C. Apart fran the above a
+priori reasons, the decision to make the f 1m diagram of C the first step in
+planning appears to be extens ive ly justified by Our experience with the coding Of
+actual probleqs. The exempl if icat ion of this k i Of experience on a mner Of selected
+typical examples forns the bulk of this report.
+In drawing the f 10M diagram of C fol points are relevant:
+First: The reason why C may have to rmve several t irres through the
+region in the selectron nemory is that the operat ions that have to be performed nay be
+repetitive. by indict ion Cover arr integer variable); iterat ive processes
+I ike ive approxinøt ions calculations of sun-s Or of praiucts Of rrany adderds
+or factors all for-red according to the Sarre law (but on a variable ion
+or multipl icatior; irøex); stepwise integrations in a simple quadrature or a mre involved
+different iat equat ion or system Of differential equations, which approxirrøte the- result
+and which are iterat ive in the above sense; etc. — these are typical examp tes of the
+situation that have in mind. TO simplify the nonprclature, will call any simple
+iterative præess of this type an induction or a Simple induction. A multipl icity Of
+such iterat ive processes, -superposed upon each other or crossing each otter will be
+called a induction.
+When a sirrple induction takes place, C travels during each step of the
+indiEt ion o.'er a certain path, at the end Of which it returns to its beginning. Herx:e
+this path ray be visual ized as a loop. will call it an induction loop or a simple
+induction Loo#. A TWI tiple induction gives rise to a cultipl icity•of such loops; they
+form together a pattern which will be called a nultiøLe induction loop.
+propcse to ind icate th-æe port Of the f læ.' diagram Of C by a
+symbol ism of ines oriented by Thus a I inear seqtpnce of operat ions,
+with no iritrtive elerrents in it, will be by syrbols like thcse in Figures
+7.1 a—c, whi le a Simple induction loop is shc».'n in d, eod., ard multiple irdt_Etian
+loops are shOMn in e—f, ecd.
+```
+
+<a id="planning-and-coding-007"></a>
+## planning-and-coding-007 — 7.1?7.3: dynamic coding and instruction notation (physical page 15)
+
+Source: [physical PDF page 15](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=15); reading unit `p015`, lines 22–92.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. Table II rotated clockwise for readable visual inspection and supplementary OCR.
+
+Related: [planning-and-coding-006](#planning-and-coding-006)
+
+```text
+ION
+Abbre—
+viat ion
+ete
+1.
+2.
+3.
+a.
+5.
+6.
+8.
+9.
+10.
+11.
+12.
+13.
+14.
+15.
+16.
+17.
+18.
+20.
+21.
+SIX).
+SIX).
+Ac
+Ac—
+Act.'
+Ah
+Ahr
+cc.S(x)
+x
+x hM
+A
+xx
+x Sp
+R
+Clær acctnulator am add nun.er lazted at positim•y, in the selectrons into it.
+Clær accurulator and subtract nuTber located at posit im x in the selectrons into it.
+Clear acctnulator and add absolute vane of located at posit im x in the selectrons into it.
+Clear accuulator and subtract absolute valcp. of nurrker at position x in the selectrons into it.
+Add numer located at position x in the selectrons into accwuiator.
+Subtract ntJTt•er lcrated at position x in the selectrors into the acctnulator.
+absolute value of nonter- located at position x in the selectrons into the accurulator.
+Subtract absolute val LR of nwt;er It-rated at rxSiticn x in the sela:trors into the accinulator.
+Clear register* am runner lcr.ated at pæition x in the selectrons into it.
+Clear accumlator ard shift numer held in reqister into it.
+Clear acc.wulator ark} mltiply the rurröer Icc-ated at posit im x in tie selectrcns by the nunber in
+reoister, placinq the left—hard 39 dioits of the in the accumulator ard the riqht—harvd
+39 digits of the ansv.er in the register. The sinn dinit of the reaister is to racie equal to
+If the latter is l, tyer is to he arEed into the accumulator.
+the extrere left (non sign)dioit.
+Clear register ard divide tho nunter in the accurrulator hy the nmter lcrated in position x of the
+selectrors, lævim the reapinder in the accumulator ard placim the quot ient in the renister.
+Shift the control to the left-hard order of the order pair located it position x in the selectrcns.
+Shift the control to the rioht-hard order of tip order pair Iccated at pcsition x in the selectrcns.
+If the ntnter in the accurulator is shift the cmtrol as in Cu+S(x).
+If the nurrter in the accuru3ator is shift the control as in
+Transfer the rurber in the accunulator to pcsitim x in the selectrons.
+Replace the left-härd 12 digits of the leftoer-d order Iccatgd at position x by the 12 digits 9 to
+20 (fram the left) in accumulator.
+R?place the left-hard 12 digits of the order located at pcsition x by the 12 dinits 29
+to 40 (frav the left) in the accumlator.
+. E E of the accumulator by Eo Eo Fl
+Replace the contents Eo El
+38
+• • of the accwulator ard the register
+the contents Eo E.
+• • •nag •
+by Ea ...Esp no
+• Req ister neans arithßEt ic register.
+```
+
+<a id="planning-and-coding-008"></a>
+## planning-and-coding-008 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 16)
+
+Source: [physical PDF page 16](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=16); reading unit `p016`, lines 7–33.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-009](#planning-and-coding-009)
+
+```text
+6.
+FIGURE 7.1
+b.
+c.
+d.
+Second: It is clear that this notation is incomplete urEatisfactory.
+Figures 7. 1 d—f fail to indiCate ho•,' C gets into these loops, hov rrany t irres it circles
+each loop, and hcw it leaves it. e-f, eod. also leave it open what the hierarchy of the
+IOOF is, in what order trey are taken up by C, etc.
+Actual ly the description of an indLEtion is only complete if a criterium
+is specified which iruiicates whether the iterat ive step should be repeated, i . e. the
+loop circled mre, or whether the iterat ions are completed and a ne.•.' path is to be
+entered. kcordingly a simple induct ion loop, I ike the Ore shovn in Figure 7.1 d, needs
+an indication of the path on which C enters it at the beginning of the induct ion, the
+path on which C leaves it at the of the induct ion, ard the area in which the criteriurn
+referred to above is appl ied, i.e. Mere it is detemined whether C is to circle the loop
+again, or whether it is to prcceed on the exit path. will denote this area by a box
+with one i nput and two output a r rms, ard call this an alternative box. Thus
+Figure 7.1 d, becorres the mre c'*Vlete Figure 7.2 b. The alternat ive box may also be
+used to- bifurcate a I inear, non—looped piece of Cis course. IMeed, alternative pro—
+cedures nay be required in non—inductive too. This is sho•vn in Figure 7.2 a.
+Final ly m Itiple i rdwtion loops, campleted in this serse, are On c-d, eod- It
+Wi II be noted that in these irÉuct ions in c the srrøll loop represents an irdu:t ion that
+is subordirate to that one on the big Imp, i .e. part of its induct ive step. Simi larry
+in d the two sae I I loops that are attacted to big loop are in the sarTE subordinate
+relation to it, while the loop at the extre'TE right is again subordinate to the loop
+to which it is attached.
+```
+
+<a id="planning-and-coding-009"></a>
+## planning-and-coding-009 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 17)
+
+Source: [physical PDF page 17](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=17); reading unit `p017`, lines 7–33.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-008](#planning-and-coding-008), [planning-and-coding-010](#planning-and-coding-010)
+
+```text
+7.2
+IN
+o uT
+OUT
+mrd: The alternat ive boxes wh ich intraitxed correspond to the
+the intent ion that they express will
+corditional transfer orders xCc , xCc• . .e.
+be effected in the actual CCde by such an order. Of the two output brarches (cf.
+e.g. Figure 7.2 a) one leads to the order fol irmediately in the select ron
+rrpmry upon the last Order on the input brarch, whi le the other leads to the left
+or the right hard order in S(x).
+If at the mcnent at which this decision is rude
+the nur±er u is in A, then u < o causes the first brarch to be taken. will place
+the u which is thus val id into the alternat ive boy, arG rrerk the two brarches repre—
+sent ing the two alternatives u ? o and u Coby + by respectively.
+In this
+way Figures 7.2 a-b beccae Figures 7.3 a-b. Figure 7.3 b be rede still mre
+specific:
+If the it-duct ion variable is i, arø if the irdction is to erd when i
+reaches the value I (if i's suxcess ive values are O, l, 2 .
+then this rreans
+that I iterations are wanted), and if, as shcyn in Figure 7.3 b, the — brarch is
+in the ion loop while the + branch leaves it, then the u of this Figure
+•be chosen as i — I, and the ca-nplete scheme is that shovn in Figure 7.3 c.
+rrøny irøuctions the natural erviing is by i + 1, having reached a certain
+value Then the above
+• — I is to be replaced by i —
+```
+
+<a id="planning-and-coding-010"></a>
+## planning-and-coding-010 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 18)
+
+Source: [physical PDF page 18](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=18); reading unit `p018`, lines 13–43.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-009](#planning-and-coding-009), [planning-and-coding-011](#planning-and-coding-011)
+
+```text
+8.
+FIGURE 7.3
+a.
+c.
+Two or mre Of the f ION diagram nay rærge at certain points.
+This takes place of recess ity at the input of tte alternative box of an irduct ion loop
+(cf. Figures 7.2 arxl 7.3 b—c), but it can also happen in I inear, nor—looped
+piece of CIS course, as in Figure 7.4. This corresponds to two alternative
+procedures leading up to a camon oontinuntion.
+7 The f ICW diagram Of C, as described
+in 7.3 is only a skeleton of the præess that is to be
+represented. pass therefore to examining the add i—
+t ions which have to be mede in order to carp lete ttk
+schere.
+First: (ÄJr f ION diagram in its present
+form does not i rdicate what arithmet iCal operat ions
+ard trarEfers of numbers actual ly take place along the
+various parts of its course. These, hcMeveö, represent
+the properly nether-rat ice I (as distinguished f rcxm
+log activities Of the rrøchine, ard they should be
+sti0Nn as such. For this reason '.•æ will denote each
+7.4
+area in which a coherent group of such operatiors takes place by a special which
+we call an operation box. Since a box Of this category is an i into the •f ICN
+diagram at a point where no branching or merger takes place, it rrust have one input
+arro,v and one output arrcw. This distinguishes it clearly f rm the alterrztWe boxes
+of Figure 7 3. Figures 7.5 the positions of operation boxes in varlas
+looped unlooped f ION diagrans.
+FIGURE 7.5
+a.
+c.
+```
+
+<a id="planning-and-coding-011"></a>
+## planning-and-coding-011 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 19)
+
+Source: [physical PDF page 19](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=19); reading unit `p019`, lines 8–45.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-010](#planning-and-coding-010), [planning-and-coding-012](#planning-and-coding-012)
+
+```text
+9.
+Second: Bhile•C rrO.es along the f ICW diagram, the contents of alter—
+native boxes (which have icated) arvi of operat ion boxes (which have nat
+indicated yet J will, in general, keep charging — arri so will various other things ttBt
+have to be asscciated with these in order to carplete the picture (arri which Be tuve
+not yet irdicated either). This whole modus præedendi assures, hoæver, that the f iOS'
+diagram itself (i.e. the skeleton of Figure 7.3) remains urwFanged. This, hcvever, is
+not unqual ifiedly true. To be specific: The transfer orders xC, xc' (urrorøitional ) ,
+and also xCc, xCc' (corditional ) , can be changed in . course of the process by substi—
+tution orders xSp, xSp1. This changes the connect iors between various parts Of the
+flay diagram. When this happens, will terminate the corresporviim part of the flay
+diagram with a circle nerked with a Greek letter, and originate the alternat ive con-
+t inuat ions f rm c i m les nerked with properly indexed spec inens of the Sane Greek letter,
+as shcwn in Figure 7.6 b. call this arrangerænt a variable remote connection.
+FIGURE 7.6
+The circle
+b.
+Q.
+is t entrance to t his remte connect ion, the c i rc
+are the exits from it.
+WTE l: The lettering with Greek letters a, p, Y, . need neither be
+monotone nor uninterrupted, and deciral fract fol loving the Greek letters be
+used for furthEr subdivisions or in order to interpolate omiss ions, etc. All of this
+serves, of course, to facil i tate rrodificat ions arri correct ions on a diagram which is
+in the process of being drawn up. The sane prirriples will be appl ied subsequently
+to the enumerat ions of Other ent it ies: Constarry intervals tcf. the last gzr-t of 7 . 6,
+the basic Greek letters being replaced by Arabia nugrerals ) , storage posit ions (cf. the
+beg inning of 7.7, the basic Greek letters being replaced by Engl iSh capitals J, operation
+boxes alternat ive boxes (Cf. the last part of 7.8, the bas ic Greek letters being
+replaced by Ronen nurreralsJ.
+In the case Of an uxond itional trarsfer order which is never
+subst i tuted, the f I cw diagram can be kept rig id, ard no rerrote connect ion need be used.
+It is neverthe less sorpt convenient to use one even in st_ch a case as shc»vn in
+Figure 7.6 a. Irv-deed, this deVice may be used at any point of the f 1m' diagram, even
+at a point where no transfer order is læated arid C scans I inearly ( i.e. frcM1 One
+half—word to the next one). This is so when the f lcw diagram threatens to assure an
+urnvieldy form (e.g. grov off the paper' ard it is desired to dissect it or . to rearrange
+it. An arrangerent of this type will be cal led a fixed remote connection.
+```
+
+<a id="planning-and-coding-012"></a>
+## planning-and-coding-012 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 20)
+
+Source: [physical PDF page 20](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=20); reading unit `p020`, lines 6–60.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-011](#planning-and-coding-011), [planning-and-coding-013](#planning-and-coding-013)
+
+```text
+rhe c i rc les and
+are again the entrance ard the
+exit Of this connection. The Greek letter at the exit need, of course, not be indexed
+nox. It is son-etirres convenient to give a rermte connection of either type more than
+one entrance. These are then equivalent to a pre-entrarce confluence. They ney be
+used when the gearetry Of the f 1 diagram rakes the expl icit drawing of the conf luence
+i nconven ient.
+7-5 pointed Out at the beg inning of the Secorri rerrerk in 7.4, that
+our present form Of the flav diagram is Still incanplete in two "Bjor respects:
+the contents of the operat ion boxes have not yet been indicated. Secorri, certa in
+further features of the process that accompanies the course of C have not yet been
+brought out. Let us begin by analyzing the latter point.
+No compl icated calculat ion can be carried out without storing considerable
+nurrerical ffhterial while the ion is in prcgress. This storage problem has been
+cons idered in cons iderable detail in Part of this report (cf. in particular 1.3, 2,
+4 there}. The storage involve data which are needed for the entire duration of the
+præedure, and are therefore never changed by that præedure, as well as data which
+play a role only during part of the procedure (i.e. during one circl ing of an induct ion
+1009, or during a part of the course over a linear piece or an induct ion loop) ard nay
+therefore be changed ( i.e. replaced by other data) at the end of their usefulness.
+These changes sen,'e, Of course, the very important purpose of making it possible to use
+the same storage (selectron mermryl space successively for changing and differænt eras
+We will talk accordingly of fixed and of variable storage. These corcepts are to be
+understocd as being meaningful only relatively to the praedure wh ich are cod ing.
+it will also be found useful to use them relat ively to certain parts of
+Cccas i Ona I I J
+that præedure.
+Before develop the rteans to irriicate the fom and contents of the
+(fixed ard variable) storage that is required, it is necessary to go into another
+natter.
+A rretherrøtical-logical procedure of any but the Icyæst degree of
+ccynplexity cannot fail to require variables for its description.
+It is important
+to visual tze that these variables are of kinds, narrply: Fi rst, a kind Of
+variable for which the variable that occurs in an induction (or mre precisely: with
+respect to which the irduction takes place J is typical. Suzh a variable exists only
+within the problem. It assunps a sequerce of different values in the course of the
+procedure that solves this problem, arxi these val LEs are stccess ively deterr,ined by
+that procedure as it develops. It is impossible to substitute a value for it ard
+senseless to attribute a value to it "fran the outside". Suth a variable is cal led
+(with a ten-n borrmed f ran forrel logics) a bound variable. Second, there is another
+kind of variable for which the paraneters of the problem are typical
+iMee-& it is
+essentially the sane thirg as a parameter. Such a variable has a fixed valLE
+out the procedure that solves the problem, i.e. a fixed value for the entire problem.
+If it is treated as a variable in the præess of planning the sequerxze, then a
+value has to be subst ituted for it and attribited to it ("fran the outside"),
+in
+order to prcxiure a ccxled that can be actual ly fed •into the mchine. Sl.Eh
+a variable is cat led (again, borroving a term fran fornBl l:ogics) a free variable.
+[n disctßsing the Veys to ird icate the form ard contents of the
+storage that is required, there is no traJbie in deal Ing with free variables:
+They are as gocx:f as constants, aryl the fact that trey will acquire specific values
+only after the mriing p«eess is cornpleted does not influence or compl icate that
+process. Also, fixed storage offers no problerrs. The real crux of the rmtter
+```
+
+<a id="planning-and-coding-013"></a>
+## planning-and-coding-013 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 21)
+
+Source: [physical PDF page 21](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=21); reading unit `p021`, lines 7–58.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-012](#planning-and-coding-012), [planning-and-coding-014](#planning-and-coding-014)
+
+```text
+is the variable storage ard its changes. An item in the variable storage changes when
+(This is effected by the operat ion boxes,
+it is expl icitly replaced by a different one.
+cf. 7.4 ard the detailed discuss ion in 7.7, 7.8.) When the value of a bound variable
+changes 'this is effected by the subst itut ion boxes, cf. the last part of 7.6', this
+should also cause irdirectly a change of those variable storage i!erTE in whose expression
+this variable xcurs. Ho•ever, we prefer to treat these variable value changes merely
+as changes in notat ion which do not entail any actual Ohange in the relevant variable
+storage i teas. Cn the contrary, their funct ion is to establ iSh agreement between pre—
+ced ing and fol ICNing express ions (occupying ident iCal storage pos it ions which differ
+as expressions, but whose difference is rermved by the subst i tut ion in question. (For
+details cf. the third rule relative to storage in 7.8. I
+7.6 After these preparat ions we can proceed to an expl icit discussion
+Of storage and Of bourgi variables.
+In order tc be able to give complete indicat ions Of the state of these
+ent it ies, it is necessary to keep track Of their changes. We wi II therefore nark along
+the f ICN diagram the points where charges of the content of any variable storage or of
+the value or dcnv•tin Of variabil i ty Of any -bound variable takes place. These points will
+be cal led the transit ton Potats. The transit ion points subdi.vide the f I ON diagram into
+conrected pieces, a lorg each of which all changing storages have constant contents ard
+all bouM variables have constant values.
+The rermte connect ions Of the second remark
+in 7.4 rate in this respect as if they here unbroken paths. For a variable remote
+connection all brarthes are regarded in this way.) these constancy
+intervals. Clearly a constarcy interval is bounded by the transition points on its
+end i ngs.
+NOTE: The constant contents and va lues attached to a constarcy interval
+'-ray , Of course, vary frcn one passage Of C over that interval to another.
+Let us nov consider the transition points sorewhat closely.
+introduced so far three kinds Of interzruptions Of the f Icy.' diagram: Alternative boxes,
+operat ion boxes, rermte connect ions. Of these thc first the third effect no charges
+of the type under cons iderat ion, they influence only the course Of C. The seccM, hcw—
+ever performs arithrretical operat ions, therefore it rrey require storage, and her-ce
+effect changes in the variable storage. In fact, ail variable storage originates in
+such operat ions, and all operat ions Of this type- teminate in•cons igning their results
+to storage, which storage, just by virtue of this orig in, must be variable. Accordingly
+the operat ion boxes are the transition points irasrruch as the Chang ing of variable
+Storage is correrred. Thus we are left to take care of •those transit ion points which
+Change the values or del imit the done ins of variabil i ty cf bound variables. Changing
+the value Of a bound variable involves a Fithrret iCal operat ions which rust be icated.
+An i rKiuct ive variable i, which serves to entnerate SLCCessive stages cf an iterat ion,
+urcergoes at each chånge an i '-crease by one. denote this subst i tut ion by i + i .
+It is, hcyever, neither necessary nor advisable to pemit no ot Ypr subst i tut ions.
+Irdeed, even an irduction or iterat ion begins with a different subst itution, narrely
+that one assigning to i the val LEO [or I ] i . e. O i for 1 i
+] . In røny cases,
+of which will pregent exarples, it is necessary to subst i tute with still mre
+—+ i, wrere f is a furction of i itself as Bell as
+Of Other variables j, k,
+'For details cf. the first part of 7.7.' For this
+reason wi I denote each area in which a coherent Change or group Of sux:h changes
+takes place, by a speciat box, which •.•.e call a substitution box. Next consider
+```
+
+<a id="planning-and-coding-014"></a>
+## planning-and-coding-014 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 22)
+
+Source: [physical PDF page 22](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=22); reading unit `p022`, lines 5–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-013](#planning-and-coding-013)
+
+```text
+12.
+changes, actually imitat ions, of tt-e dare ins of variabi it y of one or mre bound
+variables, individually or in their interrelationships. It ray be true, that whenever
+C actually reaches a certain point in flow diagram, one or rrore bourri variables
+will necessarily possess certain specified values, or pcssess certain propert ies , or
+Furthermore, at a point, irdi—
+sat isfy certain relations with each other.
+cate the val id ity of these I imitations. For this reason will denote each area in
+which the val idity of such I imitations is being asserted, by a Special box, which '.•.'e
+call an assertion box.
+The boxes of these two categories (substitut ions and assert ions) are,
+I ike the operation Doxes, insertions into pieces Of trp f ION diagram where no
+or rrergers take p lace. They have therefore one i nput arro•é and one output arrc»a. This
+necessitates sorre special nerks to dist inguish them operation boxes. In
+these boxes in detail, certain dist inguishing rterks of this type will arise auta•røt ically
+(cf. as above), but in order to clarify tetters we will also nark every substitution and
+In addition, we will, for the t irre be it-y, also nerk substitution
+assert ion by a cross
+boxes with an s, fol Io.•ed by the bound variable that is changed and assert ion boxes
+with an a.
+Thus the operation boxes, the subst itution bues ard the assert ion boxes
+produ:e together the dissect ion Of the f ION diagram into its constarEy intervals.
+wi I I number the constarcy intervals with Arabic nunerals, with the rules for
+subdividing, rradifying and correct ing as given in Note I in 7.4.
+TO conclude, observe that in the course Of circl ing an it-duct ion loop,
+at least one variable (the induct ion variable) change, and that this variable must
+be given its initial value upon entering the loop. F-énce the junction before the alter—
+nat ive box of an induct ion loop rust be preceded by subst itut ion boxes atong bothrpaths
+that lead to it: Along the loop aM along path that leads to the At
+fran an indistion loop the irxiLEtion variable usually has a (final) value which
+in advarce, or for which at any rate a mathenat ical syntol has been introduced.
+amounts to a restrict ion of the domain of variabil ity of the irdct ion variab le,
+the exit has been crossed — indeed, it is restricted f run then on to its final
+i.e. to only one value. "-erce this is usual ly the place for an assertion box.
+A schere exhibiting all the features discussed in this sect ion is
+in Figure 7.7.
+FIGURE 7.7
+(11
+3
+7
+the exit
+is
+This
+once
+value,
+s hc»an
+8
+```
+
+<a id="planning-and-coding-015"></a>
+## planning-and-coding-015 — 7.7?7.8: explanatory boxes and storage representation (physical page 23)
+
+Source: [physical PDF page 23](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=23); reading unit `p023`, lines 8–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-016](#planning-and-coding-016)
+
+```text
+13.
+7.7 ncw complete the description of our rrethod to irdicate the
+successive stages aM the furrt ion ing of storage.
+The areas in select ron (Tenor-y that are used in the course Of the
+præedure under cons iderat ion will be designated by capital Petters, with the rules
+for ing, rod if ying ard correcting as given in Note in 7.4.
+The changes in the contents of this storage are effected by the operat icn
+boxes, as described in 7.6. An operation box should therefore contain the follo.ving
+ions: F irst, the expressions which have to be calculated. Secord, the storage
+posit ions to wh ich these express ions have to be sent subsequent ly. The latter are
+. if the expression Viri¯ (x, y, z are variables
+stated b} an affix "to .
+or other expressions) is to be for-red and then stored at C. 2, then the indicat ion
+will be to. C. 2". It nay also be desired to introduce a new syrrbol for this
+expæssion,• i.e. to deftne ore, e w = Then the indication will be
+= to C. 2".
+It should be added that an expression that has been calculated in an
+operation box rray also be sent to a variable remote connect ion (i.e. to its entrarce,
+cf. the last part of 7.4). The expression must, of course, be the designation of ore
+.of the exits of that connect ion, and the operat ion cons ists of equat ing the designat ion
+of the entrance to it. The latter is the Greek letter (poss ibly with decirTBls, cf.
+töte I in 7.4), the forrrer is this Greek letter with a definite index.
+No affix
+is needed •in this case, since the des ignation of the entrame determines
+the cont-ect ion that is rreant. Berce such an ogeration 'coks I ike this: "a = .
+One or mre irdicat ions of this kind rake up the contents of every operat ion box.
+NOTE l: An affix "to .
+rrøy also refer to several positions.
+E.g.
+M)TE 2: The opt ional procedure Of defining a rew symbol by an express im
+forrred in an operation box beco-res nemiatory when that box is fol lcm•ed by a point of
+confluerEe of several paths. Indeed, cons ider the two operat ion boxes from which the
+Constar-cy interval 7. issæs in Figure 7.7. Assure that their contents are intended
+to be 'tx + y to C. ard "x —y to C. respect ively. In Order that C.I have a
+fixed content throughout the constarcy interval 7, as required by our definit ions,
+it is necessary to give the alternat ive expressions x + y and x — y a
+say z. Then the contents of the two operat ion boxes in quest ion will be "z = x + y
+to C. l" ard •z -x —
+Y to C. l".
+NCTE 3: A variant Of the præedure of a new syrnbol is to
+define an expression involvirg a rew syribol, which will afterwards only occur as a
+whole, or to defiæ tte val LR of a funct ion for a value Of its variable (usual ly
+in an i rdtctionl. E.g.
+ft i ' ' to A.2".
+The contents of a subst itut ion box are one or mre subst itut ions of the
+type described in 7.6, in conrpct ion with the definit ion of the corcept of a substi—
+tution box.
+Suzh a Substitution is wri tten like this:
+I-ere i is a bourÉ variable, the one whose value is being changed (subst i tuted), whi le
+. is an expression which rrøy Or ney not contain i itself as
+as any other bound variables j, k,
+. (and ary free variables or constants).
+```
+
+<a id="planning-and-coding-016"></a>
+## planning-and-coding-016 — 7.7?7.8: explanatory boxes and storage representation (physical page 24)
+
+Source: [physical PDF page 24](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=24); reading unit `p024`, lines 8–53.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-015](#planning-and-coding-015), [planning-and-coding-017](#planning-and-coding-017)
+
+```text
+14.
+equal it ies,
+table.
+In
+contents Of an assert ion box are one or mre re lations. These rrøy be
+or inequal ities, or any other expressions.
+The successive contents of the storage positions referred to above
+. with decirrzl fract ions J rust be shoNn in a separate table, the storage
+conjunct ion with this table a ist Of the free variables should be given
+(in one line) ard a iSt of the bound variables I i o the next
+The storage table is a double entry table with its I ines corresponding
+to the storage pos it ions, ard its columns to the constancy intervals. Columns arvd I ines
+are to be r-arked with the syrrbols and nurr%ers of the entities to which they correspond.
+Each field of this table should shov the contents of the position that corresponds to
+its I ine throughout the constarcy i nterval correspond ing to its col umn. These contents
+are expressions which tray contain bound variables as ver I as free variables constants.
+It shouZd be noted that the bound variab les rust appear as SLEh, without any attempt to
+subst i tute for them their actual values, sir-Ce only the forner are attached to a given
+constancy interval as such, whi Je the latter also on the Spec if ic stage in
+course Of C, in which C passes at a particular occas ion th,rotgh that constancy interval.
+It is obviously canvenient to fill in a field in the storage table only
+if it represents a change fran the preceding constarcy interval . Therefore ve reserve
+the right (Without Baking it an obl igat ion) to leave a field empty if it represents
+no such change. In this case the field must be thought. of as having the sane content
+as its I ine had in the colurm (or umns) Of the constancy interval (or intervals)
+irrnpdiate;y precedir8 it along the f diagram. ( In the plural case, which occurs
+at a junct ion of the flov diagram, these columns [constancy intervals] rust al I have
+the same content as the line in quest ion. Indeed, without observing this rule, it
+would not be possible to treat all incoming bramhes Of a junct ion as one constzrcy
+interval. Cf., e.g. the constarcy intervals 2 7 in Figure 7.7.)
+If this ante—
+cedent column is not the one imediately to the left of the column in quest ion, it tray
+be advisable tc irdicate its number in brackets in the field in quest ion.
+Certain storage positions ines) possess no relevarce during certain
+constancy intervals (columns) i . e. their contents are changed or produced aM becaT,e
+significant at other stages of the præedure in other columns). The corresponding
+field rrøy then be narked With a dash. The repet it ion rules given above apply to these
+fields with too.
+A scheme exhibiting all these features Is shown in Figure 7.8.
+FIGURE 7.8
+2
+2
+P
+[2]
+gti +1)
+flj+l,i)
+```
+
+<a id="planning-and-coding-017"></a>
+## planning-and-coding-017 — 7.7?7.8: explanatory boxes and storage representation (physical page 25)
+
+Source: [physical PDF page 25](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=25); reading unit `p025`, lines 6–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-016](#planning-and-coding-016), [planning-and-coding-018](#planning-and-coding-018)
+
+```text
+15.
+In Certain problems it is advantageous to represent several storage.
+posit ions, i . e. several t by one I ine which must then be by a generic
+variable, or by an expression containing one or mre such variables, arc not by a
+definite nurröer. This variable will replace one or mre (or all ) of tt-e decirrøl
+digits (or rather numbers) fol after the capital letter that denotes the
+storage area in which this æcurS, or these variables my enter into an express ion
+replacing those gig its (nurters'.
+a I i he which is narked in this way the fields
+will also be occupied by expressions containing that gereric variable or variables.
+"Expressions" incliÆe, of course, also explarat ions which state what expression
+should be forrred deperd ing on various alternat ive ities.
+It rrøy be desi rab*e to use such variable—aerked lines only in a part
+of the storage table, i . e. only for certain col ums (constancy intervals}. Or, one
+want to use different system Of variable rrørkings in different parts. This
+necess itates breaking the storage table up accordingly and grouping those columns
+(constancy intervals J together for which the Same system of var iable markings is
+be ing used
+Sirce the f Icy,' diagram is fixed arÉ expl icitly drawn, therefore, the
+columns of the storage table are fixed, too, and there can be no quest ion of variable
+rrørkirgs for them.
+In actual Jiract ice it may be preferable to distribute alt or part of
+this table over the f ICW diagram. This can be done by attaching avery field at which
+a change takes place to that constarry interval to which it i .e. its column) belongs,
+with an indicat ion of the storage posit ion that it represents.
+(This appl ies to
+fields Whose I ine has fixed as Be M as to thæe whæe I ine has variable
+mrkings, cf. above.) Since the irrnpd iately preceding constarcy intervals are at
+once seen in this arrangement, there is here no nee< to give any Of the indicat ions
+suggested by our repet it ion rules.
+For mnemtechnical reasons it Tay be occasional ly
+worthwhile to ind icate at a constancy interval the contents of certain fields at which
+no changes are taking place at that stage (e.g. because no change took place there over
+a long run, and the brig indicat ion is at a remote point in the f I ON diagram).
+These rrethcÉs, the tabular aM the distributed icat ion Of tte storage, mey also
+be used together, in mixed fornE. Thus, if the distributed nethod is used in principle,
+there nay be constarEy intervals at Which (Tore fields have to be described than con—
+venient (e.g. for reasms of space'. Such an interval mey then be marked by an asterisk,
+ard a "arhat storage table aede, which covers by its coli-rms only the constancy inter—
+vals with asterisks. Figure 7.8 is the tabular form Of storage table Of a f ICW
+diagram which is part of that one of Figure 7.7 (without the port ion along tre constarcy
+intervals 7, 8, part of which will be given in full in Figure 7. IO. The
+distributed form is shoal in Figure 7.9.
+```
+
+<a id="planning-and-coding-018"></a>
+## planning-and-coding-018 — 7.7?7.8: explanatory boxes and storage representation (physical page 26)
+
+Source: [physical PDF page 26](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=26); reading unit `p026`, lines 7–37.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-017](#planning-and-coding-017), [planning-and-coding-019](#planning-and-coding-019)
+
+```text
+16.
+F I GI.JRE
+7.0
+2
+2 9(1)
+7.8 The Only const i tuants. Of the f diagram about which mre remains
+to be said are the operation boxes, the subst itut ion boxes and the assert ion boxes
+although even for these short descript ions were given in 7.7. will nc>v discuss
+them exhaust i vel y.
+An operat ion box conta ins one or rrore express ions, and it indicates
+that these expressions have to be calculated. Every expression rray or rrøy not be
+preceded by a syrrbpl to which it is equated aM which it is defining (cf. also
+Note 3 in 7.7 J; and it trey or ray not be follcwed by an affix "to
+the
+being occupied by the symbol Of a def.inite posit ion, at which the express ions in
+is rnissirg, this neans that the
+question is to be stored. If the affix "to .
+expression in quest ion rrey be stored in the accumulator or the aiithlret ical reg ister
+or othersise, but that any rate it will not be needed at any remoter future stage.
+A subst itution box conta ins me or mre expressions of the type
+'If i" where i is a bourri variable, and f is an expression wh ich or rray not
+contain i arr] any other bourd variables, as well as any free variables and constants.
+A subst i tut ion box is aløhys narked With a cross g.
+An assert ion box contains one or mre relations (cf.the correspo.Ging
+discussion in 7.7).
+It is always nerked with a cross
+The three categories of boxes that have just been described, express
+certain act ions which nwst occur, or situat ions which rrust exist, when C passes in
+its actual course through the reg iors which they represent. will call these the
+effects of these boxes, but it rust be real i zed, that trpse are effects in a symbol ic
+sense only.
+```
+
+<a id="planning-and-coding-019"></a>
+## planning-and-coding-019 — 7.7?7.8: explanatory boxes and storage representation (physical page 27)
+
+Source: [physical PDF page 27](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=27); reading unit `p027`, lines 10–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-018](#planning-and-coding-018), [planning-and-coding-020](#planning-and-coding-020)
+
+```text
+17.
+The effects in q'pst ion are as fol
+The bound variables occurir,g in the express ions of an operat ion box must
+be given the values which they pssessed in the constarEy interval itmEdiately preced ing
+that box, at the stage in the course of C irmediately preceding the one at which that
+box was accually reacred. The calculated expression rust then be s Lhstituted in a
+storage pos it ion corresporxi ing to the irmediately fol lovirg cbnstarcy interval, as
+ird icated.
+A Subst i tut ion box never requires that any SPEC if ic lculat ion be rrade,
+it indicates only what the value of certåin bound variables will be from then on.
+Thus if it contains "f —s i", then it expresses that the value of the bound variable
+i will be f in the itm•ediatel.y fo' loving constancy interval, as well as in atl subse—
+quent constancy intervals, which can be reached frun there without cræsing another
+substitüt ion box with a —Y i" in it. The _expression f is to be formed with all
+bound variables in it having those values which they possessed in the constarcy interval
+irmediately preced ing the box, at ttE stage in the course of C irmediately preceding the
+one at which that was actually . (This is particularly significant for i
+itself, if it æcurs in f.)
+An assert. ion box never requires any calculat i Ors be nude,
+it ind icates only that certain relat ions are atto-rat ical ly fulfi led whenever C gets
+to the region which it occupies.
+The contents of the. various fields of the storage table (tabulated' or
+distributed) i .e. the storage positions at the variots Constancy intervals
+rust fulfill @rtain Conditions.
+It should be noted that these rerarks apply to the
+contents of the field in the flou diagrams, and-not to the contents of the correspoM-
+ing posit ions in the actual rachine at any actual rorent. The latter obtain from the
+for-rer by subst in each case for every bound variable its va accord ing to
+actual stage in the Course of C and Of course for every free riable its value
+corresponding to the actual problem being solved. Nov the condit ions referred to above
+are as folloas•.
+First: The i nterval in quest ion is irfrrediately preceded by an operation
+box with an expression in it that is referred "to this fie:d: The field contains
+the express ion in q•æst ion, unless that expression is preceded by a symbol to which it
+is equated arÉ which it FS defining (cf. also Note 3 in 7.7),
+in 'Vhich case it contains
+that syrröol.
+&cond: The interval in question is irmediately preceded by a Substi—
+tut ion box containing or rrore express ions "f i" where i represents any
+variable that CCCuZS in expression Of the f ield: Replæe in the expression Of the
+field every occurrence Of every SLCh i by its f. This rmst produce the express ion which
+is val id in the field of the sane storage posit ion at the constancy interval irmediately
+preced ing this subst i tutim box.
+Third: The interval in question is irrrvadiate'y preceded by an assertion
+box: It rust be demostrable, that the expression of the field is, by virtue of the
+relations thÅt are val idated by this assert ion box, equal to the express ion whith is
+valid in the field of sare storage position at the constarcy interval irmediately
+```
+
+<a id="planning-and-coding-020"></a>
+## planning-and-coding-020 — 7.7?7.8: explanatory boxes and storage representation (physical page 28)
+
+Source: [physical PDF page 28](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=28); reading unit `p028`, lines 14–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-019](#planning-and-coding-019)
+
+```text
+18.
+preceding this assertion box. if this derronstration is not canpletely obvious, then
+it is desirable to give indicat ions as to its nature: The min stages of the
+'Tay be incl uded as asser± ions in the assertion box, or sorp reference to the place
+where the proof can be found ney be made either in the assertion box or in the field
+under considerat ion.
+Fourth: The i nterval in quest ion is iately preceded by a box which
+fal Is into ne ither of the three above categories. The field contains a repet it ion of
+what the field of the San-e storage posit ion contaired at the constarzy interval irTrre -
+diately preceding this box.
+If the interval in quest icn contains a rrerger (Of several branches
+Fifth:
+of the f lm diagram}, so that it is in-mediately preceded by several boxes, belonging to
+any or all of the four abwe categories, then the correspond ing condit ions (as stated
+above) must hold with respect to each box.
+Finally: The contents of a field need not be if it is felt that
+the amiss ion (or rather the aggregate of sirrultaneously effective omissions of this
+type) wi II not impose a real strain on the reader, due to the annunt of impl icitly
+given rrøterial that he rust rerrerr,ber. Such unissions will be indicated in rteny cases
+where nere repetitions of previous contents are involved. (Cf. the renerks rrBde in
+this connect ion in 7.7, in the course of the discussion of the distributed forrn of
+scorage.
+The storage need not All the storage posit ions actual ly used.
+The calculat that ape required by the expressions Of an operation box or Of an
+alternat ive box "By necessitate the use Of add it ional storage space. This space is
+then sgecifically attached to that box, i.e. its contents are no longer requi red and
+its capad i ty is avai Jable for c&her use as soon as the instruct, ions of that box have
+been carried out.
+rigure 7. sho•vs a complete f diagram. It differs f run that one of
+Figure 7.9 only inastm_Kh that the operation boxes and the storage boxes were left empty
+It is easily verified that it represents the (doubly i rdct ivel prccedure
+then.
+defining the nuqter p, which is desqcibed unaer it.
+FIGURE 7.10
+1
+1 t,A.1
+2
+12.6
+2
+2
+- gti).
+2
+2
+```
+
+<a id="planning-and-coding-021"></a>
+## planning-and-coding-021 — 7.9: coding stages and explanatory column (physical page 29)
+
+Source: [physical PDF page 29](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=29); reading unit `p029`, lines 5–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-022](#planning-and-coding-022)
+
+```text
+Anong the boxes Shovn on this f 1m d iagram the operat ion boxes and the
+alternat ive boxes ard the variable remote connect ions require further, detailed ccding.
+The subst itution boxes and •the assert ion boxes { i.e. the boxes which are marked by a
+are purely explaratory, and require no coding, as pointed out earl ier in 7.8.
+The storage boxes have to be essent ially as they stard. (For a II this cf. the
+details given in 7.9.) Thus the remaining problem of coding is attached to the opera-
+t ion boxes, the alternat ive boxes and the variable renote connect ions, ar-É it Wi
+prove to be in the nein only a pr±ess of static translation (cf. the erd of 7. I as
+In order to prepare the ground for this final process of detai led
+as 7-9).
+{stat ic) ing, enurrerate the operat ion boxes and the alternat ive boxes by Rcyrøn
+nun-era Is, with the rules for seqtEncing, subd ividirg, nod if ying and correcting as
+Figure 7. shcvvs such an enumeration. The variable remote
+given in Note I in 7.4.
+connect ions are a I ready enuærated.
+Final ly, irWcate the beg inning arri the erd Of the ccnpleted f 1m
+diagram by two circles
+and
+7.9 Ve can describe the actual præess of coding. It is a
+success ion Of *eps that take place in the fol Imi rg Order .
+First: is, Of Course, preceded by a iCal stage of
+preparat ions. The rratherrøt iCal or nztherTRt ica'—phys iCal process of understanding
+the problem, of dec idirg with what assumpt ions and what ideal izations it is to be
+cast into equat ions Conditions, is the first step in this stage. The equat ions
+arxi corÉit ions thus obtained are rigorous, with respect to the system Of assunpt ions
+andideal izations that has been selected. Next, these equations and condit ions, which
+are usual ly of an analyt iCal possibly of an impl icit nature, rn_jst be replaced by
+arithnetical aru expl icit procedures. (These are usually step—by—step processes or
+SWCeSS ive approxiret ion prccesSeS, or processes 'Nit h, both of ttese characterist ics —
+and they are a lmst a 'ways characterized by multiple i rdLEti0ns.) Thus a procedure
+obtains, which is approx irate in that sense in which trp preced ing one was rigorous.
+This is the second step in this Stage.
+It should be noted that the first step has nothing •to do with comput ing
+or with røchines: It is equally necessary in any effort in mthermt ics or aepl ied
+ics. Fur-then-mre, the second step has, at least, mthing to do with
+rechanlzat ion: It muld be equally necessary if the problerrs vere to be cmputed
+"by hand l'.
+Final ly, the precision of the approx ion prccess, introduced by t Fe
+secuxd step, rust be est irreted. This inclides the .errors due to the approximations
+by the sæcond stpp, as I as the errors due to the machiryrs recessari ly
+rourding Off to a fixed ntner Of digits ( in our projected machine to a Sign plus 39
+binary digits, cf. part l. Of this report J after every iate operat ion
+tspecifical ly: after every rmltipl icat ion division). These are, of course, the
+we I I—kncwn categories Of truncation errors and Of round—off errors, res*ctive'y.
+In connection with these it is also necessary to eSt in-ate Sizes to which
+the numbers that occur in any part and at any stage of the calculat ion, gro«.
+After these imits have been establ isred, it is necessary to arrange the calculation
+so that every nurrtcr is represented by a mltiple lby a fixed of 2) which I ies
+in rarpe in .which the mchine porks ( in Our projected rrachire between —l ard I ,
+cf. Part 1 of this report). This is the third and last step of this stage. Like
+the second step, it is necessary because of the camutational character of the prob 'en,
+r-atrer than because of the use of a •røchine.
+```
+
+<a id="planning-and-coding-022"></a>
+## planning-and-coding-022 — 7.9: coding stages and explanatory column (physical page 30)
+
+Source: [physical PDF page 30](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=30); reading unit `p030`, lines 10–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-021](#planning-and-coding-021), [planning-and-coding-023](#planning-and-coding-023)
+
+```text
+20.
+In our case there ex ists an alternat ive with respect to this third step:
+It rray be carried. Out by the planner, "rrathecrøt iCal I y", or it nay be set up for ccynpu—
+tat ion, in which case it be advantageous to have it, too, carried out by the machine.
+After these pret iminaries are the coding proper Can beg in.
+Second: Coding begins with the Of the f 1 0B,' diagratæ. This is
+the dynatnic or macrosco#ic stage of cod ing. The f ION diagram must be drawn on
+basis of the rules and princ iples developed in 7-3
+— 7.8. It has been our i nvariab'e
+experieæe, that once prob 'em has been understcnd and prepared in the sense of the
+preced ing first remark, the drawing of f ICN diagram presents I itt}e difficulty.
+Every nhtherrøt ic ian, or every rrcÉerately aztherret iCal ly trained person should be able
+to do this in a rout ine nanner, if he has famil i?rized h iffEelf with the nein examples
+that follow in this report, or if he has had som equivalent training in this rrethod.
+It' is advisable to draw a (usual ly partia') storage table for the mir
+data of the proble&l, and from then on either purely distributed, or mixed distri—
+buted and tabular storage, pari passu with the evolution of the diagram. The f
+d iagram is, Of course, best started with one Of the lc»est innermcEtJ inductions,
+praeed 'n9 to higher irduct ions which contain it, revert ing (after these are
+•exhatßted) to another lo•.est induction if any are left), etc., etc.
+No diff icutt.y
+wil I be found in keeping the developing diagram corplete at every stage, except
+for certain enunprat ions which are better delayed to the ervi (cf. be ION).
+tt is difficult to avoid errors or omissions in any but the simplest
+problers. Ho.•.ever, they should not be 'frequent, arri will in rüFt cases signal ize
+theaEe Ives by soæ inner rraladjustiænt Of the diagram, which obvious before
+the diagram is convleted. The flexibil ity of the system of 7.3 — 7.8 is such that
+correct ions and modificat iohs of this type can almcst alnays be appl ied at any stage
+Of the praess without throNirg Out Of gear the prccedure Of drawing the d iagram,
+and in part icuiar without creating a recessity of "startirQ all over again".
+The enumeration of the distribüted storage and of the rermte connections
+and of the constarcy intervals should be done pari passu with the drawing of the diagram.
+The enumeration Of the operation boxes aru Of the alternative boxes, on the other tend,
+is best done at the end after the f Icy,' diagram has been canpleted.
+After a nuder-ate experience has been acquired, nnny simpl i fications and
+abbreviations will themelves to a Irmst any coder. These are best v as
+hdividual variants. wish to mention only one here.' If distributed storage is
+extensively used, only a (if any) armng the caretanéy intervals will have to be
+en umerated .
+Third: The next stage consists of the trdividual coding of every
+operation box, at ternative box ard variable remte connection. This is the static
+or microscopic stage of cod ing.
+Its min virtue is, that the boxes in quest ion can
+now be taken up one by ard that the work on each of them is essential ly un—
+affected by the work Of others. (With one exception, cf. below.
+feel certäin that a moderate armunt of with this stage
+of coding suff ices to renove fron it all diff icult ies, ard to rreke it a perfectly
+rout ine operation. The actual præedure Wi II arnply Clear by reading the
+examples that fol in this report. state here only general principles which
+govern the procedure.
+```
+
+<a id="planning-and-coding-023"></a>
+## planning-and-coding-023 — 7.9: coding stages and explanatory column (physical page 31)
+
+Source: [physical PDF page 31](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=31); reading unit `p031`, lines 5–60.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-022](#planning-and-coding-022), [planning-and-coding-024](#planning-and-coding-024)
+
+```text
+21.
+The cod i nQ of a variable rerrote connect ion is best attached to the
+ilmediate'v precedinq box.
+If it is preceded bv several such boxes, either of these
+be used; if no suitable box is avai I able, it may be given a Rorran nurreral and
+treated as a separate box.
+The cod inq of the I ovation or alternative) boxes rerTBins. The cod inq
+Of each box is a Separate operat ion, and we cal led it, as such, stat ic. This is just i—
+fied in this sense: The course of C such a pericÉ of codinQ is strict 'v linear,
+i.e. there are ro jumps forward or backward 1 by the Cu or Cc type transfer orders —
+the orders 13—16 in Table —
+except possibly at the end Of the period — C rmveS
+without omitt inq anythina and without ever qoinq twice over the sane arourri (within
+one period of this tvpe). It is in this sense only that the process is static:
+Substitut ions, i.e. chanaes in the memrv (her-ce either in the storage or in the
+In addition, partial substitutions (bv the Sp tvoe
+orders), occur at ever v step.
+subst itution orders — the orders 18719 in Table Il) cause a sl inht deviation from
+strict inearitv: Thev affect orders Ithe ones *ich are to be rrodified bv substitu—
+In this situat ion it is best to leave in the
+tion) which have been coded vet.
+subst itution order the space reserved for the posit ion trørk of the order to be substi—
+tuted (in the prel imi nary enurærat ion, cf. below) 3TPtv, and nerk the substitut ion
+order as incarolete. After all orders have been coded. all these vacancies can be
+filled in. These fill inc—in operatiohs can be effæted within a sinale linear passaae
+over the enti re coded sequence.
+The ccÉIng Of such a box cccurs accordingly as a simple I Inear
+Sequence, ard it is therefa-e næessary to define a system for the enurrerat ion of
+the orders within the seqærEe (Of thls box). We catl It the preliminary
+entmeration, because the nurbers which we ass ign at this stage are not thæe that
+will be the x's of the actual pcsit ion in the selectrcn rrvmry. The latter form
+the final enuæration to be further be 10M. The prel imi nary Ion
+is def•ned as fol icv,s: The syrrOol of the box order consideratlon is to be shoa•n,
+then a cam-ä, ard then an Arabic nunerat
+— the latter being wed to enurerate
+the code orders of this •seqænce. We might again d I Icy,' the rules for sequertlng,
+ard correcting as given in Note I in 7.4, for this enurrera—
+t ion, too. It will, hosever, hardly ever be necessary to have reecurse to these —
+there will alnost never be any difficulty in carrying out a s Imple Iinær
+of the ent ire sequerce pari with its ccding.)
+Thus the enumeration for a 11.1 miaht be 11.1
+Actual lv typse t be written under each other, and the box Symbol (l J. I in
+the above case) need be only the first tire. In everv order the expression
+SIX) will have to be written with the full prel imi nary syrnbol Of x, e.a.; 511. l, 3).
+(This exmple must, of course, be thouqht of as referrina to a select ron position x
+containina order.
+If x Contained a an express Ion I ike SIA. l, 2) be
+tvpica!.)
+Refererces to a variable rerote ion are best "Bde by its
+Greek tetter Ipossiblv with decinels, cf. I in 7.4, ard with or without ir&xina
+according to *ether the ent or the exit is treant), sir-ce it not be feasible
+or oonvenient to determine at this staae tte ident i ficat ions of its parts With the
+app 00 riate Ryrøn numeral boxes.
+Anv storaae that becoaes necessary in the course of this codim in
+excess of the tabulated or distributed storage of the flow diaÄrarn, i.e. storage
+attached to the cf. the last part of 7.8), has to be shown separa@v, as
+```
+
+<a id="planning-and-coding-024"></a>
+## planning-and-coding-024 — 7.9: coding stages and explanatory column (physical page 32)
+
+Source: [physical PDF page 32](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=32); reading unit `p032`, lines 6–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-023](#planning-and-coding-023), [planning-and-coding-025](#planning-and-coding-025)
+
+```text
+22.
+Local storage- The iocal storage should be enurerated in the sane wav as indicated
+above, but with a syntol s after the coma, e.q. :
+I s l; '1.1, s.2;
+(For
+an S! x: which refers to such a position one miqht write, e. Q. SI II.
+l, s. 2), in the
+sense of the sugqest ion in the precedinc paragraph. Hoæver, sirce the reference is
+by its nature to the box under consideration at the tire, it is lea itimte to abbre—
+viate bv omittina the box Symbol, writing S(s.
+The cod ina itself should be done in a colum Of its own, enumerated as
+indicated above. It is advisable tc paral lel it with another, explanatory, column,
+which shows for each order the effect of th e substitution that it causes. This
+effect apgpars, of course; in one of the fol lowinq places: The accumulator (syrtcl:
+Ac', or the arithmetical reqister (symbol: R), or storage position or coded
+order (symbols as described up to now). The explanaVrv column then shoas each time
+the symbol of the place where the subst itut ion takes place, and its contents after
+the substitution. The Cu cr Cc type transfer orders (the 0 rters 13— 16 in Table I
+cause no substitut ion, thev transfer C instead land thev occur only at the end of
+the sequence)
+hence thev require no explanat ion.
+An order in the sequence, which becmes effective in a subst ituted
+form (substituted bv an earl ier order in the sequence), should be in its or i—
+Qi nat form and then, in brackets, in its subst ituted form. The oriainal for-Tn mav
+the sign Of irrelevance, or any other symbol (e.q. the number O, Of course,
+have a
+asa 12 diait binaru), in place of its x (in its SIX)).
+It is this form which
+'Tatters in the actual cod inq. In writing Out a code, it is best to use the sign
+Of Fy-relevance in such a Case. Bhen it COTES to real coding, hovever, an actual
+number ni.st be used, e.g. O.) The substituted form, on the other hand, is clearly
+the one which will actually control the functioning of the machine, and it is the
+one to which the expl anat ion should be attached.
+repeat: feel certain that di rect, I inear coding according to
+this pr incipie presents no difficulties after a mderate amunt Of experience has
+been acqui red.
+Fourth: The I ast stage of coding consists of assigninqkalt storage
+positions and all orders their final nurrbers. forrær may be enumerated in any
+order, say linearly. The latter then follow, also in a linear order, but with
+the fol lowing restriction: The f lcm diagran irdicates that a certain box mst
+fol law imediately after another operat ion box, or irmpdiately after the
+— branch
+of an alternative box. is the case where the transfer of C by a conditional
+ln- this case the sequence
+— type Cc — does not beccY1e effect ive).
+transfer order
+of the fcnrer box must begin in-rrediatety fol lowinq the end of the sequence of the
+latter box: It can happen, that this principle requires that a box be the irrne—
+diate successor of several boxes. In this cage all of the latter boxes (except
+one) must be terminated by (uncond itional ) transfer orders to the former box.
+Such a transfer order is also necessary if a.box requi res as its irmediate
+successor a non—initial order of another box.
+At this stage the identif 'Cation of every part (entrance aæ exits)
+of every variable remote connection with appropriate (Roman nurneral) boxes i.e.
+orders in them) must be establ ished. The Greek letter references to. these
+connect ions will then be rewritten accordingly.
+These print i ples express all the restrictions that need be observed
+in the final, I inear ordering of the boxes. To conclude, ne note that it rust be
+remembered, .that orders const i tute toaether a *Ord, i . e. that they have
+toqether one final number, and are distinguished from each other as its "left"
+or "right" order.
+```
+
+<a id="planning-and-coding-025"></a>
+## planning-and-coding-025 — 7.9: coding stages and explanatory column (physical page 33)
+
+Source: [physical PDF page 33](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=33); reading unit `p033`, lines 6–52.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-024](#planning-and-coding-024)
+
+```text
+23.
+After this final enumerat ion has been ccnvleted, one mre task rerrøins:
+In every order, in the express ion SIX' the prel imi nary nurber x must be replaced by
+the final number x, ard for thæe orders which subst i tute posit ions that are occupied
+by orders (orders without or with primes these are the orders 13—16 and 18, 19 in
+Jable i i' the distinction between "left" and "riahtt' must be "ade (i, e. the order rust
+In the case of posit ions which
+not be primed or it must be prined, respect ively).
+Correspond to the its of one variable remote connection it is clearly necessary that
+they be all "left" or atl "right". This must be secured; the ways to achieve this are
+Obv i Ous.
+When the coding is thus co-npleted, the posit ions where the seqænce of
+orders begins ard ends to i and e, cf. the erd Of 7.8', should be noted.
+There will be mre to sey about these when we get to the quest ions of subrout ines and
+of cornbining rout ines, tc which reference will be rrade further belov, but will not
+go into this ratter now.
+Al! these being understood, it is indicated to state this in
+add it ion:
+There are still things which have to be discussed in connect ion with
+the cad ing of problerts, ard which we have neglected to consider in this chapter, am
+will also disregard in the chapters which follo•./ in this Part I of the report.
+refer to the orders which Stop the nechine, to the orders which control fle rugnet ic
+wire or tape and the oscilloscopic output ot the nechine, to the lcgical printiples
+and pract ica' rethcds applying tc the use of the magnet ic wire or tape inputs and
+outputs as a subs id iary merrory Of the "EChine.
+Tede brief refererces to these rutters in the paragraphs 4.5, 4.8,
+6.8 (arvd the sub—paragraphs of the latter) in Part I of this report. They require,
+Of course, a rush 'Tore deta i'led Cons iderat ion. That neglect to take them up here,
+in I Of our report is nevertt•less del i berate. The gain reason for this neglect
+is, that they deperc on parts of the machine where a number of dec is ions are still
+open. These are decisions MI ich lead only to minor engineering problems either way,
+but they do affect the treatrrpnt of the three subjects 'Tent iored above (Stop Orders,
+output orders, use of the input—output as a subsidiary rrerrory) essent ial ly. So tre
+corresponding discussion is better withheld for a later report.
+Fur-them-ore, the two first items are so sirrvle, that tney do not
+seriously impair the picture that we are going to present in what The
+potent ial it ies Of the third item are nuch more serious, but do not knc»N as yet,
+to what an extent SLEh a feature will be part of the first mdel of our rrachine.
+There are further important ger,eral principles affecting the efficient
+use of coding ard of routines. These are prirrarily deal ing with general rout mes arri
+sutwrout•nes with t reir use in combining routines to routines. Thæe
+w i 'l be taken up, as far as the underly ing prix iplæ are coxerned in Chapter 12,
+and put to practical use in various examples, with further discussion in the sub—
+sequent Chapters 13 aM 1 4.
+In the irrrediately following Chapters 8— will
+give examples of coding irdividual routines, on the basis of tre general princ iples
+of this Chapter 7.
+```
+
+<a id="planning-and-coding-026"></a>
+## planning-and-coding-026 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 34)
+
+Source: [physical PDF page 34](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=34); reading unit `p034`, lines 9–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-027](#planning-and-coding-027)
+
+```text
+80 CODING OF TYPICAL ELEMENTARY PROBLEMS.
+8.1
+In this chapter, as bell as in the foll&/inq ones, we will apply
+the, gereral prixiples of cæing, as outl ired in Chapter 7, to a seqterce of
+cf gradually irrreasim canplexity. Tte selection of these nblers was made
+with view of presenting a typical selection of exanples, on which the rein pr±lers,
+difficulties, procedures and simpl ifying ard saving cr tricks of
+actual coding press can be exhibited and studied. Trey will be chæen frm various
+parts of ratteretics, aM sone of will be of a than rattprøtical
+character. After having frm simple prchlers to cmpl icated mes within
+category of thße pr&lens which have to be cæed as units, i without breaking
+up into smaller problerrs, will proceed to pr±lens which can be br&en up into
+Rrts, that can coda' separately and then fitted to code wholerB-cblem.
+8.2 we start on this program of coding specific
+hmever, there ore technical point that has to be settled first.
+In all tip that we are goirp to do, references to spcif ic
+rrerr«y locations will æcur. TYEse_10cat ions are in mrber, aM we always
+entrerated them with ttE Yelp of a 12 binary digit nurrber or aggregate, wh ich
+usually denoted by x. (Cf., e.g. through the Table II cf crders.) We will use
+this 12 binary digit ntrber or aggregate, in all sittntims wtpre it may æcur, the
+gerpric designation of a rnrymsition park, br iefly "itimmrk. By calling
+it ambiguously ntnber, aggregate nerk, we have purposely avoided the Q.estion
+wrether ard haq we wish to attr ibute a binary' point posit ion to this diq ital aggregate.
+nag rrøke choice in tte mst convenient way: Let tte binary point be at tye
+extre& right, i.e. let tte position gerks he integers. Thus the position narks
+CTrespond to all 12 binary digit integers, i.e. to all (decimal) integers fran
+o to 212-1 q,095
+This choice, hoaever, is not entirely without cmseqærees
+way in which the position nerks themselves must be placed inté tie and
+manipulated ar itmetically by mchire, wherever strh are called for.
+The point. is that the rechire will nat handle integers as stkh, but only ntrbers
+between -l ard l. Furthern«e, in order that a posit ion mark x that is stred in
+tie rerr«y should •tpcaæ effective, it is to "stitute it into sme
+This irvolves brinqina it from its position into
+(by an order Ac + [abbreviated: y] , assuming that tte storae positim in
+qtestim has the rzrk y), and then "Eke a partial substitution frm the acctmulat(Y
+into the desired (by an a-der S(z) Ap' S(z)
+[abbreviated: zSp or
+iSp'] , assming that order to be substituted has nzrk z).
+If fol laqed explanatim of these cyders (Nos. 18, 19) given
+in Table 'l in 6.6.5 in Fart I of this •report, then both would rme tye
+left-hand i2 digits of tie into tte places at z (into t}• left-
+i2 digits of the left-harri cr right-tmd crder ttere, i.e. into digits I to 12
+or 2i to 32 (from the left) in that word). tye position rerk to T.'ed, x,
+is acccrding to the corvention trat we an integer. Digit I in
+40) tiere has the pxitiorøl
+accu•nulatr is tte sign digit, while digit i 2, ,
+value Hi-I)
+```
+
+<a id="planning-and-coding-027"></a>
+## planning-and-coding-027 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 35)
+
+Source: [physical PDF page 35](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=35); reading unit `p035`, lines 12–49.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-026](#planning-and-coding-026), [planning-and-coding-028](#planning-and-coding-028)
+
+```text
+25.
+Tterefcre accum•lat« should actually contain not x itself but '2¯11 x (modulo
+x should be stcred in the Term/ (at y, ct. abwe) as 2
+x (rn4u10
+Fran an engineer inq point of view it is preferable not to involve the
+Sign digit of tte accu•nulat« into typse transfers, ard not to effect both transfers
+(into tte left—hand orders and into right-hand orders) frcn the sare 12 accumu-
+lator digits. This motivates ttp change which we in Table II, as against Table l,
+for these cyders 18, 19: effect these two transfers fran the digits 9-20 and 29-40
+(fran the left) of the accumulat«, respectively.
+In view of clunges it is desirable to have in the accumulator
+the 12 digits of x both at the digits 9 to 20, and at the digits 29 to 40, wten the
+substitllt ions of the type under discussion are be inq effected. I.e. the acctnulator
+should contain 2-
+defirp accordingly:
+position rrnrk x is always a •12 binary digit inteqer, i.e. a
+(decirel) integer fran O to 2 2
+wherever x has to be stcred in pemory, in any mnrer ooerated on by
+rechire, it has to replaced by ttp, nttTber xo given abwe.
+The syrbols intrcx4tred in Chapter 7 to denote. sta•age pcsitiorls for
+tabular or distrib"ted sto-age (Engl iSh capitals with decira Is, cf. the beginning of
+7.7) læal stæage (Raren ntmeral with decimals [±not ing operat ion alter-
+native boxes] fol la€ed by an s and a decimal, cf. the latter part of 7.9) for
+revote conrections (Greek letters Wlth decic-a Is, cf. Note I in 7.4) will be cons idered
+to be pcsition rerks, i.e. integers x, and treated in sense Of tte
+abwe rule.
+8.3 take up Oir first actual ccHing prc±lan. This is a very
+elerentary lem, of a purely algebra iCal character and present ing no logical
+c.crrpl ications whatever.
+1.
+constants a, b, c, d, e and the variable u are stcyed in certain,
+given, rerxxy locations. It is desired to fcym the express im
+and to stcre it at amther, given, TerTKYY locatim.
+The problem is so sirvle th2t it can be r•.æed directly, without a flog
+diagram. my, &refore, attr ibute all strraqe to a •single stæaoe area A, ard all
+coerational cyders to a s Ingle O*ration box 1 . (Both of are, in a way,
+, sir-ce do draw a f loq diagram.
+"f ictit ious"
+```
+
+<a id="planning-and-coding-028"></a>
+## planning-and-coding-028 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 36)
+
+Source: [physical PDF page 36](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=36); reading unit `p036`, lines 6–63.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-027](#planning-and-coding-027), [planning-and-coding-029](#planning-and-coding-029)
+
+```text
+26.
+Åcco-dingly, let the constants a, b, c, d, e be stryed at A.I to 5,
+the var iable at A .6, the (des ired) quantity v at A. 7. Fote that u is a free
+var iable, a to e are constants whiöh rrey be viewed as free var iables, while v is
+produced by the rechire itself and the content Of A. 7 at start is therefcye
+irrelevant.
+&/iously tte expressions that will have to be frred sm.cess ively are:
+l) an, au b, au2 + bv
+3)
+Internediate, i.e. local , stæage is reeded fcy whichever of the two
+quantities atra + b" + c and du + e is canptrted first, while tF•e seccyxi ore is ±tained.
+?oever, at this stage Å.7 is still avai Jable (v is not fcræd) add my be utilized for
+that stcraqe. It is corwenient when the division of 3) begins to have its dividerø
+atv + bl' + in the accumulata-. '-knce I ) should it-mediately precede 3).
+l) to 3) should be taken up in the cyder 2)' 3)•
+Sale addif ional local storage is fæ a ærtain quantity in
+transit, at a rorent when A. 7 is no longer avåi12ble. (This quantity is au + b, which
+has to mwe frm Ac to R, while A .7 is crcupied by du + c. Cf. the crders I .8,9 belcv.)
+This requires an additional posit ion A .8.
+The entire caiing is static, and gey be arranged as
+Sterage at the beginning:
+8
+2
+3
+5
+6
+7
+8
+IO
+12
+13
+2
+3
+CcHed seqænce
+(Cadim Column.)
+S(A.6) xR—,
+S(A.5)—» Ch +
+s(A.7)
+s(A.6) A
+s(A.8)
+S(Å.3) -+ +
+S(A.7)
+5
+6
+(prel iminary emnration), detailed firm:
+(ExplanatTY Column. )
+d
+du +
+au
+au +
+Ac
+Ac
+e
+b
+au2 + bu
+av2 + bu +
+au2 + b" + c.
+du +- e
+```
+
+<a id="planning-and-coding-029"></a>
+## planning-and-coding-029 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 37)
+
+Source: [physical PDF page 37](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=37); reading unit `p037`, lines 7–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-028](#planning-and-coding-028), [planning-and-coding-030](#planning-and-coding-030)
+
+```text
+27.
+Note, that I , rarrespords to 2) abwe, to l), and l, 12-14
+to 3)•
+In all the codings which fol ia•/ we will tse the abbrev iated rotation Of the
+Table II of orders. Ttpn tye above coded seqwnce (prel iminary enuærat_ ion) asscres
+appearance:
+Ac
+Ac
+IO
+12
+13
+du + e
+du + e
+an + b
+au + b
+arp bu
+at:2 + bu + c
+The passage
+their actual values, and Of
+be O to 6, and let A. I-b
+coltm is no
+Ionoer reeded ) :
+13 s
+14 s
+12 X
+to final enurera+. ion.consists of ass inning A. I-S
+to 7 words. Let latter
+pairing the l} orders l,
+7 to 14. Then the coded seqtpree beccns (the explanatory
+IO
+12
+In an actt•al appl ication ot this rnfed seqterre typ constants (or
+12, would,
+parameters, free var iahles) a to e and t; , occupying the Icy-at ions 7,
+of course, have to be replaced by their artual, nucer ical values. The other locatims,
+i, 6, on the other harr*, will have to be ccried exactly as stard.
+Trese rererks constants, paraneters, or free var iables)
+apply, of course, equally to all c&ed seqlemes that Will set up in reneinder
+of this report. (Cf., haever, the renerks on subroutiæs arvi or ccn,ining In
+12, which have a certain significam.e in this respect.)
+8.4 We intrcxftx:e rext a slight logical twist. into Pr&lem l.
+Prrtlem 2.
+Sane as FciJlem , with this change: u and v are stÜ•ed or to be
+stTed at certa in ions m and n, which are not given in advame, but stcred at
+certain, given, locations. —
+```
+
+<a id="planning-and-coding-030"></a>
+## planning-and-coding-030 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 38)
+
+Source: [physical PDF page 38](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=38); reading unit `p038`, lines 10–65.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-029](#planning-and-coding-029), [planning-and-coding-031](#planning-and-coding-031)
+
+```text
+28.
+This affects use Of stcrage. A f log diagram is still not
+but we mtst recons ider the use of A. 1-8.
+A .6,7 are no lorger rEeded fa- u, v, hc»ever, still need A. 7
+local st«age (c.f. 8.3). Ldt. n, n be stred at A.9, IO, of course, in tte frm mo,
+no (cf. 8.2).
+When will pass fran the entTerati0n to the final Ore,
+folloqing Observations will apply: First, A. 6 is miss ing, btrt this is irrelevant.
+Second, the posit ions m, n are suppæed to be part of sure otter ine, already in
+the rachire, therefore tipy need not concern us at this stage. Third, let LIS assvrre
+that the ctxfed sequence is supposed to beg in at sorre posit im than O, say 100,
+ard that it is suppæed to end at a prescribed position, say 50.
+The abbreviated, prel iminary cryied sequence , 1—14 will therefore
+First, the references to A .6 (which transfer n)
+have to rrüified in two ways:
+and to A. 7 (inasmuch as they transfer v, and are not die to use Of A. 7 fT
+læal stTage) have to be Changed. _ u is needed it is advisable
+to assign to it a fixed pßition A. II. ænce , 2, 6, IO will have tp refer to A. II
+instead of A.6, ard rew orders will be reeded to get u fran m to A. II, and (replacing
+I , ig) to get v frm Ac to n. Second, a rew order is reeded at erd Of ccHed
+sequence to qet the control to the desired er*point 50.
+The changes in 1,2, 6, IO are trivial.
+I ,2 assmes
+The transfer of u any take place at any tire befæe 1,2.
+that d is in R, so this transfer must eitrer precede I too (since this troves d to
+R), cr leave R undisturbed. R is indeed not disturbed but we place tre transfer
+It can be ctr*ed as fol lays:
+rout ire nevertteless before I
+.2
+.3
+Sp
+s
+Ac
+i ,O.3
+Ac
+A.II
+u
+Note that the sign of irrelevance in an order, like I ,0.3 abwe, does
+not rean that tye entire i.e. the entire half-wo-d is irrelevant (aryl still
+less, that the entire is irrelevant). It Beans that an cyder S(x)—» Ac
+abbreviated x, is næded, but that x is irrelevant.
+1,11.1 asstmes that v is in
+The transfer of v replaces the Order I , 14.
+AC, so the operations required by this transfer must eitter preæde 1,1-14 (s ince all
+Of tyese are needed to prodlce v in Ac), leave AC Undisturbed. is d istlrbed ,
+It is simplest to let
+so it is recessary to place the trahsfer routine I , l.
+it follo•/ imediately after Otr first trgnsfer rout ine, ie. irndiately after I , 0.4
+abwe. It can be ccxied as
+I ,0.5
+.6
+A. IO
+sp
+1,114
+no
+s
+```
+
+<a id="planning-and-coding-031"></a>
+## planning-and-coding-031 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 39)
+
+Source: [physical PDF page 39](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=39); reading unit `p039`, lines 7–43.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-030](#planning-and-coding-030), [planning-and-coding-032](#planning-and-coding-032)
+
+```text
+l, 14,
+l, 14
+endpoint SO.
+1, 15
+A.9
+A.8
+10
+12
+13
+14
+Firany, we reed an cyder after l, Iq,
+This is, Of covrse:
+can rav•rite the abbreviated,
+Sta-age at beginnirg:
+Coded seqtence (prel imirary enlT.erat ion):
+29.
+in turn, rust be rewritten as foilavs:
+to mwe the control to the desired
+prel imirarv coded seqterce:
+1,0.3
+A.II
+A.II
+sp
+,0.3
+A.II
+Ac
+du e
+au b
+atl + b
+a112 + bu
+aua + bu + C
+The passage to final enwerat ion consists Of ass ignirg A. 1-5, 7-1 1
+their act1Zl val•es, pair irg the 21 Tders 1.,0.1-15 to II wrds, aM then assigning
+l, 0.1—15 ttpir actual valles. treat m, n like a toe As free var iab)es
+corstants. The II in qtestion must begin' with 100, so trey will be 100 to 110.
+Ttpn A. 1-5 may be Ill to I IS. aM A. 7-11 be 116-120. So b-e ±tain this coded
+seq!erce :
+```
+
+<a id="planning-and-coding-032"></a>
+## planning-and-coding-032 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 40)
+
+Source: [physical PDF page 40](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=40); reading unit `p040`, lines 6–100.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-031](#planning-and-coding-031)
+
+```text
+30.
+100
+50 C
+i 06
+118
+119
+112 h,
+101 sp
+120 s
+109'Sp'
+120 x
+120 x
+117 s
+! 07
+108
+109
+110
+112
+u3
+117 P.
+120 x
+-s
+115
+116
+117
+118
+119
+120
+no
+Note, that the sign Of irrelevance in an cyder, like 101-left, near'S
+that it is an crder x (i.e. Ac) with x arbitrary. This is exactly the sane
+situation as in 109-r ight, which is —S, i.e. x S (i.e. At —+ S(x) ) with x irrelevant.
+Or. the other hand, 110-right, rørked - -,
+is acttelly entirely irrelevant, since this
+half •wcrd was not needed for any of our cyders. Finally sign of irrelevame in a
+full word, like 116 117 120, reans, of course, that entire content is
+irrelevant. The simplest treatænt of all irrelevancies is to replace anythirq
+that is irrelevant by O
+8.5 coding Of any problern should be follc»ed by ar estirete of
+tine that machine will constm•e in solving the prr±lem, i.e. in carrying OI't
+the instrtct ions of coded seqtence.
+In cyder to rrøke stch an est imate it is recessary to have
+information about tip. duration of each step that is irvolved, i.e. tire required
+by to carry out each ore Of the cyders OT Table II.
+At the present stage
+of Otr engireering develØne,nt tre cyder-tire est irrztes are recessar ily gresses.
+Tte estiTBtes which follm' are rede in a guardedly optimistic spirit. Unless there
+are sme strpriées in our engineer ing deuelopænts, they shoiJld be' ccyrect
+within a rüierate errcy—factT
+— say, within a factm 2.
+In this sense OIT crd'.r-tilte est irates are as follo•vs:
+TABLE Ill
+2
+3
+5
+6
+7
+xh-
+25
+30
+30
+30
+30
+35
+8
+9
+12
+13
+xh-y
+35
+25
+5
+IOO
+ISO
+25
+25
+15
+16
+18
+19
+20
+21
+xCc
+xCc'
+xSp'
+30
+30
+25
+25
+25
+5
+20 u for every wTd.
+I microsecond, I m = mill
+Considering cors iderable ies with which these estiffBtes
+are affected, we might as well Ise follcving approx irate rule:
+```
+
+<a id="planning-and-coding-033"></a>
+## planning-and-coding-033 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 41)
+
+Source: [physical PDF page 41](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=41); reading unit `p041`, lines 17–64.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-034](#planning-and-coding-034)
+
+```text
+31.
+Count 7S fcr every bord which contains two cyders, spbtract 25 if
+Only ore is used, subtract 20 u fT every (Yder which refers to no remcry posit ion
+x (i.e. A, R, L), add 70 g every mill tipl ication and 120 fa• every division.
+this basis the caged seqænces obtaiæd in 8.3 aryl 8.4 should
+requ ire
+(7 x 75 -20+ 3 x 70+ 120) u = 835 u
+and
+(II 75 - 25 - 20+3 x 70+ 120) u = 1,110B
+1.1 m,
+respect ivel y.
+8.6 The rext point to cons ider in Conrection with Our Of the
+prd)lers I am is this:
+WV. observed repeatedly that our rnachire will only deal with m•rrbers
+lying between —l and l. Cydinarilv will interpret this to exclude. both erdpoints,
+i.e. we will keep all absolute valves < l.
+It shotlld be noted, hosever, that
+precise &finition of the numtprs that Otr nachire can handle as digital aggregates
+(cf. 5.7 in Part I of this repcrt) irr.ltdes -l and excl"des l.
+This fact, that have a —l but not a f, is ocrasionally Of ir•po-tance.
+Actually this is not often the case, irrieed extrenely less freqtently than one might
+Its effect in dividing
+think. Ttere is hardly ever a reed to stme a l:
+is Oil, and tye sizes which we wish to ±serve. make it usual lv ircorvenient to nnnipl'late.
+Fegarding pæ it ion marks, where I night play a role, cf. 8.2. Regardirrj ird'Cti0n
+indices, cf. Pr±lem 3 in 8.7 as as various subseqtent *cblerns.) In those excep-
+timal cases where I is actua Ily ar i tyret ically reeded, it is always possible to ad just
+the iors so that — ' can be used instead. an example of this cf. Pr±lem 9
+in 9.9, in particular treatmnt Of box Ill
+— C. 2 acyl Ill, I—as as
+similar ions in boxes VI, IX, XII, XV.) The cmplicatiors which arise in
+this rranrer are very rare, and they mcur, regl igible, as exper ierx:e of our
+Prcblerß i I lustrates.
+It is in
+In the present Case, we will keep all absolute valles < l.
+this sense, tl•erefa-e, that ciserve that the above problgrs can only; be harvd led
+Furthermre, our ymedure of 8.3 (and 8.4)
+if their u and v lie betæen -l and l.
+also requires that all data of moblem, i.e. the corstants a to e should lie
+between -l l, as æll as åll interrediate results of the calculation, i.e.
+ex"ess i ms
+l) au, au + b, aua + b", + + c,
+2) du, du + e.
+assurre that is only knour to lie between -2P ard 2, v between
+-2q and N, ard a toe -2r aM (p, q, r = O, l, 2,
+Then the quan -
+t ities a fo e and 'J, v simply cannot be stcred by the rechire, erd it is recessary
+to sure otters instead, e.g.
+```
+
+<a id="planning-and-coding-034"></a>
+## planning-and-coding-034 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 42)
+
+Source: [physical PDF page 42](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=42); reading unit `p042`, lines 18–57.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-033](#planning-and-coding-033), [planning-and-coding-035](#planning-and-coding-035)
+
+```text
+impl ies
+where
+if
+wtere s = O, l, ± 2,
+32.
+This, is nd ar answer to our groblem since the relationship
+between and u' is not expressed with the help Of a' to e' in the sare ranner as the
+relat ionship YEtween and v with the Yelp of a to e. have to prmeed sare-
+what circtwspectlv.
+This is not difficult. O-iginal relation
+I ld
+all? + bu + e
+2-qv,
+= 2-q-sc, d*
+2P-sd, e
+2¯Se,
+can be freely chosen. We can use Otr freedm in chocs ing
+s to force a* to e* as well as the express ions
+into the interval —l,
+l. Sime
+we disregard tye last expression ir 1*),
+if
+< l, it Siff ices to secure
+v'
+all otters are taken care Of.
+Sime
+This n-eans that
+s 2p-q + r
+we rev choæe
+s - (29
++1,
+= p + thx (p -q, O) + r + 1.
+This procedure is typ Of what has to be dorp in mcxe campl icated
+sitllatiors. It calls sore remrks, which proceed to formulate.
+First: a to e aM u are data, and it is therefore natural that
+have to assume that sare info-mat ion, which is separate from this calculat ion, ex ists
+(I.e. that they lie between -zr ard t, and between -2P and
+regarding sizes.
+2P, respect ively.) v, ho•ever, is determired by a to e ard '1, so its limits (-2G
+29 should be derivable frm the infcyrrøt ion that ex ists comerninq a to e and u.
+```
+
+<a id="planning-and-coding-035"></a>
+## planning-and-coding-035 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 43)
+
+Source: [physical PDF page 43](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=43); reading unit `p043`, lines 6–55.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-034](#planning-and-coding-034), [planning-and-coding-036](#planning-and-coding-036)
+
+```text
+33.
+In cases this information æed not be rrrre than was Stated abwe concerninq
+tteir rarVs (-2r to 2r fr a to e, -2P to 2P for u), in otters it ray require addi-
+inforret But in any case the problem of the sizes cf the
+quantities which the calculatim will produce (as interred iate as final results),
+should be viewed as a røttprretical pr±lem in its Ogn right. (Cf. discussion of
+n f irst stage" preparirg a in 7.9.) This Of evaluatirg sizes
+rrey be trivially sirole, as in tte present case; rr rderately as in
+pr±lerrs require extensive calculations; Or rea Ily difficult, as e.g. in var ious
+partial differential eqtntion It ray even be, frm tte mathemat ical point
+Of viee,', Crux cf the whole pr±lem, i.e. the pr&lem my require rrore
+effective calculatirg than this subsidiary, evaluational pr±lem, but tte latter ray
+require rÜe rretherat ical insight than tip frrer. This can happen for very imp«tant
+and pract iCal prcblerrs, e.g. it is so fr n simultareous lirear non-lirpar eqtztions
+in n variables for large valæs of n. (Bé will disctss this particular subject
+elsewrpre.) To we note that the estirTBt ion Of and Of the prec is ion
+or signif icame that is ±taireble in the result, is quite clcsely cmnected with ttp
+estirøtion. of sizes, and that our abwe remarks apply to these, too. (All of tipse
+are cwered by tre "f irst Starn discussed in 7 9, as referred to abwe.)
+Saxyd.• Urøer suitable cmditions it rrøy be possible to avoid tte
+rattEretical that is required to control the sizes (as descr ibed above), by
+irstrtrting tte rechire to rearrange calculation, either continuously (i.e.
+every ntmter that is prodlK*d) at suitable selected critical rmznts, so that all
+sca les are apprepr iately read justed and all numbers kept to the.permiss ible size
+(i.e. betæen -l l). readjusting is, of course, wasteful in t irre
+and reray ca*city, whi le tre critical (occas ional) read jtstinq reqelres mre
+less rathmetical insight. The latter is greferabie, sime it is alrrost always
+to reglæt R rrøtyeretical arulysis cf tte pr±len uMer considerat ion.
+Examples af to code tie instrtrtions to sectre critical size
+readjustrænts in various pr±lBTF will be niven sLbseqently .
+(him: cf oontinuous readjtstrent can be ized
+built into a mchire, as a floatiæ bimry mint. referred to ii already
+in 6.6.7 in the first part of this rem. fæmnlated there various cr it Icisns
+which caused to exclude this facility, at any rate, fran tte first rodel of
+rechire. The abwe disctssiM reemptus izes this point: Ttvflæting point
+%Wides cont inuous size readjust irg, while prefer critical readjustirq, and
+that only to the extent tc which it is really reeded, i.e. irasrmrh as the sizes
+are not foreseeable without undue effort. Besides the flætirg point
+remesents an to rerder a rathemtical at least a
+t cf r±lem unrecessary, arid we feel that this is a step in a dothtful
+directim.
+8.7 Let us exterd Foblers I 2 in a different respect.
+This extension will bring in a simple iMuction, aM th'S the first carol icaticn of
+a logical nature.
+Prrilgr 3
+Sare as Pr&lem I with this charw The calculation is desired for
+I values of u: ut,
+VI, reskctively. Each pair
+ul, givirq trese v 's: v: ,
+I) is s&ed to be stred at two Imations
+```
+
+<a id="planning-and-coding-036"></a>
+## planning-and-coding-036 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 44)
+
+Source: [physical PDF page 44](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=44); reading unit `p044`, lines 7–57.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-035](#planning-and-coding-035), [planning-and-coding-037](#planning-and-coding-037)
+
+```text
+34.
+m + 2i-2, m + Zi—I, whole coverirg the interval Of locatiqns fran m to m ZI—I.
+m aryl I are not given in advance, but stTed at certain, given, rtecxyy læat ions.
+This is first ore of our Problers to require a f IO,' diagram. We
+will tterefTe apply the Xirciples Of Chapter 7, ard n•xre particularly Of paragraph
+7.9, to their full extent, arri avoid any sh«tcuts that pcssible in connection
+with Our two previots problens.
+Let A be storage area ccyrespond ing to tle interval Of locat ions
+frm m to m + 21-1.
+In this way its positions will be A. l,
+21, where A. j ccyres
+ponds to m + j-l (j =
+, 21 These pos itions, hc»æver, are supposed to be part
+of sme ottpr rout ire, already in "Echine, ard therefore reed not appear
+pass (at the erd of the whole præedure) to the final enureration Of the coded
+seq IEnce .
+Let B be the stcrege area which holds the given data (the constants)
+of m±lern: a to e and m, I. m is a position "hrk, we will therefore store
+mo instead. I is really relevant in catination m + 21, which is a position
+mrk (the stcxage area A is an interval that begins at m and ends just before m + 21),
+we will t!erefore strye (m + 21)o instead of I. sta•e a toe at 3.1,
+5 arx\
+mo, (m + 21)0 at B. 6, 7. Finally, stTage is req"ired fm the induction var iable i.
+i is real lv relevant in the c.a±inations m + 2 i-2, m + 2i-l, which are position narks
+(fa- A.2i-l containing Ui and fcr A.2i designated fcy Vi), select m + 2i-2, and
+will store (m + 2i-2)o instead. This will be stTed at C.
+TYPse things being enrErstocH, car. prc"eed to drawing the
+, I) and 3.1, ...,7
+diagram. will use tablilated s&age. A. Zi-I (i =
+e, m, I, respectively), while
+are fixed st«age (the. ui and a,
+I) ard C are var iable storage (tte v i and i,respectively).
+A.2i (i = l,
+TIE cmplete f 1m diagram is shogn in Figure 8. l.
+FIG"RE 8.
+1
+2
+2
+v•lfoR
+2
+3
+1.5
+bu.+c
+, A.2i
+3
+• fCR > L
+FOR
+2
+A.
+3
+b
+```
+
+<a id="planning-and-coding-037"></a>
+## planning-and-coding-037 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 45)
+
+Source: [physical PDF page 45](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=45); reading unit `p045`, lines 9–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-036](#planning-and-coding-036), [planning-and-coding-038](#planning-and-coding-038)
+
+```text
+3b.
+This deals with
+(m + 2i-Z)o -
+11,1
+pr±lem.
+We are left with the task of doing tte stat ic ceding.
+the boxes I to Ill. begin with the preliminary enweratims.
+The ccHing of I is Obv i01s:
+111,22
+8.8
+8.1
+alli + b
+8.3
+ca4ing of II is also quite simple, we must only (±serve that
+(m + 21)o has sare sign as The follaqs•.
+(n + 2i-2)0
+(m + 21)0
+FÉre e is the it ion at which want control to finish
+The cniing of Ill is effected rainly after the pattern of Proble•n 2.
+This appl ies to it inasmtr:h as it pro*lces v i, the additional task of
+(m + 2i)o is tr ivial. There is, ho-ever. thlS to be noted:
+In ttpse oprat ions
+(m + 2i-2)o mt'st be lvsed to produce (m + 2 i-l (m 2i)o . rumber
+'o is reeded. This mlSt be stored screwhere. This is not exaétly In:al
+storage, because we are not dealing with a trans ient soace reqt:irerænt Of Ill .
+It is fixed Storage, and we assign to it the posit im 8.8. typ cding can be
+dore as follrxs•.
+111,1
+IO
+12
+17
+18
+20
+21
+2i-2
+111,22
+sp
+Sp
+Ac
+(n + Zi-2)0
+(m + 2i)o
+(m + 2i)o
+dui
+alit
+bui
++ bui * c
+```
+
+<a id="planning-and-coding-038"></a>
+## planning-and-coding-038 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 46)
+
+Source: [physical PDF page 46](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=46); reading unit `p046`, lines 7–97.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
+
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+
+Related: [planning-and-coding-037](#planning-and-coding-037)
+
+```text
+Q
+3
+s
+6
+7
+36.
+111,22
+Ill
+20 h-
+15 h
+-s,
+17 R
+s
+s
+c
+Å.2i
+11,1
+had to use local
+s. 1-3.
+We no•/ Pass to tee final enurerat ion, ass igning B. 1-8, C ard
+s. 1-3 their actual values, oairing the 27 Orders II, ,
+1 2, to
+words, and ther ass igning l, l, 11,22 their artltal values. Let these words
+be 0 to 13, then 8.1-8 rray be to 21. C rey be 22, Ill., s. 1-3 re_Y be 23-25, and we
+can put e
+eqwal to, sav 26. so we &tain this coded sequeme.•
+19
+22 s
+22
+26 cc,
+22
+3
+23 s
+, 22
+21
+h , 12 sp
+21 h
+22 S
+, 23 X
+8
+9
+12
+13
+16
+(m 21)0
+16 h
+23
+23 x
+c
+as
+(7
+[8
+19
+20
+21
+22
+24
+25
+The dl•rat ions rtpv estirna+ed
+1:..754, II: (2 x 75- 25)
+: (12 x 75- 25+ 3 x 70+
+Total: i + II + (II +111) x1-
+fol lcws:
+= 125
+120) u = 1,205 J.
+(75+ i25 + (125 + i,20S) 1)
+= (13301 + 200) 1 m.
+-We give nav an e\ample of to code instrtctions for a critical
+read justnent, as rentioned in secorld remark in 8.6.
+variables 1', v are st«ed in certain, given I mat ions. It is
+des ired to fcrm and to determire its size, in t b? fol la•'irg sense: Fird the
+_ • ) fcy which 2n¯i < I I < 2 n, and fcrm
+integer r ( = O, l, + Z, •
+w L . This will fail if eitter II or v is zero, sense this
+is the case.
+could also reqvire that other things, e.g. the npri-er of significant
+digits in v, be deterniæd. we will not introduce ttese additional compl i-
+cations here, they can be handled alory the sane I ir:es as the Mir Problem.
+< I , hence
+In Olr Tachire. 1', v 0 imply 2
+-90 < 2+39, herre -38 S n 39 •
+'We will therefrre signalize v = 0
+2
+O (ard v* 0) with n -SO. We will begin calcl'lat.ion
+with n = 50, and
+by sensing whetter v O and whet}er u O. This is derided by testing - O
+If reither is the case, we bhether n is going to be O
+ard
+< O, rx not. After this
+> O. This is dore bv testing l•'tether I ul - I
+determire n by two obvious, alternative indnr.tions.
+```
+
+<a id="planning-and-coding-039"></a>
+## planning-and-coding-039 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 47)
+
+Source: [physical PDF page 47](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=47); reading unit `p047`, lines 10–69.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+Let u, v be stcxed at A. l,
+and -30, 50, we store 2-39 n instead.
+8.1,2. = O, i.e. when n =
+z-n . In th.is case, then, tle content
+the content Of P .2 by t.
+37.
+2. Sirw,e n has t 2e valles —38, -37,
+..., 39
+stcxe n and T n , when tiey are forced, at
+-50 Or 50, be will not forra , ratter
+of 3.2 is irrelevant.
+In anv case, denote
+In searching for n we will reed an indict ion var iable i, which will
+wer O, -l, -2, to n if we have n $ O, ard wer l, 2, to n if have
+n > O. It is com'enient to treat i tip sate way as n: Stcre 2-3 e i instead Of i.
+Sime propose to Ilse distr ibÜted stcyage, we reed not enurrerate further stcrage
+locat ions, are free to intrafire t;en as the need fcr tlpm arises, while we are
+drawing f 10•,' diagram.
+These indications should suffice to clar ify tte evol"tton aM the
+significance of all parts Of f Irv diagram shcvn in Figure 8.2.
+boxes I—XIV require static coding. Pefcre we do thåt,
+free remarks, which embody primiples that will apply to Our filt"re
+static coding Operati0% as well. They are folloqing:
+First: fiked storage will be required. These are
+certain nunbers to which specific reference will have to be specifical iy
+2-39•50,
+, O. We will tt•em at tte positions D. l, 2, 3, respectively.
+We will state these expl ictly at tte points they beccne recessary, by inter-
+ruptirg the ccHing col.mn there and stating the st«age.
+Every box coding e itter ends with an '•nconditional transfer
+cyder (type xC, xc') cr else it involves the assmpt ion that control goes on
+(Erding with a condit ioral transfer cyder
+fran there to a eef inite itior.
+xCc, xCc' presents ar interned iate case: We have the first ore (Y
+second ore Of the above alterrat ives accord ing to whether the transfer condit ion
+If this latter alternar ive is present, Yen this position
+is is not fulfilled.)
+(i.e. its Ranar box mvrneral .arri its ntr±er within its box) has to be nap-ed at tte
+end of box coding , with a reference "to
+Third: It will be found corven ient to an extra operat ion
+box, in addition to rent io,æd in the floe diagram. reason is, that two
+operatims wh ich should be carr ied 01't in two operation boxes irrrpdiately preceding
+a confluence, can be rerged and carr ied opt after cönflterce. (The two boxes
+in qlesticr' are XIII, X I V, the box is XV.)
+prcreed to carry net the static codirg of all bcües in ore,
+contintns operat ion:
+2
+(to Ill, l)
+2
+3
+(to v. l)
+II,i
+2-0 e 50
+Ac
+B.I
+C
+cc
+2-3 e SO
+2-9B •so
+-lul
+```
+
+<a id="planning-and-coding-040"></a>
+## planning-and-coding-040 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 48)
+
+Source: [physical PDF page 48](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=48); reading unit `p048`, lines 6–27.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+38.
+FIGURE 8.2
+32.50
+.SO t, 3.1
+3.1
+3.1—2
+7
+a-at, c.'
+2
+u.
+2-39
+3.1 2-3 g
+.50
+l)taB.l
+12
+12
+(l -l) toB.l
+roc.2
+v
+1 10
+u
+2
+```
+
+<a id="planning-and-coding-041"></a>
+## planning-and-coding-041 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 49)
+
+Source: [physical PDF page 49](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=49); reading unit `p049`, lines 4–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+-2-3 a•so
+3.1
+c.i
+c.2
+c.2
+(to VI, l)
+lul
+lul-lvl
+VII,I
+(to x,l)
+D.2
+VII,)
+0.2
+8.1
+(to VIII, l)
+VIII,I
+- IVI
+c.2
+(to XIII,I)
+IX,I
+c.i
+c.i
+VIII, I
+c.2
+c.2
+c.2
+XIV,I
+D.2
+c.2
+c.2
+Xl,l
+c.2
+Ac
+3.1
+c.i
+8.1
+C.I
+3.1
+Ac
+c.2
+Åc
+Ac
+c.2
+2-3 g •
+0.3
+(to Xl,l)
+Xl,l
+(to Xli,l)
+XII,I
+XIII,I
+(to xv,l)
+```
+
+<a id="planning-and-coding-042"></a>
+## planning-and-coding-042 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 50)
+
+Source: [physical PDF page 50](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=50); reading unit `p050`, lines 6–162.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+XIII,8
+XIV,I
+2-10
+2
+c.2
+3
+(to W, l)
+2
+8.2
+t
+3
+roa proceed to tte f inal entrreration. must bmes
+I-XV fcr this in such a nanrer, that the irriicatiors "to
+. n are
+Any Seq1Ence which .is rude recessary by an "to n will be narked by
+a came, every seq1Ence wh ich is based on an arbitrary choice is merked by a
+semicolon. In this mnner set the fol loging a-dering: l,
+111, V, VI, X,
+• IX; X I V, XV. crderirg is inverfect, inas-
+Xl, XII; It; IV; VII, VIII, XIII,
+much as XV should have been tte irmediate successT of XIII as well as of XIV,
+sirce Only ore was possible, XIV. it is recessary to add at
+er6 Of XIII an uncMditi0rBl trarsfer cyder to XV:
+21
+25 -26
+13- 14
+26 —27'
+w, 1-3
+28, 29
+30,
+51-71
+VIII,l-3
+XIN, 1-3
+32, 33
+34 -s
+13 cc
+25 cc,
+2-3 e SO
+xv,l
+c
+It rerrøins fcr to assign A. 1,2, 8.1,2, C. 1,2, D. 1-3 their actual
+n, L—3, VII, 1—5,
+valtes, to pair tie 56 It, 1-3, IV,l-3,
+VIII, 1-3, IX,l-7, x,t-5, Xl,l-3, XII,l-7, XIII,l-3, XIV, 1-3, XV,l-3, to 28 we-ds,
+XV,3 t}Eir val tps. These
+ass igrTents are
+ard then to assign I , I
+sufficiently nmeroqs to justify raking a small table:
+l, 1-2
+IV,l-3
+E -18
+we
+Obta i n
+20 -21
+ccx*ed seqpnce:
+C
+o
+2
+3
+5
+6
+7
+8
+9
+10
+II
+29
+28
+28
+29
+28
+16
+30
+32
+35
+33
+-M,
+M,
+cc,
+s,
+R,
+x,
+-h,
+this
+12
+13
+14
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+AX, 1-7
+NV, 1-8
+A. 1-2
+B. 1-2
+c. 1-2
+D. 1-3
+32
+32
+33
+31
+2-39
+18 ct
+, 32 S
+33 s
+36
+33
+33 S
+30
+30 s
+29 h-M
+33
+33
+34
+e
+30
+35
+32
+32
+33
+32
+26
+3S
+32
+s,
+c,
+S,
+s,
+C',
+h,
+30 s
+34 -
+e
+30 S
+32
+33 +
+30
+30 S
+s,
+s,
+```
+
+<a id="planning-and-coding-043"></a>
+## planning-and-coding-043 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 51)
+
+Source: [physical PDF page 51](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=51); reading unit `p051`, lines 5–71.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+141.
+In est imating d•mations, we have to pay attention to sate points which
+did not core up in Probla•as 1-3, rarely: The f los diagram of Figure 8.2 is never
+traversed by the control C ir. its entirety. Tike course Of C is, instead, dependent
+on behavicr of u, v and n. Specif ical ly, its covrse is as follcvs:
+L, then
+x: 1804
+II (end),
+Ill, trpn
+tv (end),
+V, VI,
+VII, VIII xn, (n-l), XIII
+(_r + ' ) , XII x XIV
+n:
+125
+125
+for
+VII :
+XII :
+durations Of the individual boxes are:
+125
+180
+255 u
+XIII
+75
+125
+dvrat ions :
+Xlv:
+125
+255
+225 u
+, tten
+xv :
+1054
+Eknce we have these total
+for v O, u = O:
+275 u
+fcr O, u + O, n > O:
+(380 (n
+1080) g
+(380 + 1060) u
+8.9 It seers appropr iate to reke at this point a m to
+errcrs that are discwered at anv stage of ca*ing, incll•ding the ibil ity
+that ttey are d iscavered after the cod irg has been corvleted. Together with
+correctirg actual errors, ore should also cons ider case where ccding is
+proceeding, has been cmclWed, without farlt, when (for any reason whatever)
+a da•.ision is rrøde to apply charges. Charges of both ty*5 (i.e. e i tyer
+c&rectiors of actual errcwS voltntary trarsit ions ore. cTrect cade to
+anotrer ore) fall clear lv into tyee classes: Onissiors of certain parts Of the
+caied seqtence; insertions at a ærtain plaæs into a coded sequence; replacerent
+Of a certain part of the ca4ed seqtence by anatter ded seqtence (the rew having•
+the Sarre le-gth as the old, cr a ler length, or a greater length). The irnPT-
+tant thing is, of cotrse, that it should be pæsiblp to effect such rutifications,
+withoirt losing tne result of any of the dore on those parts of ttp coded
+i.e. without anv recessity to "start all
+seqterce which are not to be rulified
+wer again' in whole Or in part.
+nere is, of colrse, rw prÖ1em if the codirg rot yet prqressed
+very far. Tie dyrømic stage, i.e. tye f Icy diagram, is easy to Omlsslms
+can be effected by erasing or crossim out tie un&sirable regim, fol by
+nshrtingn, I.e. takirp tie track directly frm its imediate to its
+Imediate This r.y also be achieved by introdtrirg (f ixed)
+rerate conrectiors. can be effected by drawirg the region separately,
+arui tren detotring tte track to it ard back fran It. Again fixed remte cmrections
+Replacerents can be effected by cmåininq ttese two techniques -s
+my be helpful.
+FINi&d that sirole erasirg redrawirp of tie affected region is not "act ical .
+```
+
+<a id="planning-and-coding-044"></a>
+## planning-and-coding-044 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 52)
+
+Source: [physical PDF page 52](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=52); reading unit `p052`, lines 6–61.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+142•
+Even in static ccxiing Vere is no real gyoblem, as lorg as tre stage
+of imi nary entneration has not been passed. Erasing Crcss ing Out, and re-
+writing at the Sarre place else-nere, will take Care of everything cors ider ing
+great flexibil ity of our. retha*s of (prel iminarv) enlmratim. (Cf. Note I in 7.4
+the discussion of the prel imirøry entrerat ion in 7.9.)
+The difficulties arise only when the final entreratim has already been
+achieved, i.e. when the coded seqtence has already been formulated in its final fcrm,
+when it has even Ipen put on. the regret ic wire or tape. In this Case, any unissim,
+insertim, cr replacer-ent of any piece by one of different length, rray fcrce
+rewritim of considerable potions of the cMed seqtence, wh ich trey I ie in any part of
+it.
+Indeed, it will change primrily the physical pcsit ions of the wcrds and tyeir
+(final ) nuåers, inasmuch as they ie after the region Of ctenges. If the change
+in length aml'nts to an Filber Of half words (orders),
+it will even change the left
+right position of all subseqoert half wcrds (orders) within tteir wcrds. Secondar ily,
+it will change the x in all S(x) everw&ere in coded seq'eme, which refer to words
+half wcyds whæe position was cterged pr irrør ily.
+Let us discuss changes are effected on a cæ,ed seqænce that has
+been fcrmulated (on paper) in its final enlJæration. We will afterwards toeh quite
+br iefly upon the treatænt of Ehar*s in a sequence which has already reacted
+rngretic wire or tape stage. This latter phase can only receive a prel imi nary
+consi±ration in this report, since its exact treatment is affected by a mober of
+er•gineering details which cannot be taker here. It will becare clear, hoever,
+that treatrent of this prcblem is ir any event possible alonq essentially
+sam lires as the treatænt Of the first rent iored pr&lem:
+That Ore Of a cæed
+seqtence fcrmulated (Or paper) in its final enurerat
+The best way to deal with this problem is by reans of a specific
+example. will Use the final cded solving Problem q, as given rear the
+end of 8.8, fcy this purpæe. Ollr changes Will consist of ctrreo.tions Of actual
+erra•s (we will introduce str.h erræs into that sequence), charges which ccyrespond
+to voluntary transitions fran me ca-rect code to another Ore offer clearly no rew
+problerrs .
+We consider tterefTe final coded sequence 0-36 in 8.8. take
+up several hypothet icål e-rrcrs and tteir corrections:
+First: Assure tint by sme mistake three cyders wh ich do not belong
+in this seqtence, had been placed into three half wcrd beginning with
+, and onr actual cyders u-27' are at 15'-29,
+the first half Of occwpy 14—15
+Al) refererres,m ottEr hand, are
+and the strage wc-yds 28-36 are at 30-38.
+If is desired to remove the erroneous
+ccyrect with respect to this pcsitiming.
+crders, 114-15 (this is the old rotation).
+cyder l" by an ux:ordit ional trarsfer
+It suffices to replace
+15
+141, IS be left starding. After IS'
+is irmediately transferred to 15' , where
+C gets to 14, and dæs nothing there, but
+it belongs.
+Eü•ld.• Assure that by sane mistake the two 6', 7 are missing.
+The act1Jal cyders 7 '—27 t are at 61—26', ard stcxace words 26-36 are at "7-35.
+All references, the Otler hand, are ccyrect Wlth respect to this positioning.
+```
+
+<a id="planning-and-coding-045"></a>
+## planning-and-coding-045 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 53)
+
+Source: [physical PDF page 53](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=53); reading unit `p053`, lines 7–55.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+43.
+It is desired to insert the missing or&és 6', 7 (this is old notat ion).
+Chcx)se a locatim in the remæy, where an interval of sufficient
+length begins. This ray be first position fol lcwing the cMed sequence in qtestion,
+any Other pæ itim. We assurm færrer, and ch0(Se acccrdingly 36 (this is tre
+rvntatim). displace the a-der iately preced ing tte missing in the
+present case 6, and replace it by an vnconditional transfer
+6
+36 c,
+Beginnin; with 36, we add tie reamed 6 as wel l. as missing (Xde-rs 6', 7
+and cortll'de with an Iircondit icy',al transfer back to the crt-kr irmediately fol loging
+upon missing ores. This gives
+36
+37
+29 s ,
+R,
+32
+(The 32 in cyder 36 is rew notat ion fæ old 33.) If seqterce contaired
+any refererres to 6 (which does not happen to be the case here), they have to be
+replaced by references to 36.
+Third: Assme that certain cyders in the cded seqtencæ were
+erroremsly rep laced biy other T ders. The nurter Of a-ders cr rrw,' not
+be equal to the nn±er Of the cTrect Tders which displace. In latter case
+entire subseqtent part Of coded seqterce is displaced, but that at
+any rate all references are with respect to acttal posit ioning.
+If the. seqence has the sam length as the erroreous ore,
+can simply insert it in place of the latter. If tip ccrrect seqterce is
+sba-ter, then insert it, and proceed fran On as in first case. If the
+ccyrect seqlerre is lorger. then insert as mlCh of it as poss ible, and groceed
+fran there on as in the secmd case.
+It will clear fran tlE abwe, that changing coded which
+already on the rragnetic wire ta;p can be effected acccrdirq to the sarre
+% irciples. This requires, of course, a device which can sir91e wcxds on the
+regret ic wire Or tape. We expect, that the rain itself, as well as
+special typewr iter which meqætic wire tape under renual control ,
+will able to do this. This rteans, ttet tte des ired charges can be effected
+either by min rachire, with approgr iate instr1}Ct ions, by typewr iter,
+latter procedure will pr±ably be preferred in rx:st cases. (Cf . ho•æver
+Chapter 12 , f T a smewhat related situat ion where first grocedlre turrs
+out to be preferable.)
+8.10 Proble«s of a artificial Character, des iqæd
+to illustrate certain sal ient points of onr rethod of coding, but only indirectly
+and very imanpletely actual ical pr±lers. Fran ncv on will
+lay a "eater stress the real ism of ottr examples. will still select tiem so
+that tiey illustrate variow impcrtant aspects of our meth&, but we will
+also oonsider it impa-tant tret ttey should represent actiel ard relevant methe-
+rat ical Furttermcre, will proceed frm typical parts, wh ihh OCCIT
+usually as parts of larger to irveas ingly Cmvletely fa•mulated self-
+contaired
+```
+
+<a id="planning-and-coding-046"></a>
+## planning-and-coding-046 — 8.10: square-root iteration, explanatory diagram and code (physical page 54)
+
+Source: [physical PDF page 54](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=54); reading unit `p054`, lines 15–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+with a the operation Of square rootirg. This is an
+impa-tant pr±lan, because our nuchine is not ex*cted to contain a square root ing
+cxgan, i.e. square rooting is mitted frm its list of basic aritywet ical cverations.
+form v
+Problem 5.
+The variable u is stTed in a given memcry Imation. It is desired to
+to it in anotter, given, rem«y location.
+v should be (itaired by the operation z -i (z + +
+This iterative process Can be written as fol
+Two qtest ions remain: First, what should be valle Of initial
+Secorxi, what i =
+io should tte iteratim stop, . i.e. which z i be
+ident if ied with ? The arswers are easy:
+Ans•ær to the first question: S irx:e prefer to avoid adjustrents
+Of size, it is desirable that all rumbers with which we deal lie betæen —l and l.
+u will be tetæen -l and l, and it is recessary to have O, herEe O $ u < l.
+Zi must be beWeen -l and l, it is desirable to have Zi. O, terce O $ Zi < l.
+and Zi +
+Corzequently ntnbers , whæe s izes must be watctpd are
+The first requires u Zi, i.e. u < Zi < l. Tie secord one my be circtrvented, by
+fcxming desired (Zi + h ) in this way: (Zi + k) = (h — Zi) +
+Next clear lv
+y-Erce - , i.e. all Zi vTwith the possible exception of zo. Choose
+therefcre zo i.e. l. Then all Zi F, and so Zi > u (u < I
+impl ies u < \.fi) as cksired. Zi v'iF gives , lerce Zi Zi + t, and so
+and converging to
+In choæ ing zo we may chocse any nurrber that is rel iably VT. The simplest choice
+(l+u). Since this expression involves divisim,
+IS zo = This gives -
+we might as well begin with i = I aM ZI
+Aroer to the second qtestiOn: t' is kno«l to within an errT
+o 2-4 c, tercevq is krmn within
+= tires this error, i .e.
+du
+```
+
+<a id="planning-and-coding-047"></a>
+## planning-and-coding-047 — 8.10: square-root iteration, explanatory diagram and code (physical page 55)
+
+Source: [physical PDF page 55](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=55); reading unit `p055`, lines 9–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+45.
+u * C, as u varies tran I to 2-3 e, eu var ies fran to 2
+.7X 2-21
+u - C the abwe fcyrula breaks dogn, hoæver tte is clearly = 2-2
+i.e.' Eo - 2-20. assume O, since trp case u E O Is quite harmless. shaJld
+stop when Zi lies within Eu Ofvf. that the last step is ore frm
+to z•
+then we I Zi o + z - Eu
+This neans
+-F 12 , z
+I Io 2-20 since Zi 0+2 -
+is rpgligible cmxred to Zi -VT ,lZio- z i o +11 S 2-20
+. thirvzi > z
+ard
+raking a safe werestirøte qfvæ
+Usirg (*), it is easily sæn, that ( ) , tie equivalent
+Zi 2-1 e ,
+2 if I-r' I-re, fr ioz3
+if 2-1 I-TN, for
+• if 5-1 ,
+u = T 40 O.
+terre fcy vallB of u, specifically fcy .2 S u $ .875 reed 3-4 iteratims.
+Cårqer ntners io of iteraticxs are ree&d wtpn u is smll, if u is of tte
+2-2' io lies betæen j-3 and j-l.
+It is tierefa•e debatable,
+shouid Bot adjtst u first, by bringing it into "fava-able" rarge u ? .2 by
+iterated rwltip1icatia•e with 22. In eur to simpl ify ratters, will not do
+this, ard wate with u relyiry ( * • ) mly. TtE disaoantage thus
+irrtrred is ærtainly wt seriotß.
+This arrargeænt of tre iterative mmess has tte effect, that tiere
+is no reed to sta•e the iteratim index i (but will, of cotrse, to refer. to
+i in dræirg the f IO/ diawam). u at A, aM v v'ü; *en it is föned,
+at B. tse distributed strage. In tte rec«fing refraired fram
+tte strage location, which is reserved f« tte final result,
+too. will u do this.
+f 10-8 diagram should xesertt ro difficulties, it is stun
+in Figtre 8.3
+FARE 8.3
+z,
+a
+z.
+1
+A
+```
+
+<a id="planning-and-coding-048"></a>
+## planning-and-coding-048 — 8.10: square-root iteration, explanatory diagram and code (physical page 56)
+
+Source: [physical PDF page 56](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=56); reading unit `p056`, lines 3–42.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+(to II, l)
+c.2
+(to til, i)
+Ill, I
+c.3
+111,2
+(to 11.1)
+boxes I-III require static coding. proceed in sane serse
+as did in Pr±lvyrl q, and all bmes in ore, continuous oæration:
+ZI
+IO- 12
+II s
+12 h
+c.2
+c.3
+c.2
+Next, Ü•der the boxes, in sane sense as we did in coding
+Ill results 'with ore 11 should have
+Problem 4. Tre Tdering l, I l.
+been the imediate successT Of Ill • This recessitates an extra Tder
+111,4
+11,1
+To curlu±, have to assign A, B, C. 1-3 their acttnl valæs.
+pair tte 16 rders l, 1—4, 11.1—8, Ill , IA to 8 wrds, and then assign
+actual valæs. Thæe are expressed in this table:
+2-5'
+Kita in this cæed seqterce:
+10 h,
+ecc, .2C
+as fol loqs:
+Tre duratims •y be estiflBted
+l: 130 u,
+II: 380 g,
+Ill: 150B
+c. 1-3
+12
+Total: I + (11+ Ill) x Io =
+• (130 + (380+ 150) io)
+(530 io + 130) (.6 + . l) m.
+As we saw abwe, a reasoæble mean value ftr i is This gives a duration of 2.5 m.
+```
+
+<a id="planning-and-coding-049"></a>
+## planning-and-coding-049 — 9.1?9.5: human and machine number representations and reading conventions (physical page 57)
+
+Source: [physical PDF page 57](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=57); reading unit `p057`, lines 7–55.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+9.C CODING QF PROBLEMS DEALING WITH THE DIGITAL CHARACTER CF THE NUMBERS
+PROCESSED BY THE MACHINE.
+9.1 will code in this chapter several prålers, which fall into
+two classes.
+First: corwersion of ntr±ers given in the decimal system into
+ttpir birnry fml' , and corversely.
+Secæd.• TFE instrtrt ions which are recessary to rake tte rachire
+with nurbers of mre than 40 digits.
+Ttese probleflb are of corsiderable interest fcy a var iety of reasons,
+ard it while to trese s«rewhat extens ively.
+We note, to begin with, t\et both classes of problens furnish exanvles
+Of prdlems and præedures that deviate fran the norral of algebra, and herte
+differ very relevantly frm the pr±leßs that we have hardled so far. Indeed, up to
+nog (as well as in all cases that we will consider after this ehapter) digit
+aggreaate, which is the nurrber contained in a '.«d, was tte standard unit which we
+mnipulated. We appl ied to stx:h units the elerentary oærat ions of aiitmetics
+(additim, subtract ion, multiplication, division), but we TE/er caiired them in
+any way except tirmgh these operations, aryl we never broke any such unit up into
+sral ler parts.
+In the pr±lerrs of this we will have to break up ntrbers
+into treir digits, operate on these digits (T rather on certain digital aggregates)
+individually, carbine numbers in rewways, etc.: that is, Otr operations will be in
+rrøny impa•tant phases logical c00irEta• ial rather than algebraically
+Next, we Feve to point out pract ical of the two
+classes Of pr&lens to which have referred. The second Class can be disposed
+of by a simpler discussion than tte first ore; ttprefTe we will ccrsider the
+second class first.
+9.2 Our stardard numbers have digits, rather. a sign
+1.8 • 10-12.
+and birury digits; HerCe they represent a relat ive precision of 2
+C.OTIRrirg this to the length of interval which is available trem (f rm —l
+.9 • At any rate, we
+i.e., •length tte precision becones 2- •
+to l;
+Fave here a precis im Of about 12 decirrøls. This is a cons iderable mecisim,
+and adeqtzte mcre than adequate f'X prchlems that are Of interest at this
+nment. Yet there are even certain exceptims; e.g., surrraticn of certain
+ser ies, the evaluztion of certain expressions by rectrsion fcrmulae, the integra-
+t ion of scre rm—l i rear (total) ial eqtntions, etc. these
+cases, wrere 12 decirals (cr their equivalents) are inadeqtzte, are likely to
+becare rxre freqænt as more irwolved pr&lers are tackled in future.
+It will beca•re increasingly difficult to chose an nappropr number
+of dig its fcy an all-purpose rechine, especially siry:e an unuslzlly high nurrber Of
+of digits (for standard mrter) would render it very' irefficient wtpn it deals
+with that require ordirary (aM trese will inue
+to corstitute tye m jr ity Of all appl icat ions). This inefficiercy would extend
+to use of available reff0ry capacity, amount of equimpnt tied up in
+parallel diqital chanrels of the machine, ard the tire required to perfcrm
+multiplicatims divisions.
+```
+
+<a id="planning-and-coding-050"></a>
+## planning-and-coding-050 — 9.1?9.5: human and machine number representations and reading conventions (physical page 58)
+
+Source: [physical PDF page 58](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=58); reading unit `p058`, lines 5–57.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+48 •
+Consequently, it is imp«xtant that nechire should being
+operated at varying mm-bers of digits; i.e. at varying levels of digital precision.
+Orp might consider building in alterrhtive facil it ies for alterrative precis im
+levels, control led by rranual switctes, or partly or wholly automtically.
+prefer, hogever , tc achieve this without any phys ICal changes or extra Of
+the L*Obirary digit rachine. This can be done purely logically; tret is, it is
+possible to instrtct the to treat k words; i.e., k aggregates of a sign
+arri 39 birBry digits, as if ttey here forming a number with a sign of 39 k binary
+(k-l signs are wasted in this process.) This irrreases the precision to
+ditiEs.
+2-9 ; that is, to IO
+; that is, to any desired level.
+It dæs require,
+hoæver, rw instrtrtions fcy the Øerations of arithmet ics (addition, subtract ion,
+multipl ication, division), and it cannot fail to redtne tlE speed tte nerr«y
+capacity of the rechirm W•vertheless, it is reasonable as an emergency
+reasure, an except pr&lem requires unusual precision.
+Ttese new ar ittnt iCal instrtctions are pro,'idfff by the probkrrs
+Of our second class.
+9.3 Our machine will operate in tte system. This is most
+satisfactory from the point of view of its arithætical ard its strtrture,
+but it creates certain problers in connection with its mactical tse.
+' In rost cases the input data are given in tte deciml system, and
+tre unput figures (the results) are Riso wanted in that system. It is therefore
+imp«tant to be able fo effect the deciral-binary and the birzry-&cinel conversions
+by fast, autMntic On harri, the use Of ttpse devices should be
+opt i.e., rachine should be able to receive and to emit data in tte birEry
+system, too. reasons ftv this requirerent deserve stated expl icitly.
+The use of tte deciml system is only just if iable fcy inputs (data)
+which crigir•ate (directly) in hlrrøn ims; i.e., where wire
+tape tyut carries them has been prodtred manually (by typing): aM for outputs
+(results) which are intended fT (direct) hurran serBing; i.e., wtere tie contents
+of the mgrptic wire or tape in qtestion are to be t•ade readable in ordinary
+sense (by pr inting). good deal of tte output of the rrachire is, horever,
+in sane pr±lem
+destired solely for use as stbseqtent input of the rechire
+in later prob lem. this rater ial no conversion is reeded, sime it
+reed be moved of tte birøry system. ThlB tl•e are, as a ratter of
+principle, two categ«ig within the infrution st«ed on tte ragretic wires cr
+tapes: First, infrnnt ion mtBt pass tyrough humn intel lects (at its Tig in
+at its firel dispæition); secorrf, infmTBt ion rever reactes (directly)
+a hurøn intellect and reßBins at all tines str ictly within rechire cycle.
+Olly ttE first catego-y need be transferable to and frm decirøl notatim;
+i it requires the cmvers'ions that we are goirp to cons ider. This
+circunstanæ is of great iro«tance deal inq with these conversions, because
+it sets fr tYem much less exigent standards of speed than would be desirable
+otterw i se.
+Indeed, infTrøtion af second categTY my be EOdtEed and
+conswed at a rate which is only limited by speed af writing on rea4ing
+from the mgretic wire or tape. This can probably be at rates Of SC—ICC
+thousand digits per secoöd. my, at least at first, use a trore corset-vat ive
+arrangerent of about 25 thousand digits per second. Even this reans, fr a
+```
+
+<a id="planning-and-coding-051"></a>
+## planning-and-coding-051 — 9.1?9.5: human and machine number representations and reading conventions (physical page 59)
+
+Source: [physical PDF page 59](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=59); reading unit `p059`, lines 6–60.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+49.
+digit mmber, arxå with reasonable tirre alloarces for certain checking feattres, etc. ,
+about 2 m per ntrber. In rder that the convers ions do not s 10M da./n these pras.esses
+appreciably, they would have to consur•e definitely less than I m each.
+Inf(yret ion
+of tte first on the other hard, should not be pranced constred faster
+than the rate to that of printirg, typing, and WY-at is restrictive,
+htrrøn nurderstarding". Our g O binary digit ntners carespond to ntrrbers with about
+IO deci"Bl digits.
+It is diff icult to assign a definite tire to this, since
+one ray pr int reny digits in paral Thus, standard pr inter will print 80
+decinel digits in satewhat less than a secorxi. Various ureonventional my
+be a goaf deal faster. the ottpr hand, typing will hardly ever be faster than iO
+deciml dig its per secorxi, and any form of "llrxierstard ing" (which should be
+taken to mean at least critical reading) will be still Even the raking of
+tables fcy publ ication reed not exceed this rate, and besides it is likely that tre
+raking of voluminous tables in book fcrm will becme less important with tte
+dicti(M of very high speed nechine c«rput ing. To the extent to which rachire is
+Taking "tables" for its cyn use, ttey fall into the. secord catego-y•, i.e. they shalld
+regain On wire tape reditn, and rever be converted into the decinnl system.
+I-Ence, infTrøtion of tye first can be. hardled satisfactcxily with any
+version mthods that are considerably shcrter than a secOM. An upper 1 imit Of 100 m
+would seem than safe.
+These comiderations Shu-I that our subdivision of the input
+output of tye rrechine into the two categcries discussed abwe is
+Indeed relevant, and that it is also impcytant to realize that desirability
+of the corversion applies only to the first category. Ttese things being under-
+stod, any cowersion tines up to ICO m turn out to be adequate.
+The mchine will easily effect tte cmversionsl in qæstion at much
+faster rates than this. With snall changes •in its cmtrols we could even keep
+within the I m, which would be.desirable if all infrination were to be corverted,
+blrt have seen that this ' is unrecessary. We will tterefcre rake no
+at all. corveriion tires arrived at in this ranrEr will be cf tie
+rder cf 5 m.
+In Or&r to discuss these, Or-e rncre meparation is reCeSsary:
+machire is to effect birery-deciml and cavers ions, tren we
+must agræ on sare methd by *ich it can deciml digits; i.e., express
+in a binary ion. This mist also be ccyrelated with variaJs character ist ics
+of tye wire or tape rediuh: Hoq tte deciml infcrrøtion is stored on it, it can
+be put On • it by ard extracted frun it by printim.
+will pra:eed to consider ttese retters.
+S. u In disctssing typing and printing, one should keep in mim
+that, while it is recessary to able to perfrm t!ese operations in ttE dec imal
+system, it Is quite desirable to have alter rative pmSibilitv of doinq than
+in birery system. Sirte tte inrer funct ionirq of the mchire is binary, its
+extersive use will sccessively lead to an ircreaiina familiarity with the birery
+system, at least as far is thæe are correrred who are directly in
+it; (Tek Irg arithretical and otter estirates for it; seNing, diagrsing
+and crrectirg its rrelfurctiorz: etc.
+It is likely that •rachine and the
+practice ard thecry Of its functioninq will prCx{Lre genuirply birnry prc%lers.
+It is therefore Prchable that it will gradually Cause, even in the interests Of
+its users, a certain amunt of a shift fran decimal to binary præedures. Tbe
+pr±lem Of typing, and (hlrran) readirg should ttprefcye be faced in the
+birøry as well as in decirøl system.
+```
+
+<a id="planning-and-coding-052"></a>
+## planning-and-coding-052 — 9.1?9.5: human and machine number representations and reading conventions (physical page 60)
+
+Source: [physical PDF page 60](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=60); reading unit `p060`, lines 8–75.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+50.
+COTE i±r, first, tye binary case. rachire, as hell as tie wire
+tape, treats a ntnber as an aggregate of birør.y digits, i.e., digits C l. TO
+type in this fashion, and even to print and to have to read in this fashion,
+would be definitely ireffieient, siree we are already conditiored to recongize ard
+use about 80 different alpFzbetic, ntnrical and purx:ttntim syrbols. A str ing• of
+digits is definitely to reranber arri to manipulate than a Of IC
+symbols, even if the forger are only O's and I 's, while the latter ray be chosen
+freely fran IC decimal digits C,
+9 or frm 26 alphabetic syriols a, Z.
+There is, hc»ever, an d! ious way to circmvent this incowenience.
+Ilt consists Of choosirg a siitable k = l, 2, 3
+, and of typirp, printing and
+reading not in terns of individual birøry digits, but {f groups of k digits.
+This annunts, of course, to wing effectively a base 2 systan instead of ttp
+base 2 (binary) system, but sirre the conversions betæen these two are trivial
+to the point of insignificarce, and sirre the nechire is birøry, this seems a
+ratural thing to do. our reading habits ary ccmditionirv, 2k shoU1d
+be of the order of IO to 80; sime it is to replace ttE ntröer IC of decirral diqits,
+it is preferable to Mke it of the order of IO. k = 3 or k = seem tte
+logical choices.
+Fff k = 3, 2k 8, we can denote tiEse triads of binary digits by
+the decimal digits O, 7. It is best to let every deciml digit O, ...,7
+ctxrespord to its birøry express'im (as an integer). This is an advantage.
+the other Yend, a pr inter that is crganized in this fashion would be unable to
+pr int decimal digits 8, 9, and this is a which is unacceptabb ,
+as will appear belo•t'.
+Fa- k 14, 2k 16, we can deX'te tetrads Of binary digits by
+9 and six other sy±ols; e.g., the letters a, f
+deciral digits 0,
+9 correspond to its binary expressim
+It is best to let each deciml digit O,
+(as an integer). Each letter a,
+f may be treated as if it were corres-
+15, and it Can be replaced by the
+ponding nunber in the IO,
+birøry expression of that mm-ber (as an integer). Thus we tw.•e to use the deciral
+9 and the letters a, f together, which my a disadvantage:
+digits O,
+This disadvantage, hoever, is outweighed by the advantage ttet a printer which is
+e. It can also
+in this fashion can print all deciral digits O,
+print the letters a, f, which are likely to be useful fr otter indications.
+We choose accordingly k The sylTbols trat we ass ign to tte
+2k
+ocoo
+0001
+COIO
+ocil
+= 16 tetrads of binary digits are shoyn in Table IV.
+TABLE
+1100
+1110
+2
+3
+0100
+0101
+0110
+0111
+5
+6
+7
+1000
+1001
+1010
+1011
+8
+9
+```
+
+<a id="planning-and-coding-053"></a>
+## planning-and-coding-053 — 9.1?9.5: human and machine number representations and reading conventions (physical page 61)
+
+Source: [physical PDF page 61](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=61); reading unit `p061`, lines 8–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+51.
+In acttnl ervireering term this decision mans tte follo€ing thims:
+First: The typewriter which is used to rodtze InfTretim manual ly
+on the wire tape 16 keys, narked O, 9 and a, f. If any ore of these
+keys is depressed, it prætx:es on the wire cr tape ccrrespordlng tetrad of binary
+digits, as indicated in Table 'V.
+Sa:om.• % inter which is used to corvert on tte wire
+tape into readable print, can % int 16 symbols, the decirrøl digits O, 9 and
+the letters a, f. It picks up the infm•røt ion on the wire, which is in tte
+fa-m of binary digits, tetra&ise, aM upon having sersed any tetrad, it prints
+c«respording syrbol, as iMicated in Tablé IV.
+Ikrre, a 40 binary digit word, e.g. a full size ntrrber, c«respoMs
+to IO tetr•ds, i.e. to IO synbols 0,
+f; aM a 20 binary digit e.g.
+an Tder, corresponds to 5 tetrads, i.e. to 5 -symbols. Within an order the 12.
+first binary digits tte Imation mnber x (cf. Table II), aM tterefore
+this x is separately represented by the 3 first tetrads, i.e. syrbols.
+It is best to allot to every &cimlly expressed nurber, too, the
+space of n. wc-d. a I logs fcr IO syiols, i.e. f« IO deciml digits.
+Since It is desirable, hogev«, to leave space fo- a sign irdicatim, ttese are
+not all available. Tte sign could be exressed by ore birury digit, but it
+seers not to disrupt tte grouping in tetrads, we propose therefcre
+to devote an entire tetrad to the sign.
+In addition, it is. desirable to (Enote
+tte two signs + aM - by a tetrad which differs in grint frap tre decirøl digits,
+i.e. which is pr inted in our system as a letter. We essign therefore tentat ively
+'letter a (tetrad to + and trp letter b (tetrad 101 1) to —
+Thus a 4C
+birgry digit wcyd Can express a decirel nucher which r.m3 ists of a sign and cf S
+decirrzl digits.
+It is indicated to asstrpe . the deciml ntners, as we did fT
+the binary ores, trey lie behqeen -l ard l, i.e. that the decimal point
+irmediately after the sign.
+There is ore rrcre thing that reed be rentiored in cmrection with
+the tse of the sign irdicatim in the decira) notation. Our binary notation
+Yandled regative ntr±ers essentially by taking ttpm rrxiulo 2, i.e. a rrgat ive
+- lal ! The flrst I expressed
+a • was written as 2 + a-2- lal
+the - sign, ard so.the digits to the right of the binary point were those of
+, i.e. the cm.pleænts of the dig its cf lal (with a crrection of I in
+the extrene right place).
+(Cf. 5.7 ir Part I of this report.) 'In our dæiral
+mtaticn it will mre corvønient to desigrnte any ntrber a (wyett*r rpgative
+by Its sign ixiication,follaæd (to tte r Ight of decinel point) by tie
+This is in lurrrony with the t_JSLnl notatiom in print, and it
+digits Of lal .
+presents certain advantages in the actual præess of cowersion (cf. 9.6, 9.7).
+9.5 arlthretical conseqtgrces of ttese corrventims are nod
+easy to formlate.
+Tie rechire should be able to deal in two different .ways with
+nurbers that lie -l ard I in terns of birery digit
+First: In binary way: Sign digit arx! 39 binary digits.
+```
+
+<a id="planning-and-coding-054"></a>
+## planning-and-coding-054 — 9.1?9.5: human and machine number representations and reading conventions (physical page 62)
+
+Source: [physical PDF page 62](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=62); reading unit `p062`, lines 5–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+52.
+Seco•Ü.• In tte decimal or ratter in tte binary-deciral way:
+Si gn
+tetrad, which is 1010 fcy + and 1011 fcy — (both aggregates to be read as binary
+numbers), and 9 decirøl digits, each of which is expressed by a tetrad, that is
+sirvly its expression as a binary nurrber.
+In to rrzke this double system of notations effective, must
+provide appropr iate instructions for convers ions fran each Ore to the otter .
+I.e. our problem of corwer%ion is to provide instrvctions fa- binary to binary-
+decirøl ard tye binary—decinel to binary conversions.
+It should be noted that these
+conversions take place betæen two binary digit aggregates, and ttey are {o
+perforned by our ptrely binary rechire.
+At this point a qlEstion coreernirg precision presents itself.
+are consider ing conversions between what is effectively a 9 decirBl digit nun-ber
+and between a 39 binary digit number, i.e. a ntrrber given with tte precision
+10-9 and a run-ber given with the prec is ion 2
+- 1.8•10-12. The latter is 550
+tires mre precise than ttp former, is this not a sign Of unbalarre? wish to
+±serve that this is mt tlp case.
+Indeed, the first rent ioned, lager precision in •ckcirral
+nuåers, i in the input (data) and output (results); while the second
+rrentioned, higher precision occurs in binary ntnbers, i.e. in the intervening
+calculatiors. Verce observed disparity in precisions rreans only that we carry
+in the calculations an excess precision factcr Of 550, i Of sl ightly less than
+3 extra decimals, beyond the precision of the data and tre results. it is
+clearly recessary to carry in any canpl icated calculation decirrels than tte
+data or tte results require, in order to keep tte acctmulation Of round-off
+errors dagn. a calculation Of such a carvlexity that just if ies the Ilse of a
+very high speed electronic ing device, 3 extra decirrøls will probably not
+be excessive fran this point of vie.•d. They ney even be inadequate, i.e. it mey
+not. be pæsible to utilize in the data and tte results the full nu±er (9) of
+available decimals.
+Tlpse considerations conc11He our prel iminary discussion. add
+only ore n-re re"Vk: With tte except ion of tie arrargemnts relative to the
+and printer (cf. Table IV and the two rererks which ft)) lag), we did
+not discuss physical features of the machire , but only arb itrary conventions, to
+be effective by giving appropr iate instr1Ct ions to machire. A var iety Of
+otyer conventions would be equally pæsible (e.g. different pos itioning of the
+precision by using mre than om word fT a deciml and
+deciml point,
+for a binary ntnber, conversions into and fran other systeTs than the deciml
+etc.), and could, if desired, be rede effective by appropriate instructims.
+are Mly discussing ore example in this chapter, as a prototy*, although it
+Seems to be and irrediately generally useful ore.
+9.6 are rm in the position to discuss act nal cmversion
+processes ard tteir coding, ThrotEhout this paragraph ard the rext ore will
+have to use alternately binary and dec irnal notations. agree therefcre that a
+digital seqærce with ro special narkings is to be read decimlly, e.g. 987016
+or .75102; while ore which is werscored is to be read binarily, e.g.
+. 11001. Thus, e.g. 10001, .14 - .ööTfiTj-rrr-:z-. . In the tetrad
+notation Of Table IV the two latter binary nmoers M)uld read I I and .23d .
+```
+
+<a id="planning-and-coding-055"></a>
+## planning-and-coding-055 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 63)
+
+Source: [physical PDF page 63](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=63); reading unit `p063`, lines 14–60.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+53.
+corsider first:
+Prtilan 6.
+nur+r a is stored, in its birury fTm, at a given rrenuy ion.
+It is desired to its binary—eciml fcym a', and to stcre it at another, given,
+locat ion.
+Acc«ding to this a is a ruier, lying betheen -l and l.
+As
+pointed 0th at erd Of 9.4, must first sense the sign Of a, then corvert
+lal ies betæen O ard l, and its decinøl expar•sim Can be by this
+lat.
+indictive
+(l) = Jal,
+(2)
+ai+l
+If is tie sign iMication of a,
+at tie end of 9.14) is z', z z
+tyen the &cirrøl exparsion Of a (cf. remrk
+as (4 digit) bimry
+If Kite ZI, Z2,
+mmbers, tien this representation beccres
+I Ifcr a O
+tien z* , z z
+ze is a seqærre of
+40 binary digits. Let us viæ it as a binary ntmber betæen -l l, in the
+of the crdinary conventims of Otr rrachire. Siree begins at any rate with l, it
+will be regative, represents acttnl z
+1.010 (birery, mdulo 2)
+• (binary, rdu102 )
+It is cmvenient to introdl.re
++ 2-2
+= -l *2-2+2
+-2-2•3
+zo • 23 z* •
+Zi represents actual
+-5 ftr a < O
+(3)
+(5)
+• . b inary ntner that want to i s
+z • This can be &firpd indtet ively as f0110ß:
+-5 fir a < O
+Thic our &finitims, except that
+the point of view of ocr actiZl
+ar ith•æt ical
+it is Üe crwenient to wite, from
+pra:esses. (2) in this frm:
+2'(2-2 ai + 2-3 q), osa
+```
+
+<a id="planning-and-coding-056"></a>
+## planning-and-coding-056 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 64)
+
+Source: [physical PDF page 64](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=64); reading unit `p064`, lines 7–49.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+54.
+This Of (2' ) apans that the additW1 that is required in is
+performed entirely within the range between -l l, indeed between O and l, and
+i.e. trp
+that the split into a "fractional part" ai+l
+and an "integer partn z •
+operat ion which recessar ily requires exceeding that is initiated by a multi—
+pl ication by 24 alore, i.e. by a quadruple left shift. This latter operation, a
+fourfold appl ication of the L of Table II, ically separates tye fractional
+part.nd the integer part, referred to abwe: Tte fcyrer appears in the ,
+the latter, mltipl ied by r s g, in the register. At tte saæ tine it should be noted,
+that (g) iwolves no trtE addition, but if a: is in register, abwe
+rrentionee fourfold appl ication of L of Table II WII I replace it by aM will at
+too, ttereby fcrming typ desiréd
+same tim introdlce there 2-3 Zi + t ,
+TYpse cons iderations Shaq, by the way, that it is best to
+9) in the register, and thæe of
+s'rcessive valtps Of a! (for i O, l,
+a i in the acctmulatcx. Siree tåe register will be required for any otler purpme,
+will even find it pcssible to store the successive values of a! in tte register,
+while additional dernnds that will have to be made on acctmulå& will make it
+impossible to do the sare with ai and tie acctmulatcr.
+iteration irdex i might be stored in fa-m r B i, but it is
+smewhat preferable to stT9 it in tie form 2-3 e (8,i). (A corresponding trick would
+have been equally appl icable in coding Problen 3.)
+We can nag draw flag diagram, as Shaqn in Figure 9.1. note
+that the stcraqe space indicated fcr ait, B. l, is actually the register (cf. abwe),
+Perce B. I will not ap*ar as such in coding that fol As to tte final
+storage of result, a', var ions alterretives are possible, ircluding leavirv it
+in put it irstead into a definite rreffxry location, aryd chmse for
+this 8.2.
+FIGURE 9.
+8.1 a 0'
+3 z-39.e
+to 2.2
+2—39.
+to 8.2
+3.2 a'
+e
+PART OF
+2--99. CINTESER PART
+3 2-39 (7—0
+2
+```
+
+<a id="planning-and-coding-057"></a>
+## planning-and-coding-057 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 65)
+
+Source: [physical PDF page 65](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=65); reading unit `p065`, lines 4–40.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+SS.
+carry this out as in the
+(to Ill,l)
+(to IV, i)
+c.2
+(to IV,I)
+IV,I
+c.3
+(to v,l)
+10
+12
+V, 13
+(to VI, l)
+VI, I
+(to V, l)
+VII,'
+The boxes I-VII require stat ic coding.
+preceding xoblems:
+8.2
+c.3
+8.2
+VII, I
+8.2
+8.3
+Ac
+8.3
+Ac
+Ac
+order the boxes, as in the preceding pr±lers. Ttp (Xtkrirg
+II; results, with two imperfectiors: IV, V should have been
+l, Ill,
+IV, V, VII;
+irmediate successa-s Of II, VI, respectively. Thls recessitates two extra a-ders
+IV,I
+VI,3
+of these quantities in V,
+Figure 9.1.
+```
+
+<a id="planning-and-coding-058"></a>
+## planning-and-coding-058 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 66)
+
+Source: [physical PDF page 66](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=66); reading unit `p066`, lines 4–89.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+1,1-2
+Ill,]
+2
+•3
+q
+5
+6
+7
+56.
+must assign A, 8.2—3, C. 1-4 tteir actual valæs, pair 29
+T&rs l. r-2, I ' .
+31-10
+12 -13
+19 R, 15M
+16 s , m
+17 s , 16
+R , 16 S
+R,
+assign I. I
+-VII,
+1-2, ILI , l, 'V, I-Y, v, l-
+3 tteir actual valæs.
+VI l-
+Trese are
+, 3, VII, 1-3 to IS wa-ds
+exxessed in this table:
+VI, 1-3
+VII,1-3
+8.2-3
+131-14
+15
+16 -17
+18 -21
+, 13 w
+16 h „
+L
+L
+this
+8
+9
+12
+13
+14
+s.aqtrrce
+L, 16 s
+21 h-
+17
+17 s,
+12 cc,
+16 s
+A,
+18 R
+15
+16
+19
+20
+21
+-24 •6
+2-3 G '8
+2-3 e
+durati&S nv be estimted as follo•s•.
+t: 75 u, II: 75 v, Ill: W: ISOu, V: 285 u, VI: 125 u, VII'. 105 u.
+10ta1: i + (V + VI) N 9 +
+(7S + 75+ + (385 + 125) x 9+ IOS) 5m .
+9.7 corsi&r rprt :
+Pr01at 7.
+ntrber a' is sta•ed, in its binarHecinl fcrm, at a given
+locatim. It is to prodtee its binary fTm a, ard to stTe it at anott•Er,
+given, læatim. —
+to this a' is a lyirg —l
+l. AS pointed out at erø 9.4, first sense the sign of a', which is
+Étermirzd by digits '—4 frm tte left, ard tten cmvert I all , which is directly
+gnen by the reminifÜ digits 540 frm the left. I a' I lies betwen O ard its
+binary expansim can be as fol
+, i.e. in a' (cf. abwe),
+diglb 4 i+l to '1+4 frm left inl atl
+re tte birury exxessim the &ciml digit Wi, Which is digit i frm ttE left in
+tte deciml expamlm of a' (i =
+9). Ikrce twe tte eqtEtiM
+a'l = Wi: which •y be interpreted as a relatim is val ld in
+biÜv syst*. it is to Kite It like thls:lal WI .
+ttE recise deflnitim of tye opratlm L, digib
+4i+l to 4i+4 (frm tte left) a', can be to as the digits (frm
+tt•e left) In regist%, if a' is plu•d into sub Bted to
+41+3 L. If treat a' as if it ære a bimry nmber, this to
+perfrmlrg
+```
+
+<a id="planning-and-coding-059"></a>
+## planning-and-coding-059 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 67)
+
+Source: [physical PDF page 67](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=67); reading unit `p067`, lines 8–61.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+57.
+(2)
+1.011 t)
+1+1
+w* will ca-respord to -last three digits Of sign tetrad, i.e.,
+2 = 3, a&crding to wyettpr the rumber represented by .a' (in its
+binary-deciml is 0 T < O. It is, h&ever, to get the
+sign indication frma' itself:
+If a' is interpreted as a binary nt&r, tren
+have
+= 1.010 ... *)
+t) -l + 2-2 * -r' •5
+1.011
+accTding to wtether the ntmber represented by a' (in its binary-decirrøl interpretation)
+is e O. That is, this sign is tte oppæite of the sign of a' + in its
+binary interpretat ion.
+WI , we apmr always as digits 37-40 (fran left) in the
+register; i.e., actually as the nunbers 2¯3ewt, , T 3 ewe. It is therefore
+preferable to write
+Io-i 2
+be write
+Io-i Wi in this form:
+the equation lal
+3 g •2-39 Wi.
+100 —i
+10 ai + w
+In Tder to comentrate tip div isiots in ore place
+Wi) : 2¯s• This can stated
+as follcws:
+(3)
+(4)
+a
+In fire a ±tairs frm lal by noting that sign ofa
+oppcxite of tte sign of a' + r • •S (birEry cf. abwe).
+Again, IO ai is forned as 23 ai + 2 ai.
+can tte flog diagræn, as sho€n in Figtre 9.2.
+indEtion iMex i can treated as in preceding prcblan.
+is tte
+The
+Tip special tse of the register whibhwasnzde in F±lem 6 is not
+tere: a! tes to be in the accumulatT, siree wait to form the fra±tional
+ard integer parts lof 24 a! , operatW' L will only effect such things if
+start frm ttp accmulatæ; ai has to go twojgh the siru we have to
+fm•n trtE urs (with carries) like 23 ai + 2 ai; ard reityer can æcupy the ECU-
+rmJlatT cont intJ0ßly, siræ the acctmulator is reeded alternately for both as
+as fT the sersing in conrect im with ional tramfer T&rs. Tiere are,
+ærtain stcrage fumties, which are best hardled by tte accmwlatT
+register, in a renner rot rrø& expl icit in the f diagram Tnus
+is
+best in tte accumjlatcr as as in 8.3 befcre use in Ill; lal
+is
+best stcred in register after IV, and Of a to 8.2 is Only (Tede
+subseqtrntly in VI arø in VII.
+5¯ä7üFy, redtced mdulo 2 into interval -l, l.
+```
+
+<a id="planning-and-coding-060"></a>
+## planning-and-coding-060 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 68)
+
+Source: [physical PDF page 68](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=68); reading unit `p068`, lines 7–13.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+FIGURE 9.2
+3 a-29(s-L)
+3.2
+—FRA CT IONA L OF
+•C INTEGER
+8.2
+.10*foB.2
+```
+
+<a id="planning-and-coding-061"></a>
+## planning-and-coding-061 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 69)
+
+Source: [physical PDF page 69](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=69); reading unit `p069`, lines 4–40.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+c.i
+c.2
+(to II, l)
+11,1
+12
+13
+14
+15
+16
+18
+(to 111.1)
+(to IV,I)
+IV,2
+(to V, l)
+c.5
+TYE bmes I-VII require static cading.
+problens:
+c.i
+8.2
+c.2
+8.2
+8.2
+8.2
+c.3
+8.3
+carry this out as in the
+22 i
+tai + ai
+VII, I
+(to VI,I)
+• ) Cf. tte definitions
+Of
+t Fese
+quant it ies
+II,
+Figlre 9.2,
+ard in (l)
+```
+
+<a id="planning-and-coding-062"></a>
+## planning-and-coding-062 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 70)
+
+Source: [physical PDF page 70](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=70); reading unit `p070`, lines 6–111.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+60.
+(to VI 1,4)
+VII,I
+8.2
+2
+8.2
+3
+8.2
+, II, Ill
+8.3
+c.i
+46 s, 15
+L,
+L,
+15 s
+s,
+21 h-
+L,
+42 s,
+36 CC
+L,
+17 s
+s
+c
+8.2
+8.2
+a - - Iai
+VI,2
+text, a-der boxes, as in preceding pro'iers. a-dering
+, 'V, V, VI; VII results. with ore imperfectim, VII .4 should have been
+irrediate str;cessor of VI.
+This, necess itates ore extra Tder
+c
+*must 'assign A, F. 1-3, C. 1-5, s. I tteir actual vanes, pair
+tte orders 1.1-9. II,
+1-18, 111,1, 'V, 1,2, v,l-3, VI,l-2, VII, 1-5 to 20 words,
+ard then assign - VI their actual values. wish to do this as a continua-
+t ion of code of 9.6. will begin with tFe ru±er 22.
+the contents Of C. coireick with those Of 20, 21 in code of 9.6,
+contents of 3. 1-3 and af s. I are irrelevant like thæe of 16, 17 there.
+two Of these ney be to coircide with 16, 17. Also a is in IS ard
+in 16 there, while have at in A a in 8.2.
+ident ify our A, B.I , 2 with 16, 17, 15 there. Stmning all trese
+the follcying table:
+l, 1-9
+, 1-18
+'V, 1-2
+v, 1-3
+22
+23
+26
+27
+28
+29
+16
+17
+IS
+2-26
+.35
+35'
+37-38
+±tain this
+30
+31
+48
+32
+20
+33
+17
+34
+35
+36
+37
+VI , 1-2
+8.1
+8.2
+coded
+15
+16
+38'-39
+16
+15
+seqterce :
+15 s
+ard the
+al is
+up, ±tain
+things
+43
+20-21
+u -45
+46
+15 S , ts -
+38
+39
+41
+42
+146
+c.2-3
+41
+2-39 10
+TIE durat ions ray be est irrated as follaqs:
+l: 290 u, .515u, lit: SO u, W: 195 V: u, VI: SS u, VII: 180 u.
+Total: 1+ (II + 111) x 9+ IV*V+ ((VI + VII 4,5) VII) =
+SO) x 9+ 125+ 180) 5,875 m.
+Tay stnmzrize the results Of 9.6 ard 9.7 as follogs:
+```
+
+<a id="planning-and-coding-063"></a>
+## planning-and-coding-063 — 9.8?9.9: double-precision addition and explanatory code (physical page 71)
+
+Source: [physical PDF page 71](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=71); reading unit `p071`, lines 9–50.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+The binary—decimal and the decirrøl-binary carvers ions can be prov'ided
+fcy by instrtK:tions which require 47 wa-ds, i.e. l. Of total (selectron) nervy
+capacity Of 4,096 conversions last 5 m arri 5.9 m, respect ively. This
+is shTt cmpared to tye 100 m which, as was slum in 9.3, is a reasonable standard
+for conversion durations.
+9.8 præeed no•.' to the problerrs Of the second class referred to
+in 9. I arri 9.2: pr±lems that ar ise when we uMertake to the mchire in
+a Tanrer, that it deals effectively with nlöers Of "Ere than binary digits.
+nere are various ways to deal with this situation, aM it is actual ly
+advisable to s tldy every problem which requires mo-e than n«rrel (go binary digit)
+precision as an individual case: The efficient way to keep track Of nurrer iCal
+effects beyond the binary digit I imit vary considerably fran case to case.
+On the otter hand, our interest is at present in giv ing examp les Of Our nethods
+of coding in typical sitnatiors, than in devising particularly efficient ways to
+hardle cases that require than mrrral precision. will therefTe restr ict
+Our discussion to the mcst procedtre, although flexibil i ty ard
+speed could pr&ably be secured in many actual irstames by different scheræs.
+Tie procedtre to which alluded is that described in 9.2: By us inq
+k words to express a norr&r, we ±tain numbers with (a sign arß) 39 k binary dig its.
+will actl'ally restr ict otrselves to the case Of k = 2: Two words n1Krber Of
+In this way the precision tpcares 3.3 • 10—24,
+(a sign ard) 78 binary digits.
+(considering that the length of avai interval —l,
+I is 2) 2-7e- 1.6 • 10-24
+will stcre every nunber in two strcessive wc-yds: The first word
+contains the sign of the rumber in question and its- digits (from left);
+in tte second word the sign digit egual to are then let the digits
+0—78 (fran the left) of ntrber fol
+Tye operations which have to be discussed are the fow basic operations
+Of arithæt ics: Addition, subtract ion, multipl ication, divis
+Let us consider addition and subtraction first:
+Prrblg!' 8.
+The (double precision) nunters a, b are sta•ed in two given pairs of
+rrerrry locations.' arm a ± b (also double precisim) and stcre it at another given,
+pair Of rprÜy
+Let a be sta•ed at A. 1,2, b at A. 3, 4, direct a: b, wten fovrred,
+back to A. l, 2. first and tte secoryi parts Of a, b, a2b by ä, b, ä¯Eb
+and a, % , respectively.
+It is easily seen that
+wtpre E is the sign digit of a ± 6,
+(2)
+b + 2-3 E •
+```
+
+<a id="planning-and-coding-064"></a>
+## planning-and-coding-064 — 9.8?9.9: double-precision addition and explanatory code (physical page 72)
+
+Source: [physical PDF page 72](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=72); reading unit `p072`, lines 8–34.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+62.
+It should be renmbered, of course, that all these must be interpreted
+2, and that the pcsitiorel val Le of the sign digit is 20. Since X, have
+the sign digit O, a sign digit I in is equivalent to a Carry fran digit 40
+to digit 39 (frm left).
+can draw the diagram, as shmn in Figure 9.3.
+It is
+convenient to carry stcrage furrtions in a nenær not rude expl icit in
+the flag diagram. Thus is best forrred and mved into A .2 already in the
+course of II arri Ill, while is built up in tre acctrnulatr in the
+course of IV, the grourxå for this can be effectively prepared (in the æcmulato-)
+to.,rards the erri of I I and Trese arrangerrents have the effect, that reitYpr
+8.1 nr 3.2 is actually required,
+both represent effected at appropr iate
+tires in the accumllator.
+FIGIRE 9.3
+2¯
+1
+-39 toB.2
+2
+3
+2
+-39 E —O
+2
+t, 8.2
+2
+1-4
+```
+
+<a id="planning-and-coding-065"></a>
+## planning-and-coding-065 — 9.8?9.9: double-precision addition and explanatory code (physical page 73)
+
+Source: [physical PDF page 73](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=73); reading unit `p073`, lines 5–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+63.
+static coding Of the boxes I—IV fol Thæe txders which deperxi
+on the alternative +
+, are "*ked in their + and in treir - fTm
+(to II, l)
+C.I
+c.i
+c.2
+11,3
+c.2
+c.2
+(to 'V, l)
+111,1
+c,3
+111,2
+c,3
+II, 'V; Ill, and IV must also be
+The of the boxes is l,
+irmediate s!Ecessor af I II. This recessitates extra
+13
+12 -
+mtst
+1-3 11,1-3, I ,
+actual valtps. These
+assign A. 1-4, C. 1-3, their actual values, pair 13
+II 1—3, IV,l-4 to 7 woräs, and then assign I , I - IV.4
+are expressed in this table:
+0-1
+11-2'
+IV,l-g
+II, 1-3
+EiiF¯
+we this seqterre:
+8
+8
+5 cc,
+. definitims Of
+these quantities in
+IV,
+c. 1-3
+10
+12
+13
+Figtre 9.3.
+```
+
+<a id="planning-and-coding-066"></a>
+## planning-and-coding-066 — 9.8?9.9: double-precision addition and explanatory code (physical page 74)
+
+Source: [physical PDF page 74](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=74); reading unit `p074`, lines 10–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+64.
+If both var iants (+ -) are to be in tte (which is
+1 ikely to be the case, if they are reeded at all), their 7-13 can be campon. Indeed
+1 1-13 are likely to occtr in otter ccxied sequenæé, too. So tte two variants are
+likely to require togettpr 18 to 21 wcrds.
+durations my be est irated as fol
+l: 125 u, II: 125 u, Ill: 125 u, 'V: 150 u.
+Total: I + (II Ill) + (125+ 125+. 150)
+TO slim up:
+The double precisim addition ard subtraction can be provided by
+instructions which require 18 to 21 words, i.e. about of total (selectron)
+capacity. operatims last m each.
+These seqtEræs are comparable to A. l, A. 3 h A. 3 A.I S in
+the case Of ordinary precisim, which constme 125 Thus double precision
+addition amf subtractim by a factcr 3.2. TIP factT is actually sl ightly
+higher, because the double precision system, as descr ibed abwe, is less flexible
+than the a-dinary ore. Fbs•ever, as rent iored previously, there are Var ious ad
+hæ nethcds to its flexibil ity, but do not propose to disctss tiprn Ypre.
+9.9 corsider the multipl icat im:
+Problem 9.
+The (double m•ecision) nurrbers a, b are sta•ed in two given pairs Of
+nerory læatiors. Fcym ab (also double precision) and stæe it at anot.ter, also
+given, rremry location.—
+As in 9.8, let a be stred at A. 1,2, b at A.3,g. It is mre convenient
+to direct ab, wtpn firmed, to Denote again tFp first arri the parts of
+a, b, ab by i, 'b, äb and ä, b, åb, respectively.
+The multipl ication Tder (II, Table II) rultipliés two digit
+quantities u, v by foemirg a 78 digit prodnct w. Tte sign and fre digits 1-39
+are fcræd in accumulatcr, while the digits 40-78 (with a sign digit O) are
+fa•red in register. T?ese are, of course, and respectively, as we
+defired t.'em abwe. They are, hoever, stlbject to a subseqtent (round off)
+Tdificat ion, as descr ibed in, ard discussed in conrect ion with, the multipl icat ion
+order referred to abwe. We denote therefæe actual contents of the acctnu-
+latcr and of register by and by is, Of cotrse, the quantity which
+derated by IN in all past discuss ipns (as well as in all future discussims,
+Outside this paragraph), prodlrt rounded to 39 digits, 5tTed in acctnu-
+lator. Nag, ho€e r, it is recessary to 1Txye precise, to discrimirnte
+between IN, W, w.
+It is clear, that äb is essentially Äj, and is essentially
+b + Ft + a. only things that these expressims do not account fcy, are
+the carr ies in ab fran digit to digit 39. It is easily seen, these, too,
+are caw letely accaJnted fa- by the follc»ing fcrmtllae:
+```
+
+<a id="planning-and-coding-067"></a>
+## planning-and-coding-067 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 75)
+
+Source: [physical PDF page 75](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=75); reading unit `p075`, lines 21–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+It should again be rerembered, that al tnese relat ions nwst be interpreted
+mdulo 2, ard that tip pxitimal valle of a sign digit is 20.
+can no.' drae/ flag diagram, as sha€n in Figure 9.4. There
+will again be sare trarsient storage in the accunulata-, as as in A. 3, 4.
+Sirte have discusæd similar situations in previous Pr±lens, we reed not
+go no,' into this fully.
+static ceding Of boxes I-XVI There will be Ore
+deviat ion frm schere irriicated in Figtre äb is f Tred in X, tErx:e
+at tte sane tire becares available. Sirrei b will be reeded in XVI,
+will stcre it after X. Since A. 3 is reeded after X solely for tye
+ptrpose it, can reffKve b, aryd st«e in A. 3.
+(to Ill, l)
+(2)
+(3)
+(5)
+(6)
+c.2
+c.3
+Wiere
+€2
+wtere Eo
+wyere E.
+wyere E 6
+65.
+is the sign digit Of a
+is sign digit ofäb ,
+is tte sign digit of + v,
+is the Sign digit Of a
+is sign digit of w + z ,
+2-09 -€4
+11,2
+(to
+c.2
+c.3
+(to IV,I)
+IV,I
+(to VI, l)
+(to VII,I)
+Ac
+```
+
+<a id="planning-and-coding-068"></a>
+## planning-and-coding-068 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 76)
+
+Source: [physical PDF page 76](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=76); reading unit `p076`, lines 6–35.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+66.
+FIGURE 9.4
+2¯3S
+2
+—2
+2
+3
+2
+3
+3
+3
+A.
+o:
+2-93
++ Ere
+5
+7
+4
+2
+3
+5
+a -as(-q e
+3
+3
+¯ S E ¯ 32
+2-
+2-3 + E
+2-33 2
+3
+2
+```
+
+<a id="planning-and-coding-069"></a>
+## planning-and-coding-069 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 77)
+
+Source: [physical PDF page 77](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=77); reading unit `p077`, lines 4–35.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+VI,I
+c.2
+c.3
+(to VII,I)
+VII, I
+VIII, I
+to IX, l)
+VIII
+(to X, l)
+c.2
+c.3
+A.S
+Xl,l
+(to Xl l, l)
+Xl,l
+(to XIN, l)
+xn, I
+c.2
+(to Xitt, l)
+XIII,I
+XIV,I
+(to xv,l)
+XIV
+(to xvi,l)
+w
+xv,l
+(to XVI, l)
+c.2
+c.3
+—€2) 2¯sø
+—€2 + E, —€0 +2¯9ø
+—€2 +ea —e J +2¯sø
+```
+
+<a id="planning-and-coding-070"></a>
+## planning-and-coding-070 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 78)
+
+Source: [physical PDF page 78](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=78); reading unit `p078`, lines 12–161.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+68.
+XVI,I
+Ac
+2
+A.3
+3
+0-1
+9-11
+22'-24
+26 27
+28 - 31
+18 -m
+33 - 35
+A,
+26 cc
+31 S
+h,
+17 cc
+32 s,
+h,
+34 h-
+20 CC
+34 h-
+32 h
+32 s, 30
+34 h-,
+31 s
+2-0 e
+32 s
+B
+h
+s
+c
+(-81 —€2 +Ea
+Note, that the boxes VIII and XIV required no herre tipir
+irmediate successcrs (X, I and XVI,I) must directly upm their irmed iate
+predecessors. Hasever , ttese two bcxes have actual ly no irmediate pre&cessors,
+VIII, I and XIV,I appear in the Cc cyders VII, 2 ard X 111,2. I-Eme they must be
+replaced there by X, I and XVI,I .
+The or±rir9 Of the boxes is l,
+Ill, IV, VI, VII, 11, X, XII, XIII, XV
+XVI; II; V; Xl (VIII and XIV mitted, cf. abode ) , ard IV, VII, X' II must also be
+the imediate successæs af II ; V, Xl, respectively. This recessitates the extra
+cyder s
+11,4
+v,3
+Xl,3
+cc
+VII, I
+cc
+XIII,I
+We must
+nad assign A. 1-4, 9, C. 1-3 their actual vanes, pair the SS
+II, , IV, 1-3, V, 1-3, VI, 1-6, VII, 1-2, IX, 1-5, X, 1-5,
+cyders l,
+1-3,
+II, 1-3, XII, 1-6, XIII,
+their actual
+va ues.
+1-2, XV, 1-5, XVI,l-4 to 28 words, arri then assign -
+These
+l, 1-3
+o
+2
+3
+14
+s
+6
+7
+8
+9
+are expressed in this table:
+IX, 1-5
+x, 1-5
+XIII, 1-2
+xv, 1-5
+XVI,IA
+this ccfrd seqlpme:
+v, 1-3
+, 1-3
+A. 1-4
+B
+c. 1-3
+24
+25
+26
+27
+29
+31
+32
+33
+34
+35
+32
+31 h
+31 s
+28 R
+22
+30 x
+31
+h,
+31 s
+32
+h,
+31
+35
+32 s ,
+we
+31 x
+, 34 h—
+35 -
+29 R
+35 -
+32 s
+31 s
+32 h
+28 R
+It
+Obta i n
+12
+13
+16
+18
+19
+20
+21
+22
+23
+30
+31
+31 s
+32
+31
+35
+32 h
+33
+30 s
+35 -
+32 s
+31 s
+30 s
+cc',
+3
+31 h
+is likely that this will be stored in rrerm•• together with the
+two var iants (+ and of 8. Herte 2E31, 33-35 Of this code can be cormon
+12, reskctively, in the ccxie of • that xoblem. Also, 32 is
+with 7-10, 13, II,
+ikely to occur in otter coded seqoerces, foo. So this pr&lem IS likely to require
+2B Or 29 additional wcrds.
+```
+
+<a id="planning-and-coding-071"></a>
+## planning-and-coding-071 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 79)
+
+Source: [physical PDF page 79](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=79); reading unit `p079`, lines 8–45.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+69.
+The durations nay be est ineted as folloes:
+l: 195 g, II: 150 u, Ill: 150 u, IV•. 195 g, V: 125 u, VI: 225 VII: 75 u,
+'X: 200B, X: 250 Xl:
+125 g, xn: 225 u, Xlit: 75 u, XV: 200 g, XVI.• 150 u.
+Total: I + (l) t II) IV + (V Or VI)+ VII + (nothing IX) + X +
++ (Xl XII) + XIII + (nothing + XVI
+average = (195 + 150+ 195 + 175 + 75+ 100 + 250 + 175 + 75 +
++ 100+ 150) 1,640 u r 1.6 m.
+TO sum up:
+Tte double precision multipl ication can prwided by instructions
+which require 28 Or 29 bords in addition to thæe required by Problem 8 (dothle precision
+addit ion and subtract ion) i.e. about an additional Of the total (selectron) rterÜY
+capacity. operation lasts I m.
+This seqtence is carvarable to A. I R, A.3 x, A. 3 S in case Of
+precision, which cmstre 195 Thus the double prec isim sloqs multipl i-
+cation by a fact« 8.4. In contrast with the situation descr ibed in conrection with
+the precision addition aM subtract ion (cf. the erys cf 9.8), there is probably
+no signif icant loss of flexibil ity involved in the present case.
+9. IO Div is ion offers no part icular diff icult ies.
+In a-der to ±tain a
+dotble precision quotient Of a (represented by ä, i) by b (reresented by G, G) my
+a a , by fcrmirg
+first napprcx irreten &sired double precision quotient q
+, and then refire the result by any ore of several
+rdirzry precisiM qwtient qo
+kno€n mthods. availabil Ity Of double %ecision addition, subtraction, ard
+multipl ication rakes these ratters quite simie. do not propcse, ho•æver, to go
+fwther into this subject.
+my surmørize tte results M 9.8 aM 9.9 as follcys:
+Double precision arithTtics, carer ising add ition, subtract im
+multipl ication, can be provided by ions which require 146 to 50
+i.e. 1.2% of the total (selectron) rrerr«y capacity. to trese charges addition
+arxi subtraction are sloqed by a factr 3.2 ard multipliafim by a factcr 8.g, in
+catVar ison to precision ions. Fur tterr«e tyere• is a certain I æs
+in flexib il ity Of gse Of the two f irst rent Wed iOrs. It seems
+tyerefore reasoreble to ex*ct an overall, average sloaing by a factæ between
+6 8 in carpar ison to Ordinary precision cperations.
+```
+
+<a id="planning-and-coding-072"></a>
+## planning-and-coding-072 — Volume II introductory remark: revised machine notation and unchanged uses (physical page 89)
+
+Source: [physical PDF page 89](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=89); reading unit `p089`, lines 4–29.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+INTRODUCTORY REMARK
+We found it convenient to make scyræ minor- changes in the positioning of
+the parts of all orders of Table II, and in the specific effect of two among then.
+First:
+We determine that in each order of Table II the rrMtÜry position
+number x occupies not the 12 left-hand digits (cf. the second ranark Of 7 . 2, cf. also
+8.2), but the 12 right-hand digits. I.e. the digits 9 to 20 or 29 to 40 ( frcxn the
+left) for a left-hand or a right-hand order, respectively.
+Second: We change the orders 18, 19 (the partial substi tution orders xSp,
+xSp' ) , so that they substitute these new positions, and these crosswise.
+I.e. 18
+replaces the 12 right-hand digits of the left-hand order located at x (i.e. the digits
+9 to 20 [from the left)) by the 12 digits 29 to 40 the left) in the accw•nuiator.
+Similarly 19 replaces the 12 right-hand digits of the right-hand order at x
+(i.e. the digits 29 to 40 (from the left]) by the 12 digits 9 to 20 ( frcxn the left)
+in the accmmlator.
+For the standard f a-m of a position mark, x
+— 2- I g x + 2- 3 ax, as intro-
+duced in 8.2, these changes compensate each other and have no effect. Iberefore all
+the uses that we made so far of these orders are unaffected.
+(h the other hand the new arrangernent permits certain arithmetical uses
+of these orders, i.e. uses when the position x is not occupied by orders at all, but
+when it is used as ( transient) storage for numbers. In this case the new
+provides very convenient 20-digit shi fts, as well as certain other manipulations.
+mse things will appear in mre detail in the discussion innediately preceding the
+static coding in 10.7.
+```
+
+<a id="planning-and-coding-073"></a>
+## planning-and-coding-073 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 91)
+
+Source: [physical PDF page 91](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=91); reading unit `p091`, lines 12–44.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+10.0
+10.1
+CODING OF SOME SIMPLE ANALYTICAL PROBLEMS
+We will code in this chapter two problems which are typical
+constituents of analytical problens, and in which the apprcximation character of
+procedures is particularly emphasized. This is the process of numerical
+integration and the process of interpolation, both for a tabulated one-variable
+function. lhth problems allow a considerable number of variants, and we will, of
+course, make no attempt to exhaust these. We will nevertheless vary the formulations
+sonewhat, and discuss an actual total of six speci fic problems.
+10.2
+We consider first the integration problen.
+We assunE that an integral z)dz is wanted, where Che function f (z)
+is defined in Che z-interval O, l, and assumes values within the range of our machine,
+, size < l. Actually f (z) will be supposed to be given at N+l equidistant places
+in the interval O, l,
+, the values f (h,m), h O, l, , N, are tabulated. We wish
+to evaluate the integral by numerical integration forinulae with error terms of the
+order of those in Simpson's fomula, i.e.,
+niis is a method to derive such fomulae. Consider the expression
+(1)
+h+Fu
+h-Fu
+L (f(bål) - 2f(b) + ]
+lhere will be h = O, l, .
+Simple calculations, which we need not give here explicitly, give
+CV(O) q (O) = O (indeed = O and for = I even = O), implying
+(2)
+•C u) = dul du du3
+and further
+(3)
+_ + f'i(b.zu,']
+3
+```
+
+<a id="planning-and-coding-074"></a>
+## planning-and-coding-074 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 92)
+
+Source: [physical PDF page 92](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=92); reading unit `p092`, lines 19–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+-2-
+(3) transforms into
+(4)
+Putting
+Mff"' = Max
+we see that (4) yields
+(5)
+and by (2)
+(6)
+- 2E)
+3
+30
+Putting u l, and recalling we find:
+_ - 2f(b) ? ]
+f(z)dz ¯
+(7)
+Mff"'
+(7-6k)
+90
+kitting E
+= I and sunning over
+k-Å>O and even) we get Simpson's formula:
+h -1+1,
+h - 1+1, 1+3
+N,
+(8)
+Mflu,
+90
+f(t) + 4f(EL) + 2f(E2) + + +
++ 4f(kd) + + + f(k)
+N
+N
+180 N'
+```
+
+<a id="planning-and-coding-075"></a>
+## planning-and-coding-075 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 93)
+
+Source: [physical PDF page 93](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=93); reading unit `p093`, lines 12–52.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+(9)
+-3-
+= h and sunning over h = 1+1, X+2, .
+Putting E
+and of any parity)
+we get the related fornala:
++ 22f(h) +
+= [f(EL) + f(E2) + + f(EL)]
+180
+180 N'
+We evaluate first by Simpson's fomula, i.e., by (8),
+10.3
+and in
+order to simplify matters we put X = O, k = N. Hence N must be even in this case
+PROBLEM Io:
+O. l, is given to the eQtent that the values f(h/N),
+The function f(z), z in
+p It is
+consecutive locations p, p+l, ,
+O l, N, are stored at N + \
+desired to evalu4te the integral J f(z)dz by means of the formula -
+We could use either form of s right side for this evaluation. Using
+the first form leads to an induction over the odd integers h 3, ,N-I, but requires
+at each step the preliminary calculation of the expression
++ 4f(h/N) + f ( (h-I)/N) Using the second form leads to an induction
+, N. and requires at each step the simpler expression
+over the integers h O, l,
+= or I or 2. This factor is best handled by
+] multiplied by a factor
+variable remte connections. A detai led comparison shows that the first method is about
+rmre efficient, both regarding the space required by the coded sequence and the time
+consurred by the actual calculation. We will nevertheless code this Probletn according to
+the second method, because this offers a good opportunity to exemplify the use of vari-
+able rerrnte connect ions.
+the expression to be cauputed is
+for
+for
+2
+h O, N and
+even
+h odd
+```
+
+<a id="planning-and-coding-076"></a>
+## planning-and-coding-076 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 94)
+
+Source: [physical PDF page 94](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=94); reading unit `p094`, lines 7–35.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
+
+Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+```text
+Ibis urK)unts to the inductive
+de fini ti m
+2
+f(b) for h = ,
+Let A be the storage area corresponding to the interval of locations
+from p top + N. In this way its positions will be A. O, l, where A. h corres-
+ponds to p + and stores f(h/N). These positions, however, are supposed to be
+parts of sortE other routine, already in the machine, and therefore they need not
+appear when we pass (at the end of the whole procedure) to the final enumeration
+Of the cded sequence. (Cf. the analogous situation in Problan 3.)
+Let B be the storage area which holds the given data (the constants)
+of the problem p, N. (It will actually be convenient to store p, N as Po,
+(p4N-1) ). Storage will also have to be provided for various other quantities
+it is ccmvenient to store 2Ä; the exi t-locations of the variable rernote
+connections), these too will be accmodated in B. Next, the induction index h
+must be stored. h is really relevant in the canbi_nation p + h, which is a position
+mark (for A. h, storing f(hÄ)), so we will store (p+h)o instead. (Cf. the analo-
+gous situation in Problem 3.) Ibis will be stored at C. Finally the quantities
+which are processed during each inductive step will be stored in the storage area
+D.
+These things being understood, we can now draw the flu diagram, as
+It will prove to be convenient to store (2/3N) f (hay)
+shown in Figure IO. l.
+after II as well as Ch (2/3N) f(hß) after Ill and IV (but not after V) not at D. 2,
+but in the accumalator, and to transier it to D. 2 in VI only (but also in V). 'lhe
+disposal of at, shun in IX, VIII, VI will be delayed until X, and they
+will be held over in the accurmlator. Finally, the transfer of (A. h +1) into C is
+better delayed fran X until after the Cc order in Xl, whereby it takes place only
+On the - branch issuing frun XI, but this is the only branch on which it is needed.
+```
