@@ -15,12 +15,16 @@ The collection lives in `docs/research/comment-context/`:
   originals own the content. Keep OCR/transcription limits explicit.
 - `sources/<source-id>/records.json`: canonical passage selections, in source
   order. Each record has `id`, `unit`, inclusive one-based `start_line`/`end_line`,
-  `heading`, `attribution`, `context`, and `notes`. Heading/context are neutral
+  `heading`, `attribution`, `context`, `notes`, and `related_record_ids`.
+  The record file also pins `text_sha256`. Heading/context are neutral
   navigation, not findings or recommendations. Notes carry uncertainty, quoted
   voices and cross-page dependencies. Each selected span is preserved verbatim
   from the pinned reading text; the renderer supplies its text, not the agent.
 - `sources/<source-id>/coverage.json`: unit-by-unit reading/search/visual coverage,
   terms used, explicit scope exclusions, unresolved gaps and reviewer checks.
+  Pin `text_sha256` here too. Every reading unit appears exactly once, with
+  `reading_status` (`read`, `partial`, `unreadable`, `pending`), cumulative `checks`
+  (such as `search` and `visual`), and `notes`; these are not mutually exclusive.
 - `sources/<source-id>/passages.md`: generated human view of the records, with
   original-file and reading-unit locations. Edit records rather than this view.
 - `README.md`: source index and instructions for finding material. No ranked
@@ -30,6 +34,11 @@ Keep original source bytes unchanged. A changed edition/hash gets an explicit
 catalog revision and re-extraction; old line ranges must not silently point into
 new text. Stable IDs must not be reused for different passages. Related or
 repeated statements can remain separate when their context differs.
+Pin the derived text bytes as well as the originals: OCR/extraction updates can
+invalidate spans even when the original files have not changed. Physical PDF
+page numbers are mandatory; add printed-page labels when observed. HTML units
+name their chapter/file, and transcript units retain cue timestamps. Untranscribed
+figures retain original-page/image references and an explicit unresolved gap.
 
 ## Inclusion rule
 
@@ -55,6 +64,37 @@ defined subject is the selection boundary. Preserve counterarguments in the
 same record or explicitly connected neighboring records. Attribute a reported
 third-party position to that party, not automatically to the source author.
 
+## File shapes
+
+`records.json` uses this shape (replace the example values):
+
+```json
+{
+  "schema_version": 1,
+  "source_id": "source-slug",
+  "text_sha256": "hash of text/source-slug.json",
+  "records": [
+    {
+      "id": "source-slug-001",
+      "unit": "p001",
+      "start_line": 1,
+      "end_line": 12,
+      "heading": "Source section or neutral passage label",
+      "attribution": "Source author, quoted speaker, or explicitly uncertain voice",
+      "context": "Non-evaluative placement and dependencies of this passage",
+      "notes": "Transcription/layout limits or empty string",
+      "related_record_ids": []
+    }
+  ]
+}
+```
+
+`coverage.json` has `schema_version`, `source_id`, `text_sha256`, `search_terms`
+(string array), `units` (one object per reading unit with `unit`, `reading_status`,
+`checks` string array, and `notes`), `exclusions` and `unresolved_gaps` (string
+arrays), and `audit` (string array, initially empty). A zero-record source still
+needs a coverage file explaining its actual traversal and scope boundaries.
+
 ## Procedure
 
 1. Inventory the actual local primary files before delegating. Hash every input;
@@ -73,14 +113,15 @@ third-party position to that party, not automatically to the source author.
 4. Traverse every available unit in order. Use broad lexical searches as a second
    pass: comment, annotation, remark, documentation, explanation, rationale,
    intent, reader, readability, clarity, maintain, obsolete, redundant, misleading,
-   literate, self-documenting, specification and relevant language syntax. Expand
+   literate, self-documenting/self documenting, self-explanatory, naming, identifier,
+   docstring, prose, narrative, specification and relevant language syntax. Expand
    terms from the author's vocabulary. A keyword hit count is not full coverage.
 5. Read each candidate's surrounding section, examples, footnotes and related
    passages. Select enough contiguous lines to retain premises, qualifications
    and opposing views. Split only at intelligible boundaries; use connected
    records for cross-page content. Prefer retaining context over compressing it.
-6. Write records and coverage. Record every unit's actual status (`read`,
-   `searched`, `visual`, `unreadable`, or `pending`), what was checked, and why an
+6. Write records and coverage. Record every unit's actual reading status and
+   cumulative checks, what was checked, and why an
    apparent hit was excluded (for example, publication metadata or an unrelated
    use of "comment"). A searched-only unit remains searched-only. Never describe
    a partial extract, transcript, OCR sweep or sampled audit as exhaustive reading
