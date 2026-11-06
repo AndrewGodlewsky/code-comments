@@ -1415,7 +1415,7 @@ Attribution: Herman H. Goldstine and John von Neumann
 
 Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
 
-Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. Coordinator visual supplement is pending for the legible explanatory-column prose.
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. Manually transcribed explanatory-column prose is in related record planning-and-coding-161.
 
 Related: [planning-and-coding-023](#planning-and-coding-023), [planning-and-coding-025](#planning-and-coding-025), [planning-and-coding-029](#planning-and-coding-029), [planning-and-coding-161](#planning-and-coding-161)
 
@@ -1768,7 +1768,7 @@ Attribution: Herman H. Goldstine and John von Neumann
 
 Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
 
-Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. OCR reorders lines of the final-enumeration paragraph, including its parenthetical about the explanatory column; coordinator visual supplement is pending.
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. OCR reorders lines of the final-enumeration paragraph, including its parenthetical about the explanatory column; the completed manual transcription is in related record planning-and-coding-162.
 
 Related: [planning-and-coding-028](#planning-and-coding-028), [planning-and-coding-030](#planning-and-coding-030), [planning-and-coding-024](#planning-and-coding-024), [planning-and-coding-162](#planning-and-coding-162)
 
@@ -8518,7 +8518,7 @@ Attribution: Herman H. Goldstine and John von Neumann
 
 Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
 
-Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved. The phrase about needing no further comments concerns the report's exposition of this diagram-to-code step; it is not an explicit claim about source-comment syntax. OCR omits the final word of the opening sentence; visually it is comments. Coordinator visual supplement is pending.
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved. The phrase about needing no further comments concerns the report's exposition of this diagram-to-code step; it is not an explicit claim about source-comment syntax. OCR omits the final word of the opening sentence; visually it is comments. The completed manual transcription is in related record planning-and-coding-163.
 
 Related: [planning-and-coding-123](#planning-and-coding-123), [planning-and-coding-125](#planning-and-coding-125), [planning-and-coding-163](#planning-and-coding-163)
 

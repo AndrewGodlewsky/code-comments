@@ -11,16 +11,16 @@ From the repository root: `python -B scripts/comment_context.py check` validates
 | [The Pragmatic Programmer](sources/pragmatic-programmer/passages.md) | machine_transcript | 63 | [14 read](sources/pragmatic-programmer/coverage.json) | 1 |
 | [Software Engineering at Google](sources/software-engineering-at-google/passages.md) | local_html_book | 118 | [35 read](sources/software-engineering-at-google/coverage.json) | 1 |
 | [A Philosophy of Software Design, second-edition extract](sources/philosophy-of-software-design/passages.md) | available_extract | 11 | [20 read](sources/philosophy-of-software-design/coverage.json) | 1 |
-| [Planning and Coding of Problems for an Electronic Computing Instrument](sources/planning-and-coding/passages.md) | local_scanned_part_ii_volumes_1_to_3 | 163 | [194 read](sources/planning-and-coding/coverage.json) | 0 |
-| [FORTRAN Programmer's Reference Manual, IBM 704](sources/fortran-1956/passages.md) | local_manual | 8 | [54 read](sources/fortran-1956/coverage.json) | 0 |
+| [Planning and Coding of Problems for an Electronic Computing Instrument](sources/planning-and-coding/passages.md) | local_scanned_part_ii_volumes_1_to_3 | 163 | [194 read](sources/planning-and-coding/coverage.json) | 1 |
+| [FORTRAN Programmer's Reference Manual, IBM 704](sources/fortran-1956/passages.md) | local_manual | 8 | [54 read](sources/fortran-1956/coverage.json) | 1 |
 | [Literate Programming](sources/literate-programming/passages.md) | local_paper | 15 | [15 read](sources/literate-programming/coverage.json) | 1 |
 | [A Rational Design Process: How and Why to Fake It](sources/rational-design-process/passages.md) | local_paper | 12 | [12 read](sources/rational-design-process/coverage.json) | 1 |
 | [Code As Documentation](sources/code-as-documentation/passages.md) | local_essay | 4 | [1 read](sources/code-as-documentation/coverage.json) | 1 |
 | [Beck Design Rules](sources/beck-design-rules/passages.md) | local_essay | 5 | [1 read](sources/beck-design-rules/coverage.json) | 1 |
-| [Testing the Effect of Code Documentation on Large Language Model Code Understanding](sources/documentation-llm-understanding/passages.md) | local_paper | 20 | [7 read](sources/documentation-llm-understanding/coverage.json) | 0 |
-| [Comment Traps: How Defective Commented-out Code Augment Defects in AI-Assisted Code Generation](sources/comment-traps/passages.md) | local_paper | 49 | [21 read](sources/comment-traps/coverage.json) | 0 |
-| [On the Impact of Code Comments for Automated Bug-Fixing: An Empirical Study](sources/comments-bug-fixing/passages.md) | local_paper | 51 | [13 read](sources/comments-bug-fixing/coverage.json) | 0 |
-| [Talking to Itself While Coding: What Makes Comments Help Code Generation?](sources/talking-while-coding/passages.md) | local_paper | 81 | [25 read](sources/talking-while-coding/coverage.json) | 0 |
+| [Testing the Effect of Code Documentation on Large Language Model Code Understanding](sources/documentation-llm-understanding/passages.md) | local_paper | 20 | [7 read](sources/documentation-llm-understanding/coverage.json) | 1 |
+| [Comment Traps: How Defective Commented-out Code Augment Defects in AI-Assisted Code Generation](sources/comment-traps/passages.md) | local_paper | 49 | [21 read](sources/comment-traps/coverage.json) | 1 |
+| [On the Impact of Code Comments for Automated Bug-Fixing: An Empirical Study](sources/comments-bug-fixing/passages.md) | local_paper | 51 | [13 read](sources/comments-bug-fixing/coverage.json) | 1 |
+| [Talking to Itself While Coding: What Makes Comments Help Code Generation?](sources/talking-while-coding/passages.md) | local_paper | 81 | [25 read](sources/talking-while-coding/coverage.json) | 1 |
 | When Comments Mislead | Original unavailable | — | No primary text | — |
 
 ## Scope and unresolved source limits
