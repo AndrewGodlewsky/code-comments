@@ -6,7 +6,7 @@ Extent: `local_paper`. Text SHA-256: `8b2ca832c655da72143a472197366423b1b09afe6d
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
-- Figures 2?5 on physical pages 4?5 were visually inspected; pinned text contains captions/axis labels but not bar-height data. Consult original figures for graphical values.
+- Figures 2-5 on physical pages 4-5 were visually inspected; pinned text contains captions/axis labels but not bar-height data. Consult original figures for graphical values.
 - Figure 1 on physical page 3 loses code indentation in pinned text; visual original is required for syntactic layout.
 
 <a id="documentation-llm-understanding-001"></a>

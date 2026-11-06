@@ -11,7 +11,7 @@ Extent: `machine_transcript`. Text SHA-256: `61200df4307aeb8422594d6105749413829
 - Machine recognition may omit, repeat or mishear speech; original audio was not checked. Proper names, language names, mathematical statements and spoken code may be corrupted. No wording was silently corrected.
 - Audiobook code/diagram adaptation and author dialogue differ from a printed book; exact wording, syntax, speaker identity and edition remain unverified. Cue timestamps are audio windows, not word-level locations.
 - At 05:17:26 printed code and diagrams are explicitly omitted, at 06:09:48 printed housekeeping code is skipped, and the 08:09:32 Stroop visual cannot be shown. Their actual printed contents are not reconstructed.
-- At 01:39:52 the validation example begins mid-sentence. At 08:54:42?08:56:25 the manifesto discussion refers to four values while only two are explicitly enumerated. These apparent omissions are retained, not repaired from memory.
+- At 01:39:52 the validation example begins mid-sentence. At 08:54:42-08:56:25 the manifesto discussion refers to four values while only two are explicitly enumerated. These apparent omissions are retained, not repaired from memory.
 
 <a id="pragmatic-programmer-001"></a>
 ## pragmatic-programmer-001 — Preface: scope of techniques and documenting work
@@ -1643,7 +1643,7 @@ Attribution: Dave Thomas and Andy Hunt, as represented by an unverified machine 
 
 Context: The manifesto discussion treats values as guidance for contextual decisions rather than a static plan or packaged solution.
 
-Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. At 08:54:42?08:56:25 the transcript introduces manifesto values and later refers to four, but only two are explicitly listed here. Missing wording must not be filled from memory.
+Transcription/context notes: Unverified machine audio transcript, not checked against published text or audio; timestamps are cue windows, not exact word times. Spoken code is not verified printed syntax. At 08:54:42-08:56:25 the transcript introduces manifesto values and later refers to four, but only two are explicitly listed here. Missing wording must not be filled from memory.
 
 Related: [pragmatic-programmer-048](#pragmatic-programmer-048), [pragmatic-programmer-049](#pragmatic-programmer-049), [pragmatic-programmer-059](#pragmatic-programmer-059), [pragmatic-programmer-062](#pragmatic-programmer-062)
 

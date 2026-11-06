@@ -48,6 +48,10 @@ existing span before repinning. Label supplemental passage headings explicitly;
 record approximate indentation, clipped source text and untranscribed graphics.
 Do not infer numerical plot values from pixels or silently repair source errors.
 Empty OCR results have no supplemental span and remain noted in page coverage.
+Write JSON as UTF-8. On Windows, set the PowerShell pipeline output encoding to
+UTF-8 before piping a script containing non-ASCII transcription into Python, or
+write the script directly as UTF-8. Check actual file codepoints before repairing
+apparent console garbling: display decoding and stored-text corruption differ.
 
 ## Inclusion rule
 

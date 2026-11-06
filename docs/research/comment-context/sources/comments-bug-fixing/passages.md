@@ -16,7 +16,7 @@ Source: [physical PDF page 1](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-002](#comments-bug-fixing-002)
 
@@ -53,7 +53,7 @@ Source: [physical PDF page 1](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-001](#comments-bug-fixing-001), [comments-bug-fixing-003](#comments-bug-fixing-003)
 
@@ -111,7 +111,7 @@ Source: [physical PDF page 1](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-002](#comments-bug-fixing-002), [comments-bug-fixing-004](#comments-bug-fixing-004)
 
@@ -134,7 +134,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Figure code/comment specimens are image-only in the original and absent from pinned base text; physical page visually inspected. Supplemental transcription is being supplied separately for coordinator integration.
 
@@ -167,7 +167,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-004](#comments-bug-fixing-004), [comments-bug-fixing-006](#comments-bug-fixing-006)
 
@@ -219,7 +219,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-005](#comments-bug-fixing-005), [comments-bug-fixing-007](#comments-bug-fixing-007), [comments-bug-fixing-042](#comments-bug-fixing-042)
 
@@ -300,7 +300,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -332,7 +332,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -380,7 +380,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -414,7 +414,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -472,7 +472,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-010](#comments-bug-fixing-010), [comments-bug-fixing-012](#comments-bug-fixing-012)
 
@@ -517,7 +517,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-011](#comments-bug-fixing-011), [comments-bug-fixing-013](#comments-bug-fixing-013)
 
@@ -579,7 +579,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-012](#comments-bug-fixing-012), [comments-bug-fixing-014](#comments-bug-fixing-014)
 
@@ -630,7 +630,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-013](#comments-bug-fixing-013), [comments-bug-fixing-015](#comments-bug-fixing-015)
 
@@ -649,7 +649,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -709,7 +709,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto; named/cited studies and the Chen et al. taxonomy remain third-party work reported by these authors
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -766,7 +766,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -814,7 +814,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -865,7 +865,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -906,7 +906,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -961,7 +961,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1000,7 +1000,7 @@ Source: [physical PDF page 7](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Figure code/comment specimens are image-only in the original and absent from pinned base text; physical page visually inspected. Supplemental transcription is being supplied separately for coordinator integration. Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1052,7 +1052,7 @@ Source: [physical PDF page 7](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1166,7 +1166,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1198,7 +1198,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1260,7 +1260,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1308,7 +1308,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1344,7 +1344,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Mathematical subscripts/superscripts and table layout may be flattened in extraction; preserve model, training and test definitions in linked context.
 
@@ -1372,7 +1372,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-028](#comments-bug-fixing-028), [comments-bug-fixing-030](#comments-bug-fixing-030)
 
@@ -1427,7 +1427,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-029](#comments-bug-fixing-029), [comments-bug-fixing-031](#comments-bug-fixing-031)
 
@@ -1456,7 +1456,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Boxplot labels/caption retained; plotted distributions are not numerically transcribed. Original physical page 9 was visually inspected.
 
@@ -1513,7 +1513,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-031](#comments-bug-fixing-031), [comments-bug-fixing-033](#comments-bug-fixing-033)
 
@@ -1546,7 +1546,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-impact-of-code-comm
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-032](#comments-bug-fixing-032), [comments-bug-fixing-034](#comments-bug-fixing-034)
 
@@ -1571,7 +1571,7 @@ Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Transcription/context notes: Figure code/comment specimens are image-only in the original and absent from pinned base text; physical page visually inspected. Supplemental transcription is being supplied separately for coordinator integration.
 
@@ -1601,7 +1601,7 @@ Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-034](#comments-bug-fixing-034), [comments-bug-fixing-036](#comments-bug-fixing-036)
 
@@ -1626,13 +1626,13 @@ not help and can mislead automated bug-fixing models.
 ```
 
 <a id="comments-bug-fixing-036"></a>
-## comments-bug-fixing-036 — Authors? implications for research, practice and tools
+## comments-bug-fixing-036 — Authors' implications for research, practice and tools
 
 Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-comments-on-bug-fixing.pdf#page=10); reading unit `p010`, lines 33–56.
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-035](#comments-bug-fixing-035), [comments-bug-fixing-037](#comments-bug-fixing-037)
 
@@ -1670,7 +1670,7 @@ Source: [physical PDF page 10](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-036](#comments-bug-fixing-036), [comments-bug-fixing-038](#comments-bug-fixing-038), [comments-bug-fixing-045](#comments-bug-fixing-045)
 
@@ -1862,7 +1862,7 @@ Source: [physical PDF page 11](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-037](#comments-bug-fixing-037), [comments-bug-fixing-039](#comments-bug-fixing-039)
 
@@ -1892,7 +1892,7 @@ Source: [physical PDF page 11](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-038](#comments-bug-fixing-038), [comments-bug-fixing-040](#comments-bug-fixing-040)
 
@@ -1937,7 +1937,7 @@ Source: [physical PDF page 11](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-039](#comments-bug-fixing-039), [comments-bug-fixing-041](#comments-bug-fixing-041)
 
@@ -1972,7 +1972,7 @@ Source: [physical PDF page 11](../../../ai-code-comments/2026-impact-of-code-com
 
 Attribution: Antonio Vitale, Emanuela Guglielmi, Simone Scalabrino and Rocco Oliveto
 
-Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper?s measurements, not collection rankings.
+Context: Paper section in source order; linked records retain cross-page definitions, experimental conditions and qualifications. Reported importance scores are the paper's measurements, not collection rankings.
 
 Related: [comments-bug-fixing-040](#comments-bug-fixing-040)
 

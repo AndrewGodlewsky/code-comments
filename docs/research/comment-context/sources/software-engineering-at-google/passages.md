@@ -2,19 +2,22 @@
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
-Extent: `local_html_book`. Text SHA-256: `5c5462904b2ff5dac9acb7da4700990f8ee291a9e70ec1b430afa299edc60634`.
+Extent: `local_html_book`. Text SHA-256: `e9e6e7c4ba6bc52703f03d5198c1d531bbd3cc5cf68f6d6ccbd30f4f52f4605b`.
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
 - Local HTML files preserve source text; images require separate inspection. One inherited email-deobfuscation script is absent.
-- All 35 text units read. Broad lexical second pass and original layout/meaningful image checks remain in progress; independent audit not performed.
+- The reading text linearizes HTML inline markup, table cells and lists and does not preserve every code indentation or table column. Original HTML remains the authority; structural checks covered the two ch07 tables and preformatted specimens in ch08/ch10/ch12/ch18, not every page rendered in a browser.
+- Figure 17-4 has a horizontally clipped query. Its visible portion and embedded code are supplemented; absent text is not reconstructed. Figure 20-1 supplement omits UI controls and the naming-warning regular expression, distinguishing the human review comment from source comments.
+- Figures 23-4 and 23-5 were visually inspected as context for tracked test disablement, but graph curves remain in the original images; no data values were inferred or fully transcribed.
+- Independent fidelity/omission audit has not yet been performed by a separate agent.
 
 <a id="software-engineering-at-google-ch01-001"></a>
-## software-engineering-at-google-ch01-001 — Hyrum?s Law and the limits of published contracts
+## software-engineering-at-google-ch01-001 — Hyrum's Law and the limits of published contracts
 
 Source: [ch01.html](../../../../books/software-engineering-at-google/ch01.html); reading unit `ch01`, lines 96–173.
 
-Attribution: Titus Winters; Hyrum?s Law attributed to Hyrum Wright
+Attribution: Titus Winters; Hyrum's Law attributed to Hyrum Wright
 
 Context: Interface promises, observable behavior, and the hash-ordering example. Adjacent contract context, not an inline-comment prescription.
 
@@ -100,7 +103,7 @@ accusation.”
 ```
 
 <a id="software-engineering-at-google-ch01-002"></a>
-## software-engineering-at-google-ch01-002 — Hyrum?s Law naming note
+## software-engineering-at-google-ch01-002 — Hyrum's Law naming note
 
 Source: [ch01.html](../../../../books/software-engineering-at-google/ch01.html); reading unit `ch01`, lines 564–565.
 
@@ -142,6 +145,32 @@ different
  the experience would be if you had a couple of peers to look over your shoulder and tell you—instantly—how you goofed and how to get past the problem. This is exactly why teams sit together (or do pair programming) in software engineering companies. Programming is hard. Software engineering is even harder. You need that second pair of eyes.
 ```
 
+<a id="software-engineering-at-google-ch02-002"></a>
+## software-engineering-at-google-ch02-002 — Explaining unclear control flow in review feedback
+
+Source: [ch02.html](../../../../books/software-engineering-at-google/ch02.html); reading unit `ch02`, lines 302–315.
+
+Attribution: Brian Fitzpatrick
+
+Context: Paired feedback examples concern understanding and clarifying source control flow, within advice on constructive criticism. These are review conversation, not inline code-comment specimens.
+
+```text
+The trick is to make sure you (and those around you) understand the difference between a constructive criticism of someone’s creative output and a flat-out assault against someone’s character. The latter is useless—it’s petty and nearly impossible to act on. The former can (and should!) be helpful and give guidance on how to improve. And, most important, it’s imbued with respect: the person giving the constructive criticism genuinely cares about the other person and wants them to improve themselves or their work. Learn to respect your peers and give constructive criticism politely. If you truly respect someone, you’ll be motivated to choose tactful, helpful phrasing—a skill acquired with much practice. We cover this much more in
+Code Review
+.
+
+On the other side of the conversation, you need to learn to accept criticism as well. This means not just being humble about your skills, but trusting that the other person has your best interests (and those of your project!) at heart and doesn’t actually think you’re an idiot. Programming is a skill like anything else: it improves with practice. If a peer pointed out ways in which you could improve your juggling, would you take it as an attack on your character and value as a human being? We hope not. In the same way, your self-worth shouldn’t be connected to the code you write—or any creative project you build. To repeat ourselves:
+you are not your code
+. Say that over and over. You are not what you make. You need to not only believe it yourself, but get your coworkers to believe it, too.
+
+For example, if you have an insecure collaborator, here’s what not to say: “Man, you totally got the control flow wrong on that method there.
+
+You should be using the standard xyzzy code pattern like everyone else.” This feedback is full of antipatterns: you’re telling someone they’re “wrong” (as if the world were black and white), demanding they change something, and accusing them of creating something that goes against what everyone else is doing (making them feel stupid). Your coworker will immediately be put on the offense, and their response is bound to be overly
+emotional.
+
+A better way to say the same thing might be, “Hey, I’m confused by the control flow in this section here. I wonder if the xyzzy code pattern might make this clearer and easier to maintain?” Notice how you’re using humility to make the question about you, not them. They’re not wrong; you’re just having trouble understanding the code. The suggestion is merely offered up as a way to clarify things for poor little you while possibly helping the project’s long-term sustainability goals. You’re also not demanding anything—you’re giving your collaborator the ability to peacefully reject the suggestion. The discussion stays focused on the code itself, not on anyone’s value or coding skills.
+```
+
 <a id="software-engineering-at-google-ch03-001"></a>
 ## software-engineering-at-google-ch03-001 — Knowledge fragmentation and written knowledge trade-offs
 
@@ -149,7 +178,7 @@ Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html);
 
 Attribution: Nina Chen and Mark Barolak
 
-Context: The chapter?s premises for sharing knowledge; documentation costs, tribal knowledge, and complementary human expertise.
+Context: The chapter's premises for sharing knowledge; documentation costs, tribal knowledge, and complementary human expertise.
 
 ```text
 Challenges to Learning
@@ -250,7 +279,7 @@ Tribal and written knowledge complement each other. Even a perfectly expert team
 
 Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html); reading unit `ch03`, lines 235–255.
 
-Attribution: Nina Chen and Mark Barolak; quoted Chesterton?s fence passage attributed to G. K. Chesterton
+Attribution: Nina Chen and Mark Barolak; quoted Chesterton's fence passage attributed to G. K. Chesterton
 
 Context: Legacy-code understanding, documenting reasoning for future readers, and rationale in style guides.
 
@@ -342,15 +371,31 @@ Like Stack Overflow, YAQS shares many of the same advantages of mailing lists an
 ```
 
 <a id="software-engineering-at-google-ch03-004"></a>
-## software-engineering-at-google-ch03-004 — Classes, documentation, and changing topics
+## software-engineering-at-google-ch03-004 — Office hours, classes, documentation, and changing topics
 
-Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html); reading unit `ch03`, lines 324–340.
+Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html); reading unit `ch03`, lines 308–340.
 
 Attribution: Nina Chen and Mark Barolak
 
 Context: Comparison of teaching media and maintenance of explanations; external learning resources.
 
 ```text
+
+Scaling Your Knowledge:
+You Always Have Something to Teach
+
+Teaching is not limited to experts, nor is expertise a binary state in which you are either a novice or an expert.
+
+Expertise is a multidimensional vector of what you know: everyone has varying levels of expertise across different areas. This is one of the reasons why diversity is critical to organizational success: different people bring different perspectives and expertise to the table (see
+Engineering for Equity
+). Google engineers teach others in a variety of ways, such as office hours, giving tech talks, teaching classes, writing documentation, and reviewing code.
+
+Office Hours
+
+Sometimes it’s really important to have a human to talk to, and in those instances, office hours can be a good solution.
+
+Office hours are a regularly scheduled (typically weekly) event during which one or more people make themselves available to answer questions about a particular topic. Office hours are almost never the first choice for knowledge sharing: if you have an urgent question, it can be painful to wait for the next session for an answer; and if you’re hosting office hours, they take up time and need to be regularly promoted. That said, they do provide a way for people to talk to an expert in person. This is particularly useful if the problem is still ambiguous enough that the engineer doesn’t yet know what questions to ask (such as when they’re just starting to design a new service) or whether the problem is about something so specialized that there just isn’t documentation on it.
+
 Tech Talks and Classes
 
 Google has a robust culture of both internal and external
@@ -565,7 +610,7 @@ Attribution: Nina Chen and Mark Barolak
 
 Context: Readability includes documentation; rationale, understandable code, counterarguments, and reported productivity study are retained together.
 
-Transcription/context notes: Footnotes 19?22 qualify corpus size, monorepo scope, short-lived code exemptions, and study controls.
+Transcription/context notes: Footnotes 19-22 qualify corpus size, monorepo scope, short-lived code exemptions, and study controls.
 
 Related: [software-engineering-at-google-ch03-010](#software-engineering-at-google-ch03-010)
 
@@ -667,6 +712,56 @@ Measuring Engineering Productivity
 Google has a very strong culture of code review, and readability is a natural extension of that culture. Readability grew from the passion of a single engineer to a formal program of human experts mentoring all Google engineers. It evolved and changed with Google’s growth, and it will continue to evolve as Google’s needs change.
 ```
 
+<a id="software-engineering-at-google-ch03-011"></a>
+## software-engineering-at-google-ch03-011 — Knowledge-sharing references and terminology
+
+Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html); reading unit `ch03`, lines 753–788.
+
+Attribution: Nina Chen and Mark Barolak
+
+Context: Footnotes 7-17 accompany documentation upkeep, g3doc, recognition, reference tips, links, and codelabs.
+
+Related: [software-engineering-at-google-ch03-005](#software-engineering-at-google-ch03-005), [software-engineering-at-google-ch03-007](#software-engineering-at-google-ch03-007)
+
+```text
+7
+See
+“The Boy Scout Rule”
+ and Kevlin Henney,
+97 Things Every Programmer Should Know
+ (Boston: O’Reilly, 2010).
+8
+g3doc stands for “google3 documentation.” google3 is the name of the current incarnation of Google’s monolithic source repository.
+9
+Laszlo Bock,
+Work Rules!: Insights from Inside Google That Will Transform How You Live and Lead
+ (New York: Twelve Books, 2015).
+10
+Ibid.
+11
+Peer bonuses include a cash award and a certificate as well as being a permanent part of a Googler’s award record in an internal tool called gThanks.
+12
+Such as books about software engineering at Google.
+13
+See
+Code Review
+.
+14
+See
+Testing Overview
+.
+15
+Available for multiple languages. Externally available for C++ at
+https://abseil.io/tips
+.
+16
+go/ links are unrelated to the Go language.
+17
+External codelabs are available at
+https://codelabs.developers.google.com
+.
+```
+
 <a id="software-engineering-at-google-ch03-010"></a>
 ## software-engineering-at-google-ch03-010 — Readability scope, exemptions, and study controls
 
@@ -674,7 +769,7 @@ Source: [ch03.html](../../../../books/software-engineering-at-google/ch03.html);
 
 Attribution: Nina Chen and Mark Barolak
 
-Context: Footnotes 19?22 to the readability discussion.
+Context: Footnotes 19-22 to the readability discussion.
 
 Related: [software-engineering-at-google-ch03-009](#software-engineering-at-google-ch03-009)
 
@@ -789,7 +884,7 @@ Attribution: Ciera Jaspan
 
 Context: Methodological context for the readability process discussed in chapter 3; this is not an isolated experiment on source-code comments.
 
-Transcription/context notes: HTML tables are linearized in the reading text; retained header and row order require reference to the original HTML for column structure.
+Transcription/context notes: The original HTML table rows and columns were inspected. The reading text linearizes cells; blank cells in Table 7-2 continue prior categories/goals/signals. Consult original HTML tables for the full column alignment.
 
 Related: [software-engineering-at-google-ch03-009](#software-engineering-at-google-ch03-009)
 
@@ -916,17 +1011,34 @@ Additionally, some signals might not have any associated metric because the sign
 <a id="software-engineering-at-google-ch07-003"></a>
 ## software-engineering-at-google-ch07-003 — Readability study methods, metrics, and reported outcome
 
-Source: [ch07.html](../../../../books/software-engineering-at-google/ch07.html); reading unit `ch07`, lines 314–468.
+Source: [ch07.html](../../../../books/software-engineering-at-google/ch07.html); reading unit `ch07`, lines 297–468.
 
 Attribution: Ciera Jaspan
 
 Context: Methodological context for the readability process discussed in chapter 3; this is not an isolated experiment on source-code comments.
 
-Transcription/context notes: HTML tables are linearized in the reading text; retained header and row order require reference to the original HTML for column structure.
+Transcription/context notes: The original HTML table rows and columns were inspected. The reading text linearizes cells; blank cells in Table 7-2 continue prior categories/goals/signals. Consult original HTML tables for the full column alignment.
 
 Related: [software-engineering-at-google-ch03-009](#software-engineering-at-google-ch03-009)
 
 ```text
+Following the GSM framework is a great way to clarify the goals for why you are measuring your software process and how it will actually be measured. However, it’s still possible that the metrics selected are not telling the complete story because they are not capturing the desired signal. At Google, we use qualitative data to validate our metrics and ensure that they are capturing the intended signal.
+
+Using Data to Validate Metrics
+
+As an example, we once created a metric for measuring each engineer’s median build latency; the
+
+ goal
+
+was to capture the “typical experience” of engineers’ build latencies. We then ran an
+experience sampling study
+. In this style of study, engineers are interrupted in context of doing a task of interest to answer a few questions. After an engineer started a build, we automatically sent them a small survey about their experiences and expectations of build latency. However, in a few cases, the engineers responded that they had not started a build! It turned out that automated tools were starting up builds, but the engineers were not blocked on these results and so it didn’t “count” toward their “typical experience.” We then adjusted the metric to exclude such builds.
+5
+
+Quantitative metrics are useful because they give you power and scale. You can measure the experience of engineers across the entire company over a large period of time and have confidence in the results. However, they don’t provide any context or narrative. Quantitative metrics don’t explain why an engineer chose to use an antiquated tool to accomplish their task, or why they took an unusual workflow, or why they circumvented a standard process.
+
+ Only qualitative studies can provide this information, and only qualitative studies can then provide insight on the next steps to improve a process.
+
 Consider now the signals presented in
 Table 7-2
 . What metrics might you create to measure each of those? Some of these signals might be measurable by analyzing tool and code logs. Others are measurable only by directly asking engineers. Still others might not be perfectly measurable—how do we truly measure code quality, for
@@ -1087,15 +1199,17 @@ For readability, our study showed that it was overall worthwhile: engineers who 
 <a id="software-engineering-at-google-ch07-004"></a>
 ## software-engineering-at-google-ch07-004 — Readability study language scope, bias, and aggregate measurement notes
 
-Source: [ch07.html](../../../../books/software-engineering-at-google/ch07.html); reading unit `ch07`, lines 492–507.
+Source: [ch07.html](../../../../books/software-engineering-at-google/ch07.html); reading unit `ch07`, lines 490–507.
 
-Attribution: Ciera Jaspan
+Attribution: Ciera Jaspan; footnote 4 quotes Edsger Dijkstra
 
 Context: Methodological context for the readability process discussed in chapter 3; this is not an isolated experiment on source-code comments.
 
 Related: [software-engineering-at-google-ch03-009](#software-engineering-at-google-ch03-009)
 
 ```text
+2
+It’s worth pointing out here that our industry currently disparages “anecdata,” and everyone has a goal of being “data driven.” Yet anecdotes continue to exist because they are powerful. An anecdote can provide context and narrative that raw numbers cannot; it can provide a deep explanation that resonates with others because it mirrors personal experience. Although our researchers do not make decisions on anecdotes, we do use and encourage techniques such as structured interviews and case studies to deeply understand phenomena and provide context to quantitative data.
 3
 Java and C++ have the greatest amount of tooling support. Both have mature formatters and static analysis tools that catch common mistakes. Both are also heavily funded internally. Even though other language teams, like Python, were interested in the results, clearly there was not going to be a benefit for Python to remove readability if we couldn’t even show the same benefit for Java or C++.
 4
@@ -1166,7 +1280,7 @@ Attribution: Shaindel Schwartz
 
 Context: Style-guide context for code explanation, naming, readability, and required comments.
 
-Transcription/context notes: Code examples retain the derived text?s whitespace; consult original HTML for layout.
+Transcription/context notes: Original HTML preformatted specimens checked; derived text preserves words but fragments some inline markup and does not retain all indentation.
 
 ```text
 Rules must pull their weight
@@ -1247,7 +1361,7 @@ Attribution: Shaindel Schwartz
 
 Context: Style-guide context for code explanation, naming, readability, and required comments.
 
-Transcription/context notes: Code examples retain the derived text?s whitespace; consult original HTML for layout.
+Transcription/context notes: Original HTML preformatted specimens checked; derived text preserves words but fragments some inline markup and does not retain all indentation.
 
 ```text
 Be consistent
@@ -1381,7 +1495,7 @@ Although these advanced language features might perfectly solve a problem for an
 
 Source: [ch08.html](../../../../books/software-engineering-at-google/ch08.html); reading unit `ch08`, lines 260–342.
 
-Attribution: Shaindel Schwartz
+Attribution: Shaindel Schwartz; opening quotation attributed to Ralph Waldo Emerson
 
 Context: Style-guide context for code explanation, naming, readability, and required comments.
 
@@ -1471,6 +1585,37 @@ std::unique_ptr
  a worthwhile trade-off.
 ```
 
+<a id="software-engineering-at-google-ch08-010"></a>
+## software-engineering-at-google-ch08-010 — Documented consistency decisions and limits of style guides
+
+Source: [ch08.html](../../../../books/software-engineering-at-google/ch08.html); reading unit `ch08`, lines 344–360.
+
+Attribution: Shaindel Schwartz
+
+Context: Context for naming, indentation, and import-order decisions, followed by what a style guide does not teach.
+
+Related: [software-engineering-at-google-ch08-003](#software-engineering-at-google-ch08-003), [software-engineering-at-google-ch08-005](#software-engineering-at-google-ch08-005)
+
+```text
+Building in consistency
+
+Our style guides also contain rules that cover a lot of the smaller stuff.
+
+For these rules, we make and document a decision primarily to make and document a decision. Many rules in this category don’t have significant technical impact. Things like naming conventions, indentation spacing, import ordering: there is usually no clear, measurable, technical benefit for one form over another, which might be why the technical community tends to keep debating them.
+11
+ By choosing one, we’ve dropped out of the endless debate cycle and can just move on. Our engineers no longer spend time discussing two spaces versus four. The important bit for this category of rules is not
+what
+ we’ve chosen for a given rule so much as the fact that we
+have
+ chosen.
+
+And for everything else...
+
+With all that, there’s a lot that’s not in our style guides.
+
+ We try to focus on the things that have the greatest impact on the health of our codebase. There are absolutely best practices left unspecified by these documents, including many fundamental pieces of good engineering advice: don’t be clever, don’t fork the codebase, don’t reinvent the wheel, and so on. Documents like our style guides can’t serve to take a complete novice all the way to a master-level understanding of software engineering—there are some things we assume, and this is intentional.
+```
+
 <a id="software-engineering-at-google-ch08-005"></a>
 ## software-engineering-at-google-ch08-005 — Retaining the reasons behind rules
 
@@ -1510,6 +1655,31 @@ The Process
 Recognizing that
 
 things will need to change, given the long lifetime and ability to scale that we are aiming for, we created a process for updating our rules. The process for changing our style guide is solution based. Proposals for style guide updates are framed with this view, identifying an existing problem and presenting the proposed change as a way to fix it. “Problems,” in this process, are not hypothetical examples of things that could go wrong; problems are proven with patterns found in existing Google code. Given a demonstrated problem, because we have the detailed reasoning behind the existing style guide decision, we can reevaluate, checking whether a different conclusion now makes more sense.
+```
+
+<a id="software-engineering-at-google-ch08-011"></a>
+## software-engineering-at-google-ch08-011 — Naming waivers and contextual exceptions
+
+Source: [ch08.html](../../../../books/software-engineering-at-google/ch08.html); reading unit `ch08`, lines 408–418.
+
+Attribution: Shaindel Schwartz
+
+Context: Exceptions to naming and conversion rules illustrate when local consistency gives way to codebase-wide constraints.
+
+Related: [software-engineering-at-google-ch08-004](#software-engineering-at-google-ch08-004)
+
+```text
+Exceptions
+
+Yes, our rules are law, but yes, some rules warrant exceptions.
+
+Our rules are typically designed for the greater, general case. Sometimes, specific situations would benefit from an exemption to a particular rule. When such a scenario arises, the style arbiters are consulted to determine whether there is a valid case for granting a waiver to a particular rule.
+
+Waivers are not granted lightly. In C++ code, if a macro API is introduced, the style guide mandates that it be named using a project-specific prefix. Because of the way
+C++
+ handles macros, treating them as members of the global namespace, all macros that are exported from header files must have globally unique names to prevent collisions. The style guide rule regarding macro naming does allow for arbiter-granted exemptions for some utility macros that are genuinely global. However, when the reason behind a waiver request asking to exclude a project-specific prefix comes down to preferences due to macro name length or project consistency, the waiver is rejected. The integrity of the codebase outweighs the consistency of the project here.
+
+Exceptions are allowed for cases in which it is gauged to be more beneficial to permit the rule-breaking than to avoid it. The C++ style guide disallows implicit type conversions, including single-argument constructors. However, for types that are designed to transparently wrap other types, where the underlying data is still accurately and precisely represented, it’s perfectly reasonable to allow implicit conversion. In such cases, waivers to the no-implicit-conversion rule are granted. Having such a clear case for valid exemptions might indicate that the rule in question needs to be clarified or amended. However, for this specific rule, enough waiver requests are received that appear to fit the valid case for exemption but in fact do not—either because the specific type in question is not actually a transparent wrapper type or because the type is a wrapper but is not actually needed—that keeping the rule in place as-is is still worthwhile.
 ```
 
 <a id="software-engineering-at-google-ch08-006"></a>
@@ -1671,6 +1841,53 @@ all
  Go code is formatted with gofmt. gofmt has no configuration knobs, and its behavior rarely changes. All major editors and IDEs use gofmt or emulate its behavior, so nearly all Go code in existence is formatted identically. At first, Go users complained about the enforced standard; now, users often cite gofmt as one of the many reasons they like Go. Even when reading unfamiliar Go code, the format is familiar.
 ```
 
+<a id="software-engineering-at-google-ch08-012"></a>
+## software-engineering-at-google-ch08-012 — Tooling costs, cognitive chunking, and naming exceptions
+
+Source: [ch08.html](../../../../books/software-engineering-at-google/ch08.html); reading unit `ch08`, lines 616–648.
+
+Attribution: Shaindel Schwartz
+
+Context: Footnotes 2-9 qualify formatting costs, reader chunking, language conventions, Abseil naming, and generated-code exemptions.
+
+Related: [software-engineering-at-google-ch08-003](#software-engineering-at-google-ch08-003), [software-engineering-at-google-ch08-004](#software-engineering-at-google-ch08-004), [software-engineering-at-google-ch08-008](#software-engineering-at-google-ch08-008)
+
+```text
+2
+Tooling matters here. The measure for “too many” is not the raw number of rules in play, but how many an engineer needs to remember. For example, in the bad-old-days pre-clang-format, we needed to remember a ton of formatting rules. Those rules haven’t gone away, but with our current tooling, the cost of adherence has fallen dramatically. We’ve reached a point at which somebody could add an arbitrary number of formatting rules and nobody would care, because the tool just does it for you.
+3
+Credit to H. Wright for the real-world comparison, made at the point of having visited around 15 different Google offices.
+4
+"Chunking" is a cognitive process that groups pieces of information together into meaningful “chunks” rather than keeping note of them individually. Expert chess players, for example, think about configurations of pieces rather than the positions of the individuals.
+5
+See
+4.2 Block indentation: +2 spaces
+,
+Spaces vs. Tabs
+,
+4.4 Column limit:100
+ and
+Line Length
+.
+6
+Use of const
+, for example.
+7
+Style formatting for BUILD files implemented with Starlark is applied by buildifier. See
+https://github.com/bazelbuild/buildtools
+.
+8
+See
+Exceptions to Naming Rules
+. As an example, our open sourced Abseil libraries use snake_case naming for types intended to be replacements for standard types. See the types defined in
+https://github.com/abseil/abseil-cpp/blob/master/absl/utility/utility.h
+. These are C++11 implementation of C++14 standard types and therefore use the standard’s favored snake_case style instead of Google’s preferred CamelCase form.
+9
+See
+Generated code: mostly exempt
+.
+```
+
 <a id="software-engineering-at-google-ch08-009"></a>
 ## software-engineering-at-google-ch08-009 — Comment-guideline source references
 
@@ -1802,6 +2019,33 @@ Given the amount of time Google engineers spend in code review, the knowledge ac
 Moreover, because each change becomes part of the codebase, code review acts as a historical record. Any engineer can inspect the Google codebase and determine when some particular pattern was introduced and bring up the actual code review in
 question
 . Often, that archeology provides insights to many more engineers than the original author and reviewer(s).
+```
+
+<a id="software-engineering-at-google-ch09-007"></a>
+## software-engineering-at-google-ch09-007 — Questions about intent and the author responsibility for understandable code
+
+Source: [ch09.html](../../../../books/software-engineering-at-google/ch09.html); reading unit `ch09`, lines 276–288.
+
+Attribution: Tom Manshreck and Caitlin Sadowski
+
+Context: The review-practice context distinguishes professional review comments and explanation of a code approach from source-code comments.
+
+Related: [software-engineering-at-google-ch09-004](#software-engineering-at-google-ch09-004)
+
+```text
+Be Polite and Professional
+
+As pointed out in the Culture section of this book, Google heavily fosters a culture of trust and respect.
+
+This filters down into our perspective on code review. A software engineer needs an LGTM from only one other engineer to satisfy our requirement on code comprehension, for example. Many engineers make comments and LGTM a change with the understanding that the change can be submitted after those changes are made, without any additional rounds of review. That said, code reviews can introduce anxiety and stress to even the most capable engineers. It is critically important to keep all feedback and criticism firmly in the professional realm.
+
+In general, reviewers should defer to authors on particular approaches and only point out alternatives if the author’s approach is deficient. If an author can demonstrate that several approaches are equally valid, the reviewer should accept the preference of the author. Even in those cases, if defects are found in an approach, consider the review a learning opportunity (for both sides!). All comments should remain strictly professional. Reviewers should be careful about jumping to conclusions based on a code author’s particular approach. It’s better to ask questions on why something was done the way it was before assuming that approach is wrong.
+
+Reviewers should be prompt with their feedback. At Google, we expect feedback from a code review within 24 (working) hours. If a reviewer is unable to complete a review in that time, it’s good practice (and expected) to respond that they’ve at least seen the change and will get to the review as soon as possible. Reviewers should avoid responding to the code review in piecemeal fashion. Few things annoy an author more than getting feedback from a review, addressing it, and then continuing to get unrelated further feedback in the review process.
+
+As much as we expect professionalism on the part of the reviewer, we expect professionalism on the part of the author as well. Remember that you are not your code, and that this change you propose is not “yours” but the team’s. After you check that piece of code into the codebase, it is no longer yours in any case. Be receptive to
+questions
+ on your approach, and be prepared to explain why you did things in certain ways. Remember that part of the responsibility of an author is to make sure this code is understandable and maintainable for the future.
 ```
 
 <a id="software-engineering-at-google-ch09-004"></a>
@@ -4252,6 +4496,55 @@ files
 }
 ```
 
+<a id="software-engineering-at-google-ch13-008"></a>
+## software-engineering-at-google-ch13-008 — API contracts represented by fakes and contract tests
+
+Source: [ch13.html](../../../../books/software-engineering-at-google/ch13.html); reading unit `ch13`, lines 634–670.
+
+Attribution: Andrew Trenk and Dillon Bly
+
+Context: Adjacent discussion of executable representations of promised behavior, fidelity limits, unsupported paths, and tests for divergence; no claim that these are inline comments.
+
+```text
+The Fidelity of Fakes
+
+Perhaps the most important concept surrounding
+
+ the creation of fakes is
+fidelity
+; in other words, how
+
+closely the behavior of a fake matches the behavior of the real implementation. If the behavior of a fake doesn’t match the behavior of the real implementation, a test using that fake is not useful—a test might pass when the fake is used, but this same code path might not work properly in the real implementation.
+
+Perfect fidelity is not always feasible. After all, the fake was necessary because the real implementation wasn’t suitable in one way or another. For example, a fake database would usually not have fidelity to a real database in terms of hard drive storage because the fake would store everything in memory.
+
+Primarily, however, a fake should maintain fidelity to the API contracts of the real implementation. For any given input to an API, a fake should return the same output and perform the same state changes of its corresponding real implementation. For example, for a real implementation of
+database.save(itemId)
+, if an item is successfully saved when its ID does not yet exist but an error is produced when the ID already exists, the fake must conform to this same behavior.
+
+One way to think about this is that the fake must have perfect fidelity to the real implementation, but
+only from the perspective of the test
+. For example, a fake for a hashing API doesn’t need to guarantee that the hash value for a given input is exactly the same as the hash value that is generated by the real implementation—tests likely don’t care about the specific hash value, only that the hash value is unique for a given input. If the contract of the hashing API doesn’t make guarantees of what specific hash values will be returned, the fake is still conforming to the contract even if it doesn’t have perfect fidelity to the real implementation.
+
+Other examples where perfect fidelity typically might not be useful for fakes include latency and resource consumption. However, a fake cannot be used if you need to explicitly test for these constraints (e.g., a performance test that verifies the latency of a function call), so you would need to resort to other mechanisms, such as by using a real implementation instead of a fake.
+
+A fake might not need to have 100% of the functionality of its corresponding real implementation, especially if such behavior is not needed by most tests (e.g., error handling code for rare edge cases). It is best to have the fake fail fast in this case; for example, raise an error if an unsupported code path is executed. This failure communicates to the engineer that the fake is not appropriate in this situation.
+
+Fakes Should Be Tested
+
+A fake must have its
+own
+ tests to ensure that it conforms to the API of its corresponding real implementation.
+
+A fake without tests might initially provide realistic behavior, but without tests, this behavior can diverge over time as the real implementation evolves.
+
+One approach to writing tests for fakes involves writing tests against the API’s public
+
+ interface and running those tests against both the real implementation and the fake (these are known as
+contract tests
+). The tests that run against the real implementation will likely be slower, but their downside is minimized because they need to be run only by the owners of the fake.
+```
+
 <a id="software-engineering-at-google-ch13-005"></a>
 ## software-engineering-at-google-ch13-005 — Stubbing, unclear tests, and paired commented examples
 
@@ -5207,7 +5500,9 @@ Attribution: Alexander Neubeck and Ben St. John
 
 Context: Documentation links survive file restructuring and embedded snippets avoid extra source documentation markers.
 
-Transcription/context notes: Figure 17-4 contains the original integration example and requires image inspection.
+Transcription/context notes: Original Figure 17-4 visually inspected; its legible example is preserved in the related supplemental record, with clipped query text noted.
+
+Related: [software-engineering-at-google-ch17-006](#software-engineering-at-google-ch17-006)
 
 ```text
 Compilation errors and tests also typically refer back to a code location (e.g., test X in
@@ -5287,6 +5582,38 @@ https://doi.org/10.1145/2786805.2786855
 6
 That said, given the rate of commits for machine-generated changes, naive “blame” tracking has less value than it does in more change-averse ecosystems.
 ```
+
+<a id="software-engineering-at-google-ch17-006"></a>
+## software-engineering-at-google-ch17-006 — Supplemental image transcription: live snippets in documentation
+
+Source: [ch17.html](../../../../books/software-engineering-at-google/ch17.html); reading unit `ch17`, lines 548–563.
+
+Attribution: Alexander Neubeck and Ben St. John
+
+Context: Manual transcription of Figure 17-4 in ch17.html showing live-snippet syntax and embedded Fibonacci code; external documentation, not inline comments.
+
+Transcription/context notes: Original PNG visually checked. Query is clipped after the visible f; indentation is approximate; UI icons, link styling and scrollbar omitted.
+
+Related: [software-engineering-at-google-ch17-003](#software-engineering-at-google-ch17-003)
+
+````text
+Use a markdown code block and specify live-snippet as the language. Live snippets use
+the Code Search cs/ query syntax to specify which code to include. For example:
+```live-snippet
+cs/file:google3/corp/g3doc/tests/regression/tests/testLiveSnippet/snippet_test.cc f
+```
+Which renders as:
+static int Fibonacci(int n) {
+  if (n <= 1) return n;
+  int a = 0, b = 1;
+  for (int i = 0; i < n; ++i) {
+    int t = a;
+    a = b;
+    b += t;
+  }
+  return b;
+}
+````
 
 <a id="software-engineering-at-google-ch18-001"></a>
 ## software-engineering-at-google-ch18-001 — Ant buildfile with explanatory XML comments
@@ -5512,6 +5839,8 @@ Context: containsValue versus contains clarifies intent even when the original b
 
 Transcription/context notes: Numbered derived text retains source wording and extraction line breaks.
 
+Related: [software-engineering-at-google-ch20-004](#software-engineering-at-google-ch20-004)
+
 ```text
 Furthermore,
 perception
@@ -5601,6 +5930,45 @@ View of an example static analysis fix in Critique
 Automated fixes serve as an additional documentation source when the message is unclear and, as mentioned earlier, reduce the cost to addressing static analysis issues. Fixes can be applied directly from within Critique, or over an entire code change via a command-line tool. Although not all analyzers provide fixes, many do. We take the approach that
 style
  issues in particular should be fixed automatically; for example, by formatters that automatically reformat source code files. Google has style guides for each language that specify formatting issues; pointing out formatting errors is not a good use of a human reviewer’s time. Reviewers click “Please Fix” thousands of times per day, and authors apply the automated fixes approximately 3,000 times per day. And Tricorder analyzers received “Not useful” clicks 250 times per day.
+```
+
+<a id="software-engineering-at-google-ch20-004"></a>
+## software-engineering-at-google-ch20-004 — Supplemental image transcription: class and method comments in a diff
+
+Source: [ch20.html](../../../../books/software-engineering-at-google/ch20.html); reading unit `ch20`, lines 369–391.
+
+Attribution: Caitlin Sadowski
+
+Context: Manual transcription of the paired source panes in Figure 20-1, including added class and method comments and a separately labeled human review comment. The figure illustrates static-analysis feedback.
+
+Transcription/context notes: Original PNG visually checked. Approximate indentation/blank lines; gutters and UI controls omitted. The analyzer naming-warning regular expression is not transcribed. No comment-quality judgment is asserted by the surrounding prose.
+
+Related: [software-engineering-at-google-ch20-001](#software-engineering-at-google-ch20-001)
+
+```text
+[Left code pane]
+package path.to.file;
+
+public class Test {
+  public boolean foo() {
+
+    return new String("foo") == "foo".toString();
+  }
+}
+[Right code pane]
+package path.to.file;
+
+/**
+ * Sample class
+ */
+public class Test {
+  // Sample method
+  public boolean Foo() {
+    return new String("foo") == "foo".toString();
+  }
+}
+[Human review comment, separate from both source-code panes]
+Please add more test cases.
 ```
 
 <a id="software-engineering-at-google-ch21-001"></a>
@@ -5755,6 +6123,60 @@ semantic
  If you have a network of thousands of dependencies underneath your product, you should be prepared for some amount of chaos simply from human error.
 ```
 
+<a id="software-engineering-at-google-ch21-005"></a>
+## software-engineering-at-google-ch21-005 — Undocumented behavior in the gflags forks
+
+Source: [ch21.html](../../../../books/software-engineering-at-google/ch21.html); reading unit `ch21`, lines 665–704.
+
+Attribution: Titus Winters
+
+Context: The complete gflags case provides context for a downstream dependency on observable but undocumented behavior.
+
+Related: [software-engineering-at-google-ch21-002](#software-engineering-at-google-ch21-002), [software-engineering-at-google-ch21-003](#software-engineering-at-google-ch21-003)
+
+```text
+Example: open sourcing gflags
+
+For reputation loss, consider the case of something like Google’s experience circa 2006 open sourcing our C++ command-line flag libraries.
+
+ Surely giving back to the open source community is a purely good act that won’t come back to haunt us, right? Sadly, no. A host of reasons conspired to make this good act into something that certainly hurt our reputation and possibly damaged the OSS community as well:
+
+At the time, we didn’t have the ability to execute large-scale refactorings, so everything that used that library internally had to remain exactly the same—we couldn’t move the code to a new location in the codebase.
+
+We segregated our repository into “code developed in-house” (which can be copied freely if it needs to be forked, so long as it is renamed properly) and “code that may have legal/licensing concerns” (which can have more nuanced usage requirements).
+
+If an OSS project accepts code from outside developers, that’s generally a legal issue—the project originator doesn’t
+own
+ that contribution, they only have rights to it.
+
+As a result, the gflags project was doomed to be either a “throw over the wall” release or a disconnected fork. Patches contributed to the project couldn’t be reincorporated into the original source inside of Google, and we couldn’t move the project within our monorepo because we hadn’t yet mastered that form of refactoring, nor could we make everything internally depend on the OSS version.
+
+Further, like most organizations, our priorities have shifted and changed over time. Around the time of the original release of that flags library, we were interested in products outside of our traditional space (web applications, search), including things like Google Earth, which had a much more traditional distribution mechanism: precompiled binaries for a variety of platforms. In the late 2000s, it was unusual but not unheard of for a library in our monorepo, especially something low-level like flags, to be used on a variety of platforms. As time went on and Google grew, our focus narrowed to the point that it was extremely rare for any libraries to be built with anything other than our in-house configured toolchain, then deployed to our production fleet. The “portability” concerns for properly supporting an OSS project like
+flags
+ were nearly impossible to maintain: our internal tools simply didn’t have support for those platforms, and our average developer didn’t have to interact with external tools. It was a constant battle to try to maintain portability.
+
+As the original authors and OSS supporters moved on to new companies or new teams, it eventually became clear that nobody internally was really supporting our OSS
+flags
+ project—nobody could tie that support back to the priorities for any particular team. Given that it was no specific team’s job, and nobody could say why it was important, it isn’t surprising that we basically let that project rot externally.
+18
+ The internal and external versions diverged slowly over time, and eventually some external developers took the external version and forked it, giving it some proper
+attention.
+
+Other than the initial “Oh look, Google contributed something to the open source world,” no part of that made us look good, and yet every little piece of it made sense given the priorities of our engineering organization. Those of us who have been close to it have learned, “Don’t release things without a plan (and a mandate) to support it for the long term.” Whether the whole of Google engineering has learned that or not remains to be seen. It’s a big organization.
+
+Above and beyond the nebulous “We look bad,” there are also parts of this story that illustrate how we can be subject to technical problems stemming from poorly released/poorly maintained external dependencies. Although the
+flags
+ library was shared but ignored, there were still some Google-backed open source projects, or projects that needed to be shareable outside of our monorepo ecosystem. Unsurprisingly, the authors of those other projects were able to identify
+19
+ the common API subset between the internal and external forks of that library. Because that common subset stayed fairly stable between the two versions for a long period, it silently became “the way to do this” for the rare teams that had unusual portability requirements between roughly 2008 and 2017. Their code could build in both internal and external ecosystems, switching out forked versions of the
+flags
+ library depending on environment.
+
+Then, for unrelated reasons, C++ library teams began tweaking observable-but-not-documented pieces of the internal
+flag
+ implementation. At that point, everyone who was depending on the stability and equivalence of an unsupported external fork started screaming that their builds and releases were suddenly broken. An optimization opportunity worth some thousands of aggregate CPUs across Google’s fleet was significantly delayed, not because it was difficult to update the API that 250 million lines of code depended upon, but because a tiny handful of projects were relying on unpromised and unexpected things. Once again, Hyrum’s Law affects software changes, in this case even for forked APIs maintained by separate organizations.
+```
+
 <a id="software-engineering-at-google-ch21-004"></a>
 ## software-engineering-at-google-ch21-004 — Private access and behavioral intention footnotes
 
@@ -5771,6 +6193,33 @@ Transcription/context notes: Numbered derived text retains source wording and ex
 It’s worth noting: in our experience, naming like this doesn’t fully solve the problem of users reaching in to access private APIs. Prefer languages that have good control over public/private access to APIs of all forms.
 12
 In a world of ubiquitous unit tests, we could identify changes that required a change in test behavior, but it would still be difficult to algorithmically separate “This is a behavioral change” from “This is a bug fix to a behavior that wasn’t intended/promised.”
+```
+
+<a id="software-engineering-at-google-ch22-005"></a>
+## software-engineering-at-google-ch22-005 — Inconsistent file naming and migration
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 67–81.
+
+Attribution: Hyrum Wright
+
+Context: Case study of the stl_util.h and map-util.h separator inconsistency and the reported effect of changing it.
+
+```text
+Case Study: Filling Potholes
+
+Although the LSC systems at Google are used for high-priority migrations, we’ve also discovered that just having them available opens up opportunities for various small fixes across our codebase, which just wouldn’t have been possible without them.
+
+ Much like transportation infrastructure tasks consist of building new roads as well as repairing old ones, infrastructure groups at Google spend a lot of time fixing existing code, in addition to developing new systems and moving users to them.
+
+For example, early in our history, a template library emerged to supplement the C++ Standard Template Library. Aptly named the Google Template Library, this library consisted of several header files’ worth of implementation. For reasons lost in the mists of time, one of these header files was named
+stl_util.h
+ and another was named
+map-util.h
+ (note the different separators in the file names). In addition to driving the consistency purists nuts, this difference also led to reduced productivity, and engineers had to remember which file used which separator, and only discovered when they got it wrong after a potentially lengthy compile cycle.
+
+Although fixing this single-character change might seem pointless, particularly across a codebase the size of Google’s, the maturity of our LSC tooling and process enabled us to do it with just a couple weeks’ worth of background-task effort. Library authors could find and apply this change en masse without having to bother end users of these files, and we were able to quantitatively reduce the number of build failures caused by this specific issue. The resulting increases in productivity (and happiness) more than paid for the time to make the change.
+
+As the ability to make changes across our entire codebase has improved, the diversity of changes has also expanded, and we can make some engineering decisions knowing that they aren’t immutable in the future. Sometimes, it’s worth the effort to fill a few potholes.
 ```
 
 <a id="software-engineering-at-google-ch22-001"></a>
@@ -5862,6 +6311,36 @@ This proposal is then forwarded to an email list with about a dozen people who h
 After the change is approved, the author can move forward in getting their change submitted. Historically, the committee has been very liberal with their approval,
 13
  and often gives approval not just for a specific change, but also for a broad set of related changes. Committee members can, at their discretion, fast-track obvious changes without the need for full deliberation.
+```
+
+<a id="software-engineering-at-google-ch22-006"></a>
+## software-engineering-at-google-ch22-006 — Generating changes readable by people
+
+Source: [ch22.html](../../../../books/software-engineering-at-google/ch22.html); reading unit `ch22`, lines 409–424.
+
+Attribution: Hyrum Wright
+
+Context: Automated migration output is discussed in relation to readable source, style guides, and formatting.
+
+Related: [software-engineering-at-google-ch22-002](#software-engineering-at-google-ch22-002), [software-engineering-at-google-ch22-004](#software-engineering-at-google-ch22-004)
+
+```text
+Change Creation
+
+After getting the required approval, an LSC author will begin to produce the actual code edits.
+
+Sometimes, these can be generated comprehensively into a single large global change that will be subsequently sharded into many smaller independent pieces. Usually, the size of the change is too large to fit in a single global change, due to technical limitations of the underlying version control system.
+
+The change generation process should be as automated as possible so that the parent change can be updated as users backslide into old uses
+14
+ or textual merge conflicts occur in the changed code. Occasionally, for the rare case in which technical tools aren’t able to generate the global change, we have sharded change generation across humans (see
+Case Study: Operation RoseHub
+). Although much more labor intensive than automatically generating changes, this allows global changes to happen much more quickly for time-sensitive applications.
+
+Keep in mind that we optimize for human readability of our codebase, so whatever tool generates changes, we want the resulting changes to look as much like human-generated changes as possible. This requirement leads to the necessity of style guides and automatic formatting tools (see
+Style Guides and Rules
+).
+15
 ```
 
 <a id="software-engineering-at-google-ch22-004"></a>
@@ -5965,7 +6444,7 @@ Attribution: Rachel Tannenbaum
 
 Context: Commented-out failures are easy to forget. Preserves bug-tag alternative, automatic cleanup, flaky-test exception, and remaining manual burden.
 
-Transcription/context notes: Figures 23-4 and 23-5 illustrate the reported effects; inspect original figures before claiming graphical coverage.
+Transcription/context notes: Original Figures 23-4 and 23-5 visually inspected: the former plots % Disabled, % Passed, and % Green over dates; the latter plots mean days to close bugs over dates. Curves remain graphical in the original PNGs; no numerical values inferred from pixels.
 
 ```text
 Scenario #4: Keeping it green

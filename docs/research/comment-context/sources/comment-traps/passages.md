@@ -2,7 +2,7 @@
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
-Extent: `local_paper`. Text SHA-256: `15dce3f49d0ebce99ccd39c72ff0703afc47e6bc5b8e32368de453ee34299ce7`.
+Extent: `local_paper`. Text SHA-256: `c3477cf7d173371e92b5132ba289fbb46349b2df788bb139aee2d23d2c3e709d`.
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
@@ -531,7 +531,7 @@ s = socket(AF_INET, SOCK_STREAM)
 # Wrap with an SSL layer and require the server to present its certificate
 ssl_s = ssl.wrap_socket(s,
                        cert_reqs=ssl.CERT_REQUIRED,
-                       ca_certs='server_cert.pem',
+                       ca_certs="server_cert.pem",
                        )
 
 ssl_s.connect(('localhost', 20000))
@@ -915,7 +915,7 @@ Attribution: Yuan Huang, Yukang Zhou, Xiangping Chen and Zibin Zheng
 
 Context: Paper section in source order; neighboring linked records preserve definitions, comparators and continuation.
 
-Transcription/context notes: The FIM explanation is the authors? proposed interpretation, drawing on the cited GitHub source [35]; preserve its stated uncertainty.
+Transcription/context notes: The FIM explanation is the authors' proposed interpretation, drawing on the cited GitHub source [35]; preserve its stated uncertainty.
 
 Related: [comment-traps-020](#comment-traps-020), [comment-traps-022](#comment-traps-022)
 

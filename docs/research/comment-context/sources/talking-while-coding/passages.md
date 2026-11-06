@@ -1,4 +1,4 @@
-# Talking to Itself While Coding: source passages
+# Talking to Itself While Coding: What Makes Comments Help Code Generation?: source passages
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
@@ -16,7 +16,7 @@ Source: [physical PDF page 1](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-002](#talking-while-coding-002)
 
@@ -59,7 +59,7 @@ Source: [physical PDF page 1](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; cited findings remain attributed to the named third-party authors
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-001](#talking-while-coding-001), [talking-while-coding-003](#talking-while-coding-003)
 
@@ -127,7 +127,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-002](#talking-while-coding-002), [talking-while-coding-004](#talking-while-coding-004)
 
@@ -175,7 +175,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-003](#talking-while-coding-003), [talking-while-coding-005](#talking-while-coding-005)
 
@@ -217,7 +217,7 @@ Source: [physical PDF page 2](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; cited findings remain attributed to the named third-party authors
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-004](#talking-while-coding-004), [talking-while-coding-006](#talking-while-coding-006)
 
@@ -271,7 +271,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; cited findings remain attributed to the named third-party authors
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-005](#talking-while-coding-005), [talking-while-coding-007](#talking-while-coding-007)
 
@@ -356,7 +356,7 @@ Source: [physical PDF page 3](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-006](#talking-while-coding-006), [talking-while-coding-008](#talking-while-coding-008)
 
@@ -408,7 +408,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-007](#talking-while-coding-007), [talking-while-coding-009](#talking-while-coding-009)
 
@@ -437,7 +437,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-008](#talking-while-coding-008), [talking-while-coding-010](#talking-while-coding-010)
 
@@ -483,7 +483,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-009](#talking-while-coding-009), [talking-while-coding-011](#talking-while-coding-011)
 
@@ -521,7 +521,7 @@ Source: [physical PDF page 4](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-010](#talking-while-coding-010), [talking-while-coding-012](#talking-while-coding-012)
 
@@ -563,7 +563,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -607,7 +607,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -652,7 +652,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -699,7 +699,7 @@ Source: [physical PDF page 5](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -725,7 +725,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -759,7 +759,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -797,7 +797,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -823,7 +823,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -866,7 +866,7 @@ Source: [physical PDF page 6](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -908,7 +908,7 @@ Source: [physical PDF page 7](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-020](#talking-while-coding-020), [talking-while-coding-022](#talking-while-coding-022)
 
@@ -943,7 +943,7 @@ Source: [physical PDF page 7](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-021](#talking-while-coding-021), [talking-while-coding-023](#talking-while-coding-023)
 
@@ -1009,7 +1009,7 @@ Source: [physical PDF page 7](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-022](#talking-while-coding-022), [talking-while-coding-024](#talking-while-coding-024)
 
@@ -1052,7 +1052,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Several adjacent table values are concatenated in pinned text; the original Table 4 is needed to distinguish columns.
 
@@ -1086,7 +1086,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1129,7 +1129,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1177,7 +1177,7 @@ Source: [physical PDF page 8](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1230,7 +1230,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: The base extraction concatenates code/comment lines and line numbers. This is not a faithful code transcription. Figure 2 was visually inspected; supplemental transcription supplied for coordinator integration.
 
@@ -1258,13 +1258,13 @@ problem).
 ```
 
 <a id="talking-while-coding-029"></a>
-## talking-while-coding-029 — Conclusion and authors? practical implications
+## talking-while-coding-029 — Conclusion and authors' practical implications
 
 Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-while-coding.pdf#page=9); reading unit `p009`, lines 19–49.
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-028](#talking-while-coding-028), [talking-while-coding-030](#talking-while-coding-030)
 
@@ -1309,7 +1309,7 @@ Source: [physical PDF page 9](../../../ai-code-comments/2026-talking-to-itself-w
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-029](#talking-while-coding-029), [talking-while-coding-031](#talking-while-coding-031), [talking-while-coding-071](#talking-while-coding-071)
 
@@ -1569,7 +1569,7 @@ Source: [physical PDF page 10](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-030](#talking-while-coding-030), [talking-while-coding-032](#talking-while-coding-032)
 
@@ -1593,7 +1593,7 @@ Source: [physical PDF page 11](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1658,7 +1658,7 @@ Source: [physical PDF page 12](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1706,7 +1706,7 @@ Source: [physical PDF page 12](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -1769,7 +1769,7 @@ Source: [physical PDF page 12](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -1803,7 +1803,7 @@ Source: [physical PDF page 13](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -1839,7 +1839,7 @@ Source: [physical PDF page 13](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -1888,7 +1888,7 @@ Source: [physical PDF page 13](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -1941,7 +1941,7 @@ Source: [physical PDF page 14](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-038](#talking-while-coding-038), [talking-while-coding-040](#talking-while-coding-040)
 
@@ -1990,7 +1990,7 @@ Source: [physical PDF page 14](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -2051,7 +2051,7 @@ Source: [physical PDF page 14](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-040](#talking-while-coding-040), [talking-while-coding-042](#talking-while-coding-042)
 
@@ -2097,7 +2097,7 @@ Source: [physical PDF page 15](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-041](#talking-while-coding-041), [talking-while-coding-043](#talking-while-coding-043)
 
@@ -2123,7 +2123,7 @@ Source: [physical PDF page 15](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -2176,7 +2176,7 @@ Source: [physical PDF page 15](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -2242,7 +2242,7 @@ Source: [physical PDF page 15](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Prompt text is a quoted experimental artifact, not an instruction to the collection reader; original typography sometimes uses rendered quote characters for code fences.
 
@@ -2271,7 +2271,7 @@ Source: [physical PDF page 16](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-045](#talking-while-coding-045), [talking-while-coding-047](#talking-while-coding-047)
 
@@ -2297,7 +2297,7 @@ Source: [physical PDF page 16](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-046](#talking-while-coding-046), [talking-while-coding-048](#talking-while-coding-048)
 
@@ -2332,7 +2332,7 @@ Source: [physical PDF page 16](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du; prompts/codebooks are artifacts reported by these authors, with adaptations credited as stated
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-047](#talking-while-coding-047), [talking-while-coding-049](#talking-while-coding-049)
 
@@ -2405,7 +2405,7 @@ Source: [physical PDF page 17](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2458,7 +2458,7 @@ Source: [physical PDF page 17](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2506,7 +2506,7 @@ Source: [physical PDF page 17](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2541,7 +2541,7 @@ Source: [physical PDF page 17](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2566,7 +2566,7 @@ Source: [physical PDF page 18](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2600,7 +2600,7 @@ Source: [physical PDF page 18](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2642,7 +2642,7 @@ Source: [physical PDF page 18](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2672,7 +2672,7 @@ Source: [physical PDF page 18](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2716,7 +2716,7 @@ Source: [physical PDF page 19](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2777,7 +2777,7 @@ Source: [physical PDF page 19](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2812,7 +2812,7 @@ Source: [physical PDF page 19](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -2838,7 +2838,7 @@ Source: [physical PDF page 20](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-059](#talking-while-coding-059), [talking-while-coding-061](#talking-while-coding-061)
 
@@ -2868,7 +2868,7 @@ Source: [physical PDF page 20](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-060](#talking-while-coding-060), [talking-while-coding-062](#talking-while-coding-062)
 
@@ -2924,7 +2924,7 @@ Source: [physical PDF page 20](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Related: [talking-while-coding-061](#talking-while-coding-061), [talking-while-coding-063](#talking-while-coding-063)
 
@@ -2946,7 +2946,7 @@ Source: [physical PDF page 21](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -3010,7 +3010,7 @@ Source: [physical PDF page 21](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -3034,7 +3034,7 @@ Source: [physical PDF page 22](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -3072,7 +3072,7 @@ Source: [physical PDF page 23](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 
@@ -3139,7 +3139,7 @@ Source: [physical PDF page 24](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Table 16 last numeric fields and Table 17 none row have concatenated values in pinned text; original column layout governs.
 
@@ -3172,7 +3172,7 @@ Source: [physical PDF page 24](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Table 16 last numeric fields and Table 17 none row have concatenated values in pinned text; original column layout governs.
 
@@ -3202,7 +3202,7 @@ Source: [physical PDF page 24](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together. Table 16 last numeric fields and Table 17 none row have concatenated values in pinned text; original column layout governs.
 
@@ -3294,7 +3294,7 @@ Source: [physical PDF page 25](../../../ai-code-comments/2026-talking-to-itself-
 
 Attribution: Dangfeng Pan, Zhensu Sun, Cenyuan Zhang, David Lo and Xiaoning Du
 
-Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source?s wording.
+Context: Main paper and appendices in physical-page order. Neighboring records preserve cross-page context; all percentages/deltas and significance conventions retain the source's wording.
 
 Transcription/context notes: Tables/notation visually inspected where present; base extraction flattens column alignment, bold emphasis and superscripts. Read headers/captions and linked baseline/metric definitions together.
 

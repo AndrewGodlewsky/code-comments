@@ -47,7 +47,7 @@ The rationale for the code being the primary source of
 
 Source: [fowler-code-as-documentation-2005.html](../../../../papers/fowler-code-as-documentation-2005.html); reading unit `fowler-code-as-documentation-2005`, lines 105–132.
 
-Attribution: Martin Fowler; Jack Reeves explicitly credited in the primary-source rationale
+Attribution: Martin Fowler
 
 Context: Complete essay argument retained in order; code as documentation is not asserted here to mean code comments.
 
@@ -89,7 +89,7 @@ I think part of the reason that code is often so hard to read is
 
 Source: [fowler-code-as-documentation-2005.html](../../../../papers/fowler-code-as-documentation-2005.html); reading unit `fowler-code-as-documentation-2005`, lines 134–154.
 
-Attribution: Martin Fowler; Jack Reeves explicitly credited in the primary-source rationale
+Attribution: Martin Fowler
 
 Context: Complete essay argument retained in order; code as documentation is not asserted here to mean code comments.
 
@@ -124,7 +124,7 @@ Refactoring to
 
 Source: [fowler-code-as-documentation-2005.html](../../../../papers/fowler-code-as-documentation-2005.html); reading unit `fowler-code-as-documentation-2005`, lines 156–164.
 
-Attribution: Martin Fowler; Jack Reeves explicitly credited in the primary-source rationale
+Attribution: Martin Fowler
 
 Context: Complete essay argument retained in order; code as documentation is not asserted here to mean code comments.
 

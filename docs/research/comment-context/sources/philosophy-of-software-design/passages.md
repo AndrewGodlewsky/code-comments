@@ -7,8 +7,8 @@ Extent: `available_extract`. Text SHA-256: `bd3f6ae5d5b597d4c6c86d4fbff5b9e3b781
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
 - Only the 20-page local extract is available, not the full book. PDF has no extractable text layer; reading text uses local OCR and requires visual verification.
-- This is a discontinuous 20-page extract: printed pages 39?49, 76, 99?100 and 171?174 plus title/copyright. Most of the book, including earlier pages of Why Write Comments, is not local.
-- All available OCR units read; only physical pages 15?16 visually checked during extraction. OCR contains code-identifier and punctuation defects; selected blocks preserve them with caveats.
+- This is a discontinuous 20-page extract: printed pages 39-49, 76, 99-100 and 171-174 plus title/copyright. Most of the book, including earlier pages of Why Write Comments, is not local.
+- All available OCR units read; only physical pages 15-16 visually checked during extraction. OCR contains code-identifier and punctuation defects; selected blocks preserve them with caveats.
 
 <a id="philosophy-of-software-design-001"></a>
 ## philosophy-of-software-design-001 — Editor API example and cognitive load

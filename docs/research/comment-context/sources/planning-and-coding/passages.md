@@ -2,17 +2,17 @@
 
 Generated from records.json and the pinned reading text. No ranking or recommendation is implied.
 
-Extent: `local_scanned_part_ii_volumes_1_to_3`. Text SHA-256: `c69a7937c855d86515f9ae40ced880c1efd62f656c462b6c31b2e53ced2f2963`.
+Extent: `local_scanned_part_ii_volumes_1_to_3`. Text SHA-256: `fafc1b5e2b021cbc932fcb95ab5a3776722598333cd5f1f32a463af11c5983db`.
 
 [Selections](records.json) · [Coverage and gaps](coverage.json) · [Collection index](../../README.md)
 
 - Historical scan with an existing OCR/text layer; sparse and diagram pages require visual inspection. Local volume extent is the scope, not the entire historical publication series.
 - Combined Part II, Volumes 1-3 as confirmed by local title page; dual embedded-text and supplemental Windows OCR views. OCR does not reliably reconstruct mathematical/diagram layout.
-- Visual representations were read, but OCR does not preserve complete diagram topology, coding/explanatory column alignment or mathematical symbols; consult original physical PDF pages.
-- Pages95?194 and final broad lexical pass remain pending.
+- All194 physical pages were traversed visually; this is not a certified transcription. Windows OCR loses or reorders some prose and does not preserve complete diagram topology, coding/explanatory-column alignment or mathematical notation. Consult the original physical page for these representations.
+- The available scan binds Part II Volumes I-III. References to future Chapters13-14/VolumeIV and other report parts do not make those absent works available here.
 
 <a id="planning-and-coding-001"></a>
-## planning-and-coding-001 — Preface: provisional coding method and comparison criteria (physical page 9)
+## planning-and-coding-001 — Preface: provisional coding method and comparison criteria (physical page 9); Volume I printed iii
 
 Source: [physical PDF page 9](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=9); reading unit `p009`, lines 10–54.
 
@@ -73,7 +73,7 @@ cmpleteness of the code;
 ```
 
 <a id="planning-and-coding-002"></a>
-## planning-and-coding-002 — Preface: provisional coding method and comparison criteria (physical page 10)
+## planning-and-coding-002 — Preface: provisional coding method and comparison criteria (physical page 10); Volume I printed iv
 
 Source: [physical PDF page 10](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=10); reading unit `p010`, lines 7–20.
 
@@ -83,7 +83,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-001](#planning-and-coding-001)
+Related: [planning-and-coding-001](#planning-and-coding-001), [planning-and-coding-003](#planning-and-coding-003)
 
 ```text
 rratherrat conceived into the code, and also of fit-ding correct ing
@@ -103,7 +103,7 @@ von Neurrann
 ```
 
 <a id="planning-and-coding-003"></a>
-## planning-and-coding-003 — 7.1?7.3: dynamic coding and instruction notation (physical page 11)
+## planning-and-coding-003 — 7.1-7.3: dynamic coding and instruction notation (physical page 11); Volume I printed 1
 
 Source: [physical PDF page 11](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=11); reading unit `p011`, lines 7–55.
 
@@ -113,7 +113,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-004](#planning-and-coding-004)
+Related: [planning-and-coding-004](#planning-and-coding-004), [planning-and-coding-002](#planning-and-coding-002)
 
 ```text
 PLANNING AND COOING PROBLEMS AN ELECTRONIC co,4PUTlNG INSTRUMENT
@@ -168,7 +168,7 @@ in another pmt of the seq•ææe. Thus when it scans a part of the seqtknce sev
 ```
 
 <a id="planning-and-coding-004"></a>
-## planning-and-coding-004 — 7.1?7.3: dynamic coding and instruction notation (physical page 12)
+## planning-and-coding-004 — 7.1-7.3: dynamic coding and instruction notation (physical page 12); Volume I printed 2
 
 Source: [physical PDF page 12](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=12); reading unit `p012`, lines 8–54.
 
@@ -231,7 +231,7 @@ that our TEth0dS are fairly easy to 'earn.
 ```
 
 <a id="planning-and-coding-005"></a>
-## planning-and-coding-005 — 7.1?7.3: dynamic coding and instruction notation (physical page 13)
+## planning-and-coding-005 — 7.1-7.3: dynamic coding and instruction notation (physical page 13); Volume I printed 3
 
 Source: [physical PDF page 13](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=13); reading unit `p013`, lines 6–60.
 
@@ -302,7 +302,7 @@ for-rib of 20, 21 as given in Table t l.
 ```
 
 <a id="planning-and-coding-006"></a>
-## planning-and-coding-006 — 7.1?7.3: dynamic coding and instruction notation (physical page 14)
+## planning-and-coding-006 — 7.1-7.3: dynamic coding and instruction notation (physical page 14); Volume I printed 4
 
 Source: [physical PDF page 14](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=14); reading unit `p014`, lines 6–54.
 
@@ -367,7 +367,7 @@ loops are shOMn in e—f, ecd.
 ```
 
 <a id="planning-and-coding-007"></a>
-## planning-and-coding-007 — 7.1?7.3: dynamic coding and instruction notation (physical page 15)
+## planning-and-coding-007 — 7.1-7.3: dynamic coding and instruction notation (physical page 15); Volume I printed 5
 
 Source: [physical PDF page 15](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=15); reading unit `p015`, lines 22–92.
 
@@ -377,7 +377,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. Table II rotated clockwise for readable visual inspection and supplementary OCR.
 
-Related: [planning-and-coding-006](#planning-and-coding-006)
+Related: [planning-and-coding-006](#planning-and-coding-006), [planning-and-coding-008](#planning-and-coding-008), [planning-and-coding-072](#planning-and-coding-072)
 
 ```text
 ION
@@ -454,7 +454,7 @@ by Ea ...Esp no
 ```
 
 <a id="planning-and-coding-008"></a>
-## planning-and-coding-008 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 16)
+## planning-and-coding-008 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 16); Volume I printed 6
 
 Source: [physical PDF page 16](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=16); reading unit `p016`, lines 7–33.
 
@@ -464,7 +464,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-009](#planning-and-coding-009)
+Related: [planning-and-coding-009](#planning-and-coding-009), [planning-and-coding-007](#planning-and-coding-007)
 
 ```text
 6.
@@ -497,7 +497,7 @@ to which it is attached.
 ```
 
 <a id="planning-and-coding-009"></a>
-## planning-and-coding-009 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 17)
+## planning-and-coding-009 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 17); Volume I printed 7
 
 Source: [physical PDF page 17](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=17); reading unit `p017`, lines 7–33.
 
@@ -540,7 +540,7 @@ value Then the above
 ```
 
 <a id="planning-and-coding-010"></a>
-## planning-and-coding-010 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 18)
+## planning-and-coding-010 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 18); Volume I printed 8
 
 Source: [physical PDF page 18](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=18); reading unit `p018`, lines 13–43.
 
@@ -587,7 +587,7 @@ c.
 ```
 
 <a id="planning-and-coding-011"></a>
-## planning-and-coding-011 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 19)
+## planning-and-coding-011 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 19); Volume I printed 9
 
 Source: [physical PDF page 19](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=19); reading unit `p019`, lines 8–45.
 
@@ -641,7 +641,7 @@ it. An arrangerent of this type will be cal led a fixed remote connection.
 ```
 
 <a id="planning-and-coding-012"></a>
-## planning-and-coding-012 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 20)
+## planning-and-coding-012 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 20); Volume I printed 10
 
 Source: [physical PDF page 20](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=20); reading unit `p020`, lines 6–60.
 
@@ -712,7 +712,7 @@ process. Also, fixed storage offers no problerrs. The real crux of the rmtter
 ```
 
 <a id="planning-and-coding-013"></a>
-## planning-and-coding-013 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 21)
+## planning-and-coding-013 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 21); Volume I printed 11
 
 Source: [physical PDF page 21](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=21); reading unit `p021`, lines 7–58.
 
@@ -780,7 +780,7 @@ takes place, by a speciat box, which •.•.e call a substitution box. Next con
 ```
 
 <a id="planning-and-coding-014"></a>
-## planning-and-coding-014 — 7.3?7.6: flow, storage, substitution and assertion notation (physical page 22)
+## planning-and-coding-014 — 7.3-7.6: flow, storage, substitution and assertion notation (physical page 22); Volume I printed 12
 
 Source: [physical PDF page 22](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=22); reading unit `p022`, lines 5–51.
 
@@ -790,7 +790,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-013](#planning-and-coding-013)
+Related: [planning-and-coding-013](#planning-and-coding-013), [planning-and-coding-015](#planning-and-coding-015)
 
 ```text
 12.
@@ -843,7 +843,7 @@ s hc»an
 ```
 
 <a id="planning-and-coding-015"></a>
-## planning-and-coding-015 — 7.7?7.8: explanatory boxes and storage representation (physical page 23)
+## planning-and-coding-015 — 7.7-7.8: explanatory boxes and storage representation (physical page 23); Volume I printed 13
 
 Source: [physical PDF page 23](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=23); reading unit `p023`, lines 8–59.
 
@@ -853,7 +853,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-016](#planning-and-coding-016)
+Related: [planning-and-coding-016](#planning-and-coding-016), [planning-and-coding-014](#planning-and-coding-014)
 
 ```text
 13.
@@ -911,7 +911,7 @@ as any other bound variables j, k,
 ```
 
 <a id="planning-and-coding-016"></a>
-## planning-and-coding-016 — 7.7?7.8: explanatory boxes and storage representation (physical page 24)
+## planning-and-coding-016 — 7.7-7.8: explanatory boxes and storage representation (physical page 24); Volume I printed 14
 
 Source: [physical PDF page 24](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=24); reading unit `p024`, lines 8–53.
 
@@ -973,7 +973,7 @@ flj+l,i)
 ```
 
 <a id="planning-and-coding-017"></a>
-## planning-and-coding-017 — 7.7?7.8: explanatory boxes and storage representation (physical page 25)
+## planning-and-coding-017 — 7.7-7.8: explanatory boxes and storage representation (physical page 25); Volume I printed 15
 
 Source: [physical PDF page 25](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=25); reading unit `p025`, lines 6–48.
 
@@ -983,7 +983,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-016](#planning-and-coding-016), [planning-and-coding-018](#planning-and-coding-018)
+Related: [planning-and-coding-016](#planning-and-coding-016), [planning-and-coding-018](#planning-and-coding-018), [planning-and-coding-020](#planning-and-coding-020)
 
 ```text
 15.
@@ -1032,7 +1032,7 @@ distributed form is shoal in Figure 7.9.
 ```
 
 <a id="planning-and-coding-018"></a>
-## planning-and-coding-018 — 7.7?7.8: explanatory boxes and storage representation (physical page 26)
+## planning-and-coding-018 — 7.7-7.8: explanatory boxes and storage representation (physical page 26); Volume I printed 16
 
 Source: [physical PDF page 26](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=26); reading unit `p026`, lines 7–37.
 
@@ -1079,7 +1079,7 @@ sense only.
 ```
 
 <a id="planning-and-coding-019"></a>
-## planning-and-coding-019 — 7.7?7.8: explanatory boxes and storage representation (physical page 27)
+## planning-and-coding-019 — 7.7-7.8: explanatory boxes and storage representation (physical page 27); Volume I printed 17
 
 Source: [physical PDF page 27](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=27); reading unit `p027`, lines 10–56.
 
@@ -1142,7 +1142,7 @@ valid in the field of sare storage position at the constarcy interval irmediatel
 ```
 
 <a id="planning-and-coding-020"></a>
-## planning-and-coding-020 — 7.7?7.8: explanatory boxes and storage representation (physical page 28)
+## planning-and-coding-020 — 7.7-7.8: explanatory boxes and storage representation (physical page 28); Volume I printed 18
 
 Source: [physical PDF page 28](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=28); reading unit `p028`, lines 14–56.
 
@@ -1152,7 +1152,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-019](#planning-and-coding-019)
+Related: [planning-and-coding-019](#planning-and-coding-019), [planning-and-coding-021](#planning-and-coding-021), [planning-and-coding-017](#planning-and-coding-017)
 
 ```text
 18.
@@ -1201,7 +1201,7 @@ FIGURE 7.10
 ```
 
 <a id="planning-and-coding-021"></a>
-## planning-and-coding-021 — 7.9: coding stages and explanatory column (physical page 29)
+## planning-and-coding-021 — 7.9: coding stages and explanatory column (physical page 29); Volume I printed 19
 
 Source: [physical PDF page 29](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=29); reading unit `p029`, lines 5–56.
 
@@ -1211,7 +1211,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-022](#planning-and-coding-022)
+Related: [planning-and-coding-022](#planning-and-coding-022), [planning-and-coding-020](#planning-and-coding-020)
 
 ```text
 Anong the boxes Shovn on this f 1m d iagram the operat ion boxes and the
@@ -1269,7 +1269,7 @@ r-atrer than because of the use of a •røchine.
 ```
 
 <a id="planning-and-coding-022"></a>
-## planning-and-coding-022 — 7.9: coding stages and explanatory column (physical page 30)
+## planning-and-coding-022 — 7.9: coding stages and explanatory column (physical page 30); Volume I printed 20
 
 Source: [physical PDF page 30](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=30); reading unit `p030`, lines 10–59.
 
@@ -1335,7 +1335,7 @@ govern the procedure.
 ```
 
 <a id="planning-and-coding-023"></a>
-## planning-and-coding-023 — 7.9: coding stages and explanatory column (physical page 31)
+## planning-and-coding-023 — 7.9: coding stages and explanatory column (physical page 31); Volume I printed 21
 
 Source: [physical PDF page 31](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=31); reading unit `p031`, lines 5–60.
 
@@ -1407,7 +1407,7 @@ attached to the cf. the last part of 7.8), has to be shown separa@v, as
 ```
 
 <a id="planning-and-coding-024"></a>
-## planning-and-coding-024 — 7.9: coding stages and explanatory column (physical page 32)
+## planning-and-coding-024 — 7.9: coding stages and explanatory column (physical page 32); Volume I printed 22
 
 Source: [physical PDF page 32](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=32); reading unit `p032`, lines 6–66.
 
@@ -1415,9 +1415,9 @@ Attribution: Herman H. Goldstine and John von Neumann
 
 Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
 
-Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. Coordinator visual supplement is pending for the legible explanatory-column prose.
 
-Related: [planning-and-coding-023](#planning-and-coding-023), [planning-and-coding-025](#planning-and-coding-025)
+Related: [planning-and-coding-023](#planning-and-coding-023), [planning-and-coding-025](#planning-and-coding-025), [planning-and-coding-029](#planning-and-coding-029), [planning-and-coding-161](#planning-and-coding-161)
 
 ```text
 22.
@@ -1483,8 +1483,29 @@ toqether one final number, and are distinguished from each other as its "left"
 or "right" order.
 ```
 
+<a id="planning-and-coding-161"></a>
+## planning-and-coding-161 — 7.9: explanatory column, transfer-order exception and substituted orders (visual transcription)
+
+Source: [physical PDF page 32](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=32); reading unit `p032`, lines 68–72.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Supplement to the complete OCR page selection; preserves legible prose where OCR corrupts words. Neighboring source-page records retain the surrounding worked examples.
+
+Transcription/context notes: Manual transcription from physical page 32, printed page 22. Line-wrap hyphens joined, mathematical subscripts rendered as plain Cu/Cc and punctuation dashes normalized to ASCII. These are parallel explanatory columns in the historical coding procedure, not an assertion about modern inline-comment syntax. Surrounding complete page context remains in the OCR record.
+
+Related: [planning-and-coding-024](#planning-and-coding-024)
+
+```text
+The coding itself should be done in a column of its own, enumerated as indicated above. It is advisable to parallel it with another, explanatory, column, which shows for each order the effect of the substitution that it causes. This effect appears, of course, in one of the following places: The accumulator (symbol: Ac), or the arithmetical register (symbol: R), or some storage position or coded order (symbols as described up to now). The explanatory column then shows each time the symbol of the place where the substitution takes place, and its contents after the substitution. The Cu or Cc type transfer orders (the orders 13-16 in Table I) cause no substitution, they transfer C instead (and they occur only at the end of the sequence) -- hence they require no explanation.
+
+An order in the sequence, which becomes effective in a substituted form (substituted by an earlier order in the sequence), should be shown in its original form and then, in brackets, in its substituted form. The original form may have a -, the sign of irrelevance, or any other symbol (e.g. the number 0, of course, as a 12 digit binary), in place of its x (in its S(x)). It is this form which matters in the actual coding. (In writing out a code, it is best to use the sign of irrelevance in such a case. When it comes to real coding, however, an actual number must be used, e.g. 0.) The substituted form, on the other hand, is clearly the one which will actually control the functioning of the machine, and it is the one to which the explanation should be attached.
+
+We repeat: We feel certain that direct, linear coding according to this principle presents no difficulties after a moderate amount of experience has been acquired.
+```
+
 <a id="planning-and-coding-025"></a>
-## planning-and-coding-025 — 7.9: coding stages and explanatory column (physical page 33)
+## planning-and-coding-025 — 7.9: coding stages and explanatory column (physical page 33); Volume I printed 23
 
 Source: [physical PDF page 33](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=33); reading unit `p033`, lines 6–52.
 
@@ -1494,7 +1515,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-024](#planning-and-coding-024)
+Related: [planning-and-coding-024](#planning-and-coding-024), [planning-and-coding-026](#planning-and-coding-026), [planning-and-coding-138](#planning-and-coding-138)
 
 ```text
 23.
@@ -1547,7 +1568,7 @@ of this Chapter 7.
 ```
 
 <a id="planning-and-coding-026"></a>
-## planning-and-coding-026 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 34)
+## planning-and-coding-026 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 34); Volume I printed 24
 
 Source: [physical PDF page 34](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=34); reading unit `p034`, lines 9–56.
 
@@ -1557,7 +1578,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-027](#planning-and-coding-027)
+Related: [planning-and-coding-027](#planning-and-coding-027), [planning-and-coding-025](#planning-and-coding-025)
 
 ```text
 80 CODING OF TYPICAL ELEMENTARY PROBLEMS.
@@ -1611,7 +1632,7 @@ value Hi-I)
 ```
 
 <a id="planning-and-coding-027"></a>
-## planning-and-coding-027 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 35)
+## planning-and-coding-027 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 35); Volume I printed 25
 
 Source: [physical PDF page 35](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=35); reading unit `p035`, lines 12–49.
 
@@ -1621,7 +1642,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-026](#planning-and-coding-026), [planning-and-coding-028](#planning-and-coding-028)
+Related: [planning-and-coding-026](#planning-and-coding-026), [planning-and-coding-028](#planning-and-coding-028), [planning-and-coding-036](#planning-and-coding-036)
 
 ```text
 25.
@@ -1665,7 +1686,7 @@ coerational cyders to a s Ingle O*ration box 1 . (Both of are, in a way,
 ```
 
 <a id="planning-and-coding-028"></a>
-## planning-and-coding-028 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 36)
+## planning-and-coding-028 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 36); Volume I printed 26
 
 Source: [physical PDF page 36](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=36); reading unit `p036`, lines 6–63.
 
@@ -1739,7 +1760,7 @@ du +- e
 ```
 
 <a id="planning-and-coding-029"></a>
-## planning-and-coding-029 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 37)
+## planning-and-coding-029 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 37); Volume I printed 27
 
 Source: [physical PDF page 37](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=37); reading unit `p037`, lines 7–51.
 
@@ -1747,9 +1768,9 @@ Attribution: Herman H. Goldstine and John von Neumann
 
 Context: Part II, Volume I. Connected exposition and worked examples of planning, explaining, and coding a computation; mathematical and machine details retain the context of the explanatory representations.
 
-Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
+Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments. OCR reorders lines of the final-enumeration paragraph, including its parenthetical about the explanatory column; coordinator visual supplement is pending.
 
-Related: [planning-and-coding-028](#planning-and-coding-028), [planning-and-coding-030](#planning-and-coding-030)
+Related: [planning-and-coding-028](#planning-and-coding-028), [planning-and-coding-030](#planning-and-coding-030), [planning-and-coding-024](#planning-and-coding-024), [planning-and-coding-162](#planning-and-coding-162)
 
 ```text
 27.
@@ -1799,8 +1820,25 @@ stTed at certa in ions m and n, which are not given in advame, but stcred at
 certain, given, locations. —
 ```
 
+<a id="planning-and-coding-162"></a>
+## planning-and-coding-162 — 8.3: explanatory column omitted in final enumeration (visual transcription)
+
+Source: [physical PDF page 37](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=37); reading unit `p037`, lines 53–53.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Supplement to the complete OCR page selection; preserves legible prose where OCR corrupts words. Neighboring source-page records retain the surrounding worked examples.
+
+Transcription/context notes: Manual transcription from physical page 37, printed page 27. Number/range spacing normalized; tables before and after this paragraph remain in the original and OCR page record. This qualification concerns the final-enumeration stage of the worked example, not a universal prohibition on comments.
+
+Related: [planning-and-coding-029](#planning-and-coding-029)
+
+```text
+The passage to the final enumeration consists of assigning A.1-8 their actual values, and of pairing the 14 orders I,1-14 to 7 words. Let the latter be 0 to 6, and let A.1-8 be 7 to 14. Then the coded sequence becomes (the explanatory column is no longer needed):
+```
+
 <a id="planning-and-coding-030"></a>
-## planning-and-coding-030 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 38)
+## planning-and-coding-030 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 38); Volume I printed 28
 
 Source: [physical PDF page 38](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=38); reading unit `p038`, lines 10–65.
 
@@ -1872,7 +1910,7 @@ s
 ```
 
 <a id="planning-and-coding-031"></a>
-## planning-and-coding-031 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 39)
+## planning-and-coding-031 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 39); Volume I printed 29
 
 Source: [physical PDF page 39](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=39); reading unit `p039`, lines 7–43.
 
@@ -1925,7 +1963,7 @@ seq!erce :
 ```
 
 <a id="planning-and-coding-032"></a>
-## planning-and-coding-032 — 8.1?8.5: elementary examples and explanatory coding columns (physical page 40)
+## planning-and-coding-032 — 8.1-8.5: elementary examples and explanatory coding columns (physical page 40); Volume I printed 30
 
 Source: [physical PDF page 40](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=40); reading unit `p040`, lines 6–100.
 
@@ -1935,7 +1973,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-031](#planning-and-coding-031)
+Related: [planning-and-coding-031](#planning-and-coding-031), [planning-and-coding-033](#planning-and-coding-033)
 
 ```text
 30.
@@ -2036,7 +2074,7 @@ are affected, we might as well Ise follcving approx irate rule:
 ```
 
 <a id="planning-and-coding-033"></a>
-## planning-and-coding-033 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 41)
+## planning-and-coding-033 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 41); Volume I printed 31
 
 Source: [physical PDF page 41](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=41); reading unit `p041`, lines 17–64.
 
@@ -2046,7 +2084,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-034](#planning-and-coding-034)
+Related: [planning-and-coding-034](#planning-and-coding-034), [planning-and-coding-032](#planning-and-coding-032)
 
 ```text
 31.
@@ -2100,7 +2138,7 @@ to sure otters instead, e.g.
 ```
 
 <a id="planning-and-coding-034"></a>
-## planning-and-coding-034 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 42)
+## planning-and-coding-034 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 42); Volume I printed 32
 
 Source: [physical PDF page 42](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=42); reading unit `p042`, lines 18–57.
 
@@ -2156,7 +2194,7 @@ regarding sizes.
 ```
 
 <a id="planning-and-coding-035"></a>
-## planning-and-coding-035 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 43)
+## planning-and-coding-035 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 43); Volume I printed 33
 
 Source: [physical PDF page 43](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=43); reading unit `p043`, lines 6–55.
 
@@ -2222,7 +2260,7 @@ I) is s&ed to be stred at two Imations
 ```
 
 <a id="planning-and-coding-036"></a>
-## planning-and-coding-036 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 44)
+## planning-and-coding-036 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 44); Volume I printed 34
 
 Source: [physical PDF page 44](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=44); reading unit `p044`, lines 7–57.
 
@@ -2232,7 +2270,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-035](#planning-and-coding-035), [planning-and-coding-037](#planning-and-coding-037)
+Related: [planning-and-coding-035](#planning-and-coding-035), [planning-and-coding-037](#planning-and-coding-037), [planning-and-coding-027](#planning-and-coding-027)
 
 ```text
 34.
@@ -2289,7 +2327,7 @@ b
 ```
 
 <a id="planning-and-coding-037"></a>
-## planning-and-coding-037 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 45)
+## planning-and-coding-037 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 45); Volume I printed 35
 
 Source: [physical PDF page 45](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=45); reading unit `p045`, lines 9–54.
 
@@ -2351,7 +2389,7 @@ bui
 ```
 
 <a id="planning-and-coding-038"></a>
-## planning-and-coding-038 — 8.6?8.8: numerical assumptions and annotated induction examples (physical page 46)
+## planning-and-coding-038 — 8.6-8.8: numerical assumptions and annotated induction examples (physical page 46); Volume I printed 36
 
 Source: [physical PDF page 46](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=46); reading unit `p046`, lines 7–97.
 
@@ -2361,7 +2399,7 @@ Context: Part II, Volume I. Connected exposition and worked examples of planning
 
 Transcription/context notes: Windows OCR supplement; spacing, letters, mathematical notation, code columns and diagram topology remain imperfect. Consult the physical PDF page for the actual layout. Flow diagrams, assertion/substitution boxes, storage tables and parallel explanatory columns are external representations, not evidence of inline source comments.
 
-Related: [planning-and-coding-037](#planning-and-coding-037)
+Related: [planning-and-coding-037](#planning-and-coding-037), [planning-and-coding-039](#planning-and-coding-039)
 
 ```text
 Q
@@ -2458,7 +2496,7 @@ determire n by two obvious, alternative indnr.tions.
 ```
 
 <a id="planning-and-coding-039"></a>
-## planning-and-coding-039 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 47)
+## planning-and-coding-039 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 47); Volume I printed 37
 
 Source: [physical PDF page 47](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=47); reading unit `p047`, lines 10–69.
 
@@ -2467,6 +2505,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-038](#planning-and-coding-038), [planning-and-coding-040](#planning-and-coding-040)
 
 ```text
 Let u, v be stcxed at A. l,
@@ -2532,7 +2572,7 @@ cc
 ```
 
 <a id="planning-and-coding-040"></a>
-## planning-and-coding-040 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 48)
+## planning-and-coding-040 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 48); Volume I printed 38
 
 Source: [physical PDF page 48](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=48); reading unit `p048`, lines 6–27.
 
@@ -2541,6 +2581,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-039](#planning-and-coding-039), [planning-and-coding-041](#planning-and-coding-041)
 
 ```text
 38.
@@ -2568,7 +2610,7 @@ u
 ```
 
 <a id="planning-and-coding-041"></a>
-## planning-and-coding-041 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 49)
+## planning-and-coding-041 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 49); Volume I printed 39
 
 Source: [physical PDF page 49](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=49); reading unit `p049`, lines 4–54.
 
@@ -2577,6 +2619,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-040](#planning-and-coding-040), [planning-and-coding-042](#planning-and-coding-042)
 
 ```text
 -2-3 a•so
@@ -2633,7 +2677,7 @@ XIII,I
 ```
 
 <a id="planning-and-coding-042"></a>
-## planning-and-coding-042 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 50)
+## planning-and-coding-042 — 8.8: critical readjustment flow diagram and explanatory coding columns (physical page 50); Volume I printed 40
 
 Source: [physical PDF page 50](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=50); reading unit `p050`, lines 6–162.
 
@@ -2642,6 +2686,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-041](#planning-and-coding-041), [planning-and-coding-043](#planning-and-coding-043)
 
 ```text
 XIII,8
@@ -2804,7 +2850,7 @@ s,
 ```
 
 <a id="planning-and-coding-043"></a>
-## planning-and-coding-043 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 51)
+## planning-and-coding-043 — 8.9-8.10: correcting and changing diagrams and coded sequences (physical page 51); Volume I printed 41
 
 Source: [physical PDF page 51](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=51); reading unit `p051`, lines 5–71.
 
@@ -2813,6 +2859,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-042](#planning-and-coding-042), [planning-and-coding-044](#planning-and-coding-044), [planning-and-coding-114](#planning-and-coding-114)
 
 ```text
 141.
@@ -2885,7 +2933,7 @@ FINi&d that sirole erasirg redrawirp of tie affected region is not "act ical .
 ```
 
 <a id="planning-and-coding-044"></a>
-## planning-and-coding-044 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 52)
+## planning-and-coding-044 — 8.9-8.10: correcting and changing diagrams and coded sequences (physical page 52); Volume I printed 42
 
 Source: [physical PDF page 52](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=52); reading unit `p052`, lines 6–61.
 
@@ -2894,6 +2942,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-043](#planning-and-coding-043), [planning-and-coding-045](#planning-and-coding-045)
 
 ```text
 142•
@@ -2955,7 +3005,7 @@ All references, the Otler hand, are ccyrect Wlth respect to this positioning.
 ```
 
 <a id="planning-and-coding-045"></a>
-## planning-and-coding-045 — 8.9?8.10: correcting and changing diagrams and coded sequences (physical page 53)
+## planning-and-coding-045 — 8.9-8.10: correcting and changing diagrams and coded sequences (physical page 53); Volume I printed 43
 
 Source: [physical PDF page 53](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=53); reading unit `p053`, lines 7–55.
 
@@ -2964,6 +3014,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-044](#planning-and-coding-044), [planning-and-coding-046](#planning-and-coding-046)
 
 ```text
 43.
@@ -3018,7 +3070,7 @@ contaired
 ```
 
 <a id="planning-and-coding-046"></a>
-## planning-and-coding-046 — 8.10: square-root iteration, explanatory diagram and code (physical page 54)
+## planning-and-coding-046 — 8.10: square-root iteration, explanatory diagram and code (physical page 54); Volume I printed 44
 
 Source: [physical PDF page 54](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=54); reading unit `p054`, lines 15–48.
 
@@ -3027,6 +3079,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-045](#planning-and-coding-045), [planning-and-coding-047](#planning-and-coding-047)
 
 ```text
 with a the operation Of square rootirg. This is an
@@ -3066,7 +3120,7 @@ du
 ```
 
 <a id="planning-and-coding-047"></a>
-## planning-and-coding-047 — 8.10: square-root iteration, explanatory diagram and code (physical page 55)
+## planning-and-coding-047 — 8.10: square-root iteration, explanatory diagram and code (physical page 55); Volume I printed 45
 
 Source: [physical PDF page 55](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=55); reading unit `p055`, lines 9–51.
 
@@ -3075,6 +3129,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-046](#planning-and-coding-046), [planning-and-coding-048](#planning-and-coding-048)
 
 ```text
 45.
@@ -3123,7 +3179,7 @@ A
 ```
 
 <a id="planning-and-coding-048"></a>
-## planning-and-coding-048 — 8.10: square-root iteration, explanatory diagram and code (physical page 56)
+## planning-and-coding-048 — 8.10: square-root iteration, explanatory diagram and code (physical page 56); Volume I printed 46
 
 Source: [physical PDF page 56](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=56); reading unit `p056`, lines 3–42.
 
@@ -3132,6 +3188,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-047](#planning-and-coding-047), [planning-and-coding-049](#planning-and-coding-049)
 
 ```text
 (to II, l)
@@ -3177,7 +3235,7 @@ As we saw abwe, a reasoæble mean value ftr i is This gives a duration of 2.5 m.
 ```
 
 <a id="planning-and-coding-049"></a>
-## planning-and-coding-049 — 9.1?9.5: human and machine number representations and reading conventions (physical page 57)
+## planning-and-coding-049 — 9.1-9.5: human and machine number representations and reading conventions (physical page 57); Volume I printed 47
 
 Source: [physical PDF page 57](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=57); reading unit `p057`, lines 7–55.
 
@@ -3186,6 +3244,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-048](#planning-and-coding-048), [planning-and-coding-050](#planning-and-coding-050)
 
 ```text
 9.C CODING QF PROBLEMS DEALING WITH THE DIGITAL CHARACTER CF THE NUMBERS
@@ -3240,7 +3300,7 @@ multiplicatims divisions.
 ```
 
 <a id="planning-and-coding-050"></a>
-## planning-and-coding-050 — 9.1?9.5: human and machine number representations and reading conventions (physical page 58)
+## planning-and-coding-050 — 9.1-9.5: human and machine number representations and reading conventions (physical page 58); Volume I printed 48
 
 Source: [physical PDF page 58](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=58); reading unit `p058`, lines 5–57.
 
@@ -3249,6 +3309,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-049](#planning-and-coding-049), [planning-and-coding-051](#planning-and-coding-051)
 
 ```text
 48 •
@@ -3307,7 +3369,7 @@ arrangerent of about 25 thousand digits per second. Even this reans, fr a
 ```
 
 <a id="planning-and-coding-051"></a>
-## planning-and-coding-051 — 9.1?9.5: human and machine number representations and reading conventions (physical page 59)
+## planning-and-coding-051 — 9.1-9.5: human and machine number representations and reading conventions (physical page 59); Volume I printed 49
 
 Source: [physical PDF page 59](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=59); reading unit `p059`, lines 6–60.
 
@@ -3316,6 +3378,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-050](#planning-and-coding-050), [planning-and-coding-052](#planning-and-coding-052)
 
 ```text
 49.
@@ -3376,7 +3440,7 @@ birøry as well as in decirøl system.
 ```
 
 <a id="planning-and-coding-052"></a>
-## planning-and-coding-052 — 9.1?9.5: human and machine number representations and reading conventions (physical page 60)
+## planning-and-coding-052 — 9.1-9.5: human and machine number representations and reading conventions (physical page 60); Volume I printed 50
 
 Source: [physical PDF page 60](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=60); reading unit `p060`, lines 8–75.
 
@@ -3385,6 +3449,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-051](#planning-and-coding-051), [planning-and-coding-053](#planning-and-coding-053)
 
 ```text
 50.
@@ -3458,7 +3524,7 @@ TABLE
 ```
 
 <a id="planning-and-coding-053"></a>
-## planning-and-coding-053 — 9.1?9.5: human and machine number representations and reading conventions (physical page 61)
+## planning-and-coding-053 — 9.1-9.5: human and machine number representations and reading conventions (physical page 61); Volume I printed 51
 
 Source: [physical PDF page 61](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=61); reading unit `p061`, lines 8–59.
 
@@ -3467,6 +3533,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-052](#planning-and-coding-052), [planning-and-coding-054](#planning-and-coding-054)
 
 ```text
 51.
@@ -3524,7 +3592,7 @@ First: In binary way: Sign digit arx! 39 binary digits.
 ```
 
 <a id="planning-and-coding-054"></a>
-## planning-and-coding-054 — 9.1?9.5: human and machine number representations and reading conventions (physical page 62)
+## planning-and-coding-054 — 9.1-9.5: human and machine number representations and reading conventions (physical page 62); Volume I printed 52
 
 Source: [physical PDF page 62](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=62); reading unit `p062`, lines 5–56.
 
@@ -3533,6 +3601,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-053](#planning-and-coding-053), [planning-and-coding-055](#planning-and-coding-055)
 
 ```text
 52.
@@ -3590,7 +3660,7 @@ notation Of Table IV the two latter binary nmoers M)uld read I I and .23d .
 ```
 
 <a id="planning-and-coding-055"></a>
-## planning-and-coding-055 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 63)
+## planning-and-coding-055 — 9.6-9.7: binary/decimal conversion diagram and explanatory code (physical page 63); Volume I printed 53
 
 Source: [physical PDF page 63](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=63); reading unit `p063`, lines 14–60.
 
@@ -3599,6 +3669,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-054](#planning-and-coding-054), [planning-and-coding-056](#planning-and-coding-056)
 
 ```text
 53.
@@ -3651,7 +3723,7 @@ pra:esses. (2) in this frm:
 ```
 
 <a id="planning-and-coding-056"></a>
-## planning-and-coding-056 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 64)
+## planning-and-coding-056 — 9.6-9.7: binary/decimal conversion diagram and explanatory code (physical page 64); Volume I printed 54
 
 Source: [physical PDF page 64](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=64); reading unit `p064`, lines 7–49.
 
@@ -3660,6 +3732,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-055](#planning-and-coding-055), [planning-and-coding-057](#planning-and-coding-057)
 
 ```text
 54.
@@ -3708,7 +3782,7 @@ PART OF
 ```
 
 <a id="planning-and-coding-057"></a>
-## planning-and-coding-057 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 65)
+## planning-and-coding-057 — 9.6-9.7: binary/decimal conversion diagram and explanatory code (physical page 65); Volume I printed 55
 
 Source: [physical PDF page 65](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=65); reading unit `p065`, lines 4–40.
 
@@ -3717,6 +3791,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-056](#planning-and-coding-056), [planning-and-coding-058](#planning-and-coding-058)
 
 ```text
 SS.
@@ -3759,7 +3835,7 @@ Figure 9.1.
 ```
 
 <a id="planning-and-coding-058"></a>
-## planning-and-coding-058 — 9.6?9.7: binary/decimal conversion diagram and explanatory code (physical page 66)
+## planning-and-coding-058 — 9.6-9.7: binary/decimal conversion diagram and explanatory code (physical page 66); Volume I printed 56
 
 Source: [physical PDF page 66](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=66); reading unit `p066`, lines 4–89.
 
@@ -3768,6 +3844,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-057](#planning-and-coding-057), [planning-and-coding-059](#planning-and-coding-059)
 
 ```text
 1,1-2
@@ -3859,7 +3937,7 @@ perfrmlrg
 ```
 
 <a id="planning-and-coding-059"></a>
-## planning-and-coding-059 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 67)
+## planning-and-coding-059 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 67); Volume I printed 57
 
 Source: [physical PDF page 67](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=67); reading unit `p067`, lines 8–61.
 
@@ -3868,6 +3946,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-058](#planning-and-coding-058), [planning-and-coding-060](#planning-and-coding-060)
 
 ```text
 57.
@@ -3927,7 +4007,7 @@ subseqtrntly in VI arø in VII.
 ```
 
 <a id="planning-and-coding-060"></a>
-## planning-and-coding-060 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 68)
+## planning-and-coding-060 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 68); Volume I printed 58
 
 Source: [physical PDF page 68](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=68); reading unit `p068`, lines 7–13.
 
@@ -3936,6 +4016,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-059](#planning-and-coding-059), [planning-and-coding-061](#planning-and-coding-061)
 
 ```text
 FIGURE 9.2
@@ -3948,7 +4030,7 @@ FIGURE 9.2
 ```
 
 <a id="planning-and-coding-061"></a>
-## planning-and-coding-061 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 69)
+## planning-and-coding-061 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 69); Volume I printed 59
 
 Source: [physical PDF page 69](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=69); reading unit `p069`, lines 4–40.
 
@@ -3957,6 +4039,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-060](#planning-and-coding-060), [planning-and-coding-062](#planning-and-coding-062)
 
 ```text
 c.i
@@ -3999,7 +4083,7 @@ ard in (l)
 ```
 
 <a id="planning-and-coding-062"></a>
-## planning-and-coding-062 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 70)
+## planning-and-coding-062 — 9.7: inverse conversion, implicit storage and explanatory code (physical page 70); Volume I printed 60
 
 Source: [physical PDF page 70](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=70); reading unit `p070`, lines 6–111.
 
@@ -4008,6 +4092,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-061](#planning-and-coding-061), [planning-and-coding-063](#planning-and-coding-063)
 
 ```text
 60.
@@ -4119,7 +4205,7 @@ Tay stnmzrize the results Of 9.6 ard 9.7 as follogs:
 ```
 
 <a id="planning-and-coding-063"></a>
-## planning-and-coding-063 — 9.8?9.9: double-precision addition and explanatory code (physical page 71)
+## planning-and-coding-063 — 9.8-9.9: double-precision addition and explanatory code (physical page 71); Volume I printed 61
 
 Source: [physical PDF page 71](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=71); reading unit `p071`, lines 9–50.
 
@@ -4128,6 +4214,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-062](#planning-and-coding-062), [planning-and-coding-064](#planning-and-coding-064)
 
 ```text
 The binary—decimal and the decirrøl-binary carvers ions can be prov'ided
@@ -4175,7 +4263,7 @@ b + 2-3 E •
 ```
 
 <a id="planning-and-coding-064"></a>
-## planning-and-coding-064 — 9.8?9.9: double-precision addition and explanatory code (physical page 72)
+## planning-and-coding-064 — 9.8-9.9: double-precision addition and explanatory code (physical page 72); Volume I printed 62
 
 Source: [physical PDF page 72](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=72); reading unit `p072`, lines 8–34.
 
@@ -4184,6 +4272,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-063](#planning-and-coding-063), [planning-and-coding-065](#planning-and-coding-065)
 
 ```text
 62.
@@ -4216,7 +4306,7 @@ t, 8.2
 ```
 
 <a id="planning-and-coding-065"></a>
-## planning-and-coding-065 — 9.8?9.9: double-precision addition and explanatory code (physical page 73)
+## planning-and-coding-065 — 9.8-9.9: double-precision addition and explanatory code (physical page 73); Volume I printed 63
 
 Source: [physical PDF page 73](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=73); reading unit `p073`, lines 5–48.
 
@@ -4225,6 +4315,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-064](#planning-and-coding-064), [planning-and-coding-066](#planning-and-coding-066)
 
 ```text
 63.
@@ -4274,7 +4366,7 @@ Figtre 9.3.
 ```
 
 <a id="planning-and-coding-066"></a>
-## planning-and-coding-066 — 9.8?9.9: double-precision addition and explanatory code (physical page 74)
+## planning-and-coding-066 — 9.8-9.9: double-precision addition and explanatory code (physical page 74); Volume I printed 64
 
 Source: [physical PDF page 74](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=74); reading unit `p074`, lines 10–51.
 
@@ -4283,6 +4375,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-065](#planning-and-coding-065), [planning-and-coding-067](#planning-and-coding-067)
 
 ```text
 64.
@@ -4330,7 +4424,7 @@ are caw letely accaJnted fa- by the follc»ing fcrmtllae:
 ```
 
 <a id="planning-and-coding-067"></a>
-## planning-and-coding-067 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 75)
+## planning-and-coding-067 — 9.9-9.10: multiplication diagram, explanatory code and qualifications (physical page 75); Volume I printed 65
 
 Source: [physical PDF page 75](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=75); reading unit `p075`, lines 21–59.
 
@@ -4339,6 +4433,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-066](#planning-and-coding-066), [planning-and-coding-068](#planning-and-coding-068)
 
 ```text
 It should again be rerembered, that al tnese relat ions nwst be interpreted
@@ -4383,7 +4479,7 @@ Ac
 ```
 
 <a id="planning-and-coding-068"></a>
-## planning-and-coding-068 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 76)
+## planning-and-coding-068 — 9.9-9.10: multiplication diagram, explanatory code and qualifications (physical page 76); Volume I printed 66
 
 Source: [physical PDF page 76](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=76); reading unit `p076`, lines 6–35.
 
@@ -4392,6 +4488,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-067](#planning-and-coding-067), [planning-and-coding-069](#planning-and-coding-069)
 
 ```text
 66.
@@ -4427,7 +4525,7 @@ a -as(-q e
 ```
 
 <a id="planning-and-coding-069"></a>
-## planning-and-coding-069 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 77)
+## planning-and-coding-069 — 9.9-9.10: multiplication diagram, explanatory code and qualifications (physical page 77); Volume I printed 67
 
 Source: [physical PDF page 77](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=77); reading unit `p077`, lines 4–35.
 
@@ -4436,6 +4534,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-068](#planning-and-coding-068), [planning-and-coding-070](#planning-and-coding-070)
 
 ```text
 VI,I
@@ -4473,7 +4573,7 @@ c.3
 ```
 
 <a id="planning-and-coding-070"></a>
-## planning-and-coding-070 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 78)
+## planning-and-coding-070 — 9.9-9.10: multiplication diagram, explanatory code and qualifications (physical page 78); Volume I printed 68
 
 Source: [physical PDF page 78](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=78); reading unit `p078`, lines 12–161.
 
@@ -4482,6 +4582,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-069](#planning-and-coding-069), [planning-and-coding-071](#planning-and-coding-071)
 
 ```text
 68.
@@ -4637,7 +4739,7 @@ ikely to occur in otter coded seqoerces, foo. So this pr&lem IS likely to requir
 ```
 
 <a id="planning-and-coding-071"></a>
-## planning-and-coding-071 — 9.9?9.10: multiplication diagram, explanatory code and qualifications (physical page 79)
+## planning-and-coding-071 — 9.9-9.10: multiplication diagram, explanatory code and qualifications (physical page 79); Volume I printed 69
 
 Source: [physical PDF page 79](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=79); reading unit `p079`, lines 8–45.
 
@@ -4646,6 +4748,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume I. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-070](#planning-and-coding-070)
 
 ```text
 69.
@@ -4699,6 +4803,8 @@ Context: Part II, Volume II. Worked examples and surrounding rationale of extern
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
 
+Related: [planning-and-coding-007](#planning-and-coding-007)
+
 ```text
 INTRODUCTORY REMARK
 We found it convenient to make scyræ minor- changes in the positioning of
@@ -4729,7 +4835,7 @@ static coding in 10.7.
 ```
 
 <a id="planning-and-coding-073"></a>
-## planning-and-coding-073 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 91)
+## planning-and-coding-073 — 10.1-10.3: integration examples and rationale for illustrative coding choice (physical page 91)
 
 Source: [physical PDF page 91](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=91); reading unit `p091`, lines 12–44.
 
@@ -4738,6 +4844,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-074](#planning-and-coding-074)
 
 ```text
 10.0
@@ -4776,7 +4884,7 @@ _ + f'i(b.zu,']
 ```
 
 <a id="planning-and-coding-074"></a>
-## planning-and-coding-074 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 92)
+## planning-and-coding-074 — 10.1-10.3: integration examples and rationale for illustrative coding choice (physical page 92)
 
 Source: [physical PDF page 92](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=92); reading unit `p092`, lines 19–51.
 
@@ -4785,6 +4893,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-073](#planning-and-coding-073), [planning-and-coding-075](#planning-and-coding-075)
 
 ```text
 -2-
@@ -4823,7 +4933,7 @@ N
 ```
 
 <a id="planning-and-coding-075"></a>
-## planning-and-coding-075 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 93)
+## planning-and-coding-075 — 10.1-10.3: integration examples and rationale for illustrative coding choice (physical page 93)
 
 Source: [physical PDF page 93](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=93); reading unit `p093`, lines 12–52.
 
@@ -4832,6 +4942,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-074](#planning-and-coding-074), [planning-and-coding-076](#planning-and-coding-076)
 
 ```text
 (9)
@@ -4878,7 +4990,7 @@ h odd
 ```
 
 <a id="planning-and-coding-076"></a>
-## planning-and-coding-076 — 10.1?10.3: integration examples and rationale for illustrative coding choice (physical page 94)
+## planning-and-coding-076 — 10.1-10.3: integration examples and rationale for illustrative coding choice (physical page 94)
 
 Source: [physical PDF page 94](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=94); reading unit `p094`, lines 7–35.
 
@@ -4887,6 +4999,8 @@ Attribution: Herman H. Goldstine and John von Neumann
 Context: Part II, Volume II. Worked examples and surrounding rationale of external explanatory notation, diagrams, and parallel coding columns. Mathematical and storage details retain the assumptions and dependencies of those representations.
 
 Transcription/context notes: Read from physical page. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and other diagram topology. The original PDF remains necessary for the visual representation. No claim that these external explanations are inline source comments.
+
+Related: [planning-and-coding-075](#planning-and-coding-075), [planning-and-coding-077](#planning-and-coding-077)
 
 ```text
 Ibis urK)unts to the inductive
@@ -4918,4 +5032,6084 @@ disposal of at, shun in IX, VIII, VI will be delayed until X, and they
 will be held over in the accurmlator. Finally, the transfer of (A. h +1) into C is
 better delayed fran X until after the Cc order in Xl, whereby it takes place only
 On the - branch issuing frun XI, but this is the only branch on which it is needed.
+```
+
+<a id="planning-and-coding-077"></a>
+## planning-and-coding-077 — 10.3-10.4: integration flow diagram and explanatory code (physical page 95; Volume II printed page 5)
+
+Source: [physical PDF page 95](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=95); reading unit `p095`, lines 31–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-076](#planning-and-coding-076), [planning-and-coding-078](#planning-and-coding-078)
+
+```text
+10
+1
++Ehfif(F) eoD.1
+C (A.OI
+6
+8
+8
+-5-
+6
+FIG u RE
+* O, N and even
+4
+6
+8
+8
+to D Z
+Ck-(N-1))
+10.1
+```
+
+<a id="planning-and-coding-078"></a>
+## planning-and-coding-078 — 10.3-10.4: integration flow diagram and explanatory code (physical page 96; Volume II printed page 6)
+
+Source: [physical PDF page 96](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=96); reading unit `p096`, lines 44–74.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-077](#planning-and-coding-077), [planning-and-coding-079](#planning-and-coding-079)
+
+```text
+The static coding of the I-XI foilws:
+(at)o
+11,5
+11,3
+(to 11,1)
+11,1
+11,4
+111,1
+(to VI, 1)
+(to VII, 1)
+VI,2
+(to X, l)
+VII, 1
+vil , 2
+(to VIII, 1)
+VIII, 1
+11,5
+11.3
+p+h
+( ÉN—I) o
+(d2)o
+Sp
+Sp
+c
+Ac
+(at) o
+— f(h)
+(ca)o
+(p+h)o
+(h-(N-I))
+(C2)o
+```
+
+<a id="planning-and-coding-079"></a>
+## planning-and-coding-079 — 10.3-10.4: integration flow diagram and explanatory code (physical page 97; Volume II printed page 7)
+
+Source: [physical PDF page 97](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=97); reading unit `p097`, lines 4–71.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-078](#planning-and-coding-078), [planning-and-coding-080](#planning-and-coding-080)
+
+```text
+c
+2
+3
+4
+2
+X1,3
+4
+5
+6
+7
+(to 11, 1)
+16 - 16
+17 - 17
+IX.1 2
+9'- 13
+11, 1-5
+3-5
+18 - 25
+13'- 14
+111,1,
+14'- 15
+HI, 1-3
+, 1-2
+27 -28
+11,5
+c
+c
+c
+Sp
+S
+s
+11,5
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+c
+Jh-l
+Jh-l
+(p+h)o
+Note, that box IV required no coding, hence i ts imediate successor (VI, l)
+must follow directly upon its i mediate predecessor. bbwever, this lox has actually no
+innediate predecessor; IV,I corresponds to Hence it be replaced there by VI, l.
+111, VI, X, M; V, VII, VIII; (IV
+ordering of the boxes is l, II;
+omitted, cf. atove) and X, X. II must also be the in-rnediate successors of VIII, IN, XL,
+respectively. Ihis necessi tates the extra orders
+VIII, 2
+IX,2
+X1,8
+11,1
+CQ, correspond to Ill, l, VI. I (instead of IV,I), V, l.
+In the
+final enumeration the three a's rmst obtain nurrbers of the sane parity. This may
+necessi tate the insertion of dunny (ineffective, Irrelevant) orders in appropriate
+places, which we will mark
+must now assign B. 1-8, C, D. 1-2 their actual values, pair the 35
+orders 1.1-6, 11.1-5, 111,1, V, 1-2, VI,l-2, HI, 1-3. VIII ,1-2, 1-2, X, 1-4, Xl, 1-8
+to 18 words, and then assign l, I-XI,8 their actual values. These are expressed in
+this table:
+1.1-6
+X1,1-8
+v, 1-2
+VIII, 1-2
+b. 1-8
+26
+```
+
+<a id="planning-and-coding-080"></a>
+## planning-and-coding-080 — 10.3-10.4: integration flow diagram and explanatory code (physical page 98; Volume II printed page 8)
+
+Source: [physical PDF page 98](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=98); reading unit `p098`, lines 4–79.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-079](#planning-and-coding-079), [planning-and-coding-081](#planning-and-coding-081)
+
+```text
+NOW we
+obtain
+18
+27 S
+23 h-
+19
+26 s
+20
+26
+21 x
+17
+28 s
+27
+27 s
+VIII: 75
+this
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+coded sequence:
+5
+Sp
+4 Sp
+5
+Sp
+28 h
+26
+The' durations
+1: 225 u, 112 270 u, 111:
+25 h
+28 s
+23 h
+24
+20
+25 h
+26
+26 s
+26
+20
+22
+23
+24
+25
+26
+27
+28
+130
+(p+N-1)
+may be estimated as
+30 u, V: 55 u, U: 75 u: VII: 125 J,
+[X: 75 u, X: 150 u, XI: 300 u.
+1 + 11 x (N+l) + 111 x 2 + VI x (N +1)
+Total:
++ VIII x (N -1) + IX+(X + xn x(N+1) -
++ (V + VII)
+= (225 + 270 (N+l) +60 + 75 (N+l) + + 75 (Y-I) + 75 + 450 (N+l))
+(885 N + 1080) (.9N + 1.1) m.
+10.4
+We evaluate next by the formula (9), and this tirre we keep X, k
+general. We had X, k
+and k-X>O. This excludes k O as well as X N.
+It is somewhat mre convenient to write X-I for X.
+Thus (9) becones
+( 10)
+180 NE
+180
+Finally the requirerrent k-Z?O may be
+Then X, k = X, and
+dropped, since for k-X$ O
+```
+
+<a id="planning-and-coding-081"></a>
+## planning-and-coding-081 — 10.4-10.5: second integration method and annotated orders (physical page 99; Volume II printed page 9)
+
+Source: [physical PDF page 99](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=99); reading unit `p099`, lines 19–51.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-080](#planning-and-coding-080), [planning-and-coding-082](#planning-and-coding-082)
+
+```text
+_9_
+N and X, k
+. , N are subject to no further restrictions.
+We state accordingly:
+PROBLEM
+Sane as hoblem IO, with this change. It is desired to evaluate the integral
+interchange Z, k).
+The expression
+, ...,N) by means of the formula (IO) (for k for k < Z
+to be computed is
+where J'
+then
+and
+for
+is defined as follows: Rat
+k
+24N N
+k
+for k < X
+Ihe last equation amunts to the inductive definition
+o,
+f(h) ,
+"lhe storage areas A, B, C, D and the induction index h will be treated the
+Sarre way as in Problem IO, but h runs now over , l,
+We can now draw the flow diagram as shown in Figure 10.2.
+It will be found
+convenient to store the contents of E. 1-2, (p+kl )
+, (pen )
+in the same place where
+(p+X) are originally stored, which proves to be a. 1-2. simpli fies II
+and reduces tke mmry requiren*nts, but since we wish to have B. 1-2 at the end of
+the routine in the sare state in which they were at the beginning, it requires restor-
+ing B. 1-2 in IX. VIII, on the other hand, turns out to be entirely unnecessary.
+```
+
+<a id="planning-and-coding-082"></a>
+## planning-and-coding-082 — 10.4-10.5: second integration method and annotated orders (physical page 100; Volume II printed page 10)
+
+Source: [physical PDF page 100](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=100); reading unit `p100`, lines 19–31.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-081](#planning-and-coding-081), [planning-and-coding-083](#planning-and-coding-083)
+
+```text
+C (A.t')o
+1
+-10-
+C (A.A+I).
+FIGURE 10.2
+D
+o
+(A.k'Z• C4.Kl GEA
+4
+4
+4
+D J"Jx,_
+4
+```
+
+<a id="planning-and-coding-083"></a>
+## planning-and-coding-083 — 10.4-10.5: second integration method and annotated orders (physical page 101; Volume II printed page 11)
+
+Source: [physical PDF page 101](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=101); reading unit `p101`, lines 49–78.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-082](#planning-and-coding-082), [planning-and-coding-084](#planning-and-coding-084)
+
+```text
+The static ccxiing of the I-IX follows:
+(p+k)o
+11.1
+(to 111, 1)
+11, 1
+111,
+111,7
+(to V, l)
+(to VI,I)
+VI,4
+VII, 23
+(a2)o
+VII, 23
+VII,I
+VI,3
+p+h
+Sp
+vlI.23
+VII,23
+Ac
+VI,3
+(ar)o
+(p+k)
+(p+k)
+(p+k)
+(p+it )
+(p+Zt )
+(p+h)
+(p+h)
+f(h)
+```
+
+<a id="planning-and-coding-084"></a>
+## planning-and-coding-084 — 10.4-10.5: second integration method and annotated orders (physical page 102; Volume II printed page 12)
+
+Source: [physical PDF page 102](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=102); reading unit `p102`, lines 17–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-083](#planning-and-coding-083), [planning-and-coding-085](#planning-and-coding-085)
+
+```text
+VII, 1
+VII,9
+10
+11
+12
+13
+14
+15
+16
+17
+19
+20
+21
+22
+23
+VI,8
+(to V, l)
+f(Ld) _
+VII,17
+VII, 16
+-12-
+Ac
+Ac
+VII,6
+VII,5
+(p+h+l)
+(p+h+l)
+VII,6
+VII,5
+p+Z1 -l
+VII,17
+VII, 16
+p+kl-l
+s.
+Sp
+Sp
+h-
+Sp
+Sp
+c
+s.
+Ac
+Ac
+- f(L)
+-L (f(Z-d)
+24N
+24N
+(p+k'-l)
+24N N
+24N N
+```
+
+<a id="planning-and-coding-085"></a>
+## planning-and-coding-085 — 10.4-10.5: second integration method and annotated orders (physical page 103; Volume II printed page 13)
+
+Source: [physical PDF page 103](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=103); reading unit `p103`, lines 4–72.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-084](#planning-and-coding-084), [planning-and-coding-086](#planning-and-coding-086)
+
+```text
+VIII
+(to e)
+2
+3
+4
+5
+6
+7
+8
+9 _ 13 t
+parity of LX,I, I.e., to
+s
+s.
+-13-
+Ac
+Ac
+Ac
+Ac
+(p+X)
+(p+k)
+(p+X)
+(p+kt)
+(p+Zl)
+(to e)
+Note, that the box VIII required no coding, hence its in-mediate successor
+(e) mst follow directly upon its immediate predecessor. However, this box has actually
+no it-mediate predecessor; VIII, I corresponds to at, which may appear (by substitution at
+11,2) in the C order VII, 23. Hence VIII, I must be replaced by e in at. •
+'lhe ordering of the boxes is l, Ill, I V, V, VI; II; VII; IX (VIII omitted,
+cf. above), and TV, V, e mast also be the irmediate successors of II, VI, [X, resvectively.
+Ihis necessitates the extra orders:
+11.3
+VI, 10
+LX,9
+IV,I
+c
+i.e., to e (cf. above), corresponds to n, l.
+corresponds to VIII, l,
+This implies, as in the corresponding situation in Problem IO, that IX,I and e must have
+in the final enumeration numbers of the same parity. need not be considered, since i t
+represents a fixed rermte connection and therefore does not appear in the above detai led
+coding.
+s. I their actual values, pair the 63 orders
+We nmst now assign B. 1-8, C, D,
+1, 1-3, 11, 1-3, 111, 1-8, IV,1-4, V, 1-3, VI, 1-10, VII, 1-23, [X, 1-9 to 32 words, and then
+are expressed iri this table:
+assign I , I-IX,9 their actual values. These
+1, 1-3
+111, 1-8
+n', 1-4
+v, 1-3
+e is supposed
+32 - 39
+40
+41
+42
+to
+0-1
+51-7
+have the
+VI, 1-10
+11, 1-3
+VII, 1-23
+rx, 1-9
+b 1-8
+14 - 15
+15 t _
+27 - 31
+be unprimed.
+```
+
+<a id="planning-and-coding-086"></a>
+## planning-and-coding-086 — 10.4-10.5: second integration method and annotated orders (physical page 104; Volume II printed page 14)
+
+Source: [physical PDF page 104](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=104); reading unit `p104`, lines 4–113.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-085](#planning-and-coding-085), [planning-and-coding-087](#planning-and-coding-087)
+
+```text
+41 s
+R,
+41 h
+40
+40 s
+33 h-
+32
+33
+42
+33
+36
+40
+15 cat
+10 sp
+37 x
+41 s
+38 h
+42 s
+32 s
+33 s
+38 h-
+18 sp
+17
+39 x
+41 s
+23 Spt
+23 sp
+32 h-
+42 R
+10
+41 h
+11
+41 s
+12
+41 s
+13
+Now we obtain
+32
+14 cz,
+42 s,
+32 s,
+33 s, 35
+26 sp',
+40 s,
+this coded
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+sequence:
+34
+5
+42
+41 h
+32
+38 h
+39 x
+26 Spl
+33
+42
+42 s,
+41 - ,
+29
+30
+31
+33
+34
+35
+36
+37
+38
+39
+40
+41
+32
+33
+42
+(p+k)o
+(p+X)c
+270
+24N
+1: 125 u,
+Ihe durations may be estimated as follows:
+11: 125 4, 111: 300 u, IV: 150 u, V: 125 g, VI: 445 g, VII: 1015 u, n: 350 g.
+1 + (11 or 111) + (Ik-xl +1) + VI x + VII + (VIII or IX)
+Total:
+rnaxirrmm (125 + 300 + 150 + 125 ('k-XI + e l) + 445 k -II + 1,015 350
+(570 Ik-xl + 2,065)
+maximum = (570 (IN-I) + 2,065) (570 N + 1,495) u z 6 N + 1.5) m.
+We pass now to the interpolation problem.
+10.5
+Lagrange's interpolation forrmala expresses the unique polynomial P (x) of
+degree M-l, which assumes given values at M given places , XM,
+respectively:
+(1)
+P(x) P(XI,
+There would be no difficulty in devising a (multiply inductive) routine
+which evaluates the right hand sine of (l) directly. Ibis, however, seems inad-
+visable, except for relatively small values of M. The reason is that the denominators
+are likely to •be inadmissibly small.
+```
+
+<a id="planning-and-coding-087"></a>
+## planning-and-coding-087 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 105; Volume II printed page 15)
+
+Source: [physical PDF page 105](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=105); reading unit `p105`, lines 11–61.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-086](#planning-and-coding-086), [planning-and-coding-088](#planning-and-coding-088)
+
+```text
+-15-
+Ibis point my deserve a somewhat more detailed analysis.
+From our general conditions of storage and the speed of our arithmetical
+organs one will be inclined to conclude that the space allotted to the storage of the
+functions which are evaluated by interpolation should (in a given problem) be comparable
+to the space occupied by the intervwlation routine itself. latter amounts to about
+100 words. (Hohlem 12 occupies together with problem 13. a or 1.3. b or 13. c 99 or 101
+or 106 words, respectively, cf. 10.7 or 10.8 or 10.9, respectively. Other possible
+variants occupy very canparable amounts of space.) (he problem will frequently nse
+interpolation on several functions. seems therefore reasonable to expect that each
+of these functions will be given at
+points.
+(Ibis neans that the N ot
+10.7 will be
+26 not our present M! Note also, that the storage re;ßlired in this
+connection is N in Problem 13. a, but 2N in Problems 13 .b and 13. c.)
+Hence we may
+expect that the points Xl,... , A, *ill be at distances of the order—' 2-6 between
+nei ghbors.
+• 2-s
+Hence
+and so
+Bj/i)
+F j ! (M-i) ! 2-501-1)
+The round-off errors of our mul tiplication introduce into all these products absolute
+errors of the Tder 2-40
+(x.-x•), and with them the
+Hence the denominators
+jal
+corresponding terms of the sum
+in are affected with relative errors of the
+-5(M-l)
+i -l) • Ihe average affect of these
+order 2-40.
+relatiie errors is best estimated as the relative error
+[25M-45
+2*1-45
+(2(M-1))!
+(Äf-2) =
+2*1-45
+2
+the other hand, an interpolation of degree l,
+is likely to have a relative precision of the
+length
+C is a Mderately large numier. (The function that is being
+to be reasonablv smoth. )
+(NM-I))!
+with an interval
+where
+order
+interpolated is
+```
+
+<a id="planning-and-coding-088"></a>
+## planning-and-coding-088 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 106; Volume II printed page 16)
+
+Source: [physical PDF page 106](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=106); reading unit `p106`, lines 4–47.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-087](#planning-and-coding-087), [planning-and-coding-089](#planning-and-coding-089)
+
+```text
+Cmsequently the optimum relative precision € which can be obtained with
+this procedure, and the optimum M that goes with it, are determined by these conditions:
+. 2-5M
+From this
+fM
+Now we have
+(2(M-1))!
+3
+8• Io-a
+4
+10—2
+5
+5
+6
+1.8•103
+7
+6•10S
+The plausible values of C are in the of M = 5, while M = 6 is somewhat
+high and M = 4 and 7 are extremely low and high, respectively. Hence under these
+conditions M = 5 (biquadratic interpolation) would seem to be norrnally optimal, with
+M = 6 a scmewhat less probable possibility. We have
+5
+1.4•10-'
+6
+1.7•lO-e
+It follows, therefore, that we rnay expect to obtain by a reasonable
+applica€ion of this methcd relative precisions of the order IO - e •v 2-20
+Ihis is,
+however, only the relative precision as delimited by one particular source of errors:
+Ihe arithrretical (round-off) errors of an The ultimate level of pre-
+cision of the entire problem, in which this interpolation occurs, is therefore likely
+to be a good deal less favorable.
+Ihese things be ing understood, it seems likely that the resulting level
+of precision will be acceptable in many classes of problems, especially amng those
+which originate in physics. There are, on the other hand, nurnerous and important
+problems where this is not desirable Or acceptable, especially since it represents
+the loss of half the intrinsic precision of the 40 (binary) digit machine. It is
+therefore worthwhile to look for alternative procedures.
+The obvious nethod to avoid the loss of (relative) precision caused in
+Hjfi)
+the formula (l) by the smallness of a denominator
+(x • is to divide
+by its factors x•-x• (j -
+l, and j i) singly and successively. This nust,
+```
+
+<a id="planning-and-coding-089"></a>
+## planning-and-coding-089 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 107; Volume II printed page 17)
+
+Source: [physical PDF page 107](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=107); reading unit `p107`, lines 10–58.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved. The mathematical identity is attributed in this source to A. C. Aitken; its use here is the source authors' discussion.
+
+Related: [planning-and-coding-088](#planning-and-coding-088), [planning-and-coding-090](#planning-and-coding-090)
+
+```text
+-17-
+however, be combined with a simi treatn•ent of the nunrrators
+since
+they rnay cause a comparable loss of (relative) precision by the npchanism. A
+possible alternative to which eliminates both sources of error in the sense indi-
+cated. is
+(2)
+(2) involves considerably rnore divisions than but this need not be the dcxninant
+consideration. There exists, however, a third procedure, which has all the advantages
+of (2), and is saTEwhat mre easily handled. its storage and induction prob-
+lems ere mre instructive than those of (l) or (2), and for these reasons we propose
+to use this third procedure as the basis of our discussion.
+This procedure is based on A. C. Aitken's identity
+P(XI, PF•••; Ix)
+(3)
+XM-XI
+XM-XI
+P(X2. P2
+Since (3) replaces an M-point interpolation by two M-l point interplations, it is
+It might seem, however, that
+clearly a possible basis for an inductive procedure .
+the reduction Årtm an M-point interpolation to me-point ones (i.e. to constants)
+steps, which would be excessive, since (2) is clearly an M(M-I)
+will involve 2
+step process. However, (3) remves either extremity (Xl or XM) of the point systan
+Xl,... , XM; hence iterating it can only lead to point systems x • ,
+M(M+I )
+i j, we will write j i+h-l), Of which there are only
+2
+n ot
+2
+counting the one-point systems. Hence (3) is likely to lead to saræthing like an
+M(M-I)
+step process.
+2
+Regarding the sizes Ve assume that Xl,... , Al as well as x and m, , FM
+l. We need, furthem»re, that the differences Xi+h-Xi,
+lie in the interval -l,
+-l, l, and it is even necessary in view of
+x-Xi, Pi+h-pi also lie in the interval
+the particular algebraical ra.ltine that we use, Co have all di fferences pi+h-pi
+(Cf. VII ,19.) I.e., we
+(absolutely) smaller than the corresponding X i -Xi.
+nmst use appropriate size adjusting factcrs for the p. to secuFe this 'Livßchitz
+ccndition". Ihe sarne nust be postulated for the di fferences P? nf the
+intemediate interpolation polynornials. All of this might be circumvented t.o
+various extents in various ways, this wcmld lead us deeply into the problerrw
+of polynmial interpolation which are not concern here.
+We now state:
+```
+
+<a id="planning-and-coding-090"></a>
+## planning-and-coding-090 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 108; Volume II printed page 18)
+
+Source: [physical PDF page 108](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=108); reading unit `p108`, lines 12–65.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-089](#planning-and-coding-089), [planning-and-coding-091](#planning-and-coding-091)
+
+```text
+-18-
+PROBLEM 12.
+The variable values Xl, • • • •41
+xm) and the function va lues
+Pl.... , m are stored at two systans of M consecutive memry locations each:
+M-l and p, p+l,
+. , p*M-l. Ihe constants of the problem are p, q,
+M, x, and they are stored at four given menory locations .
+It is desired to inter-
+polate this function for the value x of the variable, using Lagrange's fornaala.
+ne process of rechaction based on the identity (3) is to be used.
+It is clear from the previous
+family of interpolants
+discussion, that we have to form the
+(4)
+Pi(x)
+Xi+h
+- Pi+h— 1 x)
+for i =
+I x) instead of P (XI, Pl
+h
+Xi+h-Xi
+.,M-i+l
+Applying (3) to p (x
+gl ves
+or equivalently
+Pi+h
+h
+Xi+h-Xi
+(5)
+Ccxnbi n in g
+(6)
+and
+(7)
+we have a
+locations
+pi and x•,
+- Pi(x))
+this with
+tx) Pl(x)
+P(x) = P(XI,
+(doubly) inductive s&me to calculate p(x).
+I-et A and B be the storage areas corresponding to the two intervals of
+from p to p+M-l and from q to q+M-l. In this way their positions will be
+and B. l, ... where A. i and B.i correspond to p+i-l and q+i-l, and store
+respectively. As in the Problens 3, IO, and the posi tions of A and B
+need not be shown in the final enurneration of the coded sequence.
+primary inducticm will clearly begin with the m, , mi, i.e. ,
+p} stored at A, and obtain frcn these p} then from
+these the frun these the etc., etc
+to
+conclude with p} i.e., Kith the desired p(x). Ihese successive stages corres-
+pnd to h = l, 2, 3,
+respectively. IMs h is the primary induction index.
+```
+
+<a id="planning-and-coding-091"></a>
+## planning-and-coding-091 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 109; Volume II printed page 19)
+
+Source: [physical PDF page 109](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=109); reading unit `p109`, lines 9–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-090](#planning-and-coding-090), [planning-and-coding-092](#planning-and-coding-092)
+
+```text
+-19-
+In passing f run h to i.e., from Pl(x), to
+, the Pi (x) have to be formed successively for i
+This i is the secondary induction index.
+' • • • ' M-h+l(x)
+There i s clearly need for a storage area C which holds Pl (x) P
+at each stage h. As the transition to stage I takes place, each ph (x) will be re-
+placed by P! +1 successively for all i = I
+M-h. Hence the capacity required
+= I the P i (x) p• a e still in A, and
+for C is M-h*l during the stage h, but for h
+need not appear in C. Hence the maximum capacity for C is M' l. Accordingly, let C
+corresvond to the interval of locations fran r to r In this way i ts positions
+ph(x). The positions
+. , M-l, *here C.i corresponds to r+i-l, and stores
+of the area C need not be shcyn in the final enumeration of the coded sequence . All
+that is necessary is that they be avai lable (i e . anpty or irrelevantly occupied) when
+the instructions of the coded sequence are being carried out by the machine.
+As stated above, the occupying C.i have necessarily h > l. To give
+more detail: moves into the location C.i at the end of the i -th step of stage
+h-l, and remains there during the remainder (the M-h+l-i last steps) of stage h. I and
+during the i first steps of stage h.
+Further storage capacities are required as Ibe given data (the
+constants) of the prcbhem, p, q, r, M, x, will be stored in the storage area D. (It
+o, x. ) Storage will a Iso
+will be convenient to store than as Po, (q-p-l)
+have to be provided for various other fixed quantities (l , the exit-locations of the
+variable rerrnte connections), these t m Rill be accocrnodated in D. Next, the two in-
+duction indices h, i, will have to be stored. As before, they are both relevant as
+position marks, and •it Wi II prove convenient to store in their place (M-h)o, (p+i)
+(A. i + V ). These will be stored in the storage area E. Finally, the quanti-
+(i.e.,
+ties which are processed during each inductive Stép will be stored in the storage area
+We can draw the f diagram, as Shown in Figure 10.3. The variable
+remte connections a and are necessary, in order to make the di f fering treatments
+In the first case the P) (x) are equal to
+I and for h I possible:
+requi red for h
+p, and ccxne frcxn A, in the second case they cane from C (cf. above).
+It should be
+noted that in this si tuation our flc»• diagram rules imvx'se a rather detailed showing
+of the contents of the stcrage area C.
+Ihe actual coding cmtains a nurnber of minor deviations frcyn the flow
+diagram, inasmuch as it is convenient to rmve a few operations trom the in which
+they are shcyn to earlier box. Since we had instances of this already in earlier
+problems, •e •ill not discuss it here in detail. Ch the other hand, sane further
+condensations of the coding, • hich are possible, but deviate still further from the
+flow diagram, will not be considered here.
+```
+
+<a id="planning-and-coding-092"></a>
+## planning-and-coding-092 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 110; Volume II printed page 20)
+
+Source: [physical PDF page 110](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=110); reading unit `p110`, lines 36–70.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-091](#planning-and-coding-091), [planning-and-coding-093](#planning-and-coding-093)
+
+```text
+1
+2
+-20-
+3
+and > I
+4
+(A.Z).t. E z
+6
+(x) for i Qi
+f.ri:if M-h+l
+(A.i+l)o
+4
+(M-h-2)
+14 -
+to F. I
+to F.Z
+8
+E.I(M-A-I
+2
+x-XÜÅ
+to c.i
+- c.i'
+fop I '"i
+far
+* •tx) for i' f, i
+for
+2 (A.i+2). Z
+13
+3
+for i
+8
+14
+(M-h-l). E.I
+6
+10.3
+```
+
+<a id="planning-and-coding-093"></a>
+## planning-and-coding-093 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 111; Volume II printed page 21)
+
+Source: [physical PDF page 111](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=111); reading unit `p111`, lines 14–46.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-092](#planning-and-coding-092), [planning-and-coding-094](#planning-and-coding-094)
+
+```text
+-21-
+static coding of the boxes I-XI follcys:
+D.3
+(to 11, 1)
+11,1
+111, 1
+IV,I
+(to 111.4)
+11,4
+(ßl)o
+111,6
+111,3
+IV,3
+0.4
+0.6
+VI,4
+Sp
+Sp
+c
+Sp
+(at)o
+11.4
+( 300
+111,6
+Ac
+111.3
+PIG)
+if reached frcn 111,3
+Pl(x) if reached from IV
+(p+l)oif reached fran 111,4
+(p+i) if reached from IX (i.e. y )
+v,2
+VI, 4
+```
+
+<a id="planning-and-coding-094"></a>
+## planning-and-coding-094 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 112; Volume II printed page 22)
+
+Source: [physical PDF page 112](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=112); reading unit `p112`, lines 11–55.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-093](#planning-and-coding-093), [planning-and-coding-095](#planning-and-coding-095)
+
+```text
+VII, 1
+VII,7
+10
+12
+13
+14
+15
+16
+17
+19
+v11,20
+21
+22
+23
+24
+25
+(to VII. 1)
+VII, 14
+D.4
+VII,25
+(q-p-l)o
+VII,15
+VII,21
+VII,14
+q+i-l
+F.2
+q+i-l
+(to VIII, 1)
+Sp
+Sp
+Sp
+Sp
+h-
+s
+VII,2S
+VII, 15
+VII,21
+(r+i-l)
+r+i-l
+(q+i-l)
+q+i-l
+(q+i +M-2 )
+(q+i+h-2) o
+q+i+h-l
+Xi+h-Xi
+```
+
+<a id="planning-and-coding-095"></a>
+## planning-and-coding-095 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 113; Volume II printed page 23)
+
+Source: [physical PDF page 113](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=113); reading unit `p113`, lines 4–76.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-094](#planning-and-coding-094), [planning-and-coding-096](#planning-and-coding-096)
+
+```text
+VIII, 1
+2
+3
+4
+5
+6
+7
+(to
+2
+( to
+111,5)
+2
+3
+4
+0.5
+5
+Xl,l
+(to e)
+( (12)0
+2
+11,4
+( 32
+D. IO
+XI,3
+D. 10
+4
+111,6
+(to 11,1)
+h
+s
+-23-
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+11,4
+111,6
+(p+i )
+(p+i+h-M+l )
+(p+i+h-M) o
+(M-h-l)
+(M-h-l)
+(M-h-2)
+(32) o
+c
+c
+111; V. VII, VIII, rx; X;
+Ihe ordering of the boxes is l, I l;
+VI, and HI, e, II must also be the irmediate successors of VI, X, Xl, respectively,
+and 111,4 and 111,5 must be the immediate successors of IV and IX, respectively.
+This
+necessi tales the extra orders
+VI, 6
+XI,5
+and
+VII,I
+11,1
+111,4
+111,5
+c
+c
+c
+c
+c
+[V, l, V, l. VI, l, respectively.
+91, correspond to Ill, l.
+Hence in the final enumeration Ill, l, [V, I nust have the parity, and V, l,
+VI, I mast have the same parity.
+```
+
+<a id="planning-and-coding-096"></a>
+## planning-and-coding-096 — 10.5: interpolation assumptions, diagram and explanatory code (physical page 114; Volume II printed page 24)
+
+Source: [physical PDF page 114](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=114); reading unit `p114`, lines 16–157.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-095](#planning-and-coding-095), [planning-and-coding-097](#planning-and-coding-097)
+
+```text
+Ihese
+-24-
+We mast now assign D. I-IO, E. 1-2, F. 1-2, g. I
+their actual values, pair
+35 —37 t
+t _ 23
+, 1-25
+27 _28
+IX, 1-3
+48 -49
+111, 1-6
+29 -31 t
+50 -51
+IV, 1-4
+32 -34'
+10 -11
+49 s
+41 h-
+42 h-
+41 h-, 43 h
+the 75 orders l, 1-6
+rx, 1-3, x, 1-6, Xl,l
+, 11, 1-4, 111, 1-6, V, 1-3. VI, 1-6, VII, 1-25, VIII, 1-7,
+are expressed
+-5 to 38 words,
+in this table:
+and then assigl l, I-Xl,5 their final values.
+VI,1-6
+1, 1-6
+II, 1-4
+v,l-3
+10
+n
+13
+14
+15
+16
+17
+VIII, 1-7
+x, 1-6
+M, 1-5, •
+24 -27
+Now we
+obtain
+38
+39
+41
+41
+49
+43
+thi s coded
+19
+20
+21
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+sequen C e :
+48 s
+42 h
+6 Sp
+so s
+43 h
+23 sp'
+44 h
+21 sp'
+h-
+18 sp
+D. 1-10
+E. 1-2
+F. 1-2
+36
+37
+39
+41
+46
+47
+49
+50
+51
+38 -47
+52
+36 $ ,
+51 s
+(M-1)0
+160
+52 s,
+50 h-,
+45
+52 s
+50 h
+49
+49 s,
+42 h-,
+29 cc,
+50 s,
+48 s,
+32 cc,
+46
+47
+51
+52 +
+52 x
+42
+h
+48
+51
+42
+h-
+eC
+as
+11 C'
+10 sp',
+51 s, 49
+41 h-,
+42 h-,
+49
+18 spt',
+38 h
+42 h,
+(q-p-l)o
+3SO
+'lhe durations may be estimated
+1: 225 u, 11: 150 111: 225 u, w: 275 u,
+VIII: 275 u, rx: 200 u, X: 225 u, 200
+1 + 11 x (M-1) + x (M-2)
+Total:
+V: 125 u, VI: 225 u, VII: 1140 B,
++ (VII + VIII) WM-I) + + X x (M-1) x (M-2) =
+= (225 + 150 (M-l) + 225 + 275 (M-2) + 125 (M-l) + 225
++ 1,415 M(M-I) + 200 + 225 (M-1) + 200 (M-2))
+(920 V - 370M- 575) u -z(.9F - .4M- .6) m.
+```
+
+<a id="planning-and-coding-097"></a>
+## planning-and-coding-097 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 115; Volume II printed page 25)
+
+Source: [physical PDF page 115](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=115); reading unit `p115`, lines 18–65.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-096](#planning-and-coding-096), [planning-and-coding-098](#planning-and-coding-098)
+
+```text
+-25-
+10.6
+be now pass to the problen of interpolating a tabulated function
+based on the ccxiing of Lagrange's interpolation forrmla in Probian 12.
+PROBLEM 13.
+Ihe variable values y l, • • • 'YN (y I <
+< m) and the function values
+ql,. , Ch, are stored at two systems of N consecutive mermry locatims each:
+ä, ävl, —
+and ö+l,..
+,ö+N-l. •Ibe constants of the problem are F , N, M,
+y, to be stored at five gi ven memry locations. It is desired to interpolate this
+function for the value y of the variable, using Lagrange's formula for the M points
+y. ner est to y.
+Ihe probl«n should be treated differently, according to *hether the
+b-a
+are or are not to be equidistant.
+PROBLEM 13. a.
+are equidistant, i.e ,
+a and b need be stored.
+PROBLEM 13. b.
+YI, •••DN, are unrestricted.
+In this case
+'XM equal
+1, ,N-M+I
+In
+amounts to this:
+both cases our purpose is to reduce froblem 13 to Problem 12, with
+Yk+M_l, and m, equal to qk,... where
+to
+is so chosen that the Yk,.. . , Yk+M_l lie as close to y as possible.
+We consider first Problem 13. a.
+this case the definition of k, as formulated at the end of 10.6,
+k+M-2
+k.=-L (b-a) and Yk*M-l a +
+(b-a)
+Ihe one of Yk
+should lie as close as possible to y . is equivalent to requiring that their
+, lie as close as possible to y, i .e... that
+2(N-1)
+k lie as close as possible to (N-l) -
+b-a
+There are various ways to find this k k, based on iterative trial and
+error procedures . Since we will have to use a method of this type in connect ion wi th
+Boblan 13.b, we prefer a different one at this occasion.
+Ibis method is based on the function which denotes the integer
+closest to z. Ehltting
+we have clearly
+```
+
+<a id="planning-and-coding-098"></a>
+## planning-and-coding-098 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 116; Volume II printed page 26)
+
+Source: [physical PDF page 116](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=116); reading unit `p116`, lines 9–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-097](#planning-and-coding-097), [planning-and-coding-099](#planning-and-coding-099)
+
+```text
+k•
+-26-
+for k • S I
+for 1 S k $ N-M+I,
+N-M+I for k• N-M+I
+Now the rnultiplication order (II, Table II), permits us to obtain {z)
+directly. Indeed, the round off rule (cf. the discussion of the order in question)
+has the effect that when a product uv is forrned, the accunmlator will contain
+- 2 g euv - {23 guv).
+B (2 aguv), and the arithrnetical register will contain uv -
+Hence putting u = 2-3 g (N-l) and v = - will produce 2-3 e {23 euv) 2-39k •
+b-a 2(N-1)
+in the accumulator.
+After k • and k have been obtained, we can utilize the routine of Problem 12
+to cornplete the task. This means, that we propose to use the coded sequence 0-52 of
+10.5, and that we will adjust the ccxied sequence that Hill be formed here, so that it
+can be used in c(lijunction with that one of IO. 5.
+Wng the constants of Problem 12 only p, q, and x need be given values
+which correspond to the new situation. x is clearly our present y. p, ,p4M-l are
+the positions of the m, of Problem 12, i.e. ,
+the posi tions of our present
+qk,... i.e., they are Fifi-I, , p 4k •M-2. Hence p = Bik-I. q, , q+M-l are
+the positions of the Xl,... of Problem 12, i.e.,
+the positions of our present
+Since we determined in the fornmlation of Problem 13. a, that only
+y I = a and b will be stored, but not the entire sequence YI, , m, this means
+that the desired sub-sequence Yk,. , Yk+M_l does not exist anywhere ab initio.
+Onsequently q may have any value, all that is needed is that the posi-
+,q4M-l should be available and ernpty (or irrelevantly occupied) when the
+t ions q, .
+coded sequence that we are going to formulate begins to operate. Ihis sequence must
+then form
+and place it into the position q+i-l for all i
+It might seem wasteful to form x, first, then store it at q+i-l, and
+finally obtain it from there by transfer when it is needed, i .e. during the period
+VII, 1-19 of the cded sequence of 10.5. (he might think that it is sirQler to form
+in VII, 1-19 as stated above; the quantities
+when it is actually needed, i.e.,
+) , and thus avoid
+needed are more specifically Xi, Xi+h,
+in the cmabinatron
+Xi+h-Xi
+the transfers and the storage.
+It is easy to see, however, that the saving thus
+effected is altogether negligible, essentially because the size of our problem is
+proportional to M2 (cf. the end of 10.5), while the number of steps required in
+forming and transferring the x•'s in the first rentioned way is only prorx»rtional
+to M . (Remember that M is likely to be 7, cf. the beginning of 10.5.) It does
+therefore hardly seem worthwhile to undertake those changes of the coded sequence
+of 10.5 which the second procedure would necessitate, and we will adhere to the
+first procedure.
+```
+
+<a id="planning-and-coding-099"></a>
+## planning-and-coding-099 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 117; Volume II printed page 27)
+
+Source: [physical PDF page 117](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=117); reading unit `p117`, lines 5–62.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-098](#planning-and-coding-098), [planning-and-coding-100](#planning-and-coding-100)
+
+```text
+-27 -
+In assigning letters to the various storage Areas to be used, it be
+remernbered chat the coded sequence that we are now developing is to be used in con-
+8s a supplement to) the coded sequence of 10.5. Ihe latter
+junction Nith (i.e.,
+requires areas of various types: D-F, which are incorporated into its final
+enurneration (they are 38-51 of the 0-52 of 10.5); A (i.e., p, ,p+M-l), which will
+be of our present A (i.e. ,
+of F, , F+N-I, i t will be ¯
+....,p+k+M-2 ,
+(i.e., q, ,
+q+M-l), which may be at any available place; and C (i.e.,
+which, too, may be at any available place. Iberefore we can, in assigning letters
+to the various storage areas of the present coding, disregard those of 10.5, wich
+the exception of B, C. Furthermre, there will be no need to refer here to C (of
+IO. 5), since the coded sequence of 10.5 assumes the area C to be irrelevantly occupied.
+It will be necessary, however, to refer to B (of 10.5), since it is supposed to cm-
+Yk+i-l (i =
+tain the x •
+l, of the problem. We will therefore think of the
+letters which are meant to designate storage areas of the coded sequence of 10.5 as
+being prinEd. Ihis is, according to the above, an irmediate necessity for B. We
+can now assign freely unprinrd letters to the storage areas of the present coding.
+Let A be the storage area corresponding to the interval frcxn to
+P+N-I. In this way its positions will be A. I , .,N, where A. i corresponds to
+F+i-l and stcres q • . As in previous problems, the positions of A need not be
+shown in the final enumeration of the c ded sequence.
+Ihe given data of the problem are F, M, N, a, b, y, also the q, r of
+r at 38,
+the coded sequence of 10.5. M, r are already stored there (as (M-l)
+and y, too (it coincides with x at 45). q, however, occurs only in with
+(as po
+(q-ö-k)oat 44) and p, of course, contains
+(ö+k-l)o at
+k (as (q-p-l)o =
+41); end originates in the machine. Hence, 41, 44 mjst be left empty (or, rather,
+irrelevantly occupied) when mir present coded sequence begins to operate, and they
+rmst be appropriately substituted by its operations. q, however, mast be stored as
+one of the cmstants of our present problem. Hence the consta nes requiring storage
+(apart from M, r, y which we stored in 0-52, cf. ab cve) are q, N, a, b.
+They will be stored in the stcrage area B. (It will be cmvenient to store them as
+o, (q-l)o.
+We will also need 2 -a e and I ; we will store the
+former in B and get the latter frtxn 42.) Ihe induction index i is a position mark;
+it will be stored as (qfi-l) (i.e., i) ) in the storage area C. quantities
+which are processed during each inductive step will also be stored in the storage
+area C.
+(FÆ-I)O and
+Chr task is to ca lculate k; to substitute po
+(q-p-l)
+o (ä-ö-k)o
+Yei-I from A.k+i-l
+into 41 and 44; and then to transfer x• =
+to B'. i.
+This latter operation is inductive. Finally, the control has t obe sent,
+, but to the beginning of 0-52, i.e., to O
+not to e
+can now draw the f diagram, as shoal-I in Figure 10.4.
+```
+
+<a id="planning-and-coding-100"></a>
+## planning-and-coding-100 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 118; Volume II printed page 28)
+
+Source: [physical PDF page 118](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=118); reading unit `p118`, lines 32–58.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-099](#planning-and-coding-099), [planning-and-coding-101](#planning-and-coding-101)
+
+```text
+-28-
+1
+1
+2 (B'.i)o
+3
+8
+qi
+(RO-I)
+4
+6
+(b.'E+1)ø
+x
+for i
+(B.'i+i).
+41
+(q — F — R). to 44
+e'
+refers
+the B
+O of
+of 10.5.
+o-sz
+2
+Numbers 0—52 refer to
+o-sz
+10.6.
+FIGURE 10.4
+```
+
+<a id="planning-and-coding-101"></a>
+## planning-and-coding-101 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 119; Volume II printed page 29)
+
+Source: [physical PDF page 119](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=119); reading unit `p119`, lines 8–64.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-100](#planning-and-coding-100), [planning-and-coding-102](#planning-and-coding-102)
+
+```text
+-29-
+Ihe actual coding will again deviate in sune minor respects from the flow
+diagram, as in previous instences. In connection with this we will also need sarr
+extra storage capacity in C (C. l. l).
+A matter of smæwhat greater importance is this: We have noted before
+that since our machine recoguizes nunbers between -l and I only, integers rmst be
+stored in other form. Frequently the form of a position mark, , is per se
+more natural than any other (cf. 8.2); occasionally 2-3 e x can be fitted mre easily
+to the algebraical use to be made of (cf. I in the present coding); suætin•es
+is rrnst convenient. (We of course, add to this list, but the three above forns
+seem to be the basic Ones . ) Ihe transitions between these three forms are easily
+effected by using rmrltiplications and divisions, but it seers natural to want to
+achieve the transitions between the two first ones (I and in a mre direct
+way.
+This can be achieved by means of the partial substi tution orders 18, 19
+of Table II (x Sp, x Spi ) , if they are as indicated in the itmæ-
+diately preceding this chapter. We propse to use these orders now for arithnptical
+rather than logi cal (substi tution) purposes, for positims x which cmtain no orders
+at all, but which are storing numbers in transit. Specifically: With I in the
+accumlator, x produces at the position x; with in the accunnJlator
+x Sp produces 2-1 G x at the x, and a subsequent x h produces in Che
+accumulator.
+We mention that — can be obtained frm Io or 2- by dividing them
+into or 2-3B, respectively: and this without mre than the usual loss in precision:
+Indeed, our division p : O is precise within an error 2-3 e, no matter how small 0 is
+(subject, of course, to the condition I c I > Ip ) , provided that p, o are given exactly.
+(If they are not given exactly, then their errors are amplified by , F, respectively.
+In this case a small o is dangerous, even though 1 01 > p I . ) In the present case
+p, O are given exactly. Forming Io, Io, as well as 2-9 e 2-3%, involves no round-
+offs.
+These methods will be used
+in our present coding: For transitions
+between Io and 2-3 91, cf. 1,22-23, 111,3-4; VII, 1-3; For forming reciprocals:
+from (N-l)o as Io.
+in VIII,4-5,
+and the very similar case of
+f rom
+2(N-1)
+(M-3)o,
+(N-1)0 as (M-3)o: 2(N-1)
+in I 9-15. Regarding —
+we also note this:
+• (N-l)o first and
+We need in VIII. We will form
+afternrds. Forming I x (b-a) first and [l x (b-A)]: (N-l)o afterwards
+would lead to a serious loss of precision, since I x (b-B) plays the role of p
+10.5
+above. and as it involves a round-off it is not given exactly, and hence
+a loss of precision as indicated there.
+to
+We will have to refer in our present coding repeatedly to 0-52 an
+It should therefore be remembered that this coded sequence is now
+be changed insofar that 41, 44 are irrelevant and 45 cmtains y. 38,
+as in 10.5.
+my cause
+supposed
+43 contain
+```
+
+<a id="planning-and-coding-102"></a>
+## planning-and-coding-102 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 120; Volume II printed page 30)
+
+Source: [physical PDF page 120](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=120); reading unit `p120`, lines 11–41.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-101](#planning-and-coding-101), [planning-and-coding-103](#planning-and-coding-103)
+
+```text
+The static coding Of the I -X folicNs:
+(N-L)O
+42
+10
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+2(N-1)
+2(N-1)
+2(N-l)
+2(N-1)
+2(N-1)
+(M-3)
+- 2(N-1)
+2-39(N-1)
+2-3 h,•
+(to 11, 1)
+11, 1
+2-39
+111, 1
+```
+
+<a id="planning-and-coding-103"></a>
+## planning-and-coding-103 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 121; Volume II printed page 31)
+
+Source: [physical PDF page 121](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=121); reading unit `p121`, lines 19–56.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-102](#planning-and-coding-102), [planning-and-coding-104](#planning-and-coding-104)
+
+```text
+(N-1)0
+(N-M+I)
+2-3Ø(N-M+1)
+c 1.1
+(to VI l)
+(to V, 2)
+(to VII, 1)
+(to VII, 1)
+s.
+41
+44
+(to VIII, 1)
+VIII, 1
+42
+c. 1.1
+c. 1.1
+10
+111, 1
+2 ¯3øk 2-3B
+VI,
+VII, 1
+VII,4
+VII,7
+-31-
+Ac
+41
+44
+Ac
+c. 1.1
+Ac
+-N4M-1)
+2-39k 2-3Ø(N-M+1)
+(F+k-l)
+(F+f-l)
+(q-l)o
+(q-Ö-k)0
+(q-Ö-k)c
+2-S9(k-1)
+```
+
+<a id="planning-and-coding-104"></a>
+## planning-and-coding-104 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 122; Volume II printed page 32)
+
+Source: [physical PDF page 122](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=122); reading unit `p122`, lines 6–45.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-103](#planning-and-coding-103), [planning-and-coding-105](#planning-and-coding-105)
+
+```text
+-32-
+VIII, 11
+12
+13
+14
+15
+16
+17
+18
+rx, 1)
+s.
+42
+q+i-l
+c. 1.1
+Sp
+IX,6
+42
+42
+(to IX,I)
+(q-1)0
+(q+i-l)
+q+i-l
+(q+i)o
+(q+i)o
+(q+i)o
+(q+i-M+l)
+(i-M+2)
+(i-M+I)
+(i-M)O
+Note, that the box VI required no coding, hence its inrnediate successor
+(VII) rmst folk* directly upon its imnediate predecessor (Ill).
+The ordering of the boxes is 1, 11, IV; 111, VII, VIII, rx, X; V and
+VII. IX must also be the invnediate successors of V, X, respectively, and V, 2 rmst be
+the immediate successor of I V. Ihis necessi tates the extra orders
+and
+rv,2
+VII,I
+v,2
+As indicated in Figure 10.4
+e' is O.
+```
+
+<a id="planning-and-coding-105"></a>
+## planning-and-coding-105 — 10.6-10.7: combined interpolation routines and notation cross-references (physical page 123; Volume II printed page 33)
+
+Source: [physical PDF page 123](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=123); reading unit `p123`, lines 5–191.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-104](#planning-and-coding-104), [planning-and-coding-106](#planning-and-coding-106)
+
+```text
+We trust now
+82 orders I, 1-25, II, 1-3,
+41 words, and then assigv
+tion of the code of 10.5.
+contents of C. 1-2, C. 1.1,
+53 -65
+65
+67 - 67
+68 -71
+111, 1-7
+51-52
+94 h
+50 h-
+51
+51 s
+52 s,
+42 h-
+42 h-
+71 c
+52 h-
+51 s
+51 s
+48 s,
+68 cc
+93 c
+38 h-
+VIII: 915 u,
+-33-
+assign B. 1-6, C. 1-2, 1.1, s. 1-2 their actual values, pair Che
+111, 1-7, N, 1-2, V, 1-3, VII, 1-9, VIII ,1-18, n, 1-8, X, 1-7 to
+l, I-X,7 their actual values. We wish to do this as a continua-
+We will therefore begin wi th the number 53. Furthermore the
+s. 1-2 are i rrelevant like those of 48-52 there. Hence thev
+all
+53
+54
+55
+56
+57
+58
+59
+60
+61
+63
+64
+65
+67
+be made to coincide with these. We therefore identify them accordingly .
+these things up, we obtain the folluing table:
+1, 1-25
+95
+51 s
+94
+96
+52
+52 s
+51 R
+52
+97
+96
+VII, 1-9
+VIII, 1-18
+rx, 1-8
+x,1-7
+71 1_75,
+76 -84'
+85
+89 -92
+Now we obtain
+this
+69
+70
+71
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+ccxied sequence:
+A,
+spi
+45
+96 h
+38
+51
+96
+52 x
+48
+42 h
+92
+51
+98
+51
+S
+51 h
+95
+51 s
+96
+50 s
+48
+S
+42
+h
+50
+48
+51 h
+41 s
+99
+44 s
+94
+42
+51 X
+50 R
+97
+94 h
+99
+49 s
+85
+88
+89
+91
+93
+94
+96
+v,1-3
+B. 1-6
+c. 1-2
+C.I.I
+s. 1-2
+49
+42
+48
+50
+h,
+49
+99
+42 h-,
+85 c ,
+48 s ,
+(q-l)o
+Sanming
+92 -93
+94 _ 99
+48 -49
+50
+87
+Sp
+49 s
+48 s
+38
+h-
+42
+h-
+so
+For the sake
+which contains all changes
+is 38-52:
+of cmpleteness, we restate that part of 0-52 of 10.5
+and all substi tutable constants of the problen.
+38
+39
+40
+41
+42
+10
+43
+44
+45
+46
+47
+350
+49
+50
+52
+Ihe durations may be estimated as
+1: 1,220 u, 11: 125 J, 111: 275 u, W,
+u: 300 u, X: 275 g.
+fol lcws:
+v: 125 u,
+VII: 350
+```
+
+<a id="planning-and-coding-106"></a>
+## planning-and-coding-106 — 10.8: non-equidistant interpolation and explanatory code (physical page 124; Volume II printed page 34)
+
+Source: [physical PDF page 124](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=124); reading unit `p124`, lines 14–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-105](#planning-and-coding-105), [planning-and-coding-107](#planning-and-coding-107)
+
+```text
+Total:
+-34-
+1 or (111 + V) or 111) + (IX + X) x M
+maximum (1,220 + 125 + 350 + 915 + 575 M)
+(. 6M + 3) m.
+- (575 M + 3,010)
+Hence the cmplete interpolation procedure (10.5 plus 10.7) requires
+(.9M2 +.2M + 2.4) m.
+10.8 We consider next Problem 13. b. We are again looking for that
+k for which lie as close toy as possible (cf. the end
+of 10.6), i.e.,
+for which the rennter one of Yk and Yk+M_l lies as close to y as
+possible.
+Since YI, are not equidistant, we cannot find k by an arithrnetical
+cri Cerium, as in 10.7. We must proceed by trial and error, and we will ncv describe a
+method which achieves this particularly efficiently.
+in k =
+We are then looking for a k k which minimizes = (y-Yk' Yk*M-l-y)
+. ,N-M+I.
+LRt us first note this: y-Yk > y-Yk+l, hence y-Yk > Yk_+M-y implies
+y-Yk > h +1, and therefore > 11k +1. (h the other hand Yk+M_l-y < Yk+M-y, hence
+y-Yk $ Yk+M-y inplies Yk+M-y, and therefore S Hence > or $
+Yk + Yk+M- 2y < or O.
+according to whether y-Yk > or $ Yk+M-y i.e.,
+In order to keep the size betyeen -l and l, it is best to replace
+Yk + Yk+M-Y - 2y by
+(1)
+Yk+M - y
+2
+2
+z is nwnotone increasing in k. nerefore Zk < O implies Zh < O and hence >
+fhr all h 'k, i.e., > g > .
+> Similarly Zk ? O implies Zh O and
+for
+$ From these we
+hence
+i.e., $ $ .
+infer
+Zk < O implies > k,
+(2)
+O implies that we can choose $ k.
+Consequently we can obtain by "bracketing" guided by the sigl of Zk.
+Note that Zk can be forrned for k l, ,N-M only, but not for k = N-M+I.
+Ihe "bracketing" must begin by testing the sign of Zk for k
+1, if it is + , then E = l,
+then we continue. Next we test the sign of Zk for k N-M, if it is - , then
+if it is -,
+= N-M+I, if it is + , then we continue. In this case we know that I < N.M. [hit
+N-M. Gnsider more generally the case where we know. that k t < k S k t
+•Ihis implies q-kt l.
+If k + k
+i- -i = l, then k -k
+if k • -k: > l, then we continue.
+```
+
+<a id="planning-and-coding-107"></a>
+## planning-and-coding-107 — 10.8: non-equidistant interpolation and explanatory code (physical page 125; Volume II printed page 35)
+
+Source: [physical PDF page 125](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=125); reading unit `p125`, lines 11–73.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-106](#planning-and-coding-106), [planning-and-coding-108](#planning-and-coding-108)
+
+```text
+-35-
+In this case we use the function which denotes the largest integer $ w. Put
+(3)
+then k > k?.
+and test the sign of Zk for k k 9, if it is + Chen k S k.o, if it is -
+= ki, ki+l = k? or k; +1
+respecti ve ly.
+We can therefore put k7+1
+'Ihis ccynpletes the inductive step from i to i +1. Sooner or later, say for i = 1
+hence ki
+hbwever ,
+of steps
+k; ¯ I will occur, and the process will teminate.
+Note, that ki+l-k7+l I(k+
+- k7)-l. For i
+i , however
+-I-ki-1
+N -M-l, therefore,
+krki
+210g (N-M-2) + 2.
+, -k.¯ 2 (ki+l-k7+l - l,
+krki 20
++1.
+ne virtue of this I Ibracketing" method is, of course, that the number
+it requires is of the order of 2 log N, and not, as it would be with most
+other trial and error methods, of the order of N . (Note, that N is likely to be
+large compared to M, which alone figures in the estimates of 10.5 and IO. 7. )
+After has been obtained, we can utilize the routine of Problem 12
+to cmplete the task, just as at the corresponding point of the discussion of
+Proble•n 13. a in 10.7. This means that we propose to use the coded sequence 0-52
+of 10.5, and that we will adjust the coded sequence which will be formed here,
+just as in IO .7.
+The situation with the constants of Problem 12 is somewhat simpler
+than it was in 10.7. Again, p, q, and x need be given values which correspond to
+p, ,p+M-l and q, ...,q+M-l are
+the new si tuation. x is clearly our present y.
+the positions of the , RI and Xl, , XM of Problem 12, i.e., the positions of
+they are , F+k+M-2 and
+our present qk , ,qk+M-l and i •e•
+q+k l, ,ä+k+M-2. Hence p = F+k-l, q = ü+k-l. Ihe complicaticms in 10.7, connected
+with q, or, more precisely, with the . , YR+M_I, do not arise here, since Problem
+13. b provided for storing the entire sequence YI,... , YN•
+In assigning letters to the various storage areas to be used, it must
+be ranembered, just as at the correspcgiding point in IO. 7, that the coded sequence
+as a supplanent
+that we are now developing is to be used in conjunction with (i .e. ,
+to) the coded sequence of 10.5. As in 10.7, we have to classify the storage areas
+required by the latter, but this classi fication nov di ffers sunewhat from that one
+in the final enumera-
+of 10.7:
+We have the storage areas D-F, which are incorporated
+tion (they are 38-51 of the 0-52 of 10.5); A and B (i.e.,
+p, . and
+which he part of our present A and B (i.e., of F, . , F*N-I
+and they
+, r+M-2), which
+, . . and C (i.e., r
+and Ä+E-I
+*ill be ¯
+letters to the
+may be at any avai lable place. Therefore, we can, in assi41ing
+10.5, with the
+various storage areas in the present coding, disregard those of
+```
+
+<a id="planning-and-coding-108"></a>
+## planning-and-coding-108 — 10.8: non-equidistant interpolation and explanatory code (physical page 126; Volume II printed page 36)
+
+Source: [physical PDF page 126](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=126); reading unit `p126`, lines 8–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-107](#planning-and-coding-107), [planning-and-coding-109](#planning-and-coding-109)
+
+```text
+-36-
+exception of C. Furtheruore, there will again no need to refer here to C (of
+IO. 5), since the coded seqænce of 10.5 assunps the area C to be irrelevantly
+occupied. We will, at any rate, think of the letters which are neant to desig-
+nate storage areas of the coded sequence of 10.5 as being prinpd. We can
+assigi freely unprined letters to the storage areas of the present coding.
+Let A and B be the storage areas corresponding to the intervals frcxn
+to F*N-I and from t-0 In this way their will be A I
+and B. l, , N, where A. i and B.i correspond to F+i-l and ä+i-l and store qi and
+Yi. As in previous problerrs, the position of A and B need not be shown in the
+final enunwration of the coded sequence.
+The given data of the problem are F, ä, M, N, y, also r of the coded
+sequence of 10.5. M, r are already stored there (as (M-l) ,
+ro at 38, 43); and
+y, too (it coincides with x at 45). The definitions of p, q involve k (p F+k-l,
+q — ä+k-l), and k originates in the (Mchine. Ihe form in which p is stored accord-
+at 41); while the form in which q is stored does
+ingly involves k (as p
+= (F+k-l)o
+not happen to involve (as (q-p-l)o— (ä-ö-l) at 44). Hence 41 must be left empty
+(or rather, irrelevently occupied) *hen our present coded serpence begins to operate,
+and it rmst be appropriately substituted by its operation. 44 might be used to store
+(ä-F-l) frun the start, but we prefer to leave it, too, empty (i.e.,
+i rre levant ly
+occupie8) and to substitute it in the process. Hence the constants requiring storage
+(apart fran M, r, y which are stored in 0-52, cf. aEnve) are F, N. niey will
+be stored in the storage area C. (It Wi II be convenient to store them as (F-l)
+(N-l) . ) The exit-locations of the variable remote connections will also
+be accmrrodGted in C. The induction index i need not be stored explicitly, since
+the quantities k • , k: , k• contain all that is needed to keep track of the progress
+of the induction. (The i i for which the "bracketing". i.e., the induction,
+ends, is defined by -k
+, cf. above.) k? , k: , ki are position marks, they
+(i.e., (B. k?) o, (B.ki)o (B. < ) )
+will be stored as
+(q+ki-l)
+, (Ä+k7-I) ,
+in the storage area D. Finally, k, when forned (in the form (ä+k-l)
+will be stored in D, replacing the corresponding expression of k • .
+The index i runs frun I to i .
+In drawing the flow diagram, it is
+convenient to treat the two preliminary steps (the sensing of the sign of Zk
+for k = I and k = N-M) as part of the sanE induction, and associate them
+ideally with tvo values of i preceding i = l, i.e., with i -l and i = O.
+-l, O k? may be defined as the value of k for which the sigu of Zk
+For i
+is being tested (this is its role for i l), i.e., as I, N-M, resErctively;
+while k: , ki may rernain undefined for i
+, i.e., (B.k) to
+Chr task is to calculate k (in the form (ä+k-l)
+(ü-ö-l)
+into 41 and 44; and finally to
+= (F+k-l) and (q-p-l)
+substitute p
+send the control, not to e, but to the beginning of 0-52, i.e. to O.
+We can now draw the flcw diagram, as shown in Figure 10.5.
+variable remote connections and are necessary in order to make the differ-
+• -l, for i = O, and for i l, possible (cf. above).
+ing treatnrnts for
+```
+
+<a id="planning-and-coding-109"></a>
+## planning-and-coding-109 — 10.8: non-equidistant interpolation and explanatory code (physical page 127; Volume II printed page 37)
+
+Source: [physical PDF page 127](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=127); reading unit `p127`, lines 3–35.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-108](#planning-and-coding-108), [planning-and-coding-110](#planning-and-coding-110)
+
+```text
+8
+4
+1
+-37-
+. - (B.I)O
+. = (B.N-M)0
+D.Z
+3
+3
+Z (B.KPC
+(B.
+41
+44
+Kio
+€0
+1
+(B.i)o to D.I
+3
+3
+KF)J
+D.I (B.kt
+13
+Note :
+D.2 (B.x7)0
+J (z.K7)0
+ax
+-3
+refers to O of
+0-52 IO.S.
+m e O — re fer
+to 0-52 in 10.6.
+FIGURE
+10.5
+```
+
+<a id="planning-and-coding-110"></a>
+## planning-and-coding-110 — 10.8: non-equidistant interpolation and explanatory code (physical page 128; Volume II printed page 38)
+
+Source: [physical PDF page 128](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=128); reading unit `p128`, lines 12–89.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-109](#planning-and-coding-109), [planning-and-coding-111](#planning-and-coding-111)
+
+```text
+-38-
+Regarding the actual coding we make these observations: Since E , k •
+-l, O, therefore the contents of D.2, 3 are irrelevant for
+are undefined for i
+-l, O (cf. the storage distribu ed at the middle bottom of Figure 10.5). Ihe
+in X, with k? (kt+k7) , is best effected by detouring over
+forming of (B. k?)
+the quantities 2 -a 9 (+9-1), 2 - 30(ä4k7-l), 2-ae(ä+kt-l), because the operation m =
+is rmst easily performed with the help of 2-3%), 2 - un: Indeed the right-shift R carries
+the latter directly into the former. The transi tims between and (in both
+di rections)are performed as discussed at the corresponding place in 10.7.
+We will use 0-52 in 10.5 just as in 10.7, and the remarks which we made
+11,14
+there this
+2
+2
+4
+6
+7
+11,1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+12
+subject apply again.
+The static coding of the boxes I-Xl follows:
+(to 11,1)
+(ßl)o
+11,13
+11,14
+42
+11,6
+38
+42
+11,9
+ä+kP-l
+ä+kP+M- I
+45
+Sp
+Sp
+h
+s
+Sp
+h
+h
+Sp
+Ac
+11,13
+Ac
+Ac
+11,6
+Ac
+Ac
+11,9
+Ac
+Ac
+Ac
+Ac
+Ac
+q
+(ä+kk-l)
+ä+k?-l
+ä4k9+M-l
+Ykp
+2
+Yk•04M
+2
+Yk0 + -
+2
+2
+YkQ+M -Y
+2
+```
+
+<a id="planning-and-coding-111"></a>
+## planning-and-coding-111 — 10.8: non-equidistant interpolation and explanatory code (physical page 129; Volume II printed page 39)
+
+Source: [physical PDF page 129](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=129); reading unit `p129`, lines 4–44.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-110](#planning-and-coding-110), [planning-and-coding-112](#planning-and-coding-112)
+
+```text
+11, 13
+14
+111, 1
+11,14
+-39-
+Ac
+(to Xl,l)
+IV,I
+IV,5
+(to 11, 1)
+10
+11
+(to l.x,l)
+(32) o
+11, 13
+11, 14
+38
+c.7
+11, 13
+11, 14
+38
+42
+c
+Sp
+Sp
+Sp
+Sp
+11,13
+Ac
+11 , 14
+11,13
+Ac
+( ä+N-M-l)
+(ö+N-M-l )
+(as)o
+(+1)
+(ä+N-2)
+(ä*1N-M-l)
+(5-1)
+(fi*N-M)
+fi+1N-M)
+```
+
+<a id="planning-and-coding-112"></a>
+## planning-and-coding-112 — 10.8: non-equidistant interpolation and explanatory code (physical page 130; Volume II printed page 40)
+
+Source: [physical PDF page 130](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=130); reading unit `p130`, lines 15–62.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-111](#planning-and-coding-111), [planning-and-coding-113](#planning-and-coding-113)
+
+```text
+-40-
+VII,I
+(to IX l)
+VIII, 1
+(to
+IX,I)
+LX,I
+(to X, 1)
+(to 11,1)
+Xl,l
+Xl,l
+0.2
+41
+44
+Ac
+41
+Ac
+(ä+k•o-l)
+(ä+k9-l)
+(k7-kP o
+(k7-k\+1)
+(ä+ki¯- I )
+2- a e(2ä+k )
+2-3 a(q+kQ-l) z
+å(ki++k7]
+2 - lgfi+k?-l)
+(Ä+kQ-l)
+( ä+kiO- l)
+(F-ä)o
+(F+R-I )
+(+1)
+( ä-ö-l)
+-l)
+VIII,
+VIII,
+VI, 6
+VII,3
+'{111,3
+The ordering of the boxes is l,
+and II, XI, IX, IX, must also be the
+X, respecti vely.
+This necessi tates the
+11; 111, M; IV; V, IX, X; VI; VII;
+inmediate successors of TV, VI, VII,
+extra orders
+11, 1
+Xl,l
+11, 1
+```
+
+<a id="planning-and-coding-113"></a>
+## planning-and-coding-113 — 10.8: non-equidistant interpolation and explanatory code (physical page 131; Volume II printed page 41)
+
+Source: [physical PDF page 131](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=131); reading unit `p131`, lines 5–191.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-112](#planning-and-coding-112), [planning-and-coding-114](#planning-and-coding-114)
+
+```text
+-41-
+As indicated in Figure 10.5, e' is O.
+at, Sa, 92 , correspond to 111, 1, V, 1, VII. 1, IV,I, VI, 1,
+WII, l, respectively. Hence in the final enumeration Ill, l, V, l, VII, I must have
+the same parity and IV,I, VI, l, VIII, l, mist have the same parity.
+We must ncw assign C. 1-9, D. 1-3,
+s. I their actual values, pair the 78
+orders 1,1-7. 11,1-14, 111, 1-3, IV,1-9, v, 1-11, VI, 1-6, VII, 1-3, VIII,1-3, n, 1-4,
+X, 1-9, XL 1-9 to 39 words (actually two dunny orders, necessitated by the adjusting
+of the parities of V, I and to those of Ill, I and I V, l, respectively, increase
+this to 40) and then assign l, I-XI,9 their actual values. We wish to do this again
+as a cmtinuation of the code of 10.5. We will therefore again begin with the
+number 53. FurtherrM)re the cmtents of D .1-3, s. I are irrelevant like those of
+48-52 there. Hence they may be made to coincide with four of these. We therefore
+53 -56
+741 _ 791
+_ 63
+80 —81
+111, 1-3
+63 _641
+82 -86
+65 -69
+861-89
+_ 74
+89 1 _ 91
+56
+48 s,
+48 s
+56 C'
+38 h
+50 s ,
+51 h
+45 h-
+38 h-
+50 s
+50 s
+50 h-
+95 h-
+65 cc
+(N-01)
+50 h
+41 s
+44 s
+identify them with
+following table:
+11, 1-14
+48-51 there. Sunning a II these
+v,l-ll
+rx, 1-4
+x, 1-9
+VI, 1-6
+VII ,1-3,•
+things up, we obtain the
+VIII, 1-3
+D. 1-3
+s.
+Now we obtain
+this coded sequence:
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+93
+94
+59
+42
+51 s
+42
+101
+50 h
+42
+91 '-92'
+93 -101
+48 -50
+51
+48 s
+95
+38 h-
+50 s
+48
+80 c
+48
+80 c
+h,
+R,
+h,
+62
+, 63 Sp
+42 h
+48
+60
+95
+, 101 h-
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+SPI'
+62
+63
+38 h
+62
+63
+42
+95
+49
+42
+49
+51
+R,
+96
+97
+95 h
+99
+100
+95
+49 s
+98 h
+51
+51
+Sp
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+51 h
+98 h
+42 h
+65
+c,
+49 s
+63
+69
+(+1)
+74
+860
+89
+910
+state of 0-52 of
+The durations may be
+10.5 rmxst
+es tima ted
+be
+as
+exactly as described
+follows :
+at the end of
+1: 275 u, 11: 485 g, 111: 125 u, 350 u, V: 425 u, VI: 225 ,
+VII: 125 u, VIII: 125 u ,
+150 u, X: 330 u, Xl: 350 u.
+```
+
+<a id="planning-and-coding-114"></a>
+## planning-and-coding-114 — 10.9: changing a coded problem and tabulating modifications (physical page 132; Volume II printed page 42)
+
+Source: [physical PDF page 132](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=132); reading unit `p132`, lines 9–47.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-113](#planning-and-coding-113), [planning-and-coding-115](#planning-and-coding-115), [planning-and-coding-043](#planning-and-coding-043)
+
+```text
+-42-
+Total:
+I * or II x 2 or II x (i +1)] +
++ (VII or VIII) (i -1) +1XXi
+(the two first al ternatives in each bracket
+can be described by io = I and io — O)
+[l II or (IV + VI) or V +
+refer to two possibilities which
+-1) + 150 i +330 G -1)
+ma x i mum
+maximum
+- (275 + 485 G +1) + (775 + 125 (i
+= (1,090 i +1,430) u.
+(1,090 210g (N-M-2) + 3610) (1.1 (N-M-2) 3.6) m.
+Hence the complete interpolation procedure (IO .5 plus 10.8) requires
+.4M + 1.1 2 log (N-M-2) + 3) m.
+(.9M2 -
+10.9 To conclude, we take•up a variant of the group of Problems 12-13,
+which illustrates the way in which minor changes in the organization of a problem can
+be effected ex post, i.e., after the problen has been coded on a different basis.
+(In this cmnection, cf. also the discussion of 8.9. )
+The description of the function under consideration in Problems 12 and
+the two sequences and Xl,... On one hand, and ql, and
+13. b, i.e.,
+on the other, were stored in two separate systems of consecutive memry
+locations: p, ,p+M-l and q, ...,q+M-l On one hand, and F, and I
+(Ihese are the two storage areas A and B of those two problems.) For
+on the other.
+Problem 13. a the situation is different, since here ql alone are stored (at
+,F+N-I, storage area A).
+the locations F,
+Assume now, that these data are stored together with the p•, x. , or the
+, with Pi,
+qi, y • , alternating. I. e. , at the locations p, ,p+2M-l, or ¯
+Xi at p+2i-2, p+2i-l,or qi, Yi at F*2i-2, F+2i-l.
+Since this variant cannot arise for Problem 13. a (cf. above), and since
+its discussion for Problem 13. b comprises the same for Problem 12 (because the coding
+of the former requires conbining with the coding of the latter, cf. 10.8), therefore
+we will discuss it for Problem 13. b.
+```
+
+<a id="planning-and-coding-115"></a>
+## planning-and-coding-115 — 10.9: changing a coded problem and tabulating modifications (physical page 133; Volume II printed page 43)
+
+Source: [physical PDF page 133](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=133); reading unit `p133`, lines 7–39.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-114](#planning-and-coding-114), [planning-and-coding-116](#planning-and-coding-116)
+
+```text
+We state accordingly:
+PROBLEM 13. c.
+Same as Problem 13 in its form 13. b, but the quantities and
+are stored in one system of 2N consecutive rneawry locations:
+p+2N-l in this order: ql,
+We trust analyze the coded sequences 0-52 of 10.5 and 53-101 of 10.8
+which correspond to Problems 12 and 13. b, and detemine what changes are necessi-
+tated by the new fomulation, i by Problem 13. c.
+let us consider the code of 10.8, i.e., of Problem 13. b, first. The
+changes here are due to two Causes: First, y • is now stored at F+2i-l instead of
+ä+i-l; second, since the cade of 10.5, i.e. , of Problem 12, will also undergo changes,
+the substitutions into it will change.
+Ihe first group is Tost simply handled in this way: Assume that is
+odd. Replace the position marks (B. i ) , which should be (p+2i-l) instead of
+(ä+i-l) , by their half values:
+We note, for later
+2
+use, that this has the effect that D. 3 will contain in-mediately before Xl
+(L ) ) instead of (B. k)
+Returning to the general question: we must charge the coding of all
+those places, where such a position mark is used to obtain the corresponding Yi.
+The values Of these posi tion marks must be doubled before they are used in this
+way. Apart from this, hcvever, we mast m ly see to it that is replaced by
+. This affects C. 3 (Of 10.8), i .e., 95.
+Ihe use of position marks in the akove sense occurs only in II, when
+Yk and are obtained. This takes place at 11,6 and II, 9. Hoaever, the position
+marks in question originate in the substitutions 11,2 and II, 5, and it is therefore
+at these places that the changes have to apply.
+We now formulate an adequate coding to replace 11.2-4, so as to give
+11,2 and 11,5 the desired effect. Note that at this point D.I contains
+(L (F+2kq-l)) + k 9-1) instead of (ä+kQ-l) (B. k?) . Hence after 11,1
+2 (3+2<-1))
+the accunmlator contains
+```
+
+<a id="planning-and-coding-116"></a>
+## planning-and-coding-116 — 10.9: changing a coded problem and tabulating modifications (physical page 134; Volume II printed page 44)
+
+Source: [physical PDF page 134](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=134); reading unit `p134`, lines 4–67.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-115](#planning-and-coding-115), [planning-and-coding-117](#planning-and-coding-117)
+
+```text
+11, 1.1
+2
+3
+4
+5
+6
+11,
+38
+38
+42
+42
+6
+Sp
+h
+h
+11,6
+Ac
+Ac
+Ac
+F+2k?-1
+( F+2k?+M-2)
+(F+2k?+2M-3)
+(F+2k.0+2M-2)
+(F42k?+2M-1)
+Thus we must replace the three orders II, 2-4 by the six orders II, l. 1-6.
+Hence the third and second remarks of 8.9 apply: We replace II, 2-3 by II, 1. 1-2, then
+11,4 by
+11, 1.2,1
+11,1.3
+and let II, 1.3-6 be followed by
+11, 1.7
+11,5
+Then II, l. 3-7 can be placed at the end of the entire coded sequence. We will give a
+final that expresses these changes after we have performed all the changes
+that are necessary.
+Ihe second group must be considered in conjunction with the code of 10.5,
+i.e., of Problem 12. In the code of 10.8 only XI is involved in the operations of
+this group. In the code of 10.5 the si tuation is as follows: Replace the posi tion
+, i.e., (F+2k+2i-4) ,
+marks A. i, B.i (of 10.5), which should be (p+2i-2)
+, (p+2i-l)
+, (q+i-l) , i.e.,
+(ö+2k+2i-3) ,
+instead of (p+i-l)
+(F+k+i-2) , (ä+k+i-2) ,
+as nearly
+by their half values as possible. Since is odd, we will use the half value of the
+(L (F+2k+2i_3)) + i -2) . Ihen we must change the
+secmd expression:
+coding of all those places where such positim marks are used to obtain the corres-
+ponding pi and y-: Ihe values of these pcsition marks must be doubled before they
+We must
+are used for a Yi, and then decreased by I before they are used fcr a p • .
+also take care that the storage locations, which supply the modified (A .i) , (B. i)
+posi tion marks, are properly supplied themselves. Apart from these, however, we
+must only see to it that Xl (of 10.8) produces (I (ö+2k-l)) ( + k + i-2) I
+instead Of
+Since p, q, or F, ä, no longer appear inde-
+pendently, it is not necessary to produce (ä-ö-l) in Xl.
+Ihe use of position marks in the above sense occurs only in Ill, V,
+and VII (of 10.5), when Pl, pi, and x • , are obtained. These take place at
+Ill, 3, V, 2, and VII. 14, 15, 21. However, the position marks in question originate
+in the substitutions Ill, 2, V, l, and VII, 8, 9, 13, and it is therefore at these
+places that the changes have Co apply.
+```
+
+<a id="planning-and-coding-117"></a>
+## planning-and-coding-117 — 10.9: changing a coded problem and tabulating modifications (physical page 135; Volume II printed page 45)
+
+Source: [physical PDF page 135](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=135); reading unit `p135`, lines 6–83.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-116](#planning-and-coding-116), [planning-and-coding-118](#planning-and-coding-118)
+
+```text
+-45-
+position marks (A. i)
+, (B.i ) are supplied frcxn E. 2, which in
+turn is supplied by II and IX (of 10%). II will ncv supply to E. 2
+(ö*2k+1)) + r + i-2) I
+(ö+k+i-2)011 2
+o i -2 instead of (p+l)
+The function of IX is actually performed by VIII, and it will rnaintain in E. 2
+(L (ö+2E+2i-l)) ( g! + k + i-l)o instead of (p+i(l)
+If we keep
+these facts in mind when rmdifying Ill, V, VII, then we need not change II, rx
+(i.e., VIII).
+We ncN give adequate codings, to insert before 111,2 and before V, l,
+and also to replace VII, 7 before VII, 8, 9, and to replace VII, 10-12 before VII, 13,
+so as to give Ill, 2, V, l, and VII 13 the desired effect. Note that at these
+points, as we observed above, D. 4 (i.e. , 41, substituted f rm Xl of 10.8) contains
+(L (F+2E-l)) , and E. 2 contains (F+2E+l)) and (L respectively.
+Hence before Ill, 2, V, l, and WI, 7, the accumulator
+(L (ö+2k+2i-l)) and (L ( ö+2k+2i-l))
+, respectively.
+111, 1.1
+2
+v,o.l
+2
+VII,6.1
+2
+VII,9.1
+2
+3
+4
+h-
+h
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+I (F+2E-l)) ,
+contains
+2
+(ö+2k-1)
+(F+2E-2)
+(F+2Æ+2i-1)
+(ö+2k+2i-2)
+(K (F+2k+2i-1)-1)
+(ö+2k+2i-3)
+(h (F+2k+2i-l))
+(h (F+2k-2i
+-1)4M-1)
+(h (F+2k+2i-
+l)+h-l)
+(F+2k+2i+2h-3)
+Thus we
+V, 0.1-2 before V, l; replace the order VII, 7 by the
+the three orders VII, 10-12 by the four orders VII, 9.1-4. Hence the third and second
+remarks of 8.9 apply again: We replace 111,1 by
+rrust insert the orders Ill, l. 1-2 before 111,2; insert the orders
+two orders VII, 6.1-2; and replace
+111,0
+111,1.0 c
+and let Ill, 1.0 coincide with Ill, I and be followed
+by Ill, l. 1-2 and Chen by
+111, 1.3
+Next we
+and let
+finally
+111,2
+replace V, I by
+v,o.l
+c
+c
+V, 0.1 be as specified above,
+by
+and be followed by V ,0.2,
+then by V, l,
+and
+```
+
+<a id="planning-and-coding-118"></a>
+## planning-and-coding-118 — 10.9: changing a coded problem and tabulating modifications (physical page 136; Volume II printed page 46)
+
+Source: [physical PDF page 136](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=136); reading unit `p136`, lines 4–58.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-117](#planning-and-coding-117), [planning-and-coding-119](#planning-and-coding-119)
+
+```text
+-46-
+v,l.l
+Finally we replace Yu , 7 and VII, 10-12 by VII ,6.1-2 and HI, 9. 1-4. It is best to
+effect this as a replacenent of the entire piece VII, 7-12 by WI, 6. 1-2, VI 1,8-9,
+HI, 9. 1-4 (a total of six orders to be replaced by a total cf ei*ut orders). Ihis
+means that we replace WI, 7-11 by ,6.1-2, VII, 8-9, VII, 9.1, then we replace WI, 12
+II, 2-3
+11,1.2.1
+VII, 7-8
+VII, 9 IO
+by
+VII,9.1.1
+VII, 9.2 C
+and let VII, 9.2-4 be followed by
+VII,9.2.5
+VII, 13
+c
+nien Ill, l. 0-3; V, O. 1-2, V , l, V, 1. l; HI, 9.2-5 can be placed at the a-ld of the entire
+coded sequence. We will give a final enurneration that expresses these changes after
+we have rrforned all the changes that are necessary.
+Returning to the second group in the coding of IO. Y, we note that it
+affects only Xl (of 10.8). We saw above that XI trust produce (F+2k- l)) and
+substitute it into 41, and that Chis is all that has to be done there. hever, we
+noted before that D. 3 before XI contains precisely (I (F+2R-l)) . Hence XI, 1-9
+(i.e., Xl in its entirety) may be replaced by
+Xl,o.l
+2
+3
+41
+Ac
+41
+(FOR-I))
+Hence we replace M, 1-3 by XIN. 1-3, and since operations of the code of 10.8 end at
+this point, M, 4-9 may be left empty.
+To conclude, we observe that C. 3 must contain (EZ.!) = - l)
+2
+instead of (+1) , and that nei ther nor are needed in any other form, so that
+C. 9 may be left enpty.
+We are now in possession of a complete list of all changes of bcxh
+codes 0-52 of 10.5 and 53-101 of 10.8. We tah.llate the omissions and mdifications
+first, and the additims afterwards.
+Qnissions and Sbdifications:
+(10.8) :
+(10.5) •
+Fran
+111,1
+VII, 11
+VII , 12
+To
+11, 1.1-2
+111,0
+VII,6.1-2
+VII, 8-9
+vr1,9.1
+VII, 9.1.
+```
+
+<a id="planning-and-coding-119"></a>
+## planning-and-coding-119 — 10.9: changing a coded problem and tabulating modifications (physical page 137; Volume II printed page 47)
+
+Source: [physical PDF page 137](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=137); reading unit `p137`, lines 7–107.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-118](#planning-and-coding-118), [planning-and-coding-120](#planning-and-coding-120)
+
+```text
+(hissions and Sbdi fications
+M, 1-3
+v, 0.1-2
+66 C t
+etc
+L, 42 h
+10 sp',
+58
+38 h
+VII: 130
+From
+(cont. ) :
+9.2-5
+_ 47 _
+To
+Xl,o. 1-3
+Enp ty
+(10.8) :
+Additions:
+(10.8) :
+ao.5) :
+(10.5) :
+(10.5) :
+11, 1.3-7
+111, 1.0-3
+VII,
+We can use five of the six anpty fields Xl,4-9 (from 10.8) to
+11, 1.3-7 (frun 10.8)
+say M, 4-8. C. 9 is the last word of the code: 101, hence we
+can place Ill, l. 0-3;
+begins there. They
+111, 1.0-3
+v,o.1-2
+V, 0.1-2, V, l, V, 1.1, VII, 9.2-5 (from 10.5) in a sequence that
+will then occupy these posi Lions:
+101-102'
+103-103 '
+10.5. )
+VII,2-5
+105-106
+v, 1.1
+(All
+0-52
+5
+10
+14
+15
+16
+17
+57
+these are from
+we
+and 53-101:
+101 c,
+103 c ,
+L,
+21 sp',
+105 c ,
+Ihe
+(10.5) :
+(10.8) :
+can forrmlate the final fom
+104
+104'
+of all
+41 s
+38 h
+42 h
+changes in the coded sequences
+42 h-
+18 SP'
+49
+59 Sp
+58
+65
+66
+67
+68
+69
+38 h
+42
+95
+101
+102
+103
+104
+105
+106
+412 0
+42 h
+L,
+10 C'
+48 h-
+17 C'
+following durations are
+affected:
+111:
++ 130
+130
+180
+- 225
+```
+
+<a id="planning-and-coding-120"></a>
+## planning-and-coding-120 — 10.9: changing a coded problem and tabulating modifications (physical page 138; Volume II printed page 48)
+
+Source: [physical PDF page 138](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=138); reading unit `p138`, lines 7–15.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-119](#planning-and-coding-119), [planning-and-coding-121](#planning-and-coding-121)
+
+```text
+Total:
+Total :
+(10.5) :
+(10.8) •
+(130 + 130 (M-1) + 130 WM-I) )
+(65 M2 +65 M) (.07 MQ + .07 M) m.
+(180 (i + 1) - 225 i ) u = (-45 i +180)
+maxirurn .2 m.
+Hence there is no relevant change in the estimate at the end of 10.8.
+```
+
+<a id="planning-and-coding-121"></a>
+## planning-and-coding-121 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 139; Volume II printed page 49)
+
+Source: [physical PDF page 139](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=139); reading unit `p139`, lines 12–62.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-120](#planning-and-coding-120), [planning-and-coding-122](#planning-and-coding-122)
+
+```text
+-49 _
+11.0 CODING OF SCHE COdBINAIORlAL (SORTING) PROBLEMS
+11.1
+In this chapter we consider probler•rs of a combinatorial, and
+not analytical character. Ihis means, that the properly calculational (ari Ch-
+metical) parts of the procedure will be very simple (indeed almst absent). and
+the essential operations will be of a logical character. Sich problems are of
+a not inconsiderable practi cal importance, since they include the category usu-
+ally referred to as sorting problems. Ihey are, furthemore, of a conceptual
+interest, for the fol lowing reason.
+Any computing machine is organi zed around three vi tal organs: Thc
+the I ogical control, and the ari organ. Ihe last mentioned
+organ is an adder-subtractor-mul tiplier-divider, and the multiplier is usually
+that aspect which primarily controls its speed (cf. the discussions of Part l. )
+The efficiency of the machine on all analytical problerrs is clearly dependent
+to a large extent on the efficiency of the arithmetical organ, and thus primari ly
+of the nultiplier. the non-analytical, combinatorial problems, to which we
+have referred, avoid the nmltiplier a Inost cunpletely. (Adding and subtracting
+is hardly avoidable even in purely logical since the operations are
+needed to construct the Eosi tion marks of mermry locations and to effect size
+cmparisons of numbers, by which we have to express our logical alternati ves. )
+Ginsequently these problems provide tests for the efficiency of the non-ari th-
+retical parts of the machine: Ibe merrory and the logical control.
+11.2
+We will consider two typical sorting problems: "lhose of
+meshing and of sorting proper. nere are, of course, many others, and many
+variants for each problem, but these two should suffice to illustrate the main
+methodical principles.
+In order to fomulace our two problems, we need the defini tions which
+fol low.
+We operate with sequences of complexes. A complex X z (x; u l,
+consists of p+l numbers: 'lhe principal number x and the subsidiary numbers
+p is the order of the cornplex. A se uence S = (X (l)
+consists of n complexes x (i)
+n is the length of the
+sequence. Ihroughout what fol lows we will never vary p, the (arhi trary but) fixed
+order of all canplexes to be considered. We will, however, deal with sequences
+of various lengths.
+A sequence S
+of its complexes X(i) -
+x(n)) is a nono tone if the principal elements
+u(i)) form a mnotone, non decreas-
+1 ng sequence:
+(1)
+A serpence T (Y (1)
+the sarne
+(2)
+(1)
+(2)
+Y is a permutation of another sequence S = (X (
+length, if for a suitable pemmtation of the
+```
+
+<a id="planning-and-coding-122"></a>
+## planning-and-coding-122 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 140; Volume II printed page 50)
+
+Source: [physical PDF page 140](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=140); reading unit `p140`, lines 11–69.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-121](#planning-and-coding-121), [planning-and-coding-123](#planning-and-coding-123)
+
+```text
+-50-
+Given two sequences S )
+equal lengths n, m), their sum is the sequence T]
+(of length n + m).
+We can now state our two problerrE:
+(Meshing)
+PROBLEM 14.
+Y(•)) (of not necessarily
+Two (Mnotme sequences S, T. of lengths n, m, respectively, are stored
+at two systems of n(p+l)
+, m(p+l) ccmsecutive memory læations respectively:
+An accomodatim f a sequence
+, and t, til, .
+of length n + m, cmsisting of (n + + l) consecutive memory locatims, is
+, )-l. Ibe constants of the problem are p, n,
+available:
+m, s, t, r, to be stored at six given memry locatims. It is desired to find
+a nonotme permutation R of the sum S, T], and to place it at the locations
+( Sorting)
+PROBLEM 15.
+A sequence S (subject to no requirements of monotony whatever) is stored
+at n(p+l) consecutive manory catims:
+s, s The constants of
+the problem are s, n, p, to stored at three given menory I cratims. It is
+desired to find a rrnnotme pemutatim S• of S, and to replace S by it.
+3 We consider first Problem 14, which is the simpler one, and whcse
+solution can be c mveniently used in solving Prd)lem 15.
+we have S 2 (X(l)
+Y(.)) with X(i)
+Z with zd)
+and we wish to fomR= (Z
+Wii 5), Pwhich is a M)notone F*rmutation of [S, T].
+Forming H can be viewed as an inductive process: If Z (1)
+for
+a k I have already been forned, the inductive step c msists of foming
+It is preferable to allow k = n+rn+l, too, in the sense that when this value
+of k is reached, the process is teminated. Assume, therefore, that we have. fornpd
+z(k-l)
+for a k 1, . , n+m+l. It is clear, that we rny assure in addition,
+that these 731 )
+Z(k-l)
+are the
+for two suitable i
+k' Jk with
+(1)
+Then we have the follcxing possibilities:
+. together with the Y (1)
+(a)
+(b)
+By (l) k = nhn+l, hence, as we cbserved abwe,
+R is fully formed, and nothing remains to done.
+(l) k n hence, as we observed above,
+Not i
+R is not fulhy formed, and must be fonned next. Clearly, we
+as one of and
+may choose
+, we must decide which.
+We introduce a quantity t.Jk, so that O for X ( and
+= I for —Y (jk +1)
+```
+
+<a id="planning-and-coding-123"></a>
+## planning-and-coding-123 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 141; Volume II printed page 51)
+
+Source: [physical PDF page 141](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=141); reading unit `p141`, lines 10–72.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-122](#planning-and-coding-122), [planning-and-coding-124](#planning-and-coding-124)
+
+```text
+(b.3.1)
+(b. 3.2)
+(b.3.3)
+-51.
+O implies
+Zi l,
+I implies
++ l. is determined according to the following ru les:
+= n, hence jk * m: S is exhausted, hence w
+- m, hence i * n: T is exhausted, hence O.
+n, jk * m: Neither S nor T is exhausted. We mast
+distinguish further:
+Necessarily GJ
+> : Necessarily
+= Both
+O and = I are acceptable. We
+choose
+As pointed out above, (a), (b) describes an inductive process which runs
+, n+m+l. It begins with k I and i k = jk O (rning to and
+over k =
+then progresses from k to k +1, forming the necessary i k , jk and as it along.
+It is convenient to denote the locations s and t, where the storage of the
+sequences S and T begins, by a coo-mon letter and to distinguish them by an index:
+(2)
+Grreslx'ndingly. let AO and Al be the storage areas corresqonding to the two inter-
+vals of locations frans to s + and frans to s + m(p+l )-l.
+In this way
+their positions will be A 0.1, n(p+l) and AI. l, , m(p+l), where A O. a and A1. h
+(i) for a
+(i) for
+correspond to s + a-I and s I + b-l, and store x
+a * y (j) for b z )+l, v(j) for b +1,
+respectively. Next, let B be the storage area intended for the sequence R, corres-
+ponding to the interval of locations frotn r to r+(n+m) )-l.
+In this way its
+positions will be B.I
+, where B.C correspnds to r+c-l, and is
+(k) for c
+intended to sta•e z
+for C
+respectively. As in several pre' ious the positions of AO Al, and B
+need not be shown in the final enureration of the coded sequence.
+Further storage capaci ties are needed as follows: The given data
+(the constants) of the problem, s
+, r, n, m, p, will be stored in the storage
+area C. (It will be cmvenient to store them as (so)
+(m(p+l ) )
+o, (P+l)o•
+in C.) Next the induction indices
+We will also store
+k, q' will have to be stored." It is convenient to store i ,
+j , too, along
+with k, while it turns out to be unnecessary to form and to score W explicitly.
+Ihese indices i, j, k, q' are all relevant as position marks, and it will prove
+convenient to sure in their place (so (p
+(Al
+(i.e. (AO . i (p )+l)
+, (r *qi-I)
+, (AW.h(p+l) + q') O,
+(B. ) o; here Wi , and h
+or j for = O or l, respectively) Note, that two posi tion mnrks that correspond
+to q' are being stored. Ihe three first quantities will be stored in the storage
+area D, and the two last ones in the storage area E.
+```
+
+<a id="planning-and-coding-124"></a>
+## planning-and-coding-124 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 142; Volume II printed page 52)
+
+Source: [physical PDF page 142](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=142); reading unit `p142`, lines 4–36.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved. The phrase about needing no further comments concerns the report's exposition of this diagram-to-code step; it is not an explicit claim about source-comment syntax. OCR omits the final word of the opening sentence; visually it is comments. Coordinator visual supplement is pending.
+
+Related: [planning-and-coding-123](#planning-and-coding-123), [planning-and-coding-125](#planning-and-coding-125), [planning-and-coding-163](#planning-and-coding-163)
+
+```text
+-52-
+We can now draw the flow diagram as sh(Nn in Figure II. l.
+ccxiing obtains fran this without a need for further
+static coding of the boxes I-X follcms.•
+D.2
+(to 11,1)
+ne actual
+11,1
+111,1
+(to 111,1)
+(to V, 1)
+(to VII, 1)
+IV,I
+c.2
+VI,I
+c.5
+Ac
+Ac
+Ac
+Ac
+v,6
+Ac
+v,5
+(so + i
+(si +j(p+l))
+(so +i(p+l))
+s +i(p+l)
+sl +j(p+l)
+v,l
+s
+(to VII,I)
++j(p+l)
++i(p+l) h-
+```
+
+<a id="planning-and-coding-163"></a>
+## planning-and-coding-163 — 11: actual coding without further comments, followed by the static coding table (visual transcription)
+
+Source: [physical PDF page 142](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=142); reading unit `p142`, lines 38–40.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Supplement to the complete OCR page selection; preserves legible prose where OCR corrupts words. Neighboring source-page records retain the surrounding worked examples.
+
+Transcription/context notes: Manual transcription from physical page 142, printed Volume II page 52. The OCR dropped the word comments; this supplement preserves the visible complete sentence. Here comments describes further exposition of the worked flow/coding example; no modern inline syntax is inferred. The following coding/explanatory table remains in the page OCR and original scan.
+
+Related: [planning-and-coding-124](#planning-and-coding-124)
+
+```text
+We can now draw the flow diagram as shown in Figure 11.1. The actual coding obtains from this without a need for further comments.
+
+The static coding of the boxes I-X follows:
+```
+
+<a id="planning-and-coding-125"></a>
+## planning-and-coding-125 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 143; Volume II printed page 53)
+
+Source: [physical PDF page 143](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=143); reading unit `p143`, lines 15–34.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-124](#planning-and-coding-124), [planning-and-coding-126](#planning-and-coding-126)
+
+```text
+-53-
+3
+0-+
+3
+3
+3
+10
+4
+10
+z
+z-
+3
+(A! t--.az
+3
+6
+7
+8
+for
+9
+FIGURE 11.1
+```
+
+<a id="planning-and-coding-126"></a>
+## planning-and-coding-126 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 144; Volume II printed page 54)
+
+Source: [physical PDF page 144](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=144); reading unit `p144`, lines 4–83.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-125](#planning-and-coding-125), [planning-and-coding-127](#planning-and-coding-127)
+
+```text
+-54-
+(p+1)O
+2
+3
+4
+VII,I
+2
+3
+4
+VIII,I
+2
+3
+5
+6
+7
+8
+9
+IX,I
+2
+3
+4
+5
+6
+7
+8
+9
+10
+(to VIII,I)
+(to VIII,I)
+(to rx,l)
+(to X, l)
+VIII,
+VIII,
+9
+8
+s
+s
+s
+Sp
+s
+s
+Sp
+h
+Sp
+h
+Sp
+s
+Ac
+Ac
+Ac
+Ac
+Ac
+VIII, 9
+Ac
+VIII,8
+Ac
+Ac
+Ac
+rx, 10
+Ac
+Ac
+IX,9
+Ac
+(so +i(p+l))
+(so
+(so
+(sl +j(p+l))
+(sl +j(p+l))
+(r +k(p+l))
+(r +k(p+l))
++h(p+l)
+(sW+h(p+l )+qt ) 0
+(sW+h(p+l )+q' ) o
+w
+s
+1
+IX,10
+rx, 9
+sW+h (p+l) + q'
+s
+```
+
+<a id="planning-and-coding-127"></a>
+## planning-and-coding-127 — 11.1-11.3: meshing, flow explanation and annotated code (physical page 145; Volume II printed page 55)
+
+Source: [physical PDF page 145](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=145); reading unit `p145`, lines 4–163.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-126](#planning-and-coding-126), [planning-and-coding-128](#planning-and-coding-128)
+
+```text
+-55-
+Ac
+Ac
+Ac
+2
+3
+4
+24 -26 '
+VII ,1-4
+_ 12
+27 -29
+12' _ 16,
+30 -36
+37 -39
+7 -10
+22 -24
+40 -41
+35 h, 37 S
+-s
+33 h-,
+-s
+39 h-
+36 h
+27 cc,
+34 h-
+40 s , 35 h
+10 cc
+40 s
+(q • -p-I)O
+h
+11,1
+(to IX,I)
+ordering of the boxes is 1, 11, 111, V, VII, VIII, [X, X, and VII,
+successors of IV, VI, X, respectively. This
+VIII, IX rmst also be the innediate
+necessitates the extra orders
+D. 1—3, E. •1-2 their actual values, pair the 59
+orders 1,1-6, 11,1-4, 111,1-4, IV,1-5, V,1-7, VI,1-5, VII,1-4, vill,1-9, IX, 1-10,
+IV,5
+VI,5
+x,5
+VII, 1
+VIII,I
+IX,I
+c
+c
+We now assign C. 1-7,
+X, 1-5 to 30 words and then assigl
+l, I-X,5 their actual values.
+Ihese arc expressed
+in this table:
+1,1-6
+11, 1-4
+111,1-4
+v,1-7
+Now
+VIII, 1-9
+IX,I-IO
+x, 1-5
+O
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+we obtain
+30
+, 37 s
+31
+, 38 s
+32
+, 39 s
+, 30 h-
+37
+24 cc'
+, 31 h-
+38
+34 27 Cc
+37
+9 Spl
+38
+9 Sp
+38
+38 s , 39
+16
+sp', 41 S
+Ihe
+dura Lions
+this coded
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+sequence:
+35 h
+40
+41
+21
+40
+21
+41
+17 c,
+31
+37
+39 s
+16
+Sp
+36
+h
+41 s
+36 h
+40 s
+38
+W, 1-5
+VI,1-s
+D. 1-3
+E.I-2
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+12 C'
+(p+l)o
+may be estimted as follows:
+1: 225 u,
+VIII: 350
+Total :
+150 u, 111: 150 u, 200 g, V: 275 g,
+U, LX: 375 u, X: 200 u.
+(11 + (111 or (111 + V) or IV) or VII) +
+VIII + (LX + X) xp
+200 u, VII: 150
+x (n + (II + I V)
+```
+
+<a id="planning-and-coding-128"></a>
+## planning-and-coding-128 — 11.4: sorting, reused routine and explanatory representations (physical page 146; Volume II printed page 56)
+
+Source: [physical PDF page 146](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=146); reading unit `p146`, lines 6–64.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-127](#planning-and-coding-127), [planning-and-coding-129](#planning-and-coding-129)
+
+```text
+-56-
+maximxm = (225 + (150 +425 +200 +350 +575 xp) (n + m) + 350)
+((575 p + 1,125) (n + m) + 575)
+This result will be analyzed further in 11.5.
+11.4 We pass now to Problem 15, which will be solved, as indicated
+above, with the help of the solution of Problem 14.
+We have S (X (l)
+x(n)) with x(i)
+G)
+u and we
+wish to form an (X (l' C
+x (n' ) ) , which is a mnotone permutation of S.
+Ihis can be achieved in the following manner:
+If a certain pemutation
+. * (n' o)) of S has been found, which may not yet be fully monotone,
+but in which at least two consecutive intervals
+x(k+i-1'O) and
+are (each one separately) monotme, then we can mesh
+these (in the sense of Problem 14), and thereby obtain a new permutation
+00)) of
+, i.e. of S, for which the whole interval
+X(k+i+j-V00)
+is monotone. Thus we can convert two rmnotone
+intervals of the lengths i, j into one of the length i + j. Ihe original S
+is made up of mnotone intervals of length l, since each (separately) may
+be viewed as such an interval. Hence we can, beginning with these mnotme
+intervals of length l, build up monotone intervals of successively increasing
+length, until the maximum length n is reached, i.e. the permutatia•-l of S at
+hand is rnonotone as a whole.
+This qualitative description can be formalized to an inductive process.
+This process goes through the successive stages v -
+In the stage
+v a vermutation S"
+) ) of S is at hand, which is made up of
+consecutive intervals of length 2', which are (each one separately) monotme.
+(Since n may not be divisible by v, the length of the last interval has to be
+the remainder r of the divisi m of n by 2', r < 2'
+If n is divisible by 2',
+we should put r
+O and rule this interval to be absent, hit we may just as
+= 2 v, and still rule it to be the last interval.) Now a se ence of
+well put r
+steps of tKe nature described above will produce a new permutation of S"
+i.e. of S, in which the mnotone intervals of length 2' in S" are pairwise
+meshed to mnotme intervals of length 2' + 1 in (nae end-effect f v +1
+can be described in the : ame terms as above for v.) This inductive process
+begins with v and S •o S. It ends when a v with 2' > n has been reached,
+the corresponding S • ' is the desired (monotme) S•. (Note, that at this point
+It is the final interval of length r referred
+there is only one interval:
+to above, in this case with r = n . ) Using the function , which denotes the
+smallest integer z, we may therefore say that this process terminates with
+€2 log
+log is, however, only the
+Ihe induction over v
+primary induction. For each v we have intervals of length 2' (cf. above),
+these pairs, which have to be meshed to
+intervals
+of length 2' +1 (cf. above), in order to effect the inductive step fr•cln v tov + l.
+```
+
+<a id="planning-and-coding-129"></a>
+## planning-and-coding-129 — 11.4: sorting, reused routine and explanatory representations (physical page 147; Volume II printed page 57)
+
+Source: [physical PDF page 147](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=147); reading unit `p147`, lines 10–76.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-128](#planning-and-coding-128), [planning-and-coding-130](#planning-and-coding-130)
+
+```text
+-57-
+If we enunærate these interval pairs by an index w z
+then it becomes
+clear chat we are dealing wi th a secmdary induction, of which w is the index.
+We can now state the general inductive step with cmplete rigor:
+Onsider av O, l, 2,
+and assunr that the permutation
+has already been formed. We effect a secondary induction
+over a w = O, l, 2
+Assume that a certain w has a Iready been reached. Ihen
+2' + lw n. We ncN' have to two intervals of the length nw, i.e.
+wi th
+2' +lw+nw and
+2' +lw+nw
+with j
+Ordinarily nw mw
+- 2', i.e. this is the case when both these intervals can be
+accomcdated in the interval l, . , n. Thus the condi tion fa• this case is
+2 '+1 (w+l) S n. Otherwise, i.e. for (w+l) > n, we have two possibi lities:
+First: nw = 2' if this interval can be acctmdated in the interval l,
+if 2' +2' < n. is then chosen so as Co exhaust what is left of the interval
+- * Thus the condition f this case is
+I) > n + include (w+l)
+= n, too, since the f Tmulae
+of the present case coincide then with those af the previous one. Seccnd: Other-
+wise, i.e. for 2' + lw + 2' > n, the seccnd interval is missing
+= O. nw is then
+chosen so as to exhaust what is left of the interval l, ... , n, i.e. nw = n -
+Thus the condition for this case is 2' + lw + 2' > n (and, of c mrse, 2 ' + I w). We
+may include 2' + 2' n, too, since the fornmlae of the present case coincide
+then with those of the previous one. These rules can be surrrrEd up as follows:
+(3)
+2.
+2'
+raw z n
+for
+mw -
+for
+for
+2'+lw +2' (2 2'+lw)
+If 2' +1 (w+l) < n, then the (secmdary) induction over w continues to w + l; if
+(w+l) n, then the induction over w s t +S. If the induction over w stops
+with a w > O, then the (prirrnry) induction over v cmtinues to v + l; if the
+induction over w stops with w 0, then the induction over v stops. At any race
+these reshings form the F*rmutation
+If the induction over v stops with
+a certain v. then its S" +1
+is the desired S
+There ranains, finally, the necessity to specify the locations of S"
+, which control the meshing pr cesses that lead from, S • ' to S" +1
+and S" +1
+Hi 1)-1,
+Assume that S • ' occupies the interval of locations from a
+to a
+and S • •+1
+similarly the interval of locations fran a
+to a
+Then the arshing process which corresponds to a piven w arshes the sequences that
++ (2' +lw and frcxn
++2' +lw(p+l) to' a
+occupy the intervals from a
+• (2' + lw to a
+w and places the resulting
+(,+1) +2' +lw(p+l) to a
+4 (2' •lw*n
+serpence into the interval from a
+Ihe reshing process is that one of Problem 14.
+```
+
+<a id="planning-and-coding-130"></a>
+## planning-and-coding-130 — 11.4: sorting, reused routine and explanatory representations (physical page 148; Volume II printed page 58)
+
+Source: [physical PDF page 148](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=148); reading unit `p148`, lines 27–68.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-129](#planning-and-coding-129), [planning-and-coding-131](#planning-and-coding-131)
+
+```text
+-58-
+We distinguish the constants of that problem by bars. The above specifications
+of the locatims that are involved can then be expressed as follows:
+(p+l),
+(4)
+Clearly the interval frun a to a ) + n(p+l ) -l and the interval fran a
+to
+must have no elernents in corrrrnn .
+We need such an a ( ' )
+to a ( v)
+i.e. an interval from a
+for every v for which S" is being formed. It is, however, sufficient to have
+two such intervals which have no elerrents in caTTM)n, say from a to a +n(p+l
+and from b to b We can then let a (v) alternate between the two values
+a and b, i.e. we define
+(5)
+Hence a (O)
+Consequently
+(6)
+= a for v even
+b for v odd
+but =
+S, hence the statenent of Problem 15 requires a
+"Ihs a is the s of Problem 14, and b is any such location such that the interval
+frcyn a to a +n(p+l and the interval from b to b have no elenents in
+connon.
+We want the final S • to occupy the location of the original S, i.e.
+—a for the final v with -S•
+I .e. this v+l shmld
+we want a
+be even. We saw further above, that the induction over v can stop when the
+induction over w stops with wzO, i . e. when 2 n. This v+l rnay odd; let
+us therefore agree to perfomn one nore, seemingly step from v to
+(7)
+Hence this
+integer
+we will tenninate the induction over v when
+n and v+l even, i.e. a
+v is the smallest even with 2 n, i.e. 2k' for the smallest
+with 22k'
+n; i. e. 4 ? n. This neans that
+2 < log .
+```
+
+<a id="planning-and-coding-131"></a>
+## planning-and-coding-131 — 11.4: sorting, reused routine and explanatory representations (physical page 149; Volume II printed page 59)
+
+Source: [physical PDF page 149](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=149); reading unit `p149`, lines 8–63.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-130](#planning-and-coding-130), [planning-and-coding-132](#planning-and-coding-132)
+
+```text
+-59-
+In the coded sequence that we will develop for our problem, the coded
+sequence that solves Problem 14 will occur as a part, as we have already pointed
+out. is the sequence 0-43 in 11.3. We propse to use it and to
+adjust the coded sequence that we are forming accordingly.
+This is to what we did in 10.6 and 10.7 for the 13. a
+and 13. b: niere the coded sequence formed in 10.5 for Problem 12 was used as part
+of the coded sequences of the twos former problers. There is, however, this diffe-
+rence: In 10.6, 10.7 the subsidiary sequence (of Problem 12) was attached to the
+end of the min sequences (of 13. a, b), le nm' the subsidiary sequence
+(of Problem 14) will occur in the interior of the main sequence (of Problem 15)
+indeed it is a part of the inductive step in the double induction over v, w. 'lhe
+Constants of Problem 14 have already been dealt with: ney must be substi tuted
+according to (4) above.
+In assiguing Letters to the various storage areas to be used, it nust
+be just as at the corresponding points in 10.6, 10.7, that Che coded
+sequence that we are now developing is to be used in cmjunction witb (i.e. as
+an extension of) the coded seqtence of II. 3.
+It is therefore again necessary
+to classify the s t a-age areas required by the latter: We have the storage areas
+C-E, which are incorporated in the final enunEration (they are 30-41 of the 0-41
+of 11.1); and A o, Al and B (i.e.
+S + fi (ö+l)-l; + G (ö+l)-l
+and F, , F which will be part of our present A, B (i.e. of
+b they will be a (t) +2' +lw(p+l),...,
+, and b, ... ,
+(2.41 w a
+and +2' +lw(p+l),..
+(01 +nw cf. (4) above).
+lherefore we can, in assigfing Letters to the various storage areas in the present
+coding, disregard those of 11.3.
+A and B be the storage areas corresponding to the intervals frun a
+In this way their positions will be
+to and frun b to
+A l, and where A. i and B.i respond to a+i-l and b+i-l.
+A will store S at the beginning and S• at the end of the procedure. B may be at
+any available place, and we assurre it to be irrelevantly occupied. In the course
+of the procedure A and B are the alternate values of A ( ' ) (for a
+= a and b,
+while s (v)
+i.e. for v even and odd, respectively), and SO )
+is stored at A
+S ('+1) is being forned. All these storages are arranged Like the stcr age of S
+at AO in 11.3.
+Ihe given data of the problem, a, b, n, p, will be stored in• the
+(It will be convenient to store them
+storage area C, with the exception of p.
+A O will also be stored in C.) p is also needed in the
+as b O,
+coded sequence. of 11.3, and it is the only one of the constants of that problem
+which is independent of the induction indices v, w. (Cf. (4) above.) Hence its
+storage in that sequence, at 35 (as (p+l ) 0) is adequate for our present purpose.
+Ihe other constants of that problem on v, w (cf. above), hence their
+locations, 30-34, must be left empty (or, rather, irre levant ly occupied), when
+our present coded sequence begins to operaté, and they mst be appropriately
+substituted by its overation.
+```
+
+<a id="planning-and-coding-132"></a>
+## planning-and-coding-132 — 11.4: sorting, reused routine and explanatory representations (physical page 150; Volume II printed page 60)
+
+Source: [physical PDF page 150](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=150); reading unit `p150`, lines 5–83.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-131](#planning-and-coding-131), [planning-and-coding-133](#planning-and-coding-133)
+
+```text
+-60-
+'lhe induction index v will be stored in D. (It will be convenient to
+, ) along with it.) ne induction
+form (2 l)) , and to store
+index w is part of the expressions which have to be laced at 30 and 32 (GO)
+) hence it
+i.e. by (4) (a ( v) +2 '+lw (.p+l)) and (a
+and (F) o,
+requires no other storage.
+We can now draw the flow diagram, as shovn in Figure 11.2. The actual
+coding obtains fran this quite directly, in one instance (at the beginning of
+box VI) the accumulator is used as storage between two boxes.
+ne static of the boxes I-XIV follcns.
+11,1)
+2
+2
+3
+4
+5
+6
+(to
+2
+3
+4
+(to 111, 1)
+111,1
+2
+3
+111,4
+5
+IV,I
+2
+3
+4
+5
+IV',6
+7
+35
+30
+32
+30
+(n(p+l))
+0.2
+31
+30
+33
+34
+s
+s
+s
+h
+s
+s
+Ac
+Ac
+Ac
+Ac
+30
+Ac
+32
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+31
+Ac
+33
+Ac
+34
+(p+l)o
+(2'+1w (p+l))
+((2'+lw + 2') (p*l))
+((2'+1w
++n(p+l))
+( (n-2'+1w) (p+l))
+( (n-2'+1w) (p+l))
+0
+```
+
+<a id="planning-and-coding-133"></a>
+## planning-and-coding-133 — 11.4: sorting, reused routine and explanatory representations (physical page 151; Volume II printed page 61)
+
+Source: [physical PDF page 151](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=151); reading unit `p151`, lines 6–35.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-132](#planning-and-coding-132), [planning-and-coding-134](#planning-and-coding-134)
+
+```text
+-61.
+1
+3
+2
+3
+3
+3
+10
+to 30
+A.
+30 (Æ"'.IX
+32
+30(A .Z
+32
+8
+e
+11
+to 33
+8
+8
+8
+b e m 14 )
+7
+33
+ZV(p+/) Co 39 + Co 3+
+7
+Note
+11.3.
+v,
+FIGURE 11.2
+```
+
+<a id="planning-and-coding-134"></a>
+## planning-and-coding-134 — 11.4: sorting, reused routine and explanatory representations (physical page 152; Volume II printed page 62)
+
+Source: [physical PDF page 152](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=152); reading unit `p152`, lines 26–64.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-133](#planning-and-coding-133), [planning-and-coding-135](#planning-and-coding-135)
+
+```text
+VI,I
+VII,I
+(to VIII, 1)
+VII, 1
+34
+(to rx, 1)
+33
+30
+31
+(to VI, 1)
+0-29
+(a-a
+(a-a
+33
+31
+Ac
+34
+Ac
+Ac
+Ac
+Ac
+Ac
++ (2'+lw
+((2'+l(w+1)-
+( (n-2'+lw)
+(at,) +2 •+lw(p+l))
+( 2'+1w(p+l))
+VIII,I
+IX
+XII,I
+34
+(Problem 14:
+30
+c.3
+Xl,l
+(to XIII,I)
+(to xrv,l)
+c.i
+(to xrv, 1)
+```
+
+<a id="planning-and-coding-135"></a>
+## planning-and-coding-135 — 11.4: sorting, reused routine and explanatory representations (physical page 153; Volume II printed page 63)
+
+Source: [physical PDF page 153](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=153); reading unit `p153`, lines 4–85.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-134](#planning-and-coding-134), [planning-and-coding-136](#planning-and-coding-136)
+
+```text
+The ordering of the boxes is 1, 11, 111, V, VI, VIII, IX, X, XIII;
+M, XIV; W; VII; XII, and rx, rx, XIV, 111, 11 rust also be the iædiate
+successors of IV, VII, XII, XIII, XIV, respectively. In addition, LX cannot
+be placed irmediately after VIII, since IX,I is O but IX must nevertheless
+be the irrrrediate successor of VIII. All this necessitates the extra orders
+XIII,I
+30
+2
+3
+4
+30
+5
+32
+6
+7
+8
+32
+(to
+111,1)
+XIV,I
+2
+3
+4
+D.2
+5
+s.
+6
+7
+8
+s.
+9
+(to
+11, 1)
+IV,8
+h
+h
+s
+h
+h
+s
+s
+-63-
+Ac
+Ac
+30
+Ac
+Ac
+32
+Ac
+Ac
+Ac
+(a(v+l) (p+l))
+(2'+1(p+1))
+VII,6
+VIII,3
+XII,6
+XIII,9
+xn', 10
+0-41
+IX,I
+IX,I
+XIV,I
+111,1
+11,1
+c
+c
+Finally in order that X be the itmediate successor of IX, the e of
+(in 26) nwst be equal to X, l.
+We now assign C. 1-4, D. 1-3, s. I their actual values, pair the 76
+orders 1, 1-6, 11, 1-4, 111, 1-5, rv,1-8, V, 1-5, VI,1-4, VII ,1-6, VIII, 1-3, X,1-6.
+X1,1-4, MI, 1-6, XIII,1-9, XN, 1-10 to 38 words, and then assign - XIV,IO
+their actual values. (IX is cynitted, since it is contained in 0-41. ) We wish
+to do this as a continuation of the code of 11.3. We will therefore begin with
+the number 42. Furthermore the contents of D. 1-3, s. I are irrelevant, like
+those of 37-41 there. We saw, in addition, that 30-35 (gith the exceptions of
+30.32) are also irrelevant. rmst, hcwever, make this reservation: 30-41
+are needed whi le box IX and during this pericxi D. 1-3 are relevantly
+s. I is relevantly occupied only while boxes X II, XIV
+occupied, but not s. l.
+operate, and during this period 30-35 and 37-41 are irrelevant. Hence only
+s. I can be made to coincide with one of these, say wi 41. Sunning all these
+things up, we obtain the following table:
+```
+
+<a id="planning-and-coding-136"></a>
+## planning-and-coding-136 — 11.4: sorting, reused routine and explanatory representations (physical page 154; Volume II printed page 64)
+
+Source: [physical PDF page 154](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=154); reading unit `p154`, lines 4–179.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Worked examples applying the external flow/storage/assertion and parallel explanatory-column method. Mathematical assumptions, notation changes, code variants and machine details are retained as the context of the representations, not as separate advice about inline comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment, arrows and diagram topology. Consult the original PDF for the actual representation. Mathematical correctness was not independently proved.
+
+Related: [planning-and-coding-135](#planning-and-coding-135), [planning-and-coding-137](#planning-and-coding-137)
+
+```text
+42
+44
+47
+49
+51
+52
+53
+54
+55
+56
+42 -441
+VIII,1-3
+w, 1-8
+45
+VII, 1-6
+II, 1-4
+47 -49
+111, 1-5
+1-6
+491_511
+Xl, 1-4
+63 -64'
+v,1-5
+52
+VI, 1-4
+xw,1-10
+63 G,
+30 h-
+85 h,
+84 h-
+oc
+85 h-
+47 c
+41 -M
+41 s
+65 c
+82 h-
+77 cc
+33 s
+84 s
+85 h-
+45 c
+85 h
+31 s
+30 h-
+X, 1-6
+Kill, 1-9
+coded sequence;
+Now we
+35
+80
+81
+85
+86
+84
+h,
+70 cc.
+84
+82
+h-,
+84
+85 h-,
+obtain this
+84 s
+85 s
+86 s
+30 s
+32 s
+84
+30
+31 s
+84 h
+74
+34 s
+30
+84 h
+54
+-55
+55 _ 58
+65
+82 h
+30
+84 h
+32
+84 h
+84 h
+84 h
+85
+86
+41
+xn,
+c. 1-4
+D. 1-3
+s.
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+84
+85
+86
+33
+s,
+34 s
+34 s,
+80
+70 —73'
+74
+77
+80 -83
+84 -86
+41
+83
+86 h
+57
+58
+59
+61
+62
+63
+64
+65
+67
+69
+70
+71
+84
+84
+h,
+30 s
+84 h
+32 s ,
+84
+84
+41 s
+85 s,
+86 s
+82
+For the sake of completeness, we
+contains all changes and all substitutable
+and 30-41:
+26
+30
+31
+32
+55 ,
+10 cc'
+33
+34
+35
+36
+restate that part of 0-41
+constants of the problem.
+39
+40
+41
+of 11.3, which
+Ibis is 26
+VII: 225 g,
+375 u.
+The durations may be estimated as follows:
+1: 225 g, 11: 150B, 111: 200 u, IV: 300 u, V: 200 g, VI:
+VIII: 125 g, X: 225 XI: 150 u, 225 g, XIII: 350 U,
+[X: Ihe precise estimate at the end of 11.3 is
+((575p 1,125) (nw + 575) u.
+Total: put 2 < log nS , n = 2 < 'log - (2 log
+- . Then the total is
+150 u,
+XIV:
+O or l,
+```
+
+<a id="planning-and-coding-137"></a>
+## planning-and-coding-137 — 11.4: sorting duration derivation completing the worked example (physical page 155; Volume II printed page 65)
+
+Source: [physical PDF page 155](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=155); reading unit `p155`, lines 20–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume II. Completion of the sorting example.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-136](#planning-and-coding-136)
+
+```text
+-65-
+(V •(VIC)
+or vlll)))
+Xlv•
+(XC' or XIID
+111
+1 • 11
+is majorized by
+(225 + 'i 150 +
+5 = - .06
+(IVO or
++1X+X+
+• ) "XII (+1)
+200 +200 +150 +125 p + 1, 125) x
++ 100 -
+x (n 575 + 225 + 350
+200 375
+- 375 + 225 (fi+l)) U.
+Since (nw + ) = n, l, this is majorized hy
+(225 + 'i
+((575 p
+1,125) n + 425} 75) g.
+Since S ( n + 1) n + ü, this is majorized by
+((575 p + 1,125) • 1,825 n + 2,250 v + 300) g.
+We can write this in this form:
+((575p• 1,200 (1 5)) n i) (.6 (p +2 (1 + 6)) n m,
+where
+= •2 Z 4 log n
+1 52
+1 83
+25
+is a snall and slowly changing quantity: For n 100; l, 000; IO, 000
+6
+(the last value is, of course, inccnpatible with the memry capacities which
+appear to be practical in the near future) we have = 8; IO; 14 and hence
+5 . 15; 09; .05, respectively.
+At mst. once anx)ng the w in
+We disregard this effect for IV, which
+represents the shorter alternative. replace VII, XI by their alternatives,
+VIII, XIII, respectively, inside the . 'Ihis necessitates the corrections
+(Cf. the
+VII-VIII = 100 g, XI-XIII -200 u, respectively, outside the
+third and secmd terms from the right in the brackets ( .
+of the next forrnula. )
+Missing once annng the v in . We may therefore subtract XIV
+375 u as
+a correction outside the
+```
+
+<a id="planning-and-coding-138"></a>
+## planning-and-coding-138 — 12.1-12.5: composing, naming and preparing reusable routines (physical page 165; Volume III printed page 1)
+
+Source: [physical PDF page 165](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=165); reading unit `p165`, lines 4–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-139](#planning-and-coding-139), [planning-and-coding-025](#planning-and-coding-025)
+
+```text
+12.0 COMBINING ROUTINES
+12. I Each one of the problems that we have coded in the past
+Quapters 8 -l I had the following properties: ne problem was cmplete in the
+sense, that it led fro-n certain unambiguously stated assumptions to a clearly
+It was incanplete, htNever, in another sense:
+defined result.
+It was certain
+in cases and very likely in others, that the problem in question in
+actual practice not occur by itself, as an isolated entity, but rather as one
+of the constituents of a larger and rmre cunplex problem. It is, of course,
+justified and even necessary a didactical point of view, to treat such
+partial problerns, problem fra5nents especially in the earlier stages of the
+instructicm in the use of a code, or of coding per se. As the discussion ad-
+vances, however, it increasingly desirable to turn one' s attention
+more and more fran the fragments, the constituent parts, to the whole, In mar
+present discussion, in particular, we have now reached a point where this change
+of emphasis is indicated, and we proceed therefore accordingly.
+lhere are, in principle, two ways to effect this shift of emphasis from
+the parts to the whole.
+first way is to utilize the experience gained in the coding of
+simpler (partial) probleffks when one is ccHing mre ccxnplicated (rnore cmplete)
+problems, but nevertheless to code all the parts of the complicated problem
+explicitly, even if equivalent simple problems have been coded before.
+The second way is to code simple (partial) problems first, irrespective
+of the contexts (more complete problems) in which they may occur subsecpently, and
+then to insert these coded sequences as wholes, when a canplicated problem occurs
+of which they are parts.
+We should i I lustrate both procedures with examples: Ibis is not easy
+for the first one, its use is so •frequent that it is difficult to circum-
+scribe i ts occurrences with any precision. Thus, if we had coded the calculation
+of the general third order polynmial, then any subsequent calculation involving
+(as a part) a third order polynomial, would offer such an example. Also, in view
+of Problem l, any calculation involving a quotient of a second order and a first
+order polynanial would be an example. Problem 3, where the whole of Problem I is
+recoded as a part of the new ccxied sequence (but not Problem 2, where this is not
+done) is a specific instance.
+Examples of the second procedure are more clearly identifiable.
+Problem 12 was used in this sense as a part of Problem 13. a and of Problem 13. b,
+and also, after rndifications, as a part of Problem 13. c. Problem 14 was
+In addition it is fairly clear that all of the
+used as a part of Problem 15.
+Problems 4-11 and 13-15 nmst be intended as parts of more complicated problerns,
+and that it would be very convenient not to have to recode any one of them when
+it is to be used as part of another problem, but to be able to use it more or
+less unchanged, as a single entity.
+```
+
+<a id="planning-and-coding-139"></a>
+## planning-and-coding-139 — 12.1-12.5: composing, naming and preparing reusable routines (physical page 166; Volume III printed page 2)
+
+Source: [physical PDF page 166](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=166); reading unit `p166`, lines 4–53.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-138](#planning-and-coding-138), [planning-and-coding-140](#planning-and-coding-140), [planning-and-coding-159](#planning-and-coding-159)
+
+```text
+-2-
+12.2 last remark defines the objective of this chapter'. We wish
+to develop here arthods that will permit us to use the coded sequence of a problem,
+when that problem occurs as part of a rrnre canplicated one, as a single entity, as
+a whole, and avoid the need for recoding it each time when it occurs as a part in
+a new context, i.e. in a new problem.
+Ihe importance of being able to do this is very great. It is likely to
+have a decisive influence on the ease and the efficiency with which a cornputing
+autamt of the type that we contemplate will be operable. possibility should,
+more than anything else, remove a bottleneck at the preparing, setting up, and
+cofing of problems, which might otherwise be quite dangerous.
+nlis principle mist, of course, be applied with certain comcm sense
+limitations: niere will be whose coded sequences are so simple and so
+short, that it is easier to reccxåe them each tire when they occur as parts of
+another problem, than to substi tute them as single enti ties
+i.e. where the work
+of recoding the whole sequence is not sigui ficantly more than the work necessi tated
+by the preparations and adjustnents that are required when the sequence is substi-
+tuted as a single entity. (These and adjustrænts constitute one of
+the main topics of this chapter, cf. 12 . 3-12. 5.) Thus the examples of the first
+procedure discussed in 12.1 above are instances of problens that are nsimplell and
+"short" in this sense.
+For problerns of rædium or higher canplexity, hcxever, the principle
+applies.
+It is not easy narre a precise limit for the cmplexity, say in
+terms of the numker of words that make up the coded sequence of the problem in
+question. Indeed, this Ity•.er limit cannot fail to depend on the precise character-
+istics of the canputing device under and quite particularly on the
+properties of i ts inmlt organ. Also, it can hardly be viewed as a quite precisely
+defined quantity under any conditions. As far as we can tell at this mment, it
+is probably of the order of 15-20 words for a device of the type that we are
+contemplating (cf. the fourth remark in 12.11).
+These things being we may state that the pcssibility of
+substituting the coded sequence of a simple (partial) problem as a single entity,
+a whole, into that one of a more camplicated (more cmplete) problem, is of basic
+importance for the ease and efficiency of running an automatic, high
+ccrnputing establishnent in the way that seers reasonable to us. We are therefore
+going to investigate the nethuås by which this can be duue.
+12.3 We call the coded sequence of a problem a routine, and which
+is forned with the purpose of possible substitution into other routines, a
+subroutine. As nentioned above, we envisage that a properly organized autormtic,
+high speed establishnent will include an extensive collection of such subroutines,
+of lengths ranging fran about 15-20 words uv»ards. I.e. a "library" of records in
+the form of the external "Edium, presumably magnetic wire or tavk. Ihe
+character of the which can thus be disposed of in advance by of such
+subroutines will vary over a very wide spctrum indeed a much wider one than is
+now generally appreciated. Sone instances of this will appear in the subsequent
+Qapters 13 and 14. Ihe discussions in those chapters will, in particular, give a
+mre specific idea of what the possibilities are and what airs possess, in our
+opinim, the proper proportions.
+```
+
+<a id="planning-and-coding-140"></a>
+## planning-and-coding-140 — 12.1-12.5: composing, naming and preparing reusable routines (physical page 167; Volume III printed page 3)
+
+Source: [physical PDF page 167](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=167); reading unit `p167`, lines 3–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-139](#planning-and-coding-139), [planning-and-coding-141](#planning-and-coding-141)
+
+```text
+Ikt us now see what the requirerænts and the difficulties of a general
+technique are, if this technique is to adequate to effect the substitution of
+subroutines into routines in the typical situations
+12 . 4 The discussion of the precise way in which subroutines can be
+used, i.e. substituted into other routines, centers around the changes which have
+to be applied to a subroutine when it is used as a substituent.
+These changes can classi fied as follows:
+characteristics of the subroutine change fran one substi tution of
+the subroutine (into a certain routine) to another one (into another routine), but
+they remain fixed throughout all LEes of the subroutine within the sarr substitu-
+tion (i.e. in connection with one, fixed routine). Ibese are the changes of the
+first kind. Other characteristics of the subroutines may even vary in the course
+of the successive uses of the subroutine wi thin the san-E substitution. These are
+the changes of the second kind.
+ntus the order position at which a subroutine begins is constant through-
+out one substitution (i.e. routine, or, equivalently, one larger problem of which
+the subroutine's problem is part), but it may have to vary from one such substitution
+or problem to another.
+Ihe first assertion is obviously in accord with what will be
+considered norrrnl usage, the seccnd assertion, however, needs Sa-re further elaboration.
+If a given subroutine could only be used with its beginning at one parti-
+cular position in the rmmory, which rmst be chosen in advance of all its applications,
+then i ts usefulness would be seriously limi Led. In particular, the use of several
+subroutines within one routine would be subject to very severe limitations. Indeed,
+two subroutines could only be used together, if the preassigned regions that they
+occupy in the memory do not . intersect.
+In any extensive Illibraryll of subroutines
+it would be impossible to observe this for all combinations of subroutines simul-
+taneous ly. the other hand, it will be hard to predict with what other subroutines
+it guy be desirable to ccnbine a given subroutine in sorne fu ture problem. Further-
+rrnre, it will Frobably be very important tio develop an extensive Illibraryl' of sub-
+routines, and to be able to use it with great freedom. All solutions of this dilerma
+that are based on fixed positioning of subroutines are likely to be c lurrsy and of
+insufficient flexibility.
+Hence we should postulate the variability of the ini tial a-der position
+of a subroutine from one substi tution to another. Gnsequently this is an example
+of a change of the first kind. This requires corresponding adjustnrnts of all
+references rnade in orders of the subroutine to definite (order or storage) positions
+Wi thin the subroutine. as they occur in the final form (the final enumeration) of its
+coding. Ihese adjustments are, therefore, changes of the first kind.
+parameters or free variables of the problem that is represented by
+the subroutine (cf. 7.5) will, on the other hand, usually change from one use of
+the subroutine (within the same substi tution, i.e. the same main routine or problem)
+to another. •ne sarre is true for the order posi tion in the main routine, frun which
+the control has to continue after the completion (of each particular use) of the
+subroutine. Since the subroutine sends the control after i ts completion to e (this
+```
+
+<a id="planning-and-coding-141"></a>
+## planning-and-coding-141 — 12.1-12.5: composing, naming and preparing reusable routines (physical page 168; Volume III printed page 4)
+
+Source: [physical PDF page 168](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=168); reading unit `p168`, lines 4–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-140](#planning-and-coding-140), [planning-and-coding-142](#planning-and-coding-142)
+
+```text
+is the notation that we have used in all our up to now, and we propose to
+continue using it in all subsequent codings), this observation can also be put as
+follows: Ihe actual value of e will usually change from one use of the subroutine
+to another.
+These remarks imply, that the paraneters of the subroutines problem, as
+well as the actual value of its e, will usually undergo changes of the second kind.
+12.5 All the changes that the use of a subroutine in a given substi-
+tution requires can be effected by the routine into which it is being substituted,
+For changes of
+i.e. by including apprcvriate coded instructions into that routine.
+the second kind this is the only possible way. For changes of the first kind, how-
+ever, it is not necessary to put this addi tional load on the main routine.
+In this
+case the changes can be effected as preparatory steps, kEfore the main routine it-
+self is set in motion. Such preparations might be effected outside the machine
+(possibly by manual procedures, and possibly by more or less automatic, special,
+subsidiary equigrent).
+It seems, however, much preferable to let the machine itself
+do it by reans of an extra routine, which we call the preparatory routine. We will
+speak accordingly of an internal preparation of subroutines, in contradistinction
+to the first rwntioned outside process, the external preparation of subroutines.
+We have no doubt that the internal preparation is preferable to the external one
+in all but the very simplest cases.
+Thus changes of the first kind are to be effected by preparatory routines,
+which will be discussed further below. Ganges of the second kind, as we have
+pointed out already, have to be effected by the main routine itself (into which the
+subroutine is being substituted): &fore each use that the routine makes of the
+subroutine, it must appropriately substitute the qunntities that undergo changes
+of the second kind (the parameters of the subroutines problem and the actual value
+of its e, cf. the discussion in 12.4), and then send the control to the beginning
+of the subroutine (usually by an unconditional transfer order).
+It may happen that
+some of these quantities remain unchanged throughout a sequence of successive uses
+of the subroutine.
+In this case the corresponding substitutions need, of course,
+be effected once, jointly for the entire sequence. If this sequence includes all
+uses of the subroutine wi thin the routine, then the substitutions in question need
+only be performed once in the entire routine, at any sufficiently early point in it.
+In this last case we are, of ccmrse, really dealing with changes of the first kind,
+and the quantities in question could be dealt with outside the main routine, by
+preparatory routine. It is, however, sorretirrps preferable to view this case as
+an extrenE, degenerate form of a change of the secmd kind, or at any rate to
+treat it in that way.
+"Olis discussion should, for the tinw being, suffice to clarify the
+principles of the classification of subroutine changes, and of the effect which
+they (specifically:
+the changes of the second kind) have on the arrangements in
+the main routine ( into which the subroutine is being substituted). We now pass
+to the discussion of the preparatory routine, which effects the essential changes
+of the fi rst kind: Ihe adjustrents that are required in the subroutine by the
+variability of its initial order position.
+```
+
+<a id="planning-and-coding-142"></a>
+## planning-and-coding-142 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 169; Volume III printed page 5)
+
+Source: [physical PDF page 169](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=169); reading unit `p169`, lines 5–54.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-141](#planning-and-coding-141), [planning-and-coding-143](#planning-and-coding-143)
+
+```text
+-5-
+12.6 Assurre that a gi ven subroutine has been coded under the assurnp-
+Lion that it will at the order position a. (I.e. at the le ft-hand order of
+the word a.
+o simplify matters, we disregard the that it nay begin
+at the right-hand order of the word a.
+In our past ccxåings we had usually a O,
+excepting Problem 2 where a ¯
+100, Problens 13, a-c where a
+52, and Problem 15
+where a 42. ) 'lhe orders that are contained in this subroutine can be classified
+as follows:
+First: •nue order contains no reference to a position x. It is then
+one of the orders IO, 20, 21 of Table II.
+Second: order contains a reference to a trprrx»ry position x, but the
+place of this x is irrelevantly occupied in the actual code of the subroutine.
+In
+this case the subroutine itself must substitute appropriately for x, before the
+control gets to the order in question. I.e. earlier part of the subroutine
+must form the substitution value for x, and substitute it. into the order.
+Third: ne order contains a reference to a memory position x, the place
+of this x is relevantly occupied in the actual code of the subroutine, and this
+actual value of x corresponds to a posi Lion not in the subroutine.
+Fourth: Sarre as the third case, except that the actual value of x
+corresponds to a rrerory posi tion in the subroutine.
+Fifth: of the preceding cases, but at s«re M' int the subroutine
+treats the order or its x as if it were irrelevantly occupied, i.e. it substi tutes
+there else. -
+Assurre next, that the subroutine, although coded as if it Ergan at a, is
+actually to be used beginning at ä. Ibis necessi Cates certain changes, which are
+just the ones that the preparatory routine has to effect, in the sense of the con-
+cluding remark of 12.5. (hr above classification of the orders of the subroutine
+permits us to give nc»• an exact listing of these changes.
+Orders of the first and of the third kind require clearly no change.
+Ihe sane is true of the orders Of the second kind if they produce x's which
+correspond to rremry positions not in the subroutine. And even if x 's are
+produced which correspond to posi tiops in the subroutine, no change is
+necessary if the following rule has been observed in coding the subroutine:
+a was used explicitly in forming the x that corresponds to posi cions in the
+subroutine, and it was stored not as the actual quantity a, but as a paratreter
+of the subroutine's problem. If it is then understood, that this paranEter should
+have the value ä, then it will adequately treated as a paraneter in the sense
+of 12.5.
+Indeed, it represents that degenerate form of a change of the seccvld
+kind, which can also be viewed as a change of the first kind, as discussed in 12.5.
+Thus it might be treated by a special step in the preparatory routine, but we
+prefer to assurre, in order to simplify the present discussion, that it is handled
+as a paramter (of the subroutine) by Che routine.
+In this way the orders
+of the second kind require no change either (by the preparatory routine
+```
+
+<a id="planning-and-coding-143"></a>
+## planning-and-coding-143 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 170; Volume III printed page 6)
+
+Source: [physical PDF page 170](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=170); reading unit `p170`, lines 6–47.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-142](#planning-and-coding-142), [planning-and-coding-144](#planning-and-coding-144)
+
+```text
+-6-
+Orders of the fourth kind clearly require increasing their x by - a.
+Orders of the fifth kind behave like a combination of an order of one of
+the four first kinds with an order of the second kind. Since all of these orders
+are covered by the that errErged from our discussion of the four first kinds
+of orders, it ensues that the orders of the fifth kind are automtically covered, too,
+by those rteasures.
+nus the preparatory routine has precisely one task: To add ä - a to the
+x of every order of the fcmrth kind in the subroutine.
+12.7 Ihe next question is this : By what cri teria can the preparatory
+routine recognize the orders of the fourth kind in the subroutine?
+Let be the length of the subroutine. By this we the number of
+words, both orders and storage, that make it up. We include in this count all
+those words which have to be nuved together when the f inal code (final enumeration)
+of the subroutine is moved (i.e. when its initial order position is moved fran a
+to ä), and no others. Ihe count is, of course, made on the final enuneration.
+In this sense a word counts fully, even if it contains a dummy order (e.g. 14 in
+Problem 6, and 6 in Problem IO or 74, 91 in Problem 13. b). the other hand
+storage pcxsi tions which are being referred to, but which are suppcrsed to be parts
+of other routine, already in the rnachine (i.e. of the Min routine, or of an-
+other subroutine) do not count (e.g. the storage area A in Problem 3 or the storage
+area A in Problem IO).
+or an order of the fourth kind x must have one of the values
+-l, i.e. it must fulfill the condition
+(1)
+For an order of the third kind x will not fulfill this condition. For orders of
+the first and of the second kind the place of x is inessentially occupied.
+Concerning its relation to condi tion (l) we can make the two follcwing remarks:
+First: We can stipulate, that in a orders where the ition of x is
+inessentially occupied, x should actually be put in with a value x that violates
+(l). This is a perfectly possible convention. The simplest ways to carry it
+into effect are these:
+let x always have the smal lest value or always have the largest value
+that is cunpatible with its 12-digit character. the latter, cf.
+section 6.2.) I.e. x
+= O or x
+= L-l, where L-l is the largest 12-digit integer:
+L 212 4,096. nen all subroutines must fulfill a O or a respectively
+(in order that (l) be violated).
+= O in mst of our codes,
+These rules are easy to observe. We chose a
+hence we might prefer the second rule, but this is a quite unimportant preference.
+```
+
+<a id="planning-and-coding-144"></a>
+## planning-and-coding-144 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 171; Volume III printed page 7)
+
+Source: [physical PDF page 171](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=171); reading unit `p171`, lines 7–57.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-143](#planning-and-coding-143), [planning-and-coding-145](#planning-and-coding-145)
+
+```text
+Second: If an order of the first or of the second kind has an x which
+fulfills (l), and the order is thereupon mistakenly taken (by the preparatory
+routine) for one of the fourth kind, and its x is increased by ä
+- a, this need
+not matter either. Indeed: Ihe place x is i rrelevantly occupied, hence changes
+which take place there before the subroutine >egins to operate do not matter.
+There is, however, one vy»ssible canplication: Adding -
+a to this (inessential)
+x my produce a carry beyond the 12 digits that are assigned to x.
+these 12 digits cf. above. and also orders 18, 19 of Table II and the second
+remark anong the Introductory Remarks to Chapter IO. •me carry in question will
+occur if a > O and x - a), or if -
+a O and x <
+cf. above.) Such a carry affects the other digits of the order, and thereby modi-
+fies its neaning in an undesirable way. This complication can be averted by
+special measures that paralyze carries of the Cype in question, but we will not
+discuss this here. No precautions are needed, if we see to i t that no such
+(I.e. if we observe -(ä -a) x - (ä -a) for the inessential
+carries occur.
+x, cf. above. )
+In view of these observations we may accept (l) as the criterium
+defining the orders of the fourth kind. We will therefore proceed on this basis.
+12.8
+We have to derive the preparatory routines which are needed to
+make subroutines effective. For didactical reasons, we begin with a preparatory
+routine which can only be used in conjunction with a single (but arbitrary) sub-
+routine. Having derived such a single subrout ine preparatory rout ine, we can
+then pass to the rrx»re general case of a preparatory routine which can be used in
+conjunction with any number of subroutines. This is a general, or multiple
+subroutine preparatory routine. Ihe point in all of this is, of course, that both
+kinds of preparatory routines need only be coded once and in advance they can
+then be used in conjunction with arbi trary subroutines.
+We state now the problem of a single subroutine preparatory routine.
+niis includes a description of the subroutine, in which we that the sub-
+routine has been coded in confomity with the (not a priori necessary) conventions
+that we found convenient to observe in our codings in these reM)rts.
+It does not
+seem necessary to discuss at this place possible deviations frcxn these conventions,
+and the rather simple ways of dealing wich them.
+PROBLEM 16.
+A subroutine cmsisting of consecutive words, of which the k first
+ones are ( two) order words, is given. (Concerning the definition of the length of
+a subroutine, cf. the beginning of 12.7. subroutine under consideration may
+also make use of stored quantities, or of avai lable storage capacity, outside this
+sequence of words
+or rather of the J -k last ones amng them. We need not
+pay any attention to such outside positions in this problem.) This subroutine is
+cded as i f it Ekgan at the position a. Actually, however, it is stored
+It is desired to modify it so that
+in the rrwrrx»ry, beginning at the position ä.
+its coding conform with its actual position in the mermry. - -
+```
+
+<a id="planning-and-coding-145"></a>
+## planning-and-coding-145 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 172; Volume III printed page 8)
+
+Source: [physical PDF page 172](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=172); reading unit `p172`, lines 22–66.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-144](#planning-and-coding-144), [planning-and-coding-146](#planning-and-coding-146)
+
+```text
+-8-
+(hr task consists in scanning the words frcxn to + k - l, to inspect
+in each one of these words the two orders that it contains, to decide for each
+order whether its x fulfills the condition (l) of 12.7; and in that (and c*lly in
+that) case increase chis x by k ä -
+Let the rremry positicm u be occupied by the word w . w is then an
+aggregate of 40 binary digits:
+w (40) ) .
+nie two orders of which it consists are the two 20 digit aggregates
+(w (21),
++ 2-39K
+the two x in these
+(cf. orders 18, 19
+Reading
+orders are the two 12 digit aggregates
+{w (9), ..., w (20)), (29),
+of Table II).
+11
+w , w as binary numbers with the binary point at the extreme
+left (and an extra sign digit O), the condi tion (l) of 12.7 beccnes
+(1)
+and
+(2)
+2-12
+a $ WI < 2-12 (a + X),
+< 2-12 (a n.
+Reading w as we ordinarily read binary aggregates, i.e. as a binary number with
+the binary between the first and second digits from the left (the first
+digit being the sign digit) we
+(2) holds, we nmst increase w
+can now express our task as follows: If (l) or
+by 2- or 2 - 39k, respectively. I.e.
++2-1
+v.
+(3)
+(4)
+Note ,
+if (l) holds,
+othergise ,
+if (2) holds,
+otherwise.
+that we may replace
+2-12
+for its use in (4), by
+12 (a +1) ,
+```
+
+<a id="planning-and-coding-146"></a>
+## planning-and-coding-146 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 173; Volume III printed page 9)
+
+Source: [physical PDF page 173](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=173); reading unit `p173`, lines 10–59.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-145](#planning-and-coding-145), [planning-and-coding-147](#planning-and-coding-147), [planning-and-coding-148](#planning-and-coding-148)
+
+```text
+_9_
+where
+( wt(29), .
+, 11
+since w and w' have by (3) the same digits with the positional values 2-20
+i.e. with the numbers 21,
+40.
+words w with which we have to deal are in the interval of rrærmry
+I (i.e. a, . , ä+k - l, cf. above). [et this
+locations a + k, ,
+a + x + k - l, so
+be the storage area O, we will index it witha u a + x, ,
+that O. u corresponds to u, and stores . u has the character of an induction
+index.
+Further storage capaci ties are required as follows: u (as uo) in A, the
+w under consideration (and wt after it) in B, the given data of the roblem,
+a, y, k, x, in C. (It will be convenient to store them as 2-19 a, 2-1
+1 9k. these quantities cf. also further below.) Stora will also
+2.12 2-32)
+have to be g•ovided for various other fixed quantities I
+these too will be accomodated in C.
+We can now draw the flow diagram, as shc»n in Figure 12.1.
+In coding
+it, we will encounter deviations and cornplications which should be ccmnented
+a, I, k, x Mist occasionally be manipulated along the lines discussed
+in connection with the coding of Problem 13. a. in the case of k transitions
+to 2-39K and Co KO occur, and these would be rendered more di fficult if we had to
+allow for the possibility v. < O. In order to avoid this rather irrelevant canpli-
+cation, we
+_ 2-19
+(5)
+i.e. ä?a.
+This has the further consequence, that the di fficulties referred to in 12.7 can
+be avoided by gi ving every irraevant x the value O (because of the second
+rernark in 12.7) or the value L -l (because of the first remark in 12.7). We
+= O, i.e. by coding every
+also note this: (5) can be secured by putting all a
+subroutine as if it at O, but we will not insist here that this convention
+be made.
+can be tested by
+condi tions (l),
+testing the signs of the
+quan tl ties
+- 2-12
+_ 2 12 a, w, 11 _ +1)
+or, equivalently. the signs of the quanti ties
+- 2-19
+2-19(a +1),
+a,
+2-7 will
+```
+
+<a id="planning-and-coding-147"></a>
+## planning-and-coding-147 — 12.6-12.8: subroutine assumptions, descriptive conventions and diagram/code deviations (physical page 174; Volume III printed page 10)
+
+Source: [physical PDF page 174](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=174); reading unit `p174`, lines 7–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-146](#planning-and-coding-146), [planning-and-coding-148](#planning-and-coding-148)
+
+```text
+It is easily seen that replacing 2-19 a,
+-10-
+2-19 (a +1) by ao
+vi tiates these
+sign-cri terla,
+does not have
+but replacing
+wlu {w
+. , (20)', w (21),
+It is convenient to use WI + E in place of WI .
+this effect.
+quantities WI + e and w 'II
+must be read as binary nurnbers with
+the binary point at the extrare left, with an extra sign digit O. Indicating
+this digit, too, we
+(6)
+With the same notations
+(7)
+have
+, w (40) ) ,
+In order to get the WI + E
+b/ 2-32 u
+to mltiply w , w'
+{ o, w'(29), .
+2212
+of (6) from the w , wt of (7), it seerns sirrplest
+respecti vely, and to pick up WI + E in the
+register (cf. order II of Table II). There is, however, one minor cornplication
+t II of but the
+at this point; Ihe register conta ins not thew + E , w
+aggregates
+, w (40)
+w'(40) l.
+{ w'(29), w'(29), w'(30), .
+simplest way to get from to (6) is to sense the sign of each quantity of
+(6), and to add -l to it if it proves to be negative (i.e. if the sign digit is l).
+We will do this; it requires an additional conditional transfer in connection wi th
+each one of the two boxes Ill and VI. For this reason two boxes 111.1 and VI. l,
+not shown in the flow diagram, will appear in our coding.
+To conclude, it is convenient to change the posi tion of IX sorræwhat
+(it follows upon VIII and ahsorhs part of it) and to absorb XI into X (it is
+replaced by X, 9).
+```
+
+<a id="planning-and-coding-148"></a>
+## planning-and-coding-148 — 12.8: preparatory routine flow diagram and explanatory code (physical page 175; Volume III printed page 11)
+
+Source: [physical PDF page 175](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=175); reading unit `p175`, lines 3–15.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-147](#planning-and-coding-147), [planning-and-coding-149](#planning-and-coding-149), [planning-and-coding-146](#planning-and-coding-146)
+
+```text
+-11-
+1
+J
+WY fop u
+w„
+4
+4
+4
+4
+6
+Wv foe a•kS V <
+otAerw;se
+FIGURE IZ.I
+```
+
+<a id="planning-and-coding-149"></a>
+## planning-and-coding-149 — 12.8: preparatory routine flow diagram and explanatory code (physical page 176; Volume III printed page 12)
+
+Source: [physical PDF page 176](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=176); reading unit `p176`, lines 4–36.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-148](#planning-and-coding-148), [planning-and-coding-150](#planning-and-coding-150)
+
+```text
+-12-
+static of the knxes I-Xl follows:
+s.
+(to 11, 1)
+2-19
+2-19 (a+k)
+2- 39(a+K)
+(a+x)o
+11,1
+2-32
+111, 1
+111,5
+111.1, 1)
+2-7
+2-7
+111.1, 1
+11,3
+(to 111,1)
+11,3
+111.1,
+Sp
+(10), ...,w (40)) =
+(to VI, l)
+2-191
+IV,I
+VI,I
+(to V, l)
+(to VI,I)
+2-12
+2-7(w1 + E )
+2-7 (WI + E ) _ 2-19 a
+-2-19(a+I)
++2-19K-
+```
+
+<a id="planning-and-coding-150"></a>
+## planning-and-coding-150 — 12.8: preparatory routine flow diagram and explanatory code (physical page 177; Volume III printed page 13)
+
+Source: [physical PDF page 177](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=177); reading unit `p177`, lines 7–42.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-149](#planning-and-coding-149), [planning-and-coding-151](#planning-and-coding-151)
+
+```text
+-13-
+VI,I
+Vl.l,l
+(to VI. 1, 1)
+VI, 1.1
+VII,I
+c.i
+11.1)
+= W'(29) +
+W'(29)
+VII, 1
+2-7
+2-7
+c.6
+rx, 1
+(to VIII, 1)
+s.
+-2-19
+2 19 (awl)
++2-39K
+(to
+LX,I
+(to X l)
+10
+11
+(to
+Xl,l
+(to
+IX,4
+s.
+s.
+s.
+2-19(a+k)
+2-19 (a+»ek)
+(a+k+k )
+(u-a-v.-k+l)
+```
+
+<a id="planning-and-coding-151"></a>
+## planning-and-coding-151 — 12.8: preparatory routine flow diagram and explanatory code (physical page 178; Volume III printed page 14)
+
+Source: [physical PDF page 178](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=178); reading unit `p178`, lines 4–81.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-150](#planning-and-coding-150), [planning-and-coding-152](#planning-and-coding-152)
+
+```text
+We must now assign A, B, C. 1-9, s. I their actual values, pair the 59
+orders 1,1-5, 11, 1-4, 111,1-5, 1-5, IV, 1-2, V, 1-4, VI, 1-5, VI. 1,1-5, VII, 1-2,
+VI Ili 1-6, M, 1-4, X, 1-12 to 30 words, and then assign l, I-X,12 their actual values.
+w
+e wish to place this code at the end of the nrmry, so that it should interfere
+as little as possible with the merrory space that is normally occupied by other
+subroutines and routines. [et us therefore consider the words in the rnemory
+-14-
+Note, chat the box Xl requi red no coding, hence its in-rrEdiate successor
+VII, 1-2
+_ 38
+111, 1-5
+VI,1-5
+-s
+33
+(II) must follow directly upon its invnediate predecessor (X) .
+nie ordering of the boxes is l, II, Ill, 111.1, u, VI. l, IX
+V' VII, VIII, and VI, DC, II rmst also be the innediate successors of V,
+respectively. Ihis necessi tates the extra orders
+VIII, X,
+VIII,6
+x, 12
+VI,I
+rx, 1
+11,1
+c
+c
+c
+backwards (beginning with the
+reverse order referred to) by
+table:
+1, 1-5
+11, 1-4
+last
+VI. 1,1-5
+IX,l-4
+x, 1-12
+1-2
+V, 1-4
+word), and designate their numbers (in the
+In this way we obtain the following
+VIII, 1-6
+s.
+111.1,
+33
+32
+25
+Now we
+obtain
+this
+coded sequence:
+sp',
+35 Q,
+Tix,
+Ihe
+12
+is
+durations
+19
+16
+may be estimated
+150 u, III: 250 u, 111.1:
+1: 200 4, 11:
+VI: 250 u, VI. 1: 270 u, VII: 75 u, vill:
+h,
+as follows:
+270 4,
+225 u, n:
+6
+75 u, v:
+150 u, x:
+28
+2-19
+2-32
+2-7
+2-12
+150 u,
+450 u.
+```
+
+<a id="planning-and-coding-152"></a>
+## planning-and-coding-152 — 12.9-12.10: multiple subroutines, explanatory code and setup context (physical page 179; Volume III printed page 15)
+
+Source: [physical PDF page 179](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=179); reading unit `p179`, lines 13–72.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-151](#planning-and-coding-151), [planning-and-coding-153](#planning-and-coding-153)
+
+```text
+Total:
+-15-
+11+111 +111.1 or IV or IV+V)
++ Vl.l +
+or VII or VII + VIII)
++1X+X
+150 150
+k
+m ax in-um
+200
++250+ 270 + 75 +225
++ 150* 450
+k
+(2,315k + 200) k + .2) m.
+12.9 We now
+requirerrents _ for such a
+basic and simplest one.
+tions involving the use
+(Examples will occur in
+PROBLEM 17
+pass to the multiple subroutine preparatory routine. •ne
+routine allow several variants. We will consider only the
+It is actually quite adequate Co take care of mst situa-
+of several subroutines even of very complicated ones.
+our future codings, in particular in Chapters 13 and 14.)
+SarrE as Problem 16 with this change: •nue man fication is desired for
+. Ihe characteristic data for (in the sense of Problem
+I subroutines ,
+16) are a, , 1. , k. ,
+Each 2, , is stored as its a , x. , and indicate (cf.
+Problem lb, "e a. , } i , k. , K.I(i = l,
+l) are stored at 41 suitable, consecu-
+tive memry locations.
+In order to be able to use the treat.rrEnt of Problem 16 in 12.8, we
+assure in conformity with (5) in 12.8
+(1)
+v.. O for all i = I
+(Cf. also the other pertinent remarks loc. cit. )
+i is the induction index, running from I to l. For each value of i
+we have to solve Problem 16. We can do this with the help of our ctÄ3ing of that
+problem, but we mast substitute the data of the problem, a. , 1. , k. , k, , into the
+Inspection of the coded sequence shows that tiese places
+appr cpriate places.
+are m, 5, 3, 9, respectively.
+w
+e propose to place the coded sequence that we are going to deve12p
+irmrdiately before that one of Problem 16, i.e. irrrædiately before 42,
+Let P be the number of the nerrnry location irmediately before Che coded sequence
+if the length of that sequence is and
+that we are going to develop -
+the total nemry capacity is L t (both in terms of words), then
+(2)
+) e represents the
+or frcxn VI via 5
+w
+e will use this
+43 + 1'
+possibility of going directly fran Ill via 4, 5 to VI,
+to IX, respectively, with no other intervening.
+sane notation in similar situaticms in the future.
+```
+
+<a id="planning-and-coding-153"></a>
+## planning-and-coding-153 — 12.9-12.10: multiple subroutines, explanatory code and setup context (physical page 180; Volume III printed page 16)
+
+Source: [physical PDF page 180](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=180); reading unit `p180`, lines 5–87.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-152](#planning-and-coding-152), [planning-and-coding-154](#planning-and-coding-154)
+
+```text
+-16-
+We will place the a. , i. , k. , k. (i l), in the form 2•i9a., 2-191
+, irmpdiately before these coded sequences, and in inverse a• der, i. e.
+p-4i+å, P-4i +3, P-4i+2, P-4i+l, respectively.
+11, 11
+11,13
+11,15
+11, 17
+2-19
+2-19
+2-19k.
+at
+induction index i will be stored in the form (P-4i+4)o in the stc age
+area A. Ihe quantities P, I will be stored in the fom P , (P-41)0 in the storage
+area B (IO will needed and taken frorn 2).
+We can now draw the flow diagram, as shown in Figure 12.2. actual
+coding obtains frcxn this quite directly, box V is abso&d into box II (it is
+replaced by II, IO).
+The static ctxiing of the I-V follows;
+2
+11,1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+(to 11, 1)
+(to 111,1)
+11, 11
+13
+11,
+11,15
+11,17
+p_4i +4
+iö
+P-4i+2
+3
+-9
+Sp
+h-
+Sp
+h-
+Sp
+Sp
+h-
+s
+s
+s
+s
+s
+Ac
+Ac
+Ac
+Ac
+Ac
+Ac
+(P-4i+4)
+p_4i+4
+(P-4i+3)
+p-4i +3
+(P-4i+2)
+P-4i+2
+(P-4i+1)
+P-4i+1
+(P-4i)o
+(P-4i)o
+2-19 a
+2.191
+2.191
+2-19k
+2-19k
+```
+
+<a id="planning-and-coding-154"></a>
+## planning-and-coding-154 — 12.9-12.10: multiple subroutines, explanatory code and setup context (physical page 181; Volume III printed page 17)
+
+Source: [physical PDF page 181](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=181); reading unit `p181`, lines 4–11.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-153](#planning-and-coding-153), [planning-and-coding-155](#planning-and-coding-155)
+
+```text
+-17-
+1
+6
+Z- to 10
+O . p —41+4
+z-"lt
+Note. •
+FIGURE 12.2
+```
+
+<a id="planning-and-coding-155"></a>
+## planning-and-coding-155 — 12.9-12.10: multiple subroutines, explanatory code and setup context (physical page 182; Volume III printed page 18)
+
+Source: [physical PDF page 182](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=182); reading unit `p182`, lines 5–52.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-154](#planning-and-coding-154), [planning-and-coding-156](#planning-and-coding-156)
+
+```text
+Note, that box V required no coding, hence its innediate successor (II)
+mst follow directly upon its impdiate predecessor (IV) .
+The ordering of the boxes is l, II, Ill, I V, and II rmast also be the
+innediate successor_Qf IV. In addition, Ill cannot be placed irmediately after
+II, since 111,1 is 42 but Ill rmst nevertheless the successor of
+II. All this necessi tates the extra orders
+111
+(to IV,I)
+(P-41)0
+IV,I
+2
+3
+(to 11, 1)
+2 h. , 56 sp
+(Problem 16: - i.)
+-18.
+Ac
+Ac
+(P-41)0
+11, 19
+IV,4
+111,1
+11,1
+c
+Finally, in order that IV the imediate successor of Ill, the e of 42 -
+(in 21) rrnst be equal to W, I.
+We must now A, B. 1-2 their actual values, pair the 25 orders
+l, 1-2, II, 1-19, I V, 1-4 to 13 words, and then assi"l l, I-I V, 4 their actual values.
+(Ill is omitted, since it is contained in - I.) We wish to do this as a
+(backward) continuation of the code of 12.8. In this way we obtain the following
+table:
+1, 1-2
+11, 1-19
+lv,1-4
+57 -48
+48'-G
+B. 1-2
+Thus, in tems of equation (2), 16 and
+(2')
+56
+55
+53
+59 L' - 59
+Now we obtain this coded
+sequence:
+51
+43
+57 c,
+```
+
+<a id="planning-and-coding-156"></a>
+## planning-and-coding-156 — 12.9-12.10: multiple subroutines, explanatory code and setup context (physical page 183; Volume III printed page 19)
+
+Source: [physical PDF page 183](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=183); reading unit `p183`, lines 10–44.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-155](#planning-and-coding-155), [planning-and-coding-157](#planning-and-coding-157)
+
+```text
+-19-
+In addition in 42 - of 12 .d rust read
+Ibe durations may be estimated as follus:
+1: 75 g, 11: 725 IV: 150 u.
+Ill: Ibe precise estimate at end of 12.7 is
+Total :
+maxirmm = (2, 315 k. + 200) u.
+(11 + 111
+(725 + 2,315 k. +200 + 150))
+maximun = (75 +
+(2,315 k. + 1,075 1 +75)
+—€(2.3 k. +1.1 1) m.
+is the total length of all subroutines. Hence it is necessarily
+L I S L 212 = 4,096. A:tually it is unlikely to exceed, even in very c mplicated
+L ZI, 000. 1.1 1 is negligible compared to 2.3 k.
+problems, the order
+1%nce
+2,300 m 2.3 seconds
+is a high estimate for the duration of this routine.
+12. IO Having derived two typical coded sequences for preparatory
+routines, it is appropriate to say a few words as to how their actual use can
+be contemplated. We do not propose to present a discussion of this subject to
+any degree of
+we only wish to point out of the mst
+essential aspects. Since the routine of Problem 17 is mre general than that
+one of h•oblem 16, we will base our discussion on the forrær.
+discussion of the use of preparatory subroutines is necessarily
+a discussion of a certain use of the input organs of the machine.
+We have
+refrained in our reports. so far, frcxn making very detailed and specific assump-
+tims regarding the characteristics of the input (as well as of the output)
+organs. At the present juncture, however, certain assumptions regarding these
+Organs are necessary. the basis of engineering up to date,
+such assumptims are pssible on a realistic basis. that we are go Ing
+to for-malate represent a very conservative, minin_un program.
+```
+
+<a id="planning-and-coding-157"></a>
+## planning-and-coding-157 — 12.10-12.11: external setup instructions and qualifications on reuse (physical page 184; Volume III printed page 20)
+
+Source: [physical PDF page 184](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=184); reading unit `p184`, lines 7–48.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-156](#planning-and-coding-156), [planning-and-coding-158](#planning-and-coding-158)
+
+```text
+-20-
+mr assumptions are these:
+As indicated in section 4.5, we incline towards the use of mgnetic
+wire (soundtrack) as input (and output) nedium. We expect to use it at pulse
+rates of about 25,000 pulses (i.e. binary digits) per second. We will certainly
+use several input (and output) channels, but for the purposes of the present
+discussion we a single one.
+We assunr that the cmtents of a wire can be "fed' t into the machine,
+i.e. transferred into its inner, selectron rærmry, under rnanual control. We
+asstup that we can then describe by manual settings
+l) to which position the first fran the wire
+should go (the subsequent words on the wire should then
+go in linear order into the successive, following nemry
+posi ,
+2) many words from the wire should so "fed".
+We assure finally, that single words can also "fed" directly into
+the machine by typing then with an appropriate "typewriter". (This I 'typewriter"
+will prcxiuce electrical pulses, and will nearly the sane as the one used to
+on the mgletic tape. ) We 8ssunp that we can determine the rrrmry
+position to which the word goes by manual settings.
+last assumption, i.e. the possibility of typing directly into the
+næmry, is not absolutely necessary. It is alternative to the previously
+mntioned "feeding" of words a magnetic wire. muen longer sequences of
+words have to be fed, the wire is preferable to direct typing. hen single
+words, irregularly distributed, have to be fed, ht»ever, then feeding fr«n
+appropriate wires would still feasible, but definitely rmre awkward than
+direct typing. In addition, the possibility of direct typing into the nemry
+is probably very desirable in connection with testing procedures for the
+machine. We are therefore assuming i ts availability.
+nlese things being understood, we can describe the procedure of
+placing a, presumably comB)site, routine into the It consists of
+the following steps:
+First: There are one or mre constituent routines: The main routine
+and the subroutines, where it is ikrfectly possible that the subroutines hear
+further subordination relationships to each other, i.e. are given as a hierarchy.
+All Of these are coded and stored on separate pieces of magnetic wire.
+These are successively fed into the machine, i.e. into the inner
+nemry. •nue desired Y's i tions in the nemry are defined by manual settings.
+• ) These operations should also be feasible under the "inner 'l, electronic
+control of the machine. We will discuss this of the input-outmat
+organ. and the logical, code orders which it, in a subsequent
+paper (part III in this series).
+```
+
+<a id="planning-and-coding-158"></a>
+## planning-and-coding-158 — 12.10-12.11: external setup instructions and qualifications on reuse (physical page 185; Volume III printed page 21)
+
+Source: [physical PDF page 185](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=185); reading unit `p185`, lines 11–53.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-157](#planning-and-coding-157), [planning-and-coding-159](#planning-and-coding-159)
+
+```text
+-21-
+Second: The multiple subroutine preparatory routine (Problem 17) is
+also coded and stored on an individual magnetic wire. (It is, of course, asst_nned
+to be part of the library of wires mentioned in section 4.6.)
+m s is also fed into the rnachine, like the I 'constituent" routines of
+the first overation, descriEed above. As observed in 12.8 and 12.9 it has to be
+posi cioned at the end of the nemry.
+Third: constants of the multiple subroutine preparatory routine,
+i.e. of Problem 17 , are typed directly into the nermry. Ihey are the follcning
+ones:
+l) number of subroutines, l, which is put in the form (P-41)
+into the position
+L' - 43 -P + 16.
+2) Ibe 41 data which characterize the I subroutines: a i , X. , k. , K.
+, 2-191: , 2219k'
+, ...,l), which are put in the form 2 •19
+2 • 19k. into Che positions P-4i+4, P-4i+3, p-4i+å, p-4i+i,
+respecti vely.
+Fourth: ne machine is set goiug, with the c set manually at
+the beginning of the preparatory routine (58 = P +1), and the adjust-
+of all subroutines to their actual positions (in the sense of 12.5-12.7)
+is thus effected.
+Fifth: Any further adjustments which are necessitated by the
+relationships of the subrmtines to each other (cf. the first operation, as
+described above, and the fifth remark in 12. II) are made by typing directly
+into the mermry.
+After all these operations have been carried out, the machine is
+ready to be set going on the (composite) routine of the problem itself Ihe
+preparatory routine (in the 58 last Tenor y positi ms) and its data (in the 41
+preceding positions) are now no longer needed. I.e. these positions may now
+be viewed, f rm the point of view of the problem itself, as irrelevantly
+occupied. They are acc a-ding ly avai lable for use in this sense.
+We can now draw scyrr conclusions c mcerning the setting-up
+12.11
+procedure for a machine of the type cmtemplated, On the basis of the dis-
+cussion of 12. IO. We state these in the form of five successive remarks.
+First: Ihe pure machine t required to feed the (main and subsidiary)
+routines of the problem into the n-Bchine may be estinuted as follows: A word
+cmsists of pulses. For checking and marking purposes it will probably have to
+With the systems that we are envisaging, a total
+contain sorr additional pulses.
+of, say, 60 pulses per word will not be exceeded. With the sgred of 25, 000 pulses
+per second, as assunrd in 12. IO, this gives 2.4 m per word.
+```
+
+<a id="planning-and-coding-159"></a>
+## planning-and-coding-159 — 12.10-12.11: external setup instructions and qualifications on reuse (physical page 186; Volume III printed page 22)
+
+Source: [physical PDF page 186](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=186); reading unit `p186`, lines 4–52.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-158](#planning-and-coding-158), [planning-and-coding-160](#planning-and-coding-160), [planning-and-coding-139](#planning-and-coding-139)
+
+```text
+-22-
+Thus the pure machine tine of the first and second operations of 12. IO
+is 2.4 m per word.
+Ihe pure machine time of the third OF*ration of 12.10 is, as we saw at
+the end of 12. 9, 2.3 m per word.
+We also observed at the end of 12.9, that even in very canplicated
+problerrs the mynber of words thus involved is not likely to exceed 1000. This
+puts on the total tine requirenrnt on these counts an upper limit of
+— 4.7 seconds, i.e. of less than 5 secmds.
+2.4 +2.3
+Second: These tine requirements are obviously negl igihle compared to
+the t irre c cmsuned by the attendant manual operations: Ihe placing of the magnetic
+wires into the rnachine, the setting of the (rprrKJry) position definitions, etc.
+It follows therefore, that there is no need and no justification for
+any special routine-preparing equip-rent (other than the typing devices already
+discussed) to complement a machine of the type that we contemplate.
+Third: Assuming a composite routine made up of ten parts, i.e. of a
+routine and nine subroutines, we have I = 9. This represents already a very high
+level of complication. Ihe preparatory routine requires 58 + 41 words, i.e. for
+I = 9 94 words. This represents 2.3% of the total (selectron) capacity,
+= 2-12 = 4,096.
+if we assume that the latter is L r
+Fourth: Each subroutine requires the direct, manual typing of four
+I. , k. , k.) , as well as one for all subroutines
+words into the machine (for a. ,
+together (for l).
+In addition the changes of the second kind in the sense of
+12.4, i.e. those which the main routine mmst effect on the subroutine, require
+several words. Indeed, the sending of the control to the subroutine remaires
+one order, i.e. half a word. Any number is sent there at the price of two
+orders (bringing the nurnlkr to be substituted into the subroutine into the accu-
+rmalator, substituting it into the subroutine) and of possibly one storage word
+(for the nurnber to be substituted), i.e. of a total of one or two words. There
+will usually be three or rmre such nunber substitutions (the e of the subroutine,
+i.e. the nenury position in the main routine from where the control is to con-
+tinue after the completion of the subroutine. and two or more data for the sub-
+routine) . Thus five words for these changes is a conservative estimate.
+A subroutine consurnes therefore ten words in extra instructions, by
+It seems therefore, that the storage of a subroutine
+a cmservatlve estimate.
+in a library of wires, in the sense of section 4.6, and its corresponding
+treat"Ent as an individual entity becoaes justified when its length in words
+is significantly larger than IO. A minirrmrn length of 15-20 words would there-
+fore seem reasonable.
+To conclude this discussion, we observe that in making these estimates,
+we disregarded all 0FRrations other than the actual, rnanual typing of words (on
+w Ire or into the machine). This is legitimate, because the time and the "Emory
+requirenrnts of the automatic operations that are involved are negligible, as we
+saw in our three first remarks.
+```
+
+<a id="planning-and-coding-160"></a>
+## planning-and-coding-160 — 12.10-12.11: external setup instructions and qualifications on reuse (physical page 187; Volume III printed page 23)
+
+Source: [physical PDF page 187](../../../../papers/goldstine-von-neumann-planning-and-coding-1947.pdf#page=187); reading unit `p187`, lines 4–27.
+
+Attribution: Herman H. Goldstine and John von Neumann
+
+Context: Part II, Volume III. Reuse/composition of separately coded routines and their assumptions, followed by external flow diagrams, explanatory coding columns and setup instructions. Retained as connected code-explanation context, not a statement advocating inline source comments.
+
+Transcription/context notes: Physical page read visually. Windows OCR may lose equations, letters, explanatory-column alignment and diagram topology; consult the original PDF. Mathematical correctness was not independently verified.
+
+Related: [planning-and-coding-159](#planning-and-coding-159)
+
+```text
+- 23-
+e pointed out in our description Of the first operation in 12.
+that the various subroutines used in connection with a main routine, may bear further
+subordination relationships to each other. In this case they will also contain actual
+references to each other, and these will have to be adjusted to the actual positions
+of the subroutines in question in the These adjustrrEnts may be made as
+changes of the second kind, in the sense of 12 . 4, by the routines involved. They may
+also be handled by special preparatory routines.
+We expect, however, that it will he
+simplest in rm'st cases to take care of them by direct typing into the IIEmry, as
+indicated in the description of the fifth operation in 12.
+The adjusting of the references of a subroutine to itself, to the actual
+position of the subroutine in the rrErnory, might also have been made by direct typing
+into the machine. We chose to do it autmatically, however, by of a prepara-
+tory routine, because these references are very frequent: Ihe great majority of all
+orders in a subroutine contain references to this same subroutine. References to
+another subroutine, on the other hand, are likely to be rare and irregularly
+distributed. Ihey are therefore less Hell suited to automatic treatnrnt, by a
+special preparatory routine, than to ad hoc, manual treatrent, by direct typing
+into the machine.
+Actual examples of such situations in which it will also be seen that
+the proportions of the various factors involved are of the nature that we have
+anticipated here, will occur in the subsequent chapters, and in particular in
+Chapters 13 and 14.
 ```
