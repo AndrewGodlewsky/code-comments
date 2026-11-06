@@ -18,6 +18,35 @@ The [product roadmap](docs/roadmap.md) links the remaining GitHub issues and
 dependencies. The first [offline fixture audit](docs/evaluation/README.md) is
 executable; model trials and the portable skill are still future work.
 
+## Reading list
+
+Local copies of books and papers used for comments research live under `docs/books` and `docs/papers`. [docs/reading-list-access.md](docs/reading-list-access.md) lists every title on the reading list and how to get the ones that are not in this repo.
+
+### In this repo
+
+**Books** (`docs/books`):
+
+- *The Pragmatic Programmer* by David Thomas and Andrew Hunt (machine transcript; edition and transcription accuracy unverified)
+- *Software Engineering at Google* by Titus Winters, Tom Manshreck, and Hyrum Wright (full HTML edition; open `docs/books/software-engineering-at-google/toc.html`)
+- *A Philosophy of Software Design* by John Ousterhout (author-posted extract only, not the full book)
+
+**Papers and essays** (`docs/papers`):
+
+- Herman Goldstine and John von Neumann, *Planning and Coding of Problems for an Electronic Computing Instrument* (1947-48)
+- IBM, *FORTRAN Programmer's Reference Manual* for the IBM 704 (1956)
+- David Parnas and Paul Clements, *A Rational Design Process: How and Why to Fake It* (1986)
+- Donald Knuth, *Literate Programming* (1984)
+- Martin Fowler, *Code As Documentation* (2005) and *Beck Design Rules* (2015)
+
+### Not downloaded here
+
+These titles are still on the reading list. The access guide has the borrow, sample, or purchase links.
+
+- Free to read online, but not saved here: Jef Raskin, *Comments Are More Important than Code* (2005); Ted Tenny (1985 and 1988); Woodfield, Dunsmore, and Shen (1981)
+- Borrow with a free Internet Archive or Open Library account: Weinberg, *The Psychology of Computer Programming*; Kernighan and Plauger, *The Elements of Programming Style*; Ledgard, *Programming Proverbs* / *Pascal with Style*; Kernighan and Pike, *The Practice of Programming*; Brooks, *The Mythical Man-Month*
+- Official samples or excerpts only: Fowler, *Refactoring*; Martin, *Clean Code*; Evans, *Domain-Driven Design*; Reilly, *The Staff Engineer's Path*; McConnell, *Code Complete*; Skelton and Pais, *Team Topologies*
+- Purchase or library only: Feathers, *Working Effectively with Legacy Code*; Fournier, *The Manager's Path*; Patterson et al., *Crucial Conversations*
+
 ## Agent workflow setup
 
 [AGENTS.md](AGENTS.md) points agents to the repository configuration:
