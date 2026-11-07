@@ -171,6 +171,25 @@ python -m evaluation.skill_eval.run init --flow-dir <dir> --seed 7
 python -m evaluation.skill_eval.run run --flow-dir <dir> --adapter oracle --variant baseline
 ```
 
+**Downstream sequence eval (#19, primary score).** It runs a writer step under one
+context arm (`code-only`, `docs-folder`, or `inline:<variant>`), then a hand-off
+that deletes the step-1 evidence and request, then a fresh reader step scored by
+hidden checks. Commands:
+
+```text
+python -m evaluation.skill_eval.sequence list
+python -m evaluation.skill_eval.sequence selftest
+python -m evaluation.skill_eval.sequence init --flow-dir .claude/hillclimb/seq-<name> --reps 3
+python -m evaluation.skill_eval.sequence run --flow-dir <dir> --variant baseline --arm code-only \
+    --writer-model claude-sonnet-5-5 --reader-model claude-haiku-5-5 --jobs 3
+```
+
+Sequences live in `evaluation/skill_eval/sequences/`. Each is tagged
+`non-derivable` (the reader needs a fact from step 1's evidence that is not in the
+code) or `local-visible` (a control: the code shows the fact). The docs-folder arm's
+practice is `evaluation/skill_eval/arms/docs-folder/project-docs/SKILL.md`. Live runs
+spend money and need the user's approval.
+
 **Reporting policy.** After **every** run, generate the numbers report:
 `python -m evaluation.skill_eval.report <flow...> --out docs/evaluation/runs/<date>-<name>.md`.
 At each **decision point** (end of a round, a design change, before any claim), also
