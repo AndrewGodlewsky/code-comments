@@ -21,6 +21,7 @@ Then:
 
 | Topic | Document |
 | --- | --- |
+| An honest assessment of the whole thesis: claim by claim, for and against, options and stop rules | [assessment-2026-11-07.html](docs/assessment-2026-11-07.html) |
 | The user's three-layer theory, and what the skill replaces | [intent.md](intent.md) ("The user's fuller theory") |
 | What the evals measure, every run in depth, and whether anything makes a difference | [Eval report, 2026-11-07](docs/evaluation/report-2026-11-07.md) |
 | Generated numbers for each run | [docs/evaluation/runs/](docs/evaluation/runs/) |
