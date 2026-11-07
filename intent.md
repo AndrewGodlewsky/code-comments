@@ -52,6 +52,47 @@ Selective replacement is the goal. Research records, installation guidance,
 product intent, and other documents can retain distinct purposes. The exact
 replacement boundary is part of the investigation.
 
+## The user's fuller theory (stated 2026-11-07)
+
+The user stated this from experience. It is intuition to test, not an established
+result, and they asked for evidence that it holds.
+
+In large or complex codebases that change often, an AI coding workflow needs three
+kinds of context:
+
+1. **Localized decision memory.** It restores *why* decisions were made and which
+   alternatives were rejected.
+2. **Instructions and intent.** Repository guidance and the product's purpose.
+3. **Documentation of what the code does.** The user has found it very helpful to have
+   the AI generate documentation alongside the code, in a `docs/` folder. On larger
+   projects, the AI seems less likely to get a future change wrong when it can
+   consult that documentation.
+
+**The skill targets the third layer.** A docs folder creates **two sources of truth**:
+the code, and a description of the code. Keeping them in sync is too much work.
+Nobody knows which documents a change affects, so they drift. The user expects human
+engineers in particular not to update the docs.
+
+Further claims to test:
+- **Model capability.** Frontier models need such documentation less, because they
+  read and understand the code directly. Weaker models genuinely struggle without the
+  extra context, especially about effects and relationships ("this code affects that,
+  relates to this").
+- **Human editors.** AI will do most code editing, but when a human engineer must
+  change the code, it will be very hard without comments.
+- **Placement.** Inline comments at the point of change are more likely to be read
+  and kept current than a separate folder, by agents and humans alike.
+
+**What this means for evaluation.**
+- The primary comparison is **inline comments maintained by the skill** against the
+  user's current practice, **an AI-maintained docs folder**, over a *sequence* of
+  changes. Drift is part of the outcome, not a nuisance.
+- Success is measured on the *next* agent's work. In particular, a **weaker reader**
+  model must make correct follow-up changes, whichever model wrote the context.
+- Comment-quality scores are guardrails, not the goal.
+- The user is open to testing small, medium and large codebases of varying
+  complexity, and can supply a real codebase if needed.
+
 ## Research before workflow decisions
 
 The user explicitly wants substantial research and data before deciding how the
@@ -106,6 +147,24 @@ other agents' active work. The operational rules live in
 Current execution constraint (2026-11-05): the user chose **offline work only**
 when asked about the first model smoke-run budget. Continue local development
 and validation; do not start model campaigns until the user changes that direction.
+
+Update (2026-11-07): the user approved one **small paid pilot** of the skill-variant
+tournament. It runs 3 eval cases x 6 arms (five variants and a no-skill control)
+x 1 rep through headless Claude Code, capped at $1 per attempt. Its purpose is to
+validate the wiring and measure cost; it produces no efficacy claim. The full
+tournament (#26) needs a separate approval based on the measured pilot cost.
+Offline-only otherwise still applies.
+
+Update (2026-11-07, later): after the pilot ($0.57), the user approved the **full
+tournament**. It runs 20 cases x 6 arms x 3 reps on both `claude-sonnet-5-5` and
+`claude-haiku-5-5`, projected at about $12-14 with a $1 cap per attempt. Further
+campaigns still need their own approval.
+
+**Correction (2026-11-07):** this round was earlier described as using Haiku to
+represent "the less capable model the hypothesis is about". That was wrong. In
+that run, Haiku *wrote* the comments. The hypothesis concerns weaker models *reading*
+context and making later changes. The round tests the skill's writing behaviour
+only (see `docs/skill/tournament-2026-11-07.md`).
 The [roadmap](docs/roadmap.md) links the remaining work and spending decision.
 
 Research and experiments should inform activation, comment categories, language

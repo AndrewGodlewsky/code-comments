@@ -92,8 +92,12 @@ Python 3.12+ is sufficient for the offline tools; no packages need installing:
 ```text
 python -m unittest discover -s tests -v
 python -m evaluation.offline audit
+python -m evaluation.skill_eval.run selftest
+python scripts/check_distillation.py
+python scripts/lint_skills.py
 ```
 
 See the [offline tool guide](docs/evaluation/README.md) for equivalent-context
-exports and their limits. There is no isolated model runner or implemented skill.
+exports and their limits. The [skill eval plan](docs/evaluation/skill-evals.md)
+describes the hill-climbable `comment-edit` eval and its grader self-test. There is no isolated model runner or implemented skill.
 The user currently authorizes offline work only; no model experiments have run.

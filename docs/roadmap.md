@@ -12,6 +12,8 @@ not a second completion ledger. Research #3 is closed background.
 | Isolated longitudinal runner | [#7](https://github.com/AndrewGodlewsky/code-comments/issues/7) | #5; tested isolation, fresh sessions, cumulative code, grading and complete trace/cost records |
 | Diverse pilot corpus | [#8](https://github.com/AndrewGodlewsky/code-comments/issues/8) | #5; pinned, licensed, independently reviewed tasks and leakage boundaries |
 | Placement pilot | [#9](https://github.com/AndrewGodlewsky/code-comments/issues/9) | #6–#8; actual model outcomes, uncertainty, costs and a proceed/narrow/revise decision |
+| Hill-climbable skill evals ([plan](evaluation/skill-evals.md)) | [#22](https://github.com/AndrewGodlewsky/code-comments/issues/22) | Offline harness #15 and draft cases #16 first; judge #17, live adapter #18 and downstream confirmation #19 wait on #6/#7/#10 |
+| Skill from research: ledger, spec, variants, tournament, climb ([plan](skill/README.md)) | [#28](https://github.com/AndrewGodlewsky/code-comments/issues/28) | User chose (2026-11-07) to build variants in parallel with #9; ledger #23, spec #24 and variants #25 offline; tournament #26 needs #18/#6 |
 | Canonical writer/maintainer skill | [#10](https://github.com/AndrewGodlewsky/code-comments/issues/10) | #9; generated context measured against reference and external-writer baselines |
 | Held-out confirmation and model economics | [#11](https://github.com/AndrewGodlewsky/code-comments/issues/11) | #10; powered frozen design, separate budget, independent replication and bounded claims |
 | Four-client distribution and release | [#12](https://github.com/AndrewGodlewsky/code-comments/issues/12) | #10–#11; license, downloadable versioned artifacts and real installation/invocation checks |

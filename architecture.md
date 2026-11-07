@@ -19,6 +19,23 @@ in this repository; this is not a security sandbox. `tests/test_offline.py` owns
 automated behavioral/export checks. See the [tool guide](docs/evaluation/README.md)
 and [roadmap](docs/roadmap.md) for current boundaries and remaining issues.
 
+`evaluation/skill_eval/` is the offline harness for the hill-climbable `comment-edit`
+skill eval ([plan](docs/evaluation/skill-evals.md)). Each case keeps its agent-visible
+workspace (`visible/`) apart from its grader-only ledger, hidden checks and reference
+(`private/`). The grader is programmatic. Offline adapters validate it.
+`live.py` runs headless Claude Code with a skill variant (paid, user-approved runs
+only). `compare.py` and `regrade.py` analyse and regrade finished flows. The checks
+live in `tests/test_skill_eval.py` and `tests/test_skill_live.py`.
+
+The skill itself is under construction ([plan](docs/skill/README.md)).
+`docs/skill/distillation/` holds candidate principles mapped from the research,
+and `docs/skill/principles.md` is the merged, citation-checked ledger
+(`scripts/check_distillation.py`). `docs/skill/design.md` holds the behaviour spec
+and variant matrix. `skill-variants/` holds the installable variants and their
+registry, which `scripts/lint_skills.py` checks. Tournament round 1 (#26) was a null
+result ([report](docs/skill/tournament-2026-11-07.md)), so nothing has been promoted to
+`skills/code-comments/` yet.
+
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
 
@@ -47,6 +64,9 @@ New sources follow the [extraction workflow](docs/workflows/extract-comment-cont
 | `docs/research/evaluation-protocol.md` | Canonical proposed experiment design | An experimental design decision or measured limitation |
 | `docs/roadmap.md` | Milestone order and gates, linking GitHub's live assignments/status | A change to product execution scope or dependencies |
 | `docs/evaluation/README.md` | Runnable offline tools, provenance and validity limits | A verified tool or evaluation boundary changes |
+| `docs/skill/principles.md` | The skill's principles, their evidence grades and dispositions | New evidence, a tournament result, or a corrected citation |
+| `docs/skill/design.md` | Behaviour spec, variant matrix and winner-selection rule | A spec decision or a new round of variants |
+| `skill-variants/variants.json` | Each variant's hypothesis, axis positions and principle ids | A variant is added, changed or retired |
 
 Use references between these owners. A summary should point to the authoritative
 detail rather than create another independently maintained specification.

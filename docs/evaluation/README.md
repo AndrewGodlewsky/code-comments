@@ -1,5 +1,9 @@
 # Offline evaluation foundation
 
+> The hill-climbable eval for developing the skill itself (`comment-edit`) is
+> documented separately in [skill-evals.md](skill-evals.md). This page covers the
+> placement-study fixture.
+
 This is the first executable step of the [product roadmap](../roadmap.md), tracked
 in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). The user chose
 offline work only. There are no model calls, credentials, API adapters or new
