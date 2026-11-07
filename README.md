@@ -21,6 +21,7 @@ Then:
 
 | Topic | Document |
 | --- | --- |
+| Where the project goes next: options, a recommended path, and pre-registered stop rules | [path-forward-2026-11-07.html](docs/path-forward-2026-11-07.html) |
 | An honest assessment of the whole thesis: claim by claim, for and against, options and stop rules | [assessment-2026-11-07.html](docs/assessment-2026-11-07.html) |
 | Why a cheap model can't simply implement a strong model's plan, and whether comments help | [haiku-question-2026-11-07.html](docs/haiku-question-2026-11-07.html), with the [churn analysis](docs/evaluation/churn-2026-11-07.md), [R5](docs/research/long-horizon-degradation.md) and [R6](docs/research/planner-executor-split.md) |
 | The user's three-layer theory, and what the skill replaces | [intent.md](intent.md) ("The user's fuller theory") |
