@@ -52,6 +52,7 @@ new experiments or changes to the evaluation protocol.
 | [Human maintenance and drift](human-maintenance-and-drift.md) | R3 (#32): docs drift faster than comments; developers read code and comments first; the human-editing claim lacks direct evidence |
 | [Context layers](context-layers.md) | R4 (#33): how decision memory, instructions and code docs are divided in practice; proposed boundary for the skill |
 | [Long-horizon degradation](long-horizon-degradation.md) | R5 (#35): agent code measurably erodes over successive edits; no evidence weaker models erode faster; no test of comments as the remedy |
+| [Planner-executor split](planner-executor-split.md) | R6 (#36): a strong model's plan closed about 40% of a cheap model's gap; implementation holds real design decisions; hybrids that keep the strong model involved during execution work best; task-specific context helps, general repo context did not |
 | [Skill portability](skill-portability.md) | Verified documentation and local tool evidence for eventual distribution across Orca, Codex, Claude Code, and Copilot |
 
 The literature reports contain citations and separate findings from our
