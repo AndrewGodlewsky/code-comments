@@ -20,6 +20,11 @@ executable; model trials and the portable skill are still future work.
 
 ## Reading list
 
+The [comment-context collection](docs/research/comment-context/README.md) preserves
+author passages, examples, opposing positions and source locations for review.
+To process another local book or paper, use the
+[reusable extraction workflow](docs/workflows/extract-comment-context.md).
+
 Local copies of books and papers used for comments research live under `docs/books` and `docs/papers`. [docs/reading-list-access.md](docs/reading-list-access.md) lists every title on the reading list and how to get the ones that are not in this repo.
 
 ### In this repo

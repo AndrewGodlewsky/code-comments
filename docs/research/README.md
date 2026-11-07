@@ -1,5 +1,10 @@
 # Code Comments research
 
+For source passages without evaluative synthesis, start with the
+[comment-context collection](comment-context/README.md). It preserves locations,
+opposing positions, examples and coverage limits from available local sources.
+Use the [extraction workflow](../workflows/extract-comment-context.md) to add more.
+
 Current phase: move the researched hypothesis into offline evaluation development
 before deciding the skill's workflow. No skill implementation or model experiments
 have been completed. The [roadmap](../roadmap.md) tracks remaining work; the

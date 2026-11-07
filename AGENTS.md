@@ -11,6 +11,10 @@ Read [intent.md](intent.md) for the user's goals and
 For research, evaluation design, or changes to skill behavior, also read
 [docs/research/README.md](docs/research/README.md).
 
+When adding or extracting local books and papers about comments, follow
+[the extraction workflow](docs/workflows/extract-comment-context.md). Preserve
+author passages and coverage separately from later evaluative synthesis.
+
 Resolve explicitly requested skills to their actual `SKILL.md` before choosing
 a workflow. Search the installed package if the visible skill catalog omits one.
 
