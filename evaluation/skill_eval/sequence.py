@@ -179,7 +179,7 @@ def workspace_diff(sequence: Sequence, workspace: Path) -> str:
 
 def attempt(sequence: Sequence, scratch: Path, *, writer: str, reader: str, arm: str = "code-only",
             writer_model: str = "", reader_model: str = "", timeout_s: float = 900, max_budget_usd: float = 1.0) -> dict:
-    """writer/reader are `live`, `oracle` or `null`; offline modes exist to validate the plumbing."""
+    """writer: `live`, `oracle`, `strip` (no-context baseline) or `null`; reader: `live`, `oracle` or `null`."""
     workspace = prepare_writer(sequence, scratch)
     trace, cost, usage = [], 0.0, {"writer": {}, "reader": {}}
     if writer == "live":
@@ -192,6 +192,10 @@ def attempt(sequence: Sequence, scratch: Path, *, writer: str, reader: str, arm:
     elif writer == "oracle":
         ADAPTERS["oracle"](sequence.case, workspace)
         trace.append({"role": "system", "content": "Offline writer: applied the case reference."})
+    elif writer == "strip":
+        # Information-value baseline: correct code with every comment and docstring removed.
+        ADAPTERS["strip"](sequence.case, workspace)
+        trace.append({"role": "system", "content": "Offline writer: case reference with all comments and docstrings stripped."})
     elif writer != "null":
         raise ValueError(f"writer mode {writer!r}")
     measures = writer_measures(sequence, workspace)
@@ -318,7 +322,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 return 1
             done.add((row["prompt_id"], row["rep"]))
     (variant / "summary.json").write_text(json.dumps({"description": f"arm {args.arm}; writer {args.writer_model or args.writer}; reader {args.reader_model or args.reader}",
-                                                      "label": args.arm, "target": "skill"}, indent=2) + "\n", encoding="utf-8")
+                                                      "label": args.arm if args.writer == "live" else f"writer:{args.writer}",
+                                                      "target": "skill"}, indent=2) + "\n", encoding="utf-8")
     if args.variant != "baseline":
         (variant / "change.md").write_text(f"Context arm `{args.arm}` (writer {args.writer_model or args.writer}, reader {args.reader_model or args.reader}).\n", encoding="utf-8")
     wanted = set(args.sequences.split(",")) if args.sequences else None
@@ -373,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--flow-dir", required=True)
     run.add_argument("--variant", required=True)
     run.add_argument("--arm", default="code-only", help="code-only | docs-folder | inline:<variant>")
-    run.add_argument("--writer", choices=("live", "oracle", "null"), default="live")
+    run.add_argument("--writer", choices=("live", "oracle", "strip", "null"), default="live")
     run.add_argument("--reader", choices=("live", "oracle", "null"), default="live")
     run.add_argument("--writer-model", default="")
     run.add_argument("--reader-model", default="")

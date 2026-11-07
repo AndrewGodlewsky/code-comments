@@ -188,6 +188,11 @@ tournament**. It runs 20 cases x 6 arms x 3 reps on both `claude-sonnet-5-5` and
 `claude-haiku-5-5`, projected at about $12-14 with a $1 cap per attempt. Further
 campaigns still need their own approval.
 
+Update (2026-11-07, later): the user approved a **#19 stage-1 smoke run**: 10
+sequences x 3 arms (code-only, docs-folder, inline:lean) x 1 rep, with a Sonnet 5.5
+writer and a Haiku 5.5 reader, estimated at $1-2. Larger stage-1 or stage-2 runs
+need their own approval.
+
 **Correction (2026-11-07):** this round was earlier described as using Haiku to
 represent "the less capable model the hypothesis is about". That was wrong. In
 that run, Haiku *wrote* the comments. The hypothesis concerns weaker models *reading*
