@@ -9,6 +9,20 @@ from evaluation.runner import _hash, context_files, read_record, run_diagnostic
 
 
 class RunnerRecordTests(unittest.TestCase):
+    def test_tool_limits_are_pinned_and_cannot_change_on_resume(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'run'
+            limits = {'max_calls': 2, 'max_input_bytes': 32000, 'max_output_bytes': 64000}
+            run_diagnostic(path, tool_limits=limits, stop_after=0)
+            manifest = read_record(path / 'manifest.json')
+            self.assertEqual(manifest['config']['tool_limits'], limits)
+            self.assertIn('session.py', manifest['config']['artifact_hashes'])
+            with patch('evaluation.runner._attempt') as adapter:
+                with self.assertRaises(ValueError):
+                    run_diagnostic(path, resume=True, stop_after=0,
+                                   tool_limits={**limits, 'max_calls': 3})
+                adapter.assert_not_called()
+
     def test_temporal_facts_are_equal_and_retired_before_new_step(self):
         for step in (1, 2, 3):
             inline = context_files({'policy.py': 'def sample(): pass\n'}, 'inline', step)
@@ -50,7 +64,8 @@ class RunnerRecordTests(unittest.TestCase):
                     run_diagnostic(path, resume=True, stop_after=0)
 
     def test_configuration_validation_precedes_directory_creation(self):
-        for options in ({'adapter': 'paid'}, {'mode': 'anything'}, {'seed': True}, {'stop_after': -1}):
+        for options in ({'adapter': 'paid'}, {'mode': 'anything'}, {'seed': True}, {'stop_after': -1},
+                        {'tool_limits': {}}, {'tool_limits': {'max_calls': True}}):
             with self.subTest(options=options), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / 'run'
                 with self.assertRaises(ValueError):
@@ -119,14 +134,23 @@ class DockerTrajectoryTests(unittest.TestCase):
             self.assertEqual(len(list(path.glob('step-*.json'))), 9)
             replay = run_diagnostic(path, seed=4, resume=True)
             self.assertEqual(report, replay)
+            session_ids = set()
             for filename in path.glob('step-*.json'):
                 record = read_record(filename)
                 self.assertTrue(record['grading']['passed'])
                 self.assertTrue(record['observations'])
                 self.assertIsNone(record['usage']['input_tokens'])
+                self.assertTrue(record['session_id'])
+                session_ids.add(record['session_id'])
+                self.assertEqual(record['usage']['tool_calls'], 2)
+                self.assertGreater(record['usage']['tool_input_bytes'], 0)
+                self.assertGreater(record['usage']['tool_output_bytes'], 0)
+                self.assertEqual(len(record['observations']), 2)
+                self.assertEqual(record['observations'][0]['call_id'], record['session_id'] + ':1')
                 if record['step'] == 3:
                     self.assertIn('override=None', record['before']['policy.py'])
                     self.assertNotIn('five retries', record['before']['policy.py'])
+            self.assertEqual(len(session_ids), 9)
             envelope = json.loads(first.read_text(encoding='utf-8'))
             envelope['payload']['status'] = 'failed'
             first.write_text(json.dumps(envelope), encoding='utf-8')
@@ -146,6 +170,22 @@ class DockerTrajectoryTests(unittest.TestCase):
                 self.assertIn('Matched reference facts', record['prompt'])
                 self.assertEqual(record['step'], 1)
                 self.assertEqual(record['status'], 'failed')
+
+    def test_tool_budget_failure_is_saved_without_grading_or_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'run'
+            limits = {'max_calls': 1, 'max_input_bytes': 32000, 'max_output_bytes': 64000}
+            with patch('evaluation.runner.grade') as grader:
+                report = run_diagnostic(path, tool_limits=limits, stop_after=1)
+                grader.assert_not_called()
+            record = read_record(next(path.glob('step-*.json')))
+            self.assertEqual(report['infrastructure_errors'], 1)
+            self.assertIn('call limit', record['error'])
+            self.assertEqual(len(record['observations']), 2)
+            self.assertEqual(record['usage']['tool_calls'], 1)
+            with patch('evaluation.runner._attempt') as adapter:
+                run_diagnostic(path, tool_limits=limits, resume=True, stop_after=0)
+                adapter.assert_not_called()
 
 
 if __name__ == '__main__':

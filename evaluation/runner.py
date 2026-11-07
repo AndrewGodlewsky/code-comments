@@ -13,6 +13,7 @@ import uuid
 from evaluation.grading import grade
 from evaluation.offline import CONDITIONS, FIXTURE, GUIDE, _facts_at_step
 from evaluation.sandbox import DockerSandbox, IMAGE
+from evaluation.session import DEFAULT_LIMITS, ToolSession, validate_limits
 
 
 BEGIN = '# BEGIN reference context (diagnostic oracle)\n'
@@ -70,18 +71,20 @@ def context_files(previous: dict[str, str], condition: str, step: int) -> dict[s
     return files
 
 
-def _config(seed, mode, adapter, image, timeout) -> dict:
+def _config(seed, mode, adapter, image, timeout, tool_limits) -> dict:
     if type(seed) is not int or mode not in ('discovery', 'controlled') or adapter not in ('oracle', 'noop'):
         raise ValueError('invalid seed, exposure mode or diagnostic adapter')
     DockerSandbox({}, image=image, timeout=timeout)  # Validate limits without executing.
+    tool_limits = validate_limits(DEFAULT_LIMITS if tool_limits is None else tool_limits)
     root = Path(__file__).resolve().parent
-    paths = sorted(FIXTURE.rglob('*')) + [root / name for name in ('runner.py', 'sandbox.py', 'grading.py', 'offline.py')]
+    paths = sorted(FIXTURE.rglob('*')) + [root / name for name in ('runner.py', 'sandbox.py', 'session.py', 'grading.py', 'offline.py')]
     hashes = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in paths if p.is_file() and '__pycache__' not in p.parts}
     order = list(CONDITIONS)
     random.Random(seed).shuffle(order)
-    return {'schema_version': 1, 'seed': seed, 'mode': mode, 'adapter': adapter,
+    return {'schema_version': 2, 'seed': seed, 'mode': mode, 'adapter': adapter,
             'condition_order': order, 'image': image, 'command_timeout_seconds': timeout,
+            'tool_limits': tool_limits,
             'artifact_hashes': hashes, 'model_spend_limit_usd': 0,
             'kind': 'public_development_diagnostic', 'efficacy_evidence': False}
 
@@ -95,19 +98,20 @@ def _attempt(before: dict, condition: str, step: int, config: dict, run_id: str)
     record = {'run_id': run_id, 'condition': condition, 'step': step,
               'before': before, 'before_sha256': _hash(before), 'prompt': prompt,
               'observations': [], 'after': None, 'patch': None, 'grading': None,
+              'session_id': None,
               'status': 'infrastructure_error', 'error': None,
               'usage': {'model_calls': 0, 'input_tokens': None, 'output_tokens': None,
-                        'model_cost_usd': 0, 'infrastructure_cost_usd': None}}
+                        'model_cost_usd': 0, 'infrastructure_cost_usd': None,
+                        'tool_calls': 0, 'tool_input_bytes': 0, 'tool_output_bytes': 0}}
+    session = None
     try:
         with DockerSandbox(before, image=config['image'], timeout=config['command_timeout_seconds']) as sandbox:
+            session = ToolSession(sandbox, **config['tool_limits'])
+            record['session_id'] = session.session_id
             # Scripted discovery tests the trace path, not a model's retrieval choices.
             command = ['python', '-I', '-B', '-c',
                        "import json,pathlib; print(json.dumps({p:pathlib.Path(p).read_text() for p in ('README.md','TASK.md','policy.py','context.md') if pathlib.Path(p).is_file()}))"]
-            observed = sandbox.run(command)
-            record['observations'].append({'command': command, 'output': observed.output,
-                                           'returncode': observed.returncode,
-                                           'timed_out': observed.timed_out, 'output_limited': observed.output_limited,
-                                           'wall_seconds': observed.elapsed_seconds})
+            observed = session.execute({'command': command})
             if observed.returncode or observed.timed_out or observed.output_limited:
                 raise RuntimeError('diagnostic read failed')
             if config['adapter'] == 'oracle':
@@ -116,10 +120,7 @@ def _attempt(before: dict, condition: str, step: int, config: dict, run_id: str)
                 source = (FIXTURE / 'private' / 'reference' / f'step-{step}.py').read_text(encoding='utf-8')
                 source = context_files({'policy.py': source}, condition, step)['policy.py']
                 command = ['python', '-I', '-B', '-c', "import pathlib,sys; pathlib.Path('policy.py').write_text(sys.stdin.read(),encoding='utf-8')"]
-                edited = sandbox.run(command, source)
-                record['observations'].append({'command': command, 'stdin': source, 'output': edited.output,
-                                               'returncode': edited.returncode, 'timed_out': edited.timed_out,
-                                               'output_limited': edited.output_limited, 'wall_seconds': edited.elapsed_seconds})
+                edited = session.execute({'command': command, 'stdin': source})
                 if edited.returncode or edited.timed_out or edited.output_limited:
                     raise RuntimeError('oracle edit failed')
             after = sandbox.snapshot()
@@ -134,13 +135,20 @@ def _attempt(before: dict, condition: str, step: int, config: dict, run_id: str)
         record['status'] = 'passed' if record['grading']['passed'] else 'failed'
     except (OSError, RuntimeError, ValueError) as error:
         record['error'] = f'{type(error).__name__}: {error}'
+    finally:
+        if session is not None:
+            record['observations'] = session.observations
+            record['usage'].update({'tool_calls': sum('returncode' in event for event in session.observations),
+                                    'tool_input_bytes': session.input_bytes,
+                                    'tool_output_bytes': session.output_bytes})
     record['wall_seconds'] = time.monotonic() - started
     return record
 
 
 def run_diagnostic(destination: Path, *, seed: int = 0, mode: str = 'discovery', adapter: str = 'oracle',
-                   image: str = IMAGE, timeout: float = 10, resume: bool = False, stop_after: int | None = None) -> dict:
-    config = _config(seed, mode, adapter, image, timeout)
+                   image: str = IMAGE, timeout: float = 10, resume: bool = False, stop_after: int | None = None,
+                   tool_limits: dict | None = None) -> dict:
+    config = _config(seed, mode, adapter, image, timeout, tool_limits)
     if stop_after is not None and (type(stop_after) is not int or stop_after < 0):
         raise ValueError('stop_after must be a nonnegative integer')
     destination = Path(destination)
@@ -234,9 +242,16 @@ def main() -> int:
     parser.add_argument('--adapter', choices=('oracle', 'noop'), default='oracle')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--stop-after', type=int)
+    parser.add_argument('--max-tool-calls', type=int, default=DEFAULT_LIMITS['max_calls'])
+    parser.add_argument('--tool-input-bytes', type=int, default=DEFAULT_LIMITS['max_input_bytes'])
+    parser.add_argument('--tool-output-bytes', type=int, default=DEFAULT_LIMITS['max_output_bytes'])
     args = parser.parse_args()
+    options = vars(args)
+    options['tool_limits'] = {'max_calls': options.pop('max_tool_calls'),
+                              'max_input_bytes': options.pop('tool_input_bytes'),
+                              'max_output_bytes': options.pop('tool_output_bytes')}
     try:
-        report = run_diagnostic(**vars(args))
+        report = run_diagnostic(**options)
         print(json.dumps(report, indent=2))
         return 1 if report['infrastructure_errors'] or (report['complete'] and report['successful_trajectories'] < 3) else 0
     except (OSError, ValueError) as error:

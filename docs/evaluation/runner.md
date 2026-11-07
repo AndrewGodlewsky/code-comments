@@ -29,6 +29,23 @@ mode and adapter. `--stop-after 0` writes only the manifest without Docker.
 expected. Exit code 0 means a successful or intentionally paused diagnostic;
 inspect `complete`. Configuration/record errors exit 2.
 
+Each attempt now uses `evaluation/session.py` to execute JSON-shaped requests
+(`command`, optional `stdin`) through the existing Docker command tool. Defaults
+are 16 tool calls, 262,144 cumulative UTF-8 request bytes, and 1,048,576 cumulative
+raw output bytes per step. CLI overrides are `--max-tool-calls`,
+`--tool-input-bytes` and `--tool-output-bytes`; limits must be positive integers,
+with maximum 64 calls and 1,048,576 bytes per direction. The manifest pins them.
+Changing limits on resume is rejected rather than granting an existing run more
+budget. Model spending remains fixed at zero.
+
+Malformed requests and exhausted limits terminate that session and close its
+container. The output budget is checked after a command returns, so one bounded
+command can cross the remaining allowance; its output is retained as failure
+evidence and no next command is permitted. Docker's per-command output/time caps
+still apply. Setup, snapshot and grading are separately bounded infrastructure
+operations and are not counted as adapter tool calls. These are tool limits,
+not a total wall-clock deadline or model token budget.
+
 `--mode controlled` puts the current matched facts in the recorded prompt for
 inline/external conditions; the baseline receives no added facts. The default
 `discovery` mode reads the same guide, task, source and optional external file
@@ -49,6 +66,15 @@ command limit and fixture/tool source hashes. Each `step-<condition>-<n>.json`
 contains inputs, prompt, actual read/write observations, resulting code, patch,
 grading, errors and timing. Hash envelopes detect damage, not a malicious host
 that rewrites both data and hash. Files are created exclusively and flushed.
+Manifest schema 2 also pins `session.py`. Attempts have fresh session IDs;
+observation IDs are scoped to that session. Tool observations retain exact
+accepted requests, serialized request byte counts/hashes, returned output and command
+status/timing. Oversized rejected input is represented by its hash/byte count
+rather than copied into an unbounded record. Rejected calls remain in the trace;
+usage counts completed command responses separately. Input-byte usage includes
+validated-size rejected requests. No earlier session transcript is carried into
+the next attempt. This is a boundary for trusted scripted host adapters, not
+isolation of arbitrary host-side adapter code or a connected model harness.
 Resume validates configuration/source hashes and saved trajectory prefixes before
 new work; it refuses records after a gap or terminal failure. All attempts,
 including failures, contribute to summaries; later steps remain unattempted.
