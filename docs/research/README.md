@@ -51,6 +51,7 @@ new experiments or changes to the evaluation protocol.
 | [Capability gradient](capability-gradient.md) | R2 (#31): benefit tracks headroom and knowledge the code lacks, not simply weaker models; #19 reader tiers and sample sizes |
 | [Human maintenance and drift](human-maintenance-and-drift.md) | R3 (#32): docs drift faster than comments; developers read code and comments first; the human-editing claim lacks direct evidence |
 | [Context layers](context-layers.md) | R4 (#33): how decision memory, instructions and code docs are divided in practice; proposed boundary for the skill |
+| [Long-horizon degradation](long-horizon-degradation.md) | R5 (#35): agent code measurably erodes over successive edits; no evidence weaker models erode faster; no test of comments as the remedy |
 | [Skill portability](skill-portability.md) | Verified documentation and local tool evidence for eventual distribution across Orca, Codex, Claude Code, and Copilot |
 
 The literature reports contain citations and separate findings from our
