@@ -189,6 +189,8 @@ When asked only to refresh or review comments, change **no code**: not even
 formatting, names or imports. The code must stay identical apart from comments
 and docstrings. Follow this short path instead:
 
+An accurate comment stays exactly as written, even if you now know more about it. Do not reword it, extend it, or add history or incident narration to it; change only what is false and add only what is missing.
+
 1. **Read**, as in Step 1, every comment in the requested scope as a claim, and
    note protected text: license headers, tool directives and valid comments.
 2. **Gather evidence** of intent from the request, tests, docs and history, as in

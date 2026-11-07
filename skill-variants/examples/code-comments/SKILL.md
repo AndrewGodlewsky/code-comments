@@ -145,6 +145,7 @@ When asked only to refresh or review comments, change **no code**. Not even
 formatting, names or imports. Correct false claims, add missing rationale the
 evidence supports, and leave everything accurate untouched. License headers and
 tool directives (`noqa`, `type: ignore`, pragmas) are never yours to remove.
+An accurate comment stays exactly as written, even if you now know more about it. Do not reword it, extend it, or add history or incident narration to it; change only what is false and add only what is missing.
 
 ## Before you finish
 

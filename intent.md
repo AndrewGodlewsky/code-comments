@@ -83,6 +83,21 @@ Further claims to test:
 - **Placement.** Inline comments at the point of change are more likely to be read
   and kept current than a separate folder, by agents and humans alike.
 
+**Scope clarification (user, 2026-11-07).** The skill is **not** a memory system and
+must not take control of one. Decision memory is a separate layer the user will
+maintain in their projects. The skill's mechanism is only this:
+- **Point of edit.** An agent must open a file to change it, so context written in
+  that file's comments is seen exactly when it matters. The user's core intuition is
+  that this extra context at the point of edit significantly improves edit quality
+  and prevents mistakes.
+- **Searchable placement.** When an agent needs context from elsewhere, comments
+  beside the code they describe are easy to find with `grep` or other search tools.
+
+No generated index, central store or lookup service is part of the skill. An
+earlier proposal to generate a docs index from comments was dropped for this
+reason. Revisit discovery aids only if evaluation shows agents missing context in
+other files.
+
 **What this means for evaluation.**
 - The primary comparison is **inline comments maintained by the skill** against the
   user's current practice, **an AI-maintained docs folder**, over a *sequence* of

@@ -59,3 +59,4 @@ Match the comment style and vocabulary already in the file and project.
 ## Comment-only requests
 Change no code at all. Fix false claims, add supported missing rationale, and keep
 license headers, tool directives and accurate comments.
+An accurate comment stays exactly as written, even if you now know more about it. Do not reword it, extend it, or add history or incident narration to it; change only what is false and add only what is missing.

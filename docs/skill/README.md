@@ -30,6 +30,16 @@ correct changes. Since then:
 
 See the fuller theory in `intent.md`.
 
+**Fixes after round 1 (2026-11-07):**
+- All five variants now say, under comment-only requests, that accurate comments
+  stay exactly as written: no rewording, extending or added history. This addresses
+  the weaker-writer failure, and because every variant gets it, the comparison stays
+  fair.
+- `audit-cache-ttl` now accepts a comment that points to `TTL_SECONDS`, as principle
+  P-27 asks (case set `7f59aa4965f4`).
+
+Round-1 numbers predate both fixes.
+
 **Decision (user, 2026-11-07):** build and compare skill variants now, in parallel
 with the placement pilot (#9), instead of waiting for it. This changes the order of
 work, not the evidence bar. No claim that a variant improves agent outcomes, or
