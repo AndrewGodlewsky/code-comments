@@ -1,10 +1,11 @@
 # Bounded corpus admission audit
 
-**Six candidates are recorded; none is admitted.** This 2026-11-05 metadata audit
-advances [#8](https://github.com/AndrewGodlewsky/code-comments/issues/8), which must
+**Six candidates are recorded; none is admitted.** The initial 2026-11-05 metadata
+audit now includes a [Hashin executable preflight](hashin-preflight.md) from
+2026-11-06. This advances [#8](https://github.com/AndrewGodlewsky/code-comments/issues/8), which must
 remain open. It does not deliver the issue's reviewed, executable placement-pilot
-corpus. No benchmark implementation, image, reference solution or evaluator was
-executed, and no model or paid inference was used.
+corpus. Hashin's public reference and mutant checks ran offline; frozen earlier
+assertions expose unresolved cumulative contracts. No model or paid inference was used.
 
 The [candidate registry](../../evaluation/corpus-candidates.json) is authoritative
 for selected identities, prospective splits, source hashes, evidence links and
@@ -35,7 +36,7 @@ certify sample adequacy, source truth or reviewer independence. Evidence URLs ar
 checked syntactically, not retrieved or authenticated. Duplicate detection covers
 registered IDs/hashes, not semantic equivalence or unregistered benchmark pools.
 
-## What was inspected
+## Initial metadata inspection
 
 The audit used read-only GitHub/HTTPS metadata requests. Source declarations and
 task metadata were inspected, not outcome tables or treatment runs. Primary
@@ -121,12 +122,16 @@ patch, dataset right, or container component. Those rights layers remain pending
 
 SlopCodeBench declares Python 3.12+ and the selected configurations list PyYAML;
 `file_merger` additionally lists PyArrow. ChainSWE provides image tags but no
-verified image digests in this audit. Hashin's recorded commands include apt/pip
+verified image digests in the initial metadata audit. Hashin's recorded commands include apt/pip
 installation; replaying them unchanged would not be a reproducible network-free
 grading phase. Upstream commands are inert provenance strings, not instructions
 executed by the validator. Images, toolchain pins, offline dependency closure,
 resource costs, baseline pass/fail states and strict cumulative checks remain
-unverified for all six candidates.
+unverified in that initial audit. The follow-up pins and executes Hashin's image
+without evaluation-time installation, reproduces all five public reference states
+and two first-step mutants, and records failures in frozen earlier assertions.
+See the [preflight evidence and remaining gates](hashin-preflight.md); the other
+five candidates still lack executable evidence, and all admission gates remain pending.
 
 ## Remaining acceptance work for #8
 
@@ -143,6 +148,6 @@ unverified for all six candidates.
 5. Select the executable feasibility sample before outcomes, record environment
    exclusions and limitations, and obtain independent full corpus review.
 
-The fixture tests validate local plumbing. They are not candidate execution or
-efficacy evidence. Keep #8 open, retain its recoverable branch/worktree, and retain
+The fixture tests validate local plumbing. The Hashin probe adds candidate
+execution evidence, not efficacy evidence. Keep #8 open, retain its recoverable branch/worktree, and retain
 the user's offline-only constraint; this audit does not authorize a model campaign.

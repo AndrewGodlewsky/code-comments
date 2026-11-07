@@ -5,6 +5,10 @@ in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). The user cho
 offline work only. There are no model calls, credentials, API adapters or new
 package dependencies. These checks are not benchmark results for a model or skill.
 
+For the separate #8 corpus work, see the [admission audit](corpus-audit.md) and
+[Hashin executable preflight](hashin-preflight.md). The latter has optional Docker
+and host PyArrow prerequisites; it does not change this fixture's requirements.
+
 ## Run locally
 
 From the repository root, use Python 3.12 or newer:

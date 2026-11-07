@@ -19,6 +19,12 @@ in this repository; this is not a security sandbox. `tests/test_offline.py` owns
 automated behavioral/export checks. See the [tool guide](docs/evaluation/README.md)
 and [roadmap](docs/roadmap.md) for current boundaries and remaining issues.
 
+`evaluation/corpus.py` validates the six-candidate admission registry; none is
+admitted. `evaluation/hashin_probe.py` reproduces a pinned public reference audit
+in a network-disabled Docker container. Its [preflight report](docs/evaluation/hashin-preflight.md)
+records both passing evolving suites and failing frozen earlier assertions. This
+is corpus development evidence, not a model runner or a hidden evaluator.
+
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
 
