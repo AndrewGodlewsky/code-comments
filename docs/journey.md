@@ -141,6 +141,20 @@ lives only in comments, found at the point of edit or by `grep` and `ripgrep`. S
 [trade-off analysis](skill/inline-only-tradeoffs.md). A comment tag convention to
 make search more precise is stored for later (#34).
 
+## 7c. The first downstream test (2026-11-07)
+
+The primary experiment (#19) was built: a writer keeps context under one practice
+(nothing extra, a docs folder, or the inline skill), the evidence is deleted, and a
+fresh reader makes a follow-up change. A $1.12 smoke run on 10 small sequences:
+- every reader passed in every arm;
+- **even with every comment removed**, the reader still passed, because it copied
+  the behaviour already embodied in neighbouring code.
+
+Lesson: in small code, the existing pattern *is* the context. A test of the theory
+needs knowledge the code doesn't show, and the cross-module situations of real
+codebases. Sequences now need an empirical "no-context must fail" check before they
+count. See the [smoke findings](evaluation/report-2026-11-07-seq-smoke.md).
+
 ## 8. Where it stands
 
 - **Next experiment:** #19, the inline skill against an AI-maintained docs folder
