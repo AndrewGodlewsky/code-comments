@@ -57,6 +57,7 @@ class LiveAdapterTests(unittest.TestCase):
         for flag in ("--restricted", "--strict-mcp-config", "--plugin-dir", "--max-budget-usd"):
             self.assertIn(flag, command)
         self.assertTrue(command[2].startswith("/cce:code-comments "))
+        self.assertEqual(call.kwargs["env"]["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "1")
         self.assertEqual(result["usage"]["cache_creation_input_tokens"], 40)
         self.assertEqual((result["cost_usd"], result["tool_calls"], result["latency_s"]), (0.05, 1, 4.2))
         roles = [turn["role"] for turn in result["trace"]]

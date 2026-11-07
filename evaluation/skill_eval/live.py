@@ -15,6 +15,7 @@ Isolation, verified with a smoke call on Claude Code 2.1.319:
 """
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -92,8 +93,11 @@ def run(case: Case, workspace: Path, *, skill: str, model: str, timeout_s: float
             command += ["--plugin-dir", str(plugin)]
         started = time.perf_counter()
         try:
+            # Auto memory loads in every session and could carry context between attempts or
+            # arms; disable it explicitly (round 1 relied on unique temp dirs instead).
+            env = {**os.environ, "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
             completed = subprocess.run(command, cwd=workspace, stdin=subprocess.DEVNULL, capture_output=True,
-                                       text=True, encoding="utf-8", errors="replace", timeout=timeout_s)
+                                       text=True, encoding="utf-8", errors="replace", timeout=timeout_s, env=env)
         except subprocess.TimeoutExpired as error:
             raise LiveError("timeout", f"no result within {timeout_s}s") from error
         wall = round(time.perf_counter() - started, 2)

@@ -45,6 +45,10 @@ new experiments or changes to the evaluation protocol.
 | [Human comprehension and maintenance evidence](comment-maintenance-and-evaluation.md) | Three empirical studies, limits on generalization, and candidate evaluation fixtures |
 | [Coding-agent evidence](agent-context-evidence.md) | Eight empirical papers distinguishing single-task effects, training, retrieval, repository instructions, and successive edits |
 | [Proposed evaluation protocol](evaluation-protocol.md) | Canonical draft design: matched knowledge, repeated changes, cluster-aware analysis, practical/noninferiority thresholds, pilot stages, costs, and decision gates |
+| [Docs for agents in practice](docs-for-agents-practice.md) | R1 (#30): practitioner docs folders, AGENTS.md studies and measured drift; how to build a realistic docs-folder arm for #19 |
+| [Capability gradient](capability-gradient.md) | R2 (#31): benefit tracks headroom and knowledge the code lacks, not simply weaker models; #19 reader tiers and sample sizes |
+| [Human maintenance and drift](human-maintenance-and-drift.md) | R3 (#32): docs drift faster than comments; developers read code and comments first; the human-editing claim lacks direct evidence |
+| [Context layers](context-layers.md) | R4 (#33): how decision memory, instructions and code docs are divided in practice; proposed boundary for the skill |
 | [Skill portability](skill-portability.md) | Verified documentation and local tool evidence for eventual distribution across Orca, Codex, Claude Code, and Copilot |
 
 The literature reports contain citations and separate findings from our
