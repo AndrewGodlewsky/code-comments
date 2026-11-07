@@ -111,9 +111,9 @@ The tournament report and the issues carry the correction.
 | The user's claim | What the evidence says | Report |
 | --- | --- | --- |
 | Others find docs folders help AI on large projects | **Widely reported; weakly measured.** Teams build elaborate docs folders, but controlled studies of agent context files found no correctness gain | [docs-for-agents-practice.md](research/docs-for-agents-practice.md) (R1) |
-| Separate docs drift (two sources of truth) | **Strongly supported.** 82% of top projects had stale doc references at some point. Agents followed a stale instruction file over the actual code 90% of the time. Only 37% of agent pull requests that changed code touched docs | R1; [human-maintenance-and-drift.md](research/human-maintenance-and-drift.md) (R3) |
+| Separate docs drift (two sources of truth) | **Strongly supported.** 82% of top projects had stale doc references at some point. Agents followed a stale instruction file over the actual code in 90% of convention choices in synthetic conflicts. Only 37% of agent pull requests that changed code touched docs | R1; [human-maintenance-and-drift.md](research/human-maintenance-and-drift.md) (R3) |
 | Weaker models need the context more | **Refined.** Benefit tracks whether the reader *lacks* the fact and *can use* it. The weakest models gain little, and frontier models gain a lot from knowledge the code doesn't contain | [capability-gradient.md](research/capability-gradient.md) (R2) |
-| Humans struggle to edit AI code without comments | **Not supported yet.** The one controlled trial found no penalty. Comments raised confidence more than accuracy | R3 |
+| Humans struggle to edit AI code without comments | **Not supported yet.** The one controlled trial (which did not vary comments) found no penalty. Comments raised confidence more than accuracy | R3 |
 | Inline stays truer than a docs folder | **Partly.** Comments change with code far more often than docs, but still lag at callers and interfaces. Never compared over a sequence of changes: #19 | R3 |
 | Where the skill should focus | **Local rationale, not description.** The knowledge least often written down is constraints and rejected alternatives; describing what the code does adds little for capable readers | [context-layers.md](research/context-layers.md) (R4) |
 
@@ -121,8 +121,14 @@ The tournament report and the issues carry the correction.
 constraints, effects, and why), not re-describe the code. The skill's principles
 already lean this way, and #19 now tests it directly.
 
-These reports were written by research agents and have not yet had an independent
-citation audit (#29).
+Research agents wrote these reports. An independent
+[citation audit](research/audits/2026-11-07-r1-r4-citation-audit.md) checked 33
+load-bearing claims against their primary sources:
+- 24 verified;
+- 8 minor issues, since corrected;
+- 1 misrepresentation, since corrected (where rejected alternatives are recorded:
+  mainly issues and pull requests, not code review);
+- no fabricated sources, including every 2026 paper.
 
 ## 8. Where it stands
 

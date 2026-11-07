@@ -45,6 +45,7 @@ new experiments or changes to the evaluation protocol.
 | [Human comprehension and maintenance evidence](comment-maintenance-and-evaluation.md) | Three empirical studies, limits on generalization, and candidate evaluation fixtures |
 | [Coding-agent evidence](agent-context-evidence.md) | Eight empirical papers distinguishing single-task effects, training, retrieval, repository instructions, and successive edits |
 | [Proposed evaluation protocol](evaluation-protocol.md) | Canonical draft design: matched knowledge, repeated changes, cluster-aware analysis, practical/noninferiority thresholds, pilot stages, costs, and decision gates |
+| [R1-R4 citation audit](audits/2026-11-07-r1-r4-citation-audit.md) | Independent check of 33 load-bearing claims in R1-R4: 24 verified, 8 minor issues and 1 misrepresentation, all corrected in the reports; no fabricated sources |
 | [Docs for agents in practice](docs-for-agents-practice.md) | R1 (#30): practitioner docs folders, AGENTS.md studies and measured drift; how to build a realistic docs-folder arm for #19 |
 | [Capability gradient](capability-gradient.md) | R2 (#31): benefit tracks headroom and knowledge the code lacks, not simply weaker models; #19 reader tiers and sample sizes |
 | [Human maintenance and drift](human-maintenance-and-drift.md) | R3 (#32): docs drift faster than comments; developers read code and comments first; the human-editing claim lacks direct evidence |

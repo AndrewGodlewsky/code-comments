@@ -16,7 +16,8 @@ capability grows?
 the benefit depends on **headroom**: whether the reader lacks the fact *and* can use it. Context helps
 least at the floor, where the model cannot exploit it, and at the ceiling, where the fact can be
 recovered from code. Context that carries knowledge absent from the code still gave **frontier**
-configurations gains of about 16–20 pp (SkillsBench) and roughly tripled their success on SWE-Bench Pro.
+configurations gains of +8 to +25 pp (SkillsBench; most +16 to +20) and roughly tripled their success on
+SWE-Bench Pro, although that added context derives from the gold patch and tests. *(Corrected after the [2026-11-07 citation audit](audits/2026-11-07-r1-r4-citation-audit.md).)*
 Context that restates what the code shows helps strong models little or not at all, and costs them about
 20% more inference. The user's intuition holds best in one form: **weaker models are misled more by wrong
 context**, and some within-study contrasts favour weaker readers, though none of those is statistically
@@ -63,7 +64,7 @@ gained 27 pp when comments were *removed*, against 2.6 pp for GPT-4o. Both are c
 Mehtiyev and Assunção analyse 9,374 SWE-bench Verified trajectories from 19 agents
 ([2604.02547v1](https://arxiv.org/html/2604.02547v1), April 2026). Changing the framework moved Claude 3.5
 Sonnet by about **20 pp** but Claude 4 Sonnet by about **4 pp**. Per-task agreement was 85–93% for the
-same model across frameworks, against 47–88% for the same framework across models. This is measured,
+same model across frameworks (Claude 4 Sonnet and Opus 4.5; Claude 3.5 Sonnet 71%), against 47–88% for the same framework across models. This is measured,
 observational evidence for the user's intuition, but it concerns the agent scaffold, not explanatory
 context. SkillsBench offers an analogue by domain: software engineering had among the smallest gains
 (+11.6 pp, 37.6→49.2). The authors attribute small gains to domains with strong pretraining and tooling
@@ -75,9 +76,9 @@ coverage.
   SWE-bench Verified issues but only **11–25%** of multi-file ones. Agentless solved 12 of 13 multi-file
   issues it passed with single-file edits. "Ignoring semantic dependencies" is a named failure
   subcategory, and knowledge deficiency causes about 25% of failures ([Liu et al., 2509.13941v1](https://arxiv.org/html/2509.13941v1), September 2025; measured, manual taxonomy of 150 failures).
-- **Architectural layer.** On the 12 tasks that no agent solved, including Opus 4.5 agents at about 79%
-  overall, agents found the right file 12 of 12 times but intervened at the wrong layer **10 of 12**
-  times ([Mehtiyev and Assunção](https://arxiv.org/html/2604.02547v1); measured, small sample).
+- **Architectural layer.** On the 12 simple-patch tasks (a subset of 55 that no agent solved), including Opus 4.5 agents at about 79%
+  overall, the best agent found the right file in all 12 but fixed the symptom rather than the root cause ("wrong layer" is this report's paraphrase) in **10 of 12**
+  tasks ([Mehtiyev and Assunção](https://arxiv.org/html/2604.02547v1); measured, small sample).
 - **Large edits.** On SWE-Bench Pro (reference patches average 4.1 files and 107 lines), the authors
   report that top models "struggle to produce solutions on high-complexity tasks", failing mainly on
   semantic correctness. Weaker models fail more on "syntax, formatting, and tool-use". Frontier models
@@ -99,7 +100,7 @@ would have prevented the failure.
   Skills. 13 of 87 tasks got worse with Skills, when a Skill displaced "a stronger default strategy"
   ([SkillsBench v4](https://arxiv.org/html/2602.12670v4)).
 - Misleading hint comments cut Claude 3.5 Sonnet by 43.4% (relative) on LiveCodeBench output prediction.
-  They also inflated reasoning tokens 2–3× ([CodeCrash v3](https://arxiv.org/html/2504.14119v3), NeurIPS 2025, Table 1).
+  In reasoning models (o3-mini-high, DeepSeek-R1, QwQ) they also inflated reasoning tokens 2–3× ([CodeCrash v3](https://arxiv.org/html/2504.14119v3), NeurIPS 2025, Table 1).
 - Efficiency can improve as well. AGENTS.md was associated with a 28.6% lower median runtime and 16.6%
   fewer output tokens on 124 PRs with Codex, with no tier comparison ([Lulla et al., 2601.20404](https://arxiv.org/html/2601.20404); measured, paired, small).
 

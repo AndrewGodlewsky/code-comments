@@ -44,7 +44,7 @@ claim that weaker models benefit more rests on one small exploratory preprint.
 | Source | Structure | How it is kept fresh | Evidence |
 |---|---|---|---|
 | OpenAI Codex team, "Harness engineering" (Lopopolo, Feb 2026) | A root `AGENTS.md` of about 100 lines that works as a table of contents, plus `ARCHITECTURE.md`. Under `docs/`: `design-docs/` (an index and core beliefs), `exec-plans/active` and `completed`, a tech-debt tracker, `product-specs/`, `generated/db-schema.md`, and `references/*-llms.txt` for dependencies | Linters, CI jobs and a recurring "doc-gardening" agent that opens fix-up PRs | Practitioner report. **The original returned HTTP 403.** The layout comes from two secondary summaries that agree: [agent-harness wiki](https://ericfode.github.io/agent-harness-wiki/raw/articles/openai-harness-engineering), [ai-playbooks review](https://ai-playbooks.pages.dev/reviews/harness-engineering-leveraging-codex-in-an-agent-first-world) |
-| [Codified Context](https://arxiv.org/html/2602.20478) (v1, 2026-02-24) | Three tiers for a 108k-line C# project ([context layers](context-layers.md)). 34 on-demand specs of about 16,000 lines; the whole setup is about 24% of the code's size | Same-session updates, a review every two weeks and a file-to-spec drift detector: about **1–2 h a week**, the only quantified upkeep bill found | Practitioner report (one developer, observational, "No causal relationships are claimed") |
+| [Codified Context](https://arxiv.org/html/2602.20478) (v1, 2026-02-24) | Three tiers for a 108k-line C# project ([context layers](context-layers.md)). 34 on-demand specs; tier 3 is about 16,000 lines, including a ~1,600-line retrieval service; the whole setup is about 24% of the code's size | Same-session updates, a review every two weeks and a file-to-spec drift detector: about **1–2 h a week**, the only quantified upkeep bill found | Practitioner report (one developer, observational, "No causal relationships are claimed") |
 | [Cline Memory Bank](https://docs.cline.bot/best-practices/memory-bank) | Six files (`projectbrief`, `productContext`, `activeContext`, `systemPatterns`, `techContext`, `progress`), all read at every task start | An "update memory bank" command reviews every file | Vendor documentation; no outcome data |
 | Spec-driven tools ([Böckeler, 2025-10-15](https://www.martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html)) | Kiro: steering files (`product.md`, `tech.md`, `structure.md`) plus per-feature requirements, design and tasks. spec-kit: a `constitution.md` plus a spec folder per change. Tessl: a spec per code file, with generated code marked "GENERATED FROM SPEC - DO NOT EDIT" | Böckeler judged Kiro and spec-kit "spec-first" in practice: specs serve one change and are not maintained | Practitioner report (hands-on trial) |
 | [spec-kit "persisting specs" guide](https://github.com/github/spec-kit/blob/main/docs/how-to/persisting-specs.md) (last changed 2026-11-06) | Four post-delivery models, none the default: flow-back, flow-forward (immutable history), living spec, and constitution-only. **Spec Kit's own repository tracks only the constitution and gitignores `specs/`** | Flow-back's stated "main risk is silent divergence". Maintainers closed [#4940](https://github.com/github/spec-kit/issues/4940) (Oct 2026) without adding a core step to update specs when the code is right; deciding which side is right stays a human choice | Vendor documentation |
@@ -64,8 +64,8 @@ Three further points:
 
 - **Edits mostly add.** In [Agent READMEs v2](https://arxiv.org/html/2511.12884v2)
   §4.2, 59–67% of files were edited more than once, with a median gap of 22–68
-  hours. Median deletions were under 15 words per commit; 19 of 100 sampled commits
-  removed anything.
+  hours. Median deletions were under 15 words per commit; deletions accounted for 19 of
+  139 change labels in a 100-commit sample.
 - **Defects are common.** [dos Santos et al.](https://arxiv.org/abs/2606.15828)
   (SCAM 2026) find at least one smell in 91% of 100 popular files: "Context Bloat"
   in 42%, with "Conflicting Instructions" co-occurring.
@@ -81,8 +81,9 @@ Three further points:
   - [Khatri, REALM 2026](https://aclanthology.org/2026.realm-1.5/) (ACL workshop,
     Oct 2026; **measured**) ran Claude Code and Codex on 17 real tasks from 3
     repositories (288 runs). The context strategy produced **no measurable change in
-    correctness**, and equivalence testing bounds the effect to roughly 10–15
-    points. A real AGENTS.md never turned a near-miss into a pass. Failures were
+    correctness**. Its 10–15-point equivalence bound is descriptive, "not a powered
+    equivalence claim": the stated minimum detectable effect is ">>30pp", and Claude
+    Code ran 15 of the 17 tasks. *(Corrected after the [2026-11-07 citation audit](audits/2026-11-07-r1-r4-citation-audit.md).)* A real AGENTS.md never turned a near-miss into a pass. Failures were
     traced to "feature design, pattern selection, exact wiring", not to missing
     repository knowledge.
 - **Context files, efficiency.** [Lulla et al.](https://arxiv.org/html/2601.20404v2)
@@ -134,7 +135,8 @@ Three further points:
     inconsistencies) raised code-following to 91.4% and test passes from 89.4% to
     100%. The authors' explanation: the file arrives as an instruction, the code as
     tool output.
-  - Limits: conventions, not behavior; synthetic projects; single runs; auto-loaded
+  - Limits: conventions, not behavior; synthetic projects; each task in a single unattended run (two runs per project,
+    agent and condition; 86.4% of Claude Code and 93.9% of Codex choices followed the file); auto-loaded
     files, not a docs folder read with tools.
 - **Incorrect comments mislead too.** Incorrect docstrings harm results (Macke and
   Doyle), and *When Comments Mislead* reports the same for stale comments
@@ -241,8 +243,8 @@ low. Only one, the precedence sentence, has a measured effect on behavior.
    behavior is predicted to add little in either arm. Treat code-proximate
    contracts (types, tests) as a recorded confound or a possible reference arm,
    given Canedo's weaker-model result.
-6. **Plan power for small effects.** With 288 runs, Khatri could only bound the
-   effect to ±10–15 points. Follow the
+6. **Plan power for small effects.** With 288 runs, Khatri could not detect effects
+   below about 30 points; its ±10–15-point bound is descriptive only. Follow the
    [evaluation protocol](evaluation-protocol.md)'s cluster-aware design.
 
 ### For the corpus (#8)

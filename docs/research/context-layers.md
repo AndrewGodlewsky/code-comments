@@ -44,7 +44,7 @@ hypothesis, built on descriptive data and practitioner consensus.
 | [Claude Code memory](https://code.claude.com/docs/en/memory) (read 2026-11-07) | CLAUDE.md is for instructions loaded in every session (build commands, conventions, layout). Path-scoped rules load only with matching files. Auto memory holds Claude's own learnings: a 200-line index, **machine-local**, shared across all worktrees of a repo | Advises keeping files under 200 lines and warns that with contradictory instructions Claude "may pick one arbitrarily"; offers an audit command | Vendor claim |
 | [Copilot Memory](https://docs.github.com/en/copilot/concepts/agents/copilot-memory) (read 2026-11-07) and its [engineering post](https://github.blog/2026-01-09-building-an-agentic-memory-system-for-github-copilot) (Jan 2026) | Repository facts (conventions, architectural decisions, commands), each **with citations to code locations** | Citations are checked against the current branch before use; wrong memories are downvoted; default expiry 90 days | Vendor claim. The post reports an A/B rise in PR merge rate from 83% to 90%, p<0.00001, without full method |
 | Cursor Memories | Per-project learned memories | Staff said in [November 2025](https://forum.cursor.com/t/are-my-memories-gone/144057) that the feature was "intentionally removed starting from version 2.1.x". Users were told to export memories into Rules. No reason was given | Practitioner report (vendor forum) |
-| [Codified Context](https://arxiv.org/html/2602.20478) (v1, 2026-02-24) | A ~660-line "constitution" loaded every session, 19 specialist agent specs, and 34 on-demand subsystem specs that mix design decisions with descriptions of how the code works | Specs updated in the same session as code; a biweekly review; a drift detector that maps files to specs. Upkeep about 1–2 h a week. **Staleness was the main failure mode**: at least twice, outdated specs led the agent to wire code through a deprecated path | Practitioner report (one developer, 283 sessions, 108k lines of C#, observational) |
+| [Codified Context](https://arxiv.org/html/2602.20478) (v1, 2026-02-24) | A ~660-line "constitution" loaded every session, 19 specialist agent specs, and 34 on-demand subsystem specs that mix design decisions with descriptions of how the code works | Specs updated in the same session as code; a biweekly review; a drift detector that maps files to specs. Upkeep about 1–2 h a week. **Staleness was the main failure mode**: on at least two occasions, outdated specs produced code that conflicted with recent refactors; in one, the agent wired damage through a deprecated path | Practitioner report (one developer, 283 sessions, 108k lines of C#, observational) |
 
 What these share:
 
@@ -88,12 +88,12 @@ implementation descriptions that are often never updated.
   alternatives** hardest to find. They least often record **alternatives, the
   selected alternative, constraints and maturity stage**. Three of 20 interviewees
   thought alternatives were not rationale at all.
-- [Sun et al., *Fine-grained Multi-Document Extraction*](https://arxiv.org/html/2604.10345v1)
-  (arXiv v1, 2026-04-11; **measured** annotation, 63 commits in five Java
+- [Sun et al., *Recovering Fine-Grained Code Change Rationale from Multiple Software Artifacts*](https://arxiv.org/html/2604.10345v1)
+  (arXiv v1, 2026-04-11; a v2 appeared 2026-07-29; **measured** annotation, 63 commits in five Java
   projects, κ = 0.79).
   - Goal sits in commit messages and PRs. Need is mostly in issues. Alternatives
-    appear mainly in code review.
-  - Every component except Goal appeared only outside commit messages.
+    appear mainly in issues (60%) and pull requests (25%); code review holds 15%. *(Corrected after the [2026-11-07 citation audit](audits/2026-11-07-r1-r4-citation-audit.md).)*
+  - Apart from Goal and, less often, Need, components appeared only outside commit messages.
   - Inline comments held 3 rationale sentences (0.4% of their sentences), class
     Javadoc 4.
   - No artifact recorded Constraints or Dependency.
@@ -206,7 +206,7 @@ instructions. The history of a change goes to the commit.
   is not supported for code-owned facts.
 - **AXIS-REJECTED-ALT.** The evidence favours (c), recording inline only the
   alternative a later editor would plausibly reintroduce. Sun et al. weaken (b):
-  commit messages carry mostly Goal, and fresh readers do not consult reviews.
+  commit messages carry mostly Goal, and fresh readers do not consult issues, PRs or reviews.
   Both remain hypotheses until #19 reports.
 - **A possible audit duty, untested:** flag code facts duplicated in instruction
   files (P-26), since half of those files never change.
