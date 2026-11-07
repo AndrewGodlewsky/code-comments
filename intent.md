@@ -94,9 +94,22 @@ maintain in their projects. The skill's mechanism is only this:
   beside the code they describe are easy to find with `grep` or other search tools.
 
 No generated index, central store or lookup service is part of the skill. An
-earlier proposal to generate a docs index from comments was dropped for this
-reason. Revisit discovery aids only if evaluation shows agents missing context in
-other files.
+earlier proposal to generate a docs index from comments was dropped. The user's
+reasons:
+- **The code is the source of truth**, because it is what runs.
+- **Human editors break indexes.** A person changing code by hand won't know to
+  regenerate an index, and if regeneration needs an AI run that someone forgets,
+  the project is out of sync again. That is the core failure the project exists
+  to remove.
+
+See [ADR 0001](docs/adr/0001-context-lives-inline-no-central-index.md) and the
+[trade-off analysis](docs/skill/inline-only-tradeoffs.md). Revisit discovery aids
+only if evaluation shows agents missing context in other files, and then only in a
+form that manual edits cannot leave out of sync.
+
+**Stored idea (later priority):** a consistent tag or syntax convention for
+explanatory comments (`WHY:`, `CONSTRAINT:`, `SEE:`), so `grep` and `ripgrep`
+retrieval is fast and precise without any index (#34).
 
 **What this means for evaluation.**
 - The primary comparison is **inline comments maintained by the skill** against the

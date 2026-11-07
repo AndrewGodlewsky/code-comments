@@ -28,6 +28,7 @@ Then:
 | Evidence: do weaker models need context more? (R2) | [capability-gradient.md](docs/research/capability-gradient.md) |
 | Evidence: drift, and human editors (R3) | [human-maintenance-and-drift.md](docs/research/human-maintenance-and-drift.md) |
 | Evidence: decision memory vs instructions vs code docs (R4) | [context-layers.md](docs/research/context-layers.md) |
+| Decision: context stays inline, with no central index, and why | [ADR 0001](docs/adr/0001-context-lives-inline-no-central-index.md), [pros and cons](docs/skill/inline-only-tradeoffs.md) |
 | The skill's principles, design and variants | [principles.md](docs/skill/principles.md), [design.md](docs/skill/design.md), [skill-variants/](skill-variants/) |
 | Round-1 decision record | [tournament-2026-11-07.md](docs/skill/tournament-2026-11-07.md) |
 

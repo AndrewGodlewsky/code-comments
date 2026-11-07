@@ -130,6 +130,17 @@ load-bearing claims against their primary sources:
   mainly issues and pull requests, not code review);
 - no fabricated sources, including every 2026 paper.
 
+## 7b. A design decision: no central index (2026-11-07)
+
+A short docs index generated from the comments was proposed, to help agents find
+context. The user rejected it. The code is the source of truth, and a person
+editing code by hand won't know to regenerate an index. If regenerating needs an
+AI run that someone forgets, the project is out of sync again. Context therefore
+lives only in comments, found at the point of edit or by `grep` and `ripgrep`. See
+[ADR 0001](adr/0001-context-lives-inline-no-central-index.md) and the
+[trade-off analysis](skill/inline-only-tradeoffs.md). A comment tag convention to
+make search more precise is stored for later (#34).
+
 ## 8. Where it stands
 
 - **Next experiment:** #19, the inline skill against an AI-maintained docs folder

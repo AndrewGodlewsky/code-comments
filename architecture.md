@@ -64,6 +64,7 @@ New sources follow the [extraction workflow](docs/workflows/extract-comment-cont
 | `docs/research/evaluation-protocol.md` | Canonical proposed experiment design | An experimental design decision or measured limitation |
 | `docs/roadmap.md` | Milestone order and gates, linking GitHub's live assignments/status | A change to product execution scope or dependencies |
 | `docs/evaluation/README.md` | Runnable offline tools, provenance and validity limits | A verified tool or evaluation boundary changes |
+| `docs/adr/` | Consequential decisions, with their reasons and rejected alternatives (0001: context lives inline, no central index) | A new consequential decision, or a revisit condition being met |
 | `docs/skill/principles.md` | The skill's principles, their evidence grades and dispositions | New evidence, a tournament result, or a corrected citation |
 | `docs/skill/design.md` | Behaviour spec, variant matrix and winner-selection rule | A spec decision or a new round of variants |
 | `skill-variants/variants.json` | Each variant's hypothesis, axis positions and principle ids | A variant is added, changed or retired |
