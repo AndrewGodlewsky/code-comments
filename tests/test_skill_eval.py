@@ -167,6 +167,21 @@ class RunnerTests(unittest.TestCase):
             (Path(flow) / "_state.json").write_text(json.dumps(state), encoding="utf-8")
             self.assertEqual(quiet(["run", "--flow-dir", flow, "--adapter", "null", "--variant", "v1"])[0], 2, "harness change must block")
 
+    def test_report_generator_covers_every_section(self):
+        from evaluation.skill_eval import report
+        with tempfile.TemporaryDirectory() as temporary:
+            flow = Path(temporary) / "flow"
+            quiet(["init", "--flow-dir", str(flow), "--seed", "7", "--reps", "1"])
+            quiet(["run", "--flow-dir", str(flow), "--adapter", "null", "--variant", "baseline", "--approve-harness"])
+            quiet(["run", "--flow-dir", str(flow), "--adapter", "oracle", "--variant", "v1"])
+            out = Path(temporary) / "report.md"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(report.main([str(flow), "--out", str(out)]), 0)
+            text = out.read_text(encoding="utf-8")
+            for heading in ("Arms vs control — train", "Pass rate by family", "Per-case results", "Why attempts failed", "Cost and effort"):
+                self.assertIn(heading, text)
+            self.assertIn("+1.000", text)  # oracle vs null: every case flips from fail to pass
+
     def test_resume_drops_a_truncated_row_and_refuses_to_mix_adapters(self):
         with tempfile.TemporaryDirectory() as temporary:
             flow = str(Path(temporary) / "flow")

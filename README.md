@@ -4,10 +4,32 @@ Code Comments is a planned portable agent skill for preserving useful knowledge
 beside the code it explains. Target tools are Orca, Codex, Claude Code, and GitHub
 Copilot.
 
-The project has completed an initial research review and begun an offline
-evaluation foundation. Read [intent.md](intent.md) for the user's
-goals and hypotheses, and [architecture.md](architecture.md) for the current
-structure, proposed boundaries, and open decisions.
+The project has completed its research review, built a writer eval and five skill
+variants from that research, and run 738 graded agent attempts. No variant yet beats
+having no skill overall. The primary experiment, whether skill-maintained comments
+help a *later*, weaker agent more than an AI-maintained docs folder, is next (#19).
+Read [intent.md](intent.md) for the user's goals and hypotheses, and
+[architecture.md](architecture.md) for the current structure, proposed boundaries,
+and open decisions.
+
+## The story and the evidence
+
+To understand or explain the project, start with
+**[How we got here](docs/journey.md)**. It goes from the original intuition through
+research, the eval, the skill and the results, to the corrections and what changed.
+Then:
+
+| Topic | Document |
+| --- | --- |
+| The user's three-layer theory, and what the skill replaces | [intent.md](intent.md) ("The user's fuller theory") |
+| What the evals measure, every run in depth, and whether anything makes a difference | [Eval report, 2026-11-07](docs/evaluation/report-2026-11-07.md) |
+| Generated numbers for each run | [docs/evaluation/runs/](docs/evaluation/runs/) |
+| Evidence on the theory: docs folders in practice (R1) | [docs-for-agents-practice.md](docs/research/docs-for-agents-practice.md) |
+| Evidence: do weaker models need context more? (R2) | [capability-gradient.md](docs/research/capability-gradient.md) |
+| Evidence: drift, and human editors (R3) | [human-maintenance-and-drift.md](docs/research/human-maintenance-and-drift.md) |
+| Evidence: decision memory vs instructions vs code docs (R4) | [context-layers.md](docs/research/context-layers.md) |
+| The skill's principles, design and variants | [principles.md](docs/skill/principles.md), [design.md](docs/skill/design.md), [skill-variants/](skill-variants/) |
+| Round-1 decision record | [tournament-2026-11-07.md](docs/skill/tournament-2026-11-07.md) |
 
 Start with the [research index](docs/research/README.md) for historical sources,
 empirical studies, the proposed evaluation protocol, and portability findings.
@@ -15,8 +37,9 @@ For a review of the problem, existing systems, and benchmark options, read the
 [deep-dive synthesis](docs/research/deep-dive-summary.md).
 
 The [product roadmap](docs/roadmap.md) links the remaining GitHub issues and
-dependencies. The first [offline fixture audit](docs/evaluation/README.md) is
-executable; model trials and the portable skill are still future work.
+dependencies. The [offline fixture audit](docs/evaluation/README.md) and the
+[skill eval](docs/evaluation/skill-evals.md) are executable. Paid model runs need the
+user's approval, recorded in `intent.md`.
 
 ## Reading list
 

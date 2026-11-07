@@ -171,6 +171,12 @@ python -m evaluation.skill_eval.run init --flow-dir <dir> --seed 7
 python -m evaluation.skill_eval.run run --flow-dir <dir> --adapter oracle --variant baseline
 ```
 
+**Reporting policy.** After **every** run, generate the numbers report:
+`python -m evaluation.skill_eval.report <flow...> --out docs/evaluation/runs/<date>-<name>.md`.
+At each **decision point** (end of a round, a design change, before any claim), also
+write a narrative report like [report-2026-11-07.md](report-2026-11-07.md), and update
+[journey.md](../journey.md).
+
 Live runs: `run --adapter live --skill <variant> --model <id>` uses
 `evaluation/skill_eval/live.py` (headless Claude Code, which spends money). Analysis:
 `python -m evaluation.skill_eval.compare <flow> --split train` gives paired
