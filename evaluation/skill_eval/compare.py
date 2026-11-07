@@ -38,7 +38,8 @@ def per_case(rows: list[dict], metric: str) -> dict[str, float]:
     grouped: dict[str, list[float]] = {}
     for row in rows:
         if row.get("status", "ok") == "ok":
-            grouped.setdefault(row["prompt_id"], []).append(float(row["grade"][metric]))
+            if metric in row["grade"]:  # flows carry different metric sets (comment-edit vs sequence)
+                grouped.setdefault(row["prompt_id"], []).append(float(row["grade"][metric]))
     return {case: sum(values) / len(values) for case, values in grouped.items()}
 
 

@@ -41,19 +41,28 @@ class LiveError(Exception):
         self.failure_class, self.model, self.usage = failure_class, model, usage
 
 
-def build_plugin(skill: str, destination: Path) -> Path | None:
-    """Wrap a registered variant in a throwaway plugin directory; None for the control arm."""
+def skill_dir_for(skill: str) -> Path | None:
+    """Directory of a registered Code Comments variant; None for the control arm."""
     registry = {v["id"]: v for v in json.loads((VARIANTS / "variants.json").read_text(encoding="utf-8"))["variants"]}
     if skill not in registry:
         raise ValueError(f"unknown skill variant {skill!r}; see skill-variants/variants.json")
-    if registry[skill].get("control"):
-        return None
+    return None if registry[skill].get("control") else VARIANTS / skill / "code-comments"
+
+
+def build_plugin_dir(skill_dir: Path, destination: Path, label: str) -> Path:
+    """Wrap any skill directory (its name is the skill name) in a throwaway session plugin."""
     plugin = destination / PLUGIN
     (plugin / ".claude-plugin").mkdir(parents=True)
     (plugin / ".claude-plugin" / "plugin.json").write_text(
-        json.dumps({"name": PLUGIN, "version": "0.0.0", "description": f"Code Comments eval arm: {skill}"}), encoding="utf-8")
-    shutil.copytree(VARIANTS / skill / "code-comments", plugin / "skills" / "code-comments")
+        json.dumps({"name": PLUGIN, "version": "0.0.0", "description": f"Code Comments eval arm: {label}"}), encoding="utf-8")
+    shutil.copytree(skill_dir, plugin / "skills" / skill_dir.name)
     return plugin
+
+
+def build_plugin(skill: str, destination: Path) -> Path | None:
+    """Wrap a registered variant in a throwaway plugin directory; None for the control arm."""
+    skill_dir = skill_dir_for(skill)
+    return build_plugin_dir(skill_dir, destination, skill) if skill_dir else None
 
 
 def _trace(events: list[dict], prompt: str, skill: str, model: str) -> tuple[list[dict], int]:
@@ -83,9 +92,18 @@ def _trace(events: list[dict], prompt: str, skill: str, model: str) -> tuple[lis
 
 
 def run(case: Case, workspace: Path, *, skill: str, model: str, timeout_s: float, max_budget_usd: float) -> dict:
+    """One comment-edit attempt: the case's TASK.md with a registered variant (or none)."""
+    return run_session(workspace, TASK_PROMPT, skill_dir=skill_dir_for(skill), label=skill,
+                       model=model, timeout_s=timeout_s, max_budget_usd=max_budget_usd)
+
+
+def run_session(workspace: Path, task_prompt: str, *, skill_dir: Path | None, label: str, model: str,
+                timeout_s: float, max_budget_usd: float) -> dict:
+    """One headless Claude Code session in `workspace`, optionally with one skill loaded and invoked."""
     with tempfile.TemporaryDirectory() as temporary:
-        plugin = build_plugin(skill, Path(temporary))
-        prompt = f"/{PLUGIN}:code-comments {TASK_PROMPT}" if plugin else TASK_PROMPT
+        plugin = build_plugin_dir(skill_dir, Path(temporary), label) if skill_dir else None
+        skill_name = skill_dir.name if skill_dir else None
+        prompt = f"/{PLUGIN}:{skill_name} {task_prompt}" if plugin else task_prompt
         command = ["claude", "-p", prompt, "--model", model, "--output-format", "stream-json", "--verbose",
                    "--restricted", "--tools", TOOLS, "--permission-mode", "acceptEdits", "--strict-mcp-config",
                    "--no-session-persistence", "--max-budget-usd", str(max_budget_usd)]
@@ -117,13 +135,14 @@ def run(case: Case, workspace: Path, *, skill: str, model: str, timeout_s: float
         raise LiveError("harness_error", "no assistant turn", usage=usage)
     if served != {model}:
         raise LiveError("served_model_mismatch", f"requested {model}, served {sorted(served)}", model=",".join(sorted(served)), usage=usage)
-    if plugin and not any(s == f"{PLUGIN}:code-comments" for e in events if e.get("subtype") == "init" for s in e.get("skills", [])):
-        raise LiveError("harness_error", "skill variant did not load", model=model, usage=usage)
-    turns, tool_calls = _trace(events, prompt, skill, model)
+    if plugin and not any(s == f"{PLUGIN}:{skill_name}" for e in events if e.get("subtype") == "init" for s in e.get("skills", [])):
+        raise LiveError("harness_error", f"skill {label} did not load", model=model, usage=usage)
+    turns, tool_calls = _trace(events, prompt, label, model)
     return {
-        "note": f"Live run of skill variant `{skill}` ({result.get('subtype')}, {result.get('num_turns')} turns).",
+        "note": f"Live run of `{label}` ({result.get('subtype')}, {result.get('num_turns')} turns).",
         "trace": turns, "model": model, "usage": usage, "cost_usd": result.get("total_cost_usd"),
         "latency_s": round(result.get("duration_ms", wall * 1000) / 1000, 2), "wall_s": wall,
         "tool_calls": tool_calls, "num_turns": result.get("num_turns"),
         "stop_reason": result.get("subtype"), "is_error": result.get("is_error"),
+        "events": events,
     }

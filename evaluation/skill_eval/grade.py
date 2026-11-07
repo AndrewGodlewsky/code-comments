@@ -105,11 +105,16 @@ def _read_candidate(workspace: Path, relative: str, failures: list[str]) -> str 
 
 
 def run_checks(case: Case, workspace: Path, timeout_s: float = 30.0) -> list[str]:
-    """Hidden-check failures. GraderError only when the checker itself could not start."""
+    """Hidden-check failures for a case. GraderError only when the checker itself could not start."""
+    return run_check_file(case.private / "checks.py", workspace, case.id, timeout_s)
+
+
+def run_check_file(checks: Path, workspace: Path, label: str, timeout_s: float = 30.0) -> list[str]:
+    """Run any hidden-checks file against a workspace in a separate `python -I` process."""
     token = secrets.token_hex(16)
     try:
         completed = subprocess.run(
-            [sys.executable, "-I", str(CHECK_RUNNER), str(case.private / "checks.py"), str(workspace)],
+            [sys.executable, "-I", str(CHECK_RUNNER), str(checks), str(workspace)],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_s,
             cwd=workspace, env={**os.environ, "SKILL_EVAL_TOKEN": token},
         )
@@ -117,14 +122,14 @@ def run_checks(case: Case, workspace: Path, timeout_s: float = 30.0) -> list[str
         return [f"hidden checks exceeded {timeout_s}s"]
     ours = [line[len(token) + 1:] for line in completed.stdout.splitlines() if line.startswith(token + " ")]
     if "started" not in ours:
-        raise GraderError(f"{case.id}: check runner did not start (exit {completed.returncode}): {completed.stderr.strip()[-500:]}")
+        raise GraderError(f"{label}: check runner did not start (exit {completed.returncode}): {completed.stderr.strip()[-500:]}")
     results = [line for line in ours if line != "started"]
     if not results:
         return [f"workspace code ended the check process before results (exit {completed.returncode})"]
     try:
         return json.loads(results[-1])
     except json.JSONDecodeError as error:
-        raise GraderError(f"{case.id}: unreadable check result: {results[-1][:500]!r}") from error
+        raise GraderError(f"{label}: unreadable check result: {results[-1][:500]!r}") from error
 
 
 def grade(case: Case, workspace: Path) -> tuple[dict, dict]:

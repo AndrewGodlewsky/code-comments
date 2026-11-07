@@ -60,21 +60,24 @@ def section(flow: Path) -> list[str]:
         "",
     ]
     control_rows = arms.get("baseline", {}).get("rows", [])
+    # Metrics come from the rows: comment-edit and sequence flows record different sets.
+    metrics = list(dict.fromkeys(key for row in rows_all for key in row["grade"]))
+    secondary = [m for m in metrics if m != "pass"]
     for split in ("all", "train", "test"):
         pick = (lambda rows: rows) if split == "all" else (lambda rows, s=split: [r for r in rows if r.get("split") == s])
         out += [f"### Arms vs control — {split} cases", "",
-                "| Arm | Pass | Δpass (95% CI, n cases) | Recall | Bad claims | Preserved | Noise lines | Behavior |",
-                "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |"]
-        control = {m: per_case(pick(control_rows), m) for m in METRICS}
+                "| Arm | Pass | Δpass (95% CI, n cases) | " + " | ".join(secondary) + " |",
+                "| --- | ---: | --- |" + " ---: |" * len(secondary)]
+        control = {m: per_case(pick(control_rows), m) for m in metrics}
         for name, arm in arms.items():
-            scores = {m: per_case(pick(arm["rows"]), m) for m in METRICS}
+            scores = {m: per_case(pick(arm["rows"]), m) for m in metrics}
             if name == "baseline" or not control["pass"]:
                 delta = "— (control)"
             else:
                 d, half, n = paired(scores["pass"], control["pass"])
                 delta = f"{d:+.3f} ± {fmt(half)} (n={n})"
             out.append(f"| `{arm['label']}` | {fmt(mean(scores['pass'].values()))} | {delta} | "
-                       + " | ".join(fmt(mean(scores[m].values()), 2) for m in ("recall", "bad_claims", "preserved", "noise_lines", "behavior")) + " |")
+                       + " | ".join(fmt(mean(scores[m].values()), 2) for m in secondary) + " |")
         out.append("")
 
     families = sorted({r["tags"][0] for r in rows_all})
@@ -97,6 +100,14 @@ def section(flow: Path) -> list[str]:
         out.append(f"| {case} | {split_of[case]} | " + " | ".join(cells) + " |")
     out.append("")
 
+    if not {"behavior", "recall", "bad_claims", "preserved", "noise_lines"} <= set(metrics):
+        out += ["### Cost and effort per attempt (means)", "", "| Arm | Cost | Input tokens (incl. cache) | Output tokens |", "| --- | ---: | ---: | ---: |"]
+        for arm in arms.values():
+            rows = arm["rows"]
+            tokens_in = mean(sum(r["usage"].get(k, 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")) for r in rows)
+            out.append(f"| `{arm['label']}` | ${mean(r.get('cost_usd') or 0 for r in rows):.4f} | {tokens_in:,.0f} | {mean(r['usage'].get('output_tokens', 0) for r in rows):,.0f} |")
+        out.append("")
+        return out
     out += ["### Why attempts failed (counts of failing attempts by failed metric; one attempt can fail several)", "",
             "| Arm | Failing attempts | behavior | recall | bad_claims | preserved | noise over budget |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for arm in arms.values():
