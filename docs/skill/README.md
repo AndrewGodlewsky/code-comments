@@ -1,5 +1,13 @@
 # Building the Code Comments skill
 
+**Shipped as a hygiene skill (2026-11-08, #45).** After the pilot's null result, the
+lean variant is packaged as a Claude Code plugin in
+[plugins/code-comments/](../../plugins/code-comments/README.md), with no claim of
+downstream benefit. [hygiene-skill.md](hygiene-skill.md) explains its purpose and
+limits. It is climbed on the [hygiene eval](../../evaluation/hygiene/README.md), not
+on the downstream score. Edits go to `skill-variants/lean/` first and are copied to
+the plugin.
+
 Status: steps 1-4 done offline (2026-11-07). Four distillation files hold 89
 candidates with 369 verified citations. The ledger merges them into 33 principles
 (25 core, 8 on variant axes) with 489 verified citations across the five files.

@@ -8,9 +8,9 @@ instructions in their owning files.
 ## Current system
 
 The repository contains research, agent workflow configuration, and a small
-offline fixture audit/export tool. There is no implemented Code Comments skill,
-isolated model runner, application runtime, or published package. No model
-experiments have been run here. Current work is offline-only by user direction.
+offline fixture audit/export tool, the evaluation harnesses described below, and a
+Claude Code plugin that packages the comment hygiene skill. There is no application
+runtime.
 
 `evaluation/offline.py` audits a trusted original fixture and exports its first
 task under baseline, inline and external-context conditions. The fixture's
@@ -42,8 +42,14 @@ and `docs/skill/principles.md` is the merged, citation-checked ledger
 (`scripts/check_distillation.py`). `docs/skill/design.md` holds the behaviour spec
 and variant matrix. `skill-variants/` holds the installable variants and their
 registry, which `scripts/lint_skills.py` checks. Tournament round 1 (#26) was a null
-result ([report](docs/skill/tournament-2026-11-07.md)), so nothing has been promoted to
-`skills/code-comments/` yet.
+result ([report](docs/skill/tournament-2026-11-07.md)).
+
+`plugins/code-comments/` is the installable Claude Code plugin (#45), listed by the
+root `.claude-plugin/marketplace.json`. It ships the lean variant as a hygiene skill,
+with no claim of downstream benefit, plus a `stale-refs` command. Its `SKILL.md` and
+`stale_refs.py` are copies, and `tests/test_plugin.py` keeps them identical to their
+sources. [docs/skill/hygiene-skill.md](docs/skill/hygiene-skill.md) owns its purpose
+and limits. `evaluation/hygiene/` holds the eval used to climb it.
 
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
@@ -77,6 +83,8 @@ New sources follow the [extraction workflow](docs/workflows/extract-comment-cont
 | `docs/skill/principles.md` | The skill's principles, their evidence grades and dispositions | New evidence, a tournament result, or a corrected citation |
 | `docs/skill/design.md` | Behaviour spec, variant matrix and winner-selection rule | A spec decision or a new round of variants |
 | `skill-variants/variants.json` | Each variant's hypothesis, axis positions and principle ids | A variant is added, changed or retired |
+| `docs/skill/hygiene-skill.md` | The shipped plugin's purpose, strengths and non-goals | The skill's scope or evidence changes |
+| `evaluation/hygiene/README.md` | Hygiene eval cases, grading and iteration results | A case, grader or iteration result changes |
 
 Use references between these owners. A summary should point to the authoritative
 detail rather than create another independently maintained specification.
