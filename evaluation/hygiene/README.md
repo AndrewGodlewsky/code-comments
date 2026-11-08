@@ -68,6 +68,26 @@ each run holding `outputs/` (the edited repository and `RESPONSE.md`, the reply 
 the user), `grading.json` and `timing.json`. The skill-creator scripts then build
 `benchmark.json` and a review page. Results are kept in `iterations/`.
 
+Each run is a Haiku subagent given a fresh copy of the case's `files/` and this
+prompt (the second paragraph only for runs with a skill):
+
+```text
+You are working in the repository at <run>/outputs
+
+Your first action must be to read <path>/SKILL.md in full. Then follow it.
+
+The user's request:
+<the task from prompt.md>
+
+This is a self-contained exercise. Work only inside that repository directory, using
+absolute paths. Do not read or change anything outside it, with one exception: reading
+the SKILL.md named above is required and allowed even though it is outside the
+repository, and do not use git, GitHub or any task tracking. When finished, write the
+message you would send the user to RESPONSE.md in that repository directory.
+```
+
+For runs without a skill, the exception clause is left out.
+
 ## Limits
 
 - **Triggering is not tested.** With-skill runs are told to read the skill file, so
@@ -88,6 +108,9 @@ the user), `grading.json` and `timing.json`. The skill-creator scripts then buil
 - **A with-skill run can skip the skill.** In iteration 1 one with-skill run never
   opened `SKILL.md`. Check each with-skill transcript for the read, and exclude and
   re-run any that skipped it. The run prompt now makes reading the skill the first step.
+  In iteration 3, two runs still refused: the prompt said "do not read anything outside
+  it (apart from the file named above)", and they read that as forbidding the skill
+  file. The prompt now says plainly that reading the skill is required and allowed.
 - **The prose checks are text matches.** `lost_prose` treats a re-wrapped comment as
   kept when its words still appear in order. A paraphrase still counts as a loss;
   rule on it with an override.
@@ -169,3 +192,44 @@ unchanged (about 21 seconds and 42,600 tokens per run).
 Next: make the skill record a reason found in a test when a simplification removes
 the code's evidence of it, and separate an external stated fact (keep it) from a
 statement of the code's own behaviour (update it).
+
+### Iteration 3 (2026-11-08): the regression and the harm are fixed
+
+The skill gained a line on rules a rewrite hides: when simplifying, write the rule and
+its reason, found in a test, caller or doc, beside the new code. The limit line was
+split: keep an outside fact (a vendor quota, a law), and update every statement of
+what this code does. Configurations: the edited skill (v3), the iteration-2 skill
+(`old_skill`, its runs reused) and no skill (iteration-2 runs reused). Every counted
+with-skill run read the skill as its first tool call.
+
+| Case | With skill (v3) | Old skill (v2) | Without skill |
+| --- | --- | --- | --- |
+| `reason-only-in-test` | 6/6, 5/6 | 4/6, 4/6 | 4/6, 5/6 |
+| `change-contradicts-comment` | 6/6, 6/6 | 5/6, 6/6 | 6/6, 6/6 |
+| `no-invented-reason` | 5/5, 5/5 | 5/5, 5/5 | 4/5, 4/5 |
+| `clause-goes-stale` | 6/6, 6/6 | 6/6, 6/6 | 6/6, 6/6 |
+| the other five | all pass | all pass | all pass |
+
+Pass rates: with skill 99.1%, old skill 95.4%, without 95.0%. Tokens are unchanged
+(about 42,700 per run). One with-skill run took 145 seconds against 17 to 27 for the
+rest, which inflates the mean time; it is an outlier, not a cost of the skill.
+
+- **`reason-only-in-test` improved.** Run 1 wrote the test's reason (the warehouse
+  resends a SKU to correct a miscount) beside the simplified code. Run 2 recorded
+  that the last update wins, but told the user it found no reason in the repository,
+  though the test holds one. That run is a real failure; there is no override.
+- **The stated-limit harm is gone.** Both runs changed every statement of the client's
+  own limit to 250, kept the vendor's free-tier quota of 100, and told the user the
+  two conflict. The replies were read by hand.
+- **The `no-invented-reason` gain held.** Both with-skill replies said no reason was
+  given.
+- **Two runs were excluded** for the prompt wording described under Limits, and re-run.
+  The excluded replies are in `excluded-runs/`.
+
+On these cases the skill now beats the bare model on three behaviours and loses on
+none. The gains are small, on two runs each, on Haiku, against a bare baseline.
+
+Next: the one remaining failure is a run that searched for the reason and missed the
+test. More runs of `reason-only-in-test` would show whether that is noise. The bigger
+open questions are the Limits above: a one-line-reminder baseline, a stronger model,
+and whether Claude loads the skill on its own.
