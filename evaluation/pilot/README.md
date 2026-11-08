@@ -124,6 +124,12 @@ python -m evaluation.skill_eval.pilot cleanup --out DIR
   can be tested for free. `--live` needs `--credential`, the matching
   environment variable, and `--cap`. The cap is a total in USD, and each session is
   reserved against it before it starts.
+- `--credential-file .env.pilot` makes the runner read the token itself, so the agent
+  driving the run never sees it. The file sits at the repository root. Git ignores
+  it (`.env.*`), and `.claude/settings.json` denies Claude agents opening it with
+  their file tools or common shell readers. Those rules only stop accidental reads by
+  Claude agents. Any program running as your Windows user, including other agent
+  tools, can still read the file. Revoke the token after the run.
 - `summary` prints per-arm totals (failed steps, regression events, high-churn steps,
   stale references, duplication and complexity growth, cost per passing step), the
   pre-registered decision rules, and the oracle and null self-checks.

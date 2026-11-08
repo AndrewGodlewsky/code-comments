@@ -3,6 +3,8 @@
     python -m evaluation.skill_eval.pilot run --out DIR --arms oracle,null --reps 1
     python -m evaluation.skill_eval.pilot run --out DIR --arms haiku-plain,...   (dry: no --live)
     python -m evaluation.skill_eval.pilot run --out DIR --arms ... --live --credential api-key --cap 60
+    python -m evaluation.skill_eval.pilot run --out DIR --arms ... --live --credential oauth \
+        --credential-file .env.pilot --cap 5
     python -m evaluation.skill_eval.pilot summary --out DIR
     python -m evaluation.skill_eval.pilot cleanup --out DIR
 
@@ -651,6 +653,25 @@ def parse_steps(text: str) -> list[int]:
     return [int(part) for part in text.split(",")]
 
 
+def load_credential_file(path: Path, name: str) -> str:
+    """Read NAME=value from an env file, without the value ever reaching a log or an error.
+
+    The runner loads the token itself so an agent driving it never has to read the file.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()  # -sig: tolerate a PowerShell BOM
+    except OSError as error:
+        raise ValueError(f"cannot read credential file {path}: {error.strerror}") from None
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep and key.strip() == name:
+            value = value.strip().strip('"').strip("'")
+            if not value:
+                raise ValueError(f"{name} is empty in {path}")
+            return value
+    raise ValueError(f"{name} is not set in {path}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Narwhals long-horizon pilot runner (#41).")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -662,6 +683,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--jobs", type=int, default=2)
     p.add_argument("--live", action="store_true", help="run real model sessions (SPENDS MONEY)")
     p.add_argument("--credential", choices=sorted(CREDENTIALS))
+    p.add_argument("--credential-file", type=Path,
+                   help="env file holding the credential; the runner reads it so no agent has to")
     p.add_argument("--cap", type=float, help="total USD cap for this run (needs the user's approval)")
     p.add_argument("--max-budget", type=float, default=2.0, help="per-session --max-budget-usd")
     p.add_argument("--timeout", type=float, default=1800, help="per-session timeout in seconds")
@@ -682,6 +705,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.live:
         if not args.credential or args.cap is None:
             parser.error("--live needs --credential and --cap")
+        if args.credential_file:
+            name = CREDENTIALS[args.credential]
+            try:
+                # Only the session containers get it, via `-e NAME`; scoring containers never do.
+                os.environ[name] = load_credential_file(args.credential_file, name)
+            except ValueError as error:
+                parser.error(str(error))
+            print(f"loaded {name} from {args.credential_file} ({len(os.environ[name])} characters)",
+                  file=sys.stderr)
         if not os.environ.get(CREDENTIALS[args.credential]):
             parser.error(f"{CREDENTIALS[args.credential]} is not set in this shell")
         if args.max_budget > args.cap:

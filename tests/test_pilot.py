@@ -377,5 +377,33 @@ class DecisionTests(unittest.TestCase):
         self.assertTrue(decision["outcome"].startswith("4:"))
 
 
+class CredentialFileTests(unittest.TestCase):
+    NAME = "CLAUDE_CODE_OAUTH_TOKEN"
+    SECRET = "sk-ant-oat01-not-a-real-token"
+
+    def load(self, text: str, encoding: str = "utf-8") -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".env.pilot"
+            path.write_text(text, encoding=encoding)
+            return pilot.load_credential_file(path, self.NAME)
+
+    def test_reads_value_skipping_comments_and_quotes(self):
+        text = f"# paste below\nOTHER=x\n{self.NAME}=\"{self.SECRET}\"\n"
+        self.assertEqual(self.load(text), self.SECRET)
+
+    def test_tolerates_powershell_bom(self):
+        self.assertEqual(self.load(f"{self.NAME}={self.SECRET}", encoding="utf-8-sig"), self.SECRET)
+
+    def test_errors_never_contain_the_value(self):
+        for text in (f"{self.NAME}=\n", f"OTHER={self.SECRET}\n"):
+            with self.assertRaises(ValueError) as caught:
+                self.load(text)
+            self.assertNotIn(self.SECRET, str(caught.exception))
+
+    def test_missing_file(self):
+        with self.assertRaises(ValueError):
+            pilot.load_credential_file(Path("does-not-exist.env"), self.NAME)
+
+
 if __name__ == "__main__":
     unittest.main()
