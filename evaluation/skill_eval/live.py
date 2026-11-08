@@ -119,15 +119,22 @@ def run_session(workspace: Path, task_prompt: str, *, skill_dir: Path | None, la
         except subprocess.TimeoutExpired as error:
             raise LiveError("timeout", f"no result within {timeout_s}s") from error
         wall = round(time.perf_counter() - started, 2)
+    return parse_session(completed.stdout, completed.stderr, completed.returncode, model=model, label=label,
+                         prompt=prompt, skill_name=skill_name, wall=wall)
+
+
+def parse_session(stdout: str, stderr: str, returncode: int, *, model: str, label: str, prompt: str,
+                  skill_name: str | None, wall: float) -> dict:
+    """Check and summarise one session's stream-json output; `skill_name` is set when a plugin skill was loaded."""
     events = []
-    for line in completed.stdout.splitlines():
+    for line in stdout.splitlines():
         try:
             events.append(json.loads(line))
         except json.JSONDecodeError:
             continue
     result = next((e for e in reversed(events) if e.get("type") == "result"), None)
     if result is None:
-        raise LiveError("harness_error", f"no result event (exit {completed.returncode}): {completed.stderr.strip()[-400:]}")
+        raise LiveError("harness_error", f"no result event (exit {returncode}): {stderr.strip()[-400:]}")
     usage = {k: result.get("usage", {}).get(k, 0) for k in
              ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}
     served = {e["message"].get("model") for e in events if e.get("type") == "assistant" and e.get("message", {}).get("model")}
@@ -135,7 +142,7 @@ def run_session(workspace: Path, task_prompt: str, *, skill_dir: Path | None, la
         raise LiveError("harness_error", "no assistant turn", usage=usage)
     if served != {model}:
         raise LiveError("served_model_mismatch", f"requested {model}, served {sorted(served)}", model=",".join(sorted(served)), usage=usage)
-    if plugin and not any(s == f"{PLUGIN}:{skill_name}" for e in events if e.get("subtype") == "init" for s in e.get("skills", [])):
+    if skill_name and not any(s == f"{PLUGIN}:{skill_name}" for e in events if e.get("subtype") == "init" for s in e.get("skills", [])):
         raise LiveError("harness_error", f"skill {label} did not load", model=model, usage=usage)
     turns, tool_calls = _trace(events, prompt, label, model)
     return {
@@ -144,5 +151,5 @@ def run_session(workspace: Path, task_prompt: str, *, skill_dir: Path | None, la
         "latency_s": round(result.get("duration_ms", wall * 1000) / 1000, 2), "wall_s": wall,
         "tool_calls": tool_calls, "num_turns": result.get("num_turns"),
         "stop_reason": result.get("subtype"), "is_error": result.get("is_error"),
-        "events": events,
+        "result_text": result.get("result"), "events": events,
     }

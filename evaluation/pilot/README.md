@@ -99,11 +99,64 @@ container, with `--network none`.
   or backtick was read as the start of a string. One combined comment-or-string scan
   fixed it.
 
+## Runner (#41)
+
+`evaluation/skill_eval/pilot.py` runs the arms on the host and starts containers.
+`evaluation/skill_eval/pilot_inner.py` runs inside `runtime` and does the git work and
+scoring. The `agent` target adds Claude Code 2.1.319 as uid 1000. Build it with
+`docker build --target agent -t code-comments-pilot:agent evaluation/pilot`.
+
+```
+python -m evaluation.skill_eval.pilot run --out DIR --arms oracle,null --reps 1
+python -m evaluation.skill_eval.pilot summary --out DIR
+python -m evaluation.skill_eval.pilot cleanup --out DIR
+```
+
+- Each lane (arm and repetition) gets its own Docker volume holding a narwhals checkout.
+  Step 0 resets it to the start commit. Each step after that scores the work, then
+  commits that step's hidden tests from the oracle tag.
+- Scoring containers run with `--network none` and mount the harness and oracle chain
+  read-only. Model sessions need network access to reach the API. They get the
+  checkout (read-only for the reviewer), and the credential is passed by name
+  (`-e ANTHROPIC_API_KEY` or `-e CLAUDE_CODE_OAUTH_TOKEN`), never by value.
+- Without `--live`, the model arms run dry. They act like the null arm and write the
+  redacted commands they would have run to `sessions/{label}.dry.json`, so the plumbing
+  can be tested for free. `--live` needs `--credential`, the matching
+  environment variable, and `--cap`. The cap is a total in USD, and each session is
+  reserved against it before it starts.
+- `summary` prints per-arm totals (failed steps, regression events, high-churn steps,
+  stale references, duplication and complexity growth, cost per passing step), the
+  pre-registered decision rules, and the oracle and null self-checks.
+
+### Offline self-test, 2026-11-08
+
+Run with `--arms oracle,null,haiku-plain --reps 1`, where haiku-plain was dry. It
+cost nothing and took 8 minutes, about 35 s per step per lane.
+
+| Arm | Steps passed | Failed | Regressions | Excess churn | Stale refs |
+| --- | --- | --- | --- | --- | --- |
+| oracle | 6 / 6 | 0 | 0 | 0 | 2 |
+| null | 0 / 6 | 6 | 0 | -300 | 0 |
+| haiku-plain (dry) | 0 / 6 | 6 | 0 | -300 | 0 |
+
+Every self-check in `summary` passes: the oracle passes every step with no
+regressions and zero excess churn, and its duplication and complexity match the
+reference. The null arm fails all six steps with zero churn. The reference churn of
+the six upstream PRs is 21, 119, 57, 15, 66 and 22 normalized lines. Duplication grows
+by 2 and complexity by 71 across the chain.
+
+The oracle's 2 stale references are lint false positives. Step 1's comment in
+`_spark_like/expr_list.py` names the Spark SQL functions `array_intersect` and
+`typeof` in backticks, and they are not repository symbols. Read a model arm's
+stale-reference count against this baseline, and check each hit by hand before
+counting it.
+
 ## Limits
 
 - `pip-audit` covers Python packages only. The Debian packages in the base image
   are not scanned. They come from the official image, pinned by digest.
 - The audit reflects advisories known on 2026-11-07. Rerun `scan.sh` if the full run
   starts much later.
-- The model sessions (#41) need API credentials inside the container. How they are
-  passed is decided in #41, before the smoke run.
+- The model sessions need a credential inside the agent container. It is passed by
+  environment variable name only, so it never appears in a command line or a log.
+  The container can still read it, and it has network access during model sessions.
