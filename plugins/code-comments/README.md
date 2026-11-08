@@ -6,8 +6,58 @@ comments that only restate the code. It also adds `/code-comments:stale-refs`, a
 for comments that name code which no longer exists.
 
 The [purpose document](../../docs/skill/hygiene-skill.md) explains the purpose, what
-the skill is good at, and what it is not meant to do. Read that before you rely on
-it.
+the skill is good at, and what it is not meant to do, with worked examples. Read that
+before you rely on it.
+
+## What it does
+
+When Claude edits, fixes, refactors or reviews code, the skill gives it a short
+checklist:
+
+1. **Keep comments true.** Fix or delete every comment the change made false,
+   including docstrings, headers and callers outside the edited lines.
+2. **Capture what the code cannot say.** Write down a reason, constraint or contract
+   that the request, a ticket, a test or a doc gives and the code does not show. When
+   a simplification hides a rule, state the rule and its reason beside the new code.
+3. **Never invent.** If no reason was given, record only what changed and tell you
+   the reason is missing. If a change breaks a stated limit, make the change, keep the
+   outside fact (a vendor quota, a law), update every statement of what the code does,
+   and tell you about the conflict.
+4. **Restraint.** No comments that restate the code; a routine change usually needs
+   none. Accurate comments stay word for word.
+5. **Fit in.** Match the comment style already in the file.
+
+A comment-only request ("check the comments in this file") fixes false comments and
+changes no code.
+
+## Where to use it
+
+Good fits:
+
+- **Long-lived code that someone will change again.** A true comment pays off for the
+  next editor, person or agent.
+- **Code whose reasons live elsewhere:** vendor limits, legal rules, downstream
+  consumers, past incidents that only a ticket or a test records.
+- **Refactors, renames and clean-ups,** where comments go stale and hidden rules get
+  lost. Run `/code-comments:stale-refs` before opening a pull request.
+- **Repositories where agents do much of the editing,** so one small rule set applies
+  to every edit.
+
+Little benefit, so turn it off if it gets in the way:
+
+- throwaway scripts, spikes and prototypes;
+- codebases that keep almost no comments by policy;
+- generated code, where the generator owns the comments.
+
+## Evidence so far
+
+On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 3, 2026-11-08:
+nine small cases, two Haiku runs each), this version passed 99.1% of checks, against
+95.4% for the previous version and 95.0% with no skill. It did better at recording a
+reason found only in a test and at telling the user a reason was missing, did no harm
+to accurate comments, and cost about the same. These are small samples on one weaker
+model, against a bare baseline rather than a one-line reminder, and the eval does not
+test whether Claude loads the skill on its own.
 
 ## Install
 

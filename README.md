@@ -12,6 +12,12 @@ Read [intent.md](intent.md) for the user's goals and hypotheses, and
 [architecture.md](architecture.md) for the current structure, proposed boundaries,
 and open decisions.
 
+**Installable now:** the lean skill ships as a Claude Code plugin for comment
+hygiene: it keeps comments true and records reasons while Claude edits code. It
+makes no claim of better downstream work. See the
+[plugin README](plugins/code-comments/README.md) for install, use and evidence, and
+[hygiene-skill.md](docs/skill/hygiene-skill.md) for its purpose and limits.
+
 ## The story and the evidence
 
 To understand or explain the project, start with
@@ -34,6 +40,7 @@ Then:
 | Decision: context stays inline, with no central index, and why | [ADR 0001](docs/adr/0001-context-lives-inline-no-central-index.md), [pros and cons](docs/skill/inline-only-tradeoffs.md) |
 | The skill's principles, design and variants | [principles.md](docs/skill/principles.md), [design.md](docs/skill/design.md), [skill-variants/](skill-variants/) |
 | Round-1 decision record | [tournament-2026-11-07.md](docs/skill/tournament-2026-11-07.md) |
+| The comment hygiene plugin: what it does, where to use it, its eval | [plugin README](plugins/code-comments/README.md), [hygiene-skill.md](docs/skill/hygiene-skill.md), [hygiene eval](evaluation/hygiene/README.md) |
 
 Start with the [research index](docs/research/README.md) for historical sources,
 empirical studies, the proposed evaluation protocol, and portability findings.

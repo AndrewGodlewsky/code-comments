@@ -31,9 +31,14 @@ checklist:
    and comments in calling code. Correct the text; do not mark it "outdated".
 2. **Capture what the code cannot say.** When the request, a ticket, a test or a doc
    gives a reason, constraint or contract that the code does not show, write it down
-   beside the code it governs.
-3. **Never invent.** Write a reason only when the evidence supports it. If the reason
-   is unknown, say so to the user instead of guessing in a comment.
+   beside the code it governs. This includes a rule that a rewrite hides: if a
+   simplification removes the code that made a rule visible, state the rule and its
+   reason beside the new code, even when behaviour is unchanged.
+3. **Never invent.** Write a reason only when the evidence supports it. If a change
+   has no stated reason, record only what changed and tell the user the reason is
+   missing. If a change breaks a stated limit, make the change and tell the user
+   about the conflict: keep the outside fact (a vendor quota, a law), and update every
+   statement of what this code does.
 4. **Restraint.** Don't restate code. A routine change usually needs no new comment.
    Leave accurate comments word for word.
 5. **Fit in.** Match the style already in the file.
@@ -57,6 +62,15 @@ These are the behaviours the skill and its eval are built to test. Results from 
   the next editor sees an unexplained sort and may remove it.
 - **Not inventing reasons.** When a value changes and nobody says why, the skill
   says to report the gap, not make up a rationale.
+- **Keeping a rule a rewrite would hide.** A convoluted loop that keeps the last
+  stock update for each SKU is simplified. The behaviour stays the same, but the
+  reason (the warehouse resends a SKU to correct a miscount, written only in a test)
+  is no longer visible. The skill asks for the rule and its reason beside the new
+  code.
+- **Separating outside facts from the code's own claims.** A geocoding client's limit
+  goes from 100 to 250 requests a minute, but the vendor's free tier allows 100. The
+  skill keeps the quota, updates every statement of the client's own limit, and tells
+  the user the two now conflict.
 - **Leaving good comments alone.** In a comment-only review, accurate comments,
   licence headers and tool directives stay exactly as they were.
 - **Staying quiet on routine work.** Adding a simple flag should not add a paragraph
@@ -70,6 +84,56 @@ These are the behaviours the skill and its eval are built to test. Results from 
   that applies on every edit keeps comment quality from drifting.
 - **Cleaning up.** A comment-only request ("check the comments in this file") fixes
   false claims without touching code.
+
+## Where to use it
+
+Install it where comments are read and agents do much of the editing:
+
+- **Long-lived code that people or agents will change again.** The value of a true
+  comment is paid out by the next editor, so it matters most where there will be one.
+- **Code with reasons outside the code.** Vendor limits, legal rules, downstream
+  consumers, past incidents: anything a ticket or a test knows and the code does not.
+- **Refactors and clean-ups.** Renames, moved logic and simplifications are where
+  comments go stale and hidden rules get lost.
+- **Comment reviews.** Ask "check the comments in this file" to fix false claims
+  without touching code. Run `/code-comments:stale-refs` before a pull request.
+
+It adds little, and you can switch it off, for:
+
+- **Throwaway code.** Scripts, spikes and prototypes nobody will maintain.
+- **Codebases that keep almost no comments by policy.** It will not add them, and
+  there is little to keep true.
+- **Work where comments are generated** (API stubs, generated clients). Fix the
+  generator instead.
+- **Non-code requests.** It is meant to stay quiet there. Whether it does is not yet
+  verified (see the evidence below).
+
+## Evidence so far
+
+From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 3
+(2026-11-08), Haiku subagents, two runs per case on nine small cases:
+
+| Configuration | Checks passed |
+| --- | --- |
+| This skill (v3) | 99.1% |
+| Previous version (v2) | 95.4% |
+| No skill | 95.0% |
+
+- **Gains over no skill:** recording a reason held only in a test (6/6 and 5/6,
+  against 4/6 and 5/6); telling the user a reason is missing (5/5 twice, against 4/5
+  twice). Earlier versions also did harm on the stated-limit case; v3 does not.
+- **No losses:** every preservation and restraint check passed. Cost is about the
+  same in tokens and time.
+- **Five cases do not discriminate.** Haiku without the skill already fixes distant
+  comments, renames and simple stale clauses.
+
+Read these as small, encouraging signals, not proof:
+
+- Two runs per case, on one model, on a weaker model.
+- The baseline is a bare model, not a one-line "keep comments accurate" reminder,
+  which the pilot found to be as good as the full skill downstream.
+- Triggering is untested: the eval tells the model to read the skill, so it does not
+  show that Claude loads it on its own.
 
 ## What it is not
 
