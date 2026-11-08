@@ -228,3 +228,13 @@ written before any model session ran.
     recording any attempt, and every attempt is reported.
   - The smoke-run results were produced without this change. They are a harness check
     only and are not pooled with the full run.
+- **2026-11-08, full-run limits frozen (from the smoke run, #42).**
+  - The smoke run cost $0.44 for 7 sessions. Its most expensive session was $0.14 and
+    its longest took 422 s.
+  - **Total cap:** $30, approved by the user, who allowed up to $45 if needed. Raising
+    the cap does not change the design: the run resumes from its saved results, and
+    run order is still interleaved by step.
+  - **Per session:** `--max-budget-usd 1.50`, with a 1800 s timeout.
+  - **Run settings:** 2 repetitions, steps 1–6, 3 lanes at a time.
+  - **Credential:** an OAuth token, so the cost figures are Claude Code's API-equivalent
+    estimates.
