@@ -596,8 +596,9 @@ def _sentences(path: Path) -> list[str]:
 
 
 def no_none_raises(out, orig):
+    # "Raises ValueError if text is not None and holds no tags" is true, so ignore "not None".
     bad = [s for s in _sentences(out / "tags/parse.py")
-           if re.search(r"\bNone\b", s) and re.search(r"rais|error|reject", s, re.IGNORECASE)]
+           if re.search(r"(?<!not )\bNone\b", s) and re.search(r"rais|error|reject", s, re.IGNORECASE)]
     return not bad, f"found {bad}" if bad else "no sentence says None raises"
 
 

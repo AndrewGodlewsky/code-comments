@@ -49,5 +49,22 @@ class HygieneGraderTest(unittest.TestCase):
             self.assertIn("a.py", grade.lost_prose(out, orig))
 
 
+    def test_not_none_clause_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / "tags").mkdir()
+            doc = '''def parse_tags(text):
+    """Split text on commas.
+
+    Returns [] if text is None. Raises ValueError if text is not None and holds no tags.
+    """
+'''
+            (out / "tags" / "parse.py").write_text(doc, encoding="utf-8")
+            self.assertTrue(grade.no_none_raises(out, out)[0])
+            (out / "tags" / "parse.py").write_text(doc.replace("is not None and", "is None or"),
+                                                   encoding="utf-8")
+            self.assertFalse(grade.no_none_raises(out, out)[0])
+
+
 if __name__ == "__main__":
     unittest.main()

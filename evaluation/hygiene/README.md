@@ -22,6 +22,9 @@ from). `references/<name>/` holds a hand-written good result for each case.
 | `routine-edit-no-noise` | Restraint | Adding a simple `--quiet` flag needs no paragraph of comments |
 | `capture-supported-reason` | Recording a reason that would otherwise be lost | The ticket explains why rows must be sorted; the code alone will not |
 | `no-invented-reason` | Not inventing reasons | A timeout changes with no reason given. The skill should say so, not make one up |
+| `change-contradicts-comment` | Stated limits | The user asks for 250 requests a minute, but a comment states the API's free-tier quota of 100 |
+| `reason-only-in-test` | Moving a reason that would be lost | A simplification drops the code's shape, and the only reason for "last update wins" is a test comment |
+| `clause-goes-stale` | Clause-level staleness | `parse_tags` stops raising on `None`; one clause of its docstring and a caller's comment go false |
 
 Every case scores preservation or restraint as well as the target behaviour. Round 1
 of the tournament showed a skill can win on a proxy while doing harm: weaker models
@@ -40,8 +43,9 @@ same statement with code, so every iteration is scored the same way. Checks incl
 - comparing the code's AST with its docstrings removed, for "don't change any code";
 - `scripts/stale_refs.py` for comments that name a removed function.
 
-Two checks are heuristics: `reason-recorded` (keywords near the sort) and
-`reply-flags-missing-reason` (keywords in the reply). When a heuristic gets a run
+Some checks in `grade.py` are keyword heuristics: `reason_recorded`,
+`last_wins_recorded`, `correction_recorded` and `no_invented_quota` read the added
+comments; `reply_flags` and `reply_flags_conflict` read the reply. When a heuristic gets a run
 wrong, record a human ruling in that run's `overrides.json`, as
 `{"<grader text>": {"passed": true, "evidence": "why"}}`. The ruling and the original
 check result both stay in the evidence.
@@ -123,3 +127,45 @@ Both configurations pass 96.7% of checks. The skill adds about 2,000 tokens (5%)
 
 Next: harder case variants, and a skill edit that asks the agent to tell the user
 when a change it records has no stated reason.
+
+### Iteration 2 (2026-11-08): one gain, one regression
+
+The skill gained three lines: tell the user when a recorded change has no stated
+reason; keep a stated limit the change breaks and report the conflict; look in tests,
+callers and docs for a reason before simplifying. Three harder cases were added.
+Configurations: the edited skill, the iteration-1 skill (`old_skill`) and no skill.
+For the six iteration-1 cases, the old-skill and no-skill runs are reused from
+iteration 1. Runs are told to read the skill first; every with-skill run did.
+
+| Case | With skill | Old skill | Without skill |
+| --- | --- | --- | --- |
+| `no-invented-reason` | 5/5, 5/5 | 4/5, 4/5 | 4/5, 4/5 |
+| `reason-only-in-test` | 4/6, 4/6 | 6/6, 5/6 | 4/6, 5/6 |
+| `change-contradicts-comment` | 5/6, 6/6 | 6/6, 5/6 | 6/6, 6/6 |
+| `clause-goes-stale` | 6/6, 6/6 | 6/6, 6/6 | 6/6, 6/6 |
+| the other five | all pass | all pass | all pass |
+
+Pass rates: with skill 95.4%, old skill 95.9%, without 95.0%. Time and tokens are
+unchanged (about 21 seconds and 42,600 tokens per run).
+
+- **The targeted gain held.** Both with-skill replies said the timeout change had no
+  stated reason and asked for one. No other run did.
+- **`reason-only-in-test` regressed.** Neither with-skill run moved the test's reason
+  (the warehouse resends a SKU to correct a miscount, so the last update wins) into
+  the docstring. Both said the behaviour was unchanged and left the docstring alone.
+  One old-skill run recorded it. The new "look in tests" line did not produce the
+  behaviour.
+- **The stated-limit line may cause harm.** One with-skill run raised the limit to
+  250 but left three statements that the client sends at most 100, saying they
+  recorded the quota. The quota fact should stay; statements about what the code does
+  must change.
+- **`clause-goes-stale` cannot discriminate.** Every run fixed both stale clauses.
+- **Grading changes.** `no_none_raises` falsely failed three runs that wrote "is not
+  None and holds no tags", and now ignores "not None" (with a test). Two no-skill runs
+  on `change-contradicts-comment` have overrides: one asked before changing anything,
+  so the "100" statements stayed true; one asked the user to confirm the plan allows
+  250, which does not claim it.
+
+Next: make the skill record a reason found in a test when a simplification removes
+the code's evidence of it, and separate an external stated fact (keep it) from a
+statement of the code's own behaviour (update it).
