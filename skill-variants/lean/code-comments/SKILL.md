@@ -28,7 +28,11 @@ In the scope it governs, record what the evidence shows and the code does not:
 - the decisive choice that rules out a natural-looking wrong alternative
 - deliberate oddities, and why they are intentional
 - the reason for odd-looking code. Before simplifying, look for it in tests,
-  callers and docs, then move it next to the code that depends on it
+  callers and docs
+- a rule that a rewrite hides. When you simplify or restructure code, its old
+  shape may have been the only visible sign of a rule, such as which duplicate
+  wins, an ordering or a tie-break. If a test, caller or doc explains that rule,
+  state the rule and its reason beside the new code, even if behaviour is unchanged
 - the source of a constant, not its copied value
 - a rejected alternative that a future editor would plausibly try
 
@@ -48,8 +52,10 @@ report.
   new value. Tell the user in your reply that the reason is
   missing, and ask for it.
 - If the requested change breaks a limit or requirement that a comment states,
-  still keep that stated fact. Make the change if asked, and tell the user about the
-  conflict in your reply. Do not rewrite the fact to fit the change.
+  make the change if asked and tell the user about the conflict in your reply.
+  Keep the outside fact (a vendor quota, a law, another team's limit) as written;
+  do not rewrite it to fit the change. Still update every statement of what this
+  code does, so none describes the old behaviour.
 
 ## Restraint
 - Do not restate code, names, types or signatures.
