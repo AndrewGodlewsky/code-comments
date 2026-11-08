@@ -1,0 +1,197 @@
+diff --git a/src/narwhals/_duckdb/expr_list.py b/src/narwhals/_duckdb/expr_list.py
+index d39f75112a..84138e2a39 100644
+--- a/src/narwhals/_duckdb/expr_list.py
++++ b/src/narwhals/_duckdb/expr_list.py
+@@ -36,6 +36,12 @@ def func(expr: Expression) -> Expression:
+         return self.compliant._with_elementwise(func)
+ 
+     def contains(self, item: NonNestedLiteral) -> DuckDBExpr:
++        if item is None:
++            # Unlike `array_position(expr, NULL)`, this is cheap for nested inner types
++            # too, and works on every DuckDB version.
++            return self.compliant._with_elementwise(
++                lambda expr: F("len", expr) > F("list_count", expr)
++            )
+         return self.compliant._with_elementwise(
+             lambda expr: F("list_contains", expr, lit(item))
+         )
+diff --git a/src/narwhals/_ibis/expr_list.py b/src/narwhals/_ibis/expr_list.py
+index c93e4bb033..59e3550ab2 100644
+--- a/src/narwhals/_ibis/expr_list.py
++++ b/src/narwhals/_ibis/expr_list.py
+@@ -25,6 +25,10 @@ def unique(self, *, maintain_order: bool) -> IbisExpr:
+         return self.compliant._with_callable(lambda expr: expr.unique())
+ 
+     def contains(self, item: NonNestedLiteral) -> IbisExpr:
++        if item is None:
++            return self.compliant._with_callable(
++                lambda expr: expr.filter(lambda x: x.isnull()).length() > 0
++            )
+         return self.compliant._with_callable(lambda expr: expr.contains(item))
+ 
+     def get(self, index: int) -> IbisExpr:
+diff --git a/src/narwhals/_polars/expr.py b/src/narwhals/_polars/expr.py
+index a508895b3e..f1d2d0e6de 100644
+--- a/src/narwhals/_polars/expr.py
++++ b/src/narwhals/_polars/expr.py
+@@ -557,13 +557,16 @@ def len(self) -> PolarsExpr:
+         return self.compliant._with_native(native_result)
+ 
+     def contains(self, item: Any) -> PolarsExpr:
+-        if self.compliant._backend_version < (1, 28):
+-            result: pl.Expr = pl.when(self.native.is_not_null()).then(
+-                self.native.list.contains(item)
+-            )
++        native = self.native
++        if item is None and self.compliant._backend_version < (1, 30):
++            # `list.contains(None)` returns a single null before 1.24, and `True` for
++            # empty lists before 1.30.
++            contains = native.list.len() > native.list.drop_nulls().list.len()
+         else:
+-            result = self.native.list.contains(item)
+-        return self.compliant._with_native(result)
++            contains = native.list.contains(item)
++        if self.compliant._backend_version < (1, 28):
++            contains = pl.when(native.is_not_null()).then(contains)
++        return self.compliant._with_native(contains)
+ 
+ 
+ class PolarsExprStructNamespace(
+diff --git a/src/narwhals/_spark_like/expr_list.py b/src/narwhals/_spark_like/expr_list.py
+index 1da4c5178b..79a5b20a7b 100644
+--- a/src/narwhals/_spark_like/expr_list.py
++++ b/src/narwhals/_spark_like/expr_list.py
+@@ -29,7 +29,20 @@ def unique(self, *, maintain_order: bool) -> SparkLikeExpr:
+     def contains(self, item: NonNestedLiteral) -> SparkLikeExpr:
+         def func(expr: Column) -> Column:
+             F = self.compliant._F
+-            return F.array_contains(expr, F.lit(item))
++            if item is None:
++                if self.compliant._implementation.is_sqlframe():
++                    # SQLFrame has no `exists`.
++                    return F.array_size(expr) > F.array_size(F.array_compact(expr))
++                # `array_intersect(expr, array(NULL))` is faster on integer lists, but
++                # Spark type-checks it even in a dead `typeof` branch, and it rejects
++                # non-orderable inner types (map, variant).
++                return F.exists(expr, lambda x: x.isNull())  # pragma: no cover
++            # Spark returns null instead of false when there is no match and the list
++            # holds a null element.
++            return F.coalesce(
++                F.array_contains(expr, F.lit(item)),
++                F.when(expr.isNotNull(), F.lit(False)),
++            )
+ 
+         return self.compliant._with_elementwise(func)
+ 
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 6e56846d6e..50f0aec1eb 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,11 +1,11 @@
+ from __future__ import annotations
+ 
+-from typing import TYPE_CHECKING
++from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
+-from tests.utils import assert_equal_data
++from tests.utils import POLARS_VERSION, assert_equal_data, pyspark_session
+ 
+ if TYPE_CHECKING:
+     from tests.utils import Constructor, ConstructorEager
+@@ -26,6 +26,33 @@ def test_contains_expr(request: pytest.FixtureRequest, constructor: Constructor)
+     assert_equal_data(result, expected)
+ 
+ 
++def test_contains_no_match_with_null_elements_expr(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    df = nw.from_native(constructor({"a": [[1, None], [None], [2, None], None]}))
++    result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(2))
++    assert_equal_data(result, {"a": [False, False, True, None]})
++
++
++def test_contains_none_expr(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    data = {"a": [[1, None], [None], [1, 2], [1, 1], [2, 1, None, 1], [], None]}
++    df = nw.from_native(constructor(data))
++    result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(None))
++    assert_equal_data(result, {"a": [True, True, False, False, True, False, None]})
++
++
+ def test_contains_series(
+     request: pytest.FixtureRequest, constructor_eager: ConstructorEager
+ ) -> None:
+@@ -37,3 +64,59 @@ def test_contains_series(
+     df = nw.from_native(constructor_eager(data), eager_only=True)
+     result = df["a"].cast(nw.List(nw.Int32())).list.contains(2)
+     assert_equal_data({"a": result}, expected)
++
++
++@pytest.mark.parametrize(
++    ("values", "dtype"),
++    [(["x", "y"], nw.List(nw.String())), ([[1], [None]], nw.List(nw.List(nw.Int32())))],
++)
++def test_contains_none_inner_dtypes_expr(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: nw.List,
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    if (
++        "polars" in str(constructor)
++        and POLARS_VERSION >= (1, 30)
++        and dtype.inner == nw.List
++    ):
++        # Raises in Polars 1.30-1.x; 2.0 works lazily but panics eagerly.
++        pytest.skip(reason="Polars' support for nested inner dtypes varies by version")
++    x, y = values
++    data = {"a": [[x, None], [None], [x, y], [], None]}
++    df = nw.from_native(constructor(data))
++    result = df.select(nw.col("a").cast(dtype).list.contains(None))
++    assert_equal_data(result, {"a": [True, True, False, False, None]})
++
++
++def test_contains_none_single_empty_list_expr(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    # Polars 1.28-1.29 return `True` for `[]` only when it is the sole row, which
++    # the multi-row data of `test_contains_none_expr` does not catch.
++    df = nw.from_native(constructor({"a": [[1], []]})).filter(nw.col("a").list.len() == 0)
++    result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(None))
++    assert_equal_data(result, {"a": [False]})
++
++
++@pytest.mark.slow
++def test_contains_none_non_orderable_inner_type_pyspark() -> None:  # pragma: no cover
++    pytest.importorskip("pyspark")
++    session = pyspark_session()
++    native = session.sql(
++        "SELECT 0 AS i, array(map('k', 1), NULL) AS a"
++        " UNION ALL SELECT 1, array(map('k', 1))"
++    )
++    result = nw.from_native(native).select("i", nw.col("a").list.contains(None)).sort("i")
++    assert_equal_data(result, {"i": [0, 1], "a": [True, False]})

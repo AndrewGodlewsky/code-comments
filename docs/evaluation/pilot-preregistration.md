@@ -188,4 +188,31 @@ The runner (#41) must pass these checks offline, inside the container:
 
 ## Deviations
 
-None yet. Smoke-run limits are recorded here before the full run.
+Smoke-run limits are recorded here before the full run. Each entry is dated and was
+written before any model session ran.
+
+- **2026-11-07, source path.** narwhals keeps its code in `src/narwhals/`, not
+  `narwhals/`. Every rule and metric above that names `narwhals/` means
+  `src/narwhals/`.
+- **2026-11-07, backends tested.** The runtime image installs pandas, polars,
+  pyarrow, duckdb, sqlframe and dask (#39). Every run, oracle and arm, uses the
+  constructor set in `evaluation/pilot/chain/constructors.env`. pyspark, modin, cudf
+  and ibis are not installed, so their code paths are not tested. Code an arm writes
+  for those backends counts towards churn, but the tests can't catch its mistakes.
+- **2026-11-07, step 4011 dropped.** The fifth PR in merge order, #4011 (floor
+  division by zero), does not apply to the oracle chain:
+  `error: patch failed: src/narwhals/_pandas_like/series.py:16`. Its import-list
+  context depends on an upstream commit outside the chain. By the drop rule it was
+  dropped, not adapted, and the next qualifying PR in merge order, #3915, became
+  step 6. The diff is kept in `evaluation/pilot/chain/dropped/`.
+- **2026-11-07, files outside `src/narwhals/` and `tests/`.** Two steps change other
+  files. #4001 changes `tests/conftest.py` so the Dask constructor keeps list
+  columns. #3815 changes two API-reference pages under `docs/` and the test plugin
+  in `packages/test-plugin/`. All of these stay in the oracle chain. For the arms,
+  `tests/conftest.py` and `packages/test-plugin/` count as test support: they are
+  hidden with the PR's tests, applied with them at scoring, and excluded from churn.
+  The `docs/` pages are not scored.
+- **2026-11-07, chain validated.** All six steps apply in order, each step's own
+  tests pass, and the full suite has no failures after any step: from 15906 passed at
+  the start commit to 16266 passed after step 6. The details are in
+  `evaluation/pilot/README.md`.
