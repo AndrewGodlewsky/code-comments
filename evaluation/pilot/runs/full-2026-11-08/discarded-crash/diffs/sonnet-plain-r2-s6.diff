@@ -1,0 +1,101 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index bca91ee..8110bf7 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import datetime as dt
+ from functools import lru_cache
+ from typing import TYPE_CHECKING, Any, cast
+ 
+@@ -8,7 +9,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -532,8 +533,22 @@ def list_contains(array: ChunkedArrayAny, item: Any) -> ChunkedArrayAny:
+     flat = pc.list_flatten(arr)
+     if item is None:
+         matches = pc.is_null(flat)
++    elif pa.types.is_null(flat.type):
++        matches = pa.array([False] * len(flat), type=pa.bool_())
+     else:
+-        matches = pc.fill_null(pc.equal(flat, lit(item)), False)  # noqa: FBT003
++        if isinstance(item, dt.datetime) and (
++            not pa.types.is_timestamp(flat.type) or flat.type.unit != "us"
++        ):
++            msg = (
++                f"'list.contains' cannot check for microsecond precision datetime "
++                f"values in list items of dtype {flat.type}"
++            )
++            raise InvalidOperationError(msg)
++        try:
++            matches = pc.fill_null(pc.equal(flat, lit(item)), False)  # noqa: FBT003
++        except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError) as exc:
++            msg = f"'list.contains' cannot check for {type(item).__name__!r} values in list items of dtype {flat.type}"
++            raise InvalidOperationError(msg) from exc
+     hits = pc.filter(pc.list_parent_indices(arr), matches)
+     found = pc.is_in(pa.array(range(len(arr)), type=hits.type), value_set=hits)
+     result = pc.if_else(pc.is_valid(arr), found, lit(None, type=pa.bool_()))
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index 2afebfd..8e5881d 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING, Any
+ from narwhals._compliant import LazyExprNamespace
+ from narwhals._compliant.any_namespace import ListNamespace
+ from narwhals._utils import not_implemented
++from narwhals.exceptions import InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     import pandas as pd
++    import dask.dataframe as dx
+ 
+     from narwhals._dask.expr import DaskExpr
+     from narwhals.typing import NonNestedLiteral
+@@ -15,6 +17,7 @@ if TYPE_CHECKING:
+ 
+ def _contains(ser: pd.Series[Any], item: NonNestedLiteral) -> pd.Series[Any]:
+     import pandas as pd
++    import dask.dataframe as dx
+ 
+     from narwhals._arrow.utils import list_contains
+ 
+@@ -29,6 +32,7 @@ def _contains(ser: pd.Series[Any], item: NonNestedLiteral) -> pd.Series[Any]:
+ 
+ def _require_arrow(ser: pd.Series[Any], name: str) -> None:
+     import pandas as pd
++    import dask.dataframe as dx
+ 
+     if not isinstance(ser.dtype, pd.ArrowDtype):
+         msg = f"Only pyarrow-backed list columns are supported for `list.{name}` on Dask."
+@@ -37,6 +41,7 @@ def _require_arrow(ser: pd.Series[Any], name: str) -> None:
+ 
+ def _wrap(ser: pd.Series[Any], result: Any) -> pd.Series[Any]:
+     import pandas as pd
++    import dask.dataframe as dx
+ 
+     return pd.Series(
+         result, dtype=pd.ArrowDtype(result.type), index=ser.index, name=ser.name
+@@ -74,7 +79,15 @@ def _sort(ser: pd.Series[Any], *, descending: bool, nulls_last: bool) -> pd.Seri
+ 
+ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskExpr"]):
+     def contains(self, item: NonNestedLiteral) -> DaskExpr:
+-        return self.compliant._with_callable(lambda expr: expr.map_partitions(_contains, item))
++        def func(expr: dx.Series) -> dx.Series:
++            try:
++                return expr.map_partitions(_contains, item)
++            except ValueError as exc:
++                if isinstance(exc.__cause__, InvalidOperationError):
++                    raise exc.__cause__ from None
++                raise  # pragma: no cover
++
++        return self.compliant._with_callable(func)
+ 
+     def len(self) -> DaskExpr:
+         return self.compliant._with_callable(lambda expr: expr.map_partitions(_len))

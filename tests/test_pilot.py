@@ -405,6 +405,21 @@ class DecisionTests(unittest.TestCase):
         self.assertTrue(decision["outcome"].startswith("4:"))
 
 
+class ExcludeTests(unittest.TestCase):
+    def test_without_drops_matching_ids_only(self):
+        junit = {"m::test_contains_chunked[a]": ("failed", "m"), "m::test_other": ("passed", "m")}
+        self.assertEqual(pilot.without(junit, ("test_contains_chunked",)), {"m::test_other": ("passed", "m")})
+        self.assertIs(pilot.without(junit, ()), junit)
+        self.assertIsNone(pilot.without(None, ("x",)))
+
+    def test_excluding_the_only_failure_makes_the_step_pass(self):
+        junit = {"m::test_contains_chunked[a]": ("failed", "tests/m_test.py"),
+                 "m::test_other": ("passed", "tests/m_test.py")}
+        hidden = ["tests/m_test.py"]
+        self.assertFalse(pilot.step_passes(junit, hidden))
+        self.assertTrue(pilot.step_passes(pilot.without(junit, ("test_contains_chunked",)), hidden))
+
+
 class CredentialFileTests(unittest.TestCase):
     NAME = "CLAUDE_CODE_OAUTH_TOKEN"
     SECRET = "sk-ant-oat01-not-a-real-token"

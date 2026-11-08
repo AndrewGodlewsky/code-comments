@@ -1,0 +1,130 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index 89c2954..e9b1def 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -9,7 +9,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -564,16 +564,32 @@ def list_agg(
+     )
+ 
+ 
++def _list_item_matches(flat: ArrayAny, item: NonNestedLiteral) -> ArrayAny:
++    scalar = lit(item)
++    msg = f"'list.contains' cannot check for {flat.type} values in {scalar.type} item."
++    # NOTE: `equal` would silently cast one side to the other's time unit.
++    if (
++        is_timestamp(flat.type)
++        and is_timestamp(scalar.type)
++        and flat.type.unit != scalar.type.unit
++    ):
++        raise InvalidOperationError(msg)
++    try:
++        if isinstance(item, float) and math.isnan(item):
++            # NOTE: `equal` never matches NaN, but Polars does.
++            return pc.fill_null(pc.is_nan(flat), False)
++        return pc.fill_null(pc.equal(flat, scalar), False)
++    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as exc:
++        raise InvalidOperationError(msg) from exc
++
++
+ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArrayAny:
+     arr = array.combine_chunks()
+     flat = pc.list_flatten(arr)
+     if item is None:
+         matches = pc.is_null(flat)
+-    elif isinstance(item, float) and math.isnan(item):
+-        # NOTE: `equal` never matches NaN, but Polars does.
+-        matches = pc.fill_null(pc.is_nan(flat), False)
+     else:
+-        matches = pc.fill_null(pc.equal(flat, lit(item)), False)
++        matches = _list_item_matches(flat, item)
+     # Each list's match count is a difference of two entries of this running total,
+     # so the whole computation is linear in the number of elements.
+     running = pa.concat_arrays(
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..2088678 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,14 +1,21 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
+-from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data, pyspark_session
++from narwhals.exceptions import InvalidOperationError
++from tests.utils import (
++    PANDAS_VERSION,
++    POLARS_VERSION,
++    assert_equal_data,
++    maybe_collect,
++    pyspark_session,
++)
+ 
+ if TYPE_CHECKING:
+     from narwhals.dtypes import DType
+@@ -202,6 +209,51 @@ def test_contains_none_single_empty_list_expr(
+     assert_equal_data(result, {"a": [False]})
+ 
+ 
++@pytest.mark.parametrize(
++    ("values", "dtype", "item"),
++    [
++        ([[1, 2]], nw.Int64(), "a"),
++        ([[1, 2]], nw.Int64(), True),
++        ([["a"]], nw.String(), 1),
++        ([[datetime(2020, 1, 1)]], nw.Datetime("ns"), datetime(2020, 1, 1)),
++    ],
++)
++@pytest.mark.parametrize("num_rows", [1, 0])
++def test_contains_incompatible_item_raises(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: DType,
++    item: Any,
++    num_rows: int,
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    if not any(backend in str(constructor) for backend in ("pyarrow", "dask")):
++        pytest.skip(reason="only pyarrow-backed lists raise here")
++    if "polars" in str(constructor) and isinstance(item, datetime):
++        pytest.skip(reason="Polars doesn't raise on a datetime time unit mismatch")
++    df = nw.from_native(constructor({"a": values})).head(num_rows)
++    with pytest.raises(InvalidOperationError, match="list.contains"):
++        maybe_collect(df.select(nw.col("a").cast(nw.List(dtype)).list.contains(item)))
++
++
++def test_contains_numeric_items_expr(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    data = {"i": [[2, 3], [None, None]], "f": [[1.0, 2.5], [None, None]]}
++    df = nw.from_native(constructor(data))
++    result = df.select(
++        two=nw.col("i").cast(nw.List(nw.Int64())).list.contains(2.0),
++        one_point_five=nw.col("i").cast(nw.List(nw.Int64())).list.contains(1.5),
++        one=nw.col("f").cast(nw.List(nw.Float64())).list.contains(1),
++    )
++    assert_equal_data(
++        result,
++        {"two": [True, False], "one_point_five": [False, False], "one": [True, False]},
++    )
++
++
+ @pytest.mark.slow
+ def test_contains_none_non_orderable_inner_type_pyspark() -> None:  # pragma: no cover
+     pytest.importorskip("pyspark")

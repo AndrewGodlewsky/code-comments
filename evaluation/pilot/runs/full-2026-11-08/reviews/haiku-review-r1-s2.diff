@@ -1,0 +1,369 @@
+diff --git a/src/narwhals/_arrow/series_list.py b/src/narwhals/_arrow/series_list.py
+index d864150..1bbf8c2 100644
+--- a/src/narwhals/_arrow/series_list.py
++++ b/src/narwhals/_arrow/series_list.py
+@@ -5,12 +5,18 @@ from typing import TYPE_CHECKING
+ import pyarrow as pa
+ import pyarrow.compute as pc
+ 
+-from narwhals._arrow.utils import ArrowSeriesNamespace, list_agg, list_sort
++from narwhals._arrow.utils import (
++    ArrowSeriesNamespace,
++    list_agg,
++    list_contains,
++    list_sort,
++)
+ from narwhals._compliant.any_namespace import ListNamespace
+ from narwhals._utils import not_implemented
+ 
+ if TYPE_CHECKING:
+     from narwhals._arrow.series import ArrowSeries
++    from narwhals.typing import NonNestedLiteral
+ 
+ 
+ class ArrowSeriesListNamespace(ArrowSeriesNamespace, ListNamespace["ArrowSeries"]):
+@@ -40,5 +46,7 @@ class ArrowSeriesListNamespace(ArrowSeriesNamespace, ListNamespace["ArrowSeries"
+             list_sort(self.native, descending=descending, nulls_last=nulls_last)
+         )
+ 
++    def contains(self, item: NonNestedLiteral) -> ArrowSeries:
++        return self.with_native(list_contains(self.native, item))
++
+     unique = not_implemented()
+-    contains = not_implemented()
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index ac50dd8..8451172 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -563,6 +563,33 @@ def list_agg(
+     )
+ 
+ 
++def list_contains(array: ChunkedArrayAny, item: Any) -> ChunkedArrayAny:
++    # One row per element, then one `any` per list: linear in the number of elements.
++    flat = pc.list_flatten(array)
++    matches = pc.is_null(flat) if item is None else pc.equal(flat, lit(item))
++    any_opts = pc.ScalarAggregateOptions(skip_nulls=True, min_count=0)
++    found = (
++        pa.Table.from_arrays(
++            [pc.list_parent_indices(array), matches], names=["offsets", "matches"]
++        )
++        .group_by("offsets")
++        .aggregate([("matches", "any", any_opts)])
++        .sort_by("offsets")
++        .column("matches_any")
++        .combine_chunks()
++    )
++    array_ = array.combine_chunks()
++    non_empty_mask = pc.greater(pc.list_value_length(array_), lit(0))
++    result = pc.replace_with_mask(
++        pa.repeat(lit(False), len(array)),
++        cast("pa.BooleanArray", non_empty_mask.fill_null(False)),
++        found,
++    )
++    return pa.chunked_array(
++        [pc.if_else(pc.is_null(array_), lit(None, type=pa.bool_()), result)]
++    )
++
++
+ def sortable(array: ChunkedArrayAny, /) -> ChunkedArrayAny:
+     """Return an array which orders like `array`, but with a type `pyarrow` can sort.
+ 
+diff --git a/src/narwhals/_dask/expr.py b/src/narwhals/_dask/expr.py
+index cd6881b..01ef74c 100644
+--- a/src/narwhals/_dask/expr.py
++++ b/src/narwhals/_dask/expr.py
+@@ -7,6 +7,7 @@ import pandas as pd
+ 
+ from narwhals._compliant import DepthTrackingExpr, LazyExpr
+ from narwhals._dask.expr_dt import DaskExprDateTimeNamespace
++from narwhals._dask.expr_list import DaskExprListNamespace
+ from narwhals._dask.expr_str import DaskExprStringNamespace
+ from narwhals._dask.utils import (
+     add_row_index,
+@@ -710,6 +711,10 @@ class DaskExpr(
+     def dt(self) -> DaskExprDateTimeNamespace:
+         return DaskExprDateTimeNamespace(self)
+ 
++    @property
++    def list(self) -> DaskExprListNamespace:
++        return DaskExprListNamespace(self)
++
+     any_value = not_implemented()
+     filter = not_implemented(
+         hint=length_changing_hint(
+@@ -722,5 +727,4 @@ class DaskExpr(
+     last = not_implemented()
+ 
+     # namespaces
+-    list: Any = not_implemented()
+     struct: Any = not_implemented()
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+new file mode 100644
+index 0000000..a18abb4
+--- /dev/null
++++ b/src/narwhals/_dask/expr_list.py
+@@ -0,0 +1,43 @@
++from __future__ import annotations
++
++from typing import TYPE_CHECKING
++
++import pandas as pd
++import pyarrow as pa
++
++from narwhals._compliant import LazyExprNamespace
++from narwhals._compliant.any_namespace import ListNamespace
++from narwhals._utils import not_implemented
++
++if TYPE_CHECKING:
++    import dask.dataframe.dask_expr as dx
++
++    from narwhals._dask.expr import DaskExpr
++    from narwhals.typing import NonNestedLiteral
++
++
++def _list_contains(native: pd.Series, *, item: NonNestedLiteral) -> pd.Series:
++    from narwhals._arrow.utils import list_contains
++
++    result = list_contains(native.array._pa_array, item)
++    return pd.Series(
++        result, index=native.index, name=native.name, dtype=pd.ArrowDtype(pa.bool_())
++    )
++
++
++class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskExpr"]):
++    def contains(self, item: NonNestedLiteral) -> DaskExpr:
++        def _contains(expr: dx.Series) -> dx.Series:
++            return expr.map_partitions(_list_contains, item=item)
++
++        return self.compliant._with_callable(_contains)
++
++    get = not_implemented()
++    len = not_implemented()
++    unique = not_implemented()
++    min = not_implemented()
++    max = not_implemented()
++    mean = not_implemented()
++    median = not_implemented()
++    sum = not_implemented()
++    sort = not_implemented()
+diff --git a/src/narwhals/_dask/utils.py b/src/narwhals/_dask/utils.py
+index 531cf30..8822b9b 100644
+--- a/src/narwhals/_dask/utils.py
++++ b/src/narwhals/_dask/utils.py
+@@ -96,7 +96,6 @@ NW_TO_DASK_DTYPES: Mapping[type[DType], str] = {
+     dtypes_v1.Duration: "timedelta64[ns]",
+ }
+ UNSUPPORTED_DTYPES = (
+-    dtypes.List,
+     dtypes.Struct,
+     dtypes.Array,
+     dtypes.Time,
+@@ -127,6 +126,10 @@ def narwhals_to_native_dtype(dtype: IntoDType, version: Version) -> Any:
+             return pd.CategoricalDtype(dtype.categories, ordered=True)  # type: ignore[arg-type]
+         msg = "Can not cast / initialize Enum without categories present"
+         raise ValueError(msg)
++    if issubclass(base_type, dtypes.List):
++        from narwhals._pandas_like.utils import narwhals_to_native_arrow_dtype
++
++        return narwhals_to_native_arrow_dtype(dtype, Implementation.DASK, version)
+     if issubclass(base_type, UNSUPPORTED_DTYPES):  # pragma: no cover
+         msg = f"Converting to {base_type.__name__} dtype is not supported for Dask."
+         raise NotImplementedError(msg)
+diff --git a/src/narwhals/_pandas_like/series_list.py b/src/narwhals/_pandas_like/series_list.py
+index 2b60119..2bd0816 100644
+--- a/src/narwhals/_pandas_like/series_list.py
++++ b/src/narwhals/_pandas_like/series_list.py
+@@ -15,6 +15,7 @@ if TYPE_CHECKING:
+     from typing import Literal
+ 
+     from narwhals._pandas_like.series import PandasLikeSeries
++    from narwhals.typing import NonNestedLiteral
+ 
+ 
+ class PandasLikeSeriesListNamespace(
+@@ -85,5 +86,14 @@ class PandasLikeSeriesListNamespace(
+         )
+         return self.with_native(result_native)
+ 
++    def contains(self, item: NonNestedLiteral) -> PandasLikeSeries:
++        self._raise_if_not_pyarrow_backend()
++
++        from narwhals._arrow.utils import list_contains
++
++        result_native = self.compliant._apply_pyarrow_compute_func(
++            self.native, partial(list_contains, item=item)
++        )
++        return self.with_native(result_native)
++
+     unique = not_implemented()
+-    contains = not_implemented()
+diff --git a/src/narwhals/_pandas_like/utils.py b/src/narwhals/_pandas_like/utils.py
+index 280c8a6..31b13be 100644
+--- a/src/narwhals/_pandas_like/utils.py
++++ b/src/narwhals/_pandas_like/utils.py
+@@ -544,7 +544,9 @@ def narwhals_to_native_dtype(  # noqa: C901, PLR0912
+ def narwhals_to_native_arrow_dtype(
+     dtype: IntoDType, implementation: Implementation, version: Version
+ ) -> pd.ArrowDtype:
+-    if is_pandas_or_modin(implementation) and PANDAS_VERSION >= (2, 2):
++    if (
++        is_pandas_or_modin(implementation) or implementation.is_dask()
++    ) and PANDAS_VERSION >= (2, 2):
+         try:
+             import pyarrow as pa  # ignore-banned-import  # noqa: F401
+         except ImportError as exc:  # pragma: no cover
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 50f0aec..d2be968 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING, Any
+ import pytest
+ 
+ import narwhals as nw
+-from tests.utils import POLARS_VERSION, assert_equal_data, pyspark_session
++from tests.utils import (
++    PANDAS_VERSION,
++    POLARS_VERSION,
++    assert_equal_data,
++    pyspark_session,
++)
+ 
+ if TYPE_CHECKING:
+     from tests.utils import Constructor, ConstructorEager
+@@ -14,13 +19,24 @@ data = {"a": [[2, 2, 3, None, None], None, []]}
+ expected = {"a": [True, None, False]}
+ 
+ 
++def _construct(constructor: Constructor | ConstructorEager, data: Any) -> Any:
++    if "dask" not in str(constructor):
++        return constructor(data)
++    import dask
++
++    # Dask converts object columns to strings by default, which would stringify the lists.
++    with dask.config.set({"dataframe.convert-string": False}):
++        return constructor(data)
++
++
+ def test_contains_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(
+-        backend in str(constructor)
+-        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+-    result = nw.from_native(constructor(data)).select(
++    if "pandas" in str(constructor):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
++    result = nw.from_native(_construct(constructor, data)).select(
+         nw.col("a").cast(nw.List(nw.Int32())).list.contains(2)
+     )
+     assert_equal_data(result, expected)
+@@ -29,12 +45,14 @@ def test_contains_expr(request: pytest.FixtureRequest, constructor: Constructor)
+ def test_contains_no_match_with_null_elements_expr(
+     request: pytest.FixtureRequest, constructor: Constructor
+ ) -> None:
+-    if any(
+-        backend in str(constructor)
+-        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+-    df = nw.from_native(constructor({"a": [[1, None], [None], [2, None], None]}))
++    if "pandas" in str(constructor):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
++    data = {"a": [[1, None], [None], [2, None], None]}
++    df = nw.from_native(_construct(constructor, data))
+     result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(2))
+     assert_equal_data(result, {"a": [False, False, True, None]})
+ 
+@@ -42,13 +60,14 @@ def test_contains_no_match_with_null_elements_expr(
+ def test_contains_none_expr(
+     request: pytest.FixtureRequest, constructor: Constructor
+ ) -> None:
+-    if any(
+-        backend in str(constructor)
+-        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
++    if "pandas" in str(constructor):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
+     data = {"a": [[1, None], [None], [1, 2], [1, 1], [2, 1, None, 1], [], None]}
+-    df = nw.from_native(constructor(data))
++    df = nw.from_native(_construct(constructor, data))
+     result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(None))
+     assert_equal_data(result, {"a": [True, True, False, False, True, False, None]})
+ 
+@@ -56,12 +75,13 @@ def test_contains_none_expr(
+ def test_contains_series(
+     request: pytest.FixtureRequest, constructor_eager: ConstructorEager
+ ) -> None:
+-    if any(
+-        backend in str(constructor_eager)
+-        for backend in ("modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor_eager):
+         request.applymarker(pytest.mark.xfail)
+-    df = nw.from_native(constructor_eager(data), eager_only=True)
++    if "pandas" in str(constructor_eager):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
++    df = nw.from_native(_construct(constructor_eager, data), eager_only=True)
+     result = df["a"].cast(nw.List(nw.Int32())).list.contains(2)
+     assert_equal_data({"a": result}, expected)
+ 
+@@ -76,11 +96,12 @@ def test_contains_none_inner_dtypes_expr(
+     values: list[Any],
+     dtype: nw.List,
+ ) -> None:
+-    if any(
+-        backend in str(constructor)
+-        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
++    if "pandas" in str(constructor):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
+     if (
+         "polars" in str(constructor)
+         and POLARS_VERSION >= (1, 30)
+@@ -90,7 +111,7 @@ def test_contains_none_inner_dtypes_expr(
+         pytest.skip(reason="Polars' support for nested inner dtypes varies by version")
+     x, y = values
+     data = {"a": [[x, None], [None], [x, y], [], None]}
+-    df = nw.from_native(constructor(data))
++    df = nw.from_native(_construct(constructor, data))
+     result = df.select(nw.col("a").cast(dtype).list.contains(None))
+     assert_equal_data(result, {"a": [True, True, False, False, None]})
+ 
+@@ -98,14 +119,15 @@ def test_contains_none_inner_dtypes_expr(
+ def test_contains_none_single_empty_list_expr(
+     request: pytest.FixtureRequest, constructor: Constructor
+ ) -> None:
+-    if any(
+-        backend in str(constructor)
+-        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
+-    ):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
++    if "pandas" in str(constructor):
++        if PANDAS_VERSION < (2, 2):
++            pytest.skip()
++        pytest.importorskip("pyarrow")
+     # Polars 1.28-1.29 return `True` for `[]` only when it is the sole row, which
+     # the multi-row data of `test_contains_none_expr` does not catch.
+-    df = nw.from_native(constructor({"a": [[1], []]})).filter(nw.col("a").list.len() == 0)
++    df = nw.from_native(_construct(constructor, {"a": [[]]}))
+     result = df.select(nw.col("a").cast(nw.List(nw.Int32())).list.contains(None))
+     assert_equal_data(result, {"a": [False]})
+ 

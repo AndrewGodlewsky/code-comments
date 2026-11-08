@@ -27,6 +27,15 @@ workspace (`visible/`) apart from its grader-only ledger, hidden checks and refe
 only). `compare.py` and `regrade.py` analyse and regrade finished flows. The checks
 live in `tests/test_skill_eval.py` and `tests/test_skill_live.py`.
 
+The long-horizon pilot (#37) reuses `live.py`. `skill_eval/pilot.py` runs on the host:
+it schedules the arms, starts the containers and applies the budget.
+`skill_eval/pilot_inner.py` runs inside the `evaluation/pilot/` Docker image, with no
+network, and does the git work and scoring. The model sessions run in the image's
+`agent` target. They get only their own lane's checkout and a credential, which is
+passed by name. The tests are in `tests/test_pilot.py`, and the
+[results](docs/evaluation/pilot-report-2026-11-08.md) are recorded. `scripts/stale_refs.py`
+(#44) is the stale-reference lint the pilot uses.
+
 The skill itself is under construction ([plan](docs/skill/README.md)).
 `docs/skill/distillation/` holds candidate principles mapped from the research,
 and `docs/skill/principles.md` is the merged, citation-checked ledger

@@ -1,0 +1,142 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index eaf5cf7..343d742 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -8,7 +8,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -641,7 +641,33 @@ def list_sort(
+     return pa.concat_tables([imploded_by_idx, pass_through]).sort_by(idx).column(v)
+ 
+ 
++def validate_list_contains_item(value_type: pa.DataType, item: NonNestedLiteral) -> None:
++    # Checked on types, not values, so that it also fires for zero-row inputs.
++    if item is None:
++        return
++    item_type = pa.scalar(item).type
++    try:
++        pc.equal(pa.array([], type=value_type), pa.scalar(item))
++    except pa.ArrowException:
++        incompatible = True
++    else:
++        # pyarrow silently casts between datetime units and between dates and
++        # timestamps, whereas Polars rejects these.
++        is_timestamp_item = pa.types.is_timestamp(item_type)
++        incompatible = (
++            pa.types.is_timestamp(value_type)
++            and (
++                pa.types.is_date(item_type)
++                or (is_timestamp_item and item_type.unit != value_type.unit)
++            )
++        ) or (pa.types.is_date(value_type) and is_timestamp_item)
++    if incompatible:
++        msg = f"`list.contains` cannot check for {value_type} values in {item_type} data"
++        raise InvalidOperationError(msg)
++
++
+ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArrayAny:
++    validate_list_contains_item(array.type.value_type, item)
+     # Linear in the number of list elements: compare the flattened values once, then
+     # read each row's match count off a cumulative sum at its start and end offsets.
+     arr = array.combine_chunks()
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index eed6b6f..7a3cd25 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -76,6 +76,10 @@ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskEx
+             ensure_pyarrow_backend(expr.dtype, self.compliant._implementation)
+             import pyarrow as pa  # ignore-banned-import
+ 
++            from narwhals._arrow.utils import validate_list_contains_item
++
++            value_type = expr._meta.dtype.pyarrow_dtype.value_type
++            validate_list_contains_item(value_type, item)
+             return expr.map_partitions(
+                 partial(_list_contains_partition, item=item),
+                 meta=(expr.name, pd.ArrowDtype(pa.bool_())),
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..edbd224 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,13 +1,14 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
++from narwhals.exceptions import InvalidOperationError
+ from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data, pyspark_session
+ 
+ if TYPE_CHECKING:
+@@ -176,6 +177,59 @@ def test_contains_256_matches(
+     assert_equal_data(result, {"a": [True, False, True]})
+ 
+ 
++@pytest.mark.parametrize(
++    ("inner", "item"),
++    [
++        (nw.Int64(), True),
++        (nw.Int64(), "a"),
++        (nw.Float64(), "a"),
++        (nw.String(), 1),
++        (nw.Datetime("ns"), datetime(2020, 1, 1)),
++        (nw.Date(), datetime(2020, 1, 1)),
++        (nw.Datetime("us"), date(2020, 1, 1)),
++    ],
++)
++def test_contains_incompatible_item_raises(
++    request: pytest.FixtureRequest, constructor: Constructor, inner: DType, item: Any
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    if any(backend in str(constructor) for backend in ("duckdb", "sqlframe")):
++        pytest.skip(reason="Only pyarrow-backed backends are checked against the item")
++    df = nw.from_native(constructor({"a": [[], None]})).select(
++        nw.col("a").cast(nw.List(inner))
++    )
++    expr = nw.col("a").list.contains(item)
++    with pytest.raises(InvalidOperationError, match="list.contains"):
++        df.select(expr).lazy().collect()
++    with pytest.raises(InvalidOperationError, match="list.contains"):
++        df.head(0).select(expr).lazy().collect()
++
++
++def test_contains_numeric_item_coercion(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[1, 2], [3], None]}))
++    int_list = df.select(nw.col("a").cast(nw.List(nw.Int64())))
++    result = int_list.select(
++        two=nw.col("a").list.contains(2.0), half=nw.col("a").list.contains(1.5)
++    )
++    expected = {"two": [True, False, None], "half": [False, False, None]}
++    assert_equal_data(result, expected)
++    float_list = df.select(nw.col("a").cast(nw.List(nw.Float64())))
++    result = float_list.select(nw.col("a").list.contains(1))
++    assert_equal_data(result, {"a": [True, False, None]})
++
++
++def test_contains_all_null_items(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[None, None], None]}))
++    result = df.select(nw.col("a").cast(nw.List(nw.Int64())).list.contains(2))
++    assert_equal_data(result, {"a": [False, None]})
++
++
+ def test_contains_non_pyarrow_list_dask() -> None:
+     pytest.importorskip("dask")
+     import dask

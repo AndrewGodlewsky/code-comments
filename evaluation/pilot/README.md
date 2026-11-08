@@ -190,6 +190,25 @@ estimated the cost at $0.44. That estimate is reported under OAuth too.
 - **No high-churn steps or regressions.** Step 1 can't produce regressions. `summary`
   reports rule 1 as firing, but with one step-attempt per arm that means nothing.
 
+### Full run (#43), 2026-11-08
+
+The results, decision and limitations are in the
+[pilot report](../../docs/evaluation/pilot-report-2026-11-08.md). The data is in
+`runs/full-2026-11-08/`:
+
+- **Committed directly:** `run.json`, `results.jsonl`, `summary.json`,
+  `summary-sensitivity.json`, `diffs/`, `reviews/` and `lanes/`.
+- **Committed as archives:** the JUnit reports and pytest logs (`junit.tar.gz`) and the
+  raw session traces (`sessions.tar.gz`).
+- **The crash:** the lanes discarded after it are in `discarded-crash/`.
+
+Rules for building the next chain, learned from this run:
+
+- Search each step's test diff for `narwhals._` and for `monkeypatch` on private names.
+  Step 2's `test_contains_chunked` patches private constants, so no arm could pass it.
+- Don't score a whole test module that several steps share. Steps 2 and 6 share
+  `contains_test.py`, so a step 2 failure also failed step 6.
+
 ## Limits
 
 - `pip-audit` covers Python packages only. The Debian packages in the base image

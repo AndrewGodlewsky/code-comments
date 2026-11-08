@@ -4,6 +4,12 @@
 > Results are in the [2026-11-07 eval report](report-2026-11-07.md) and in the
 > generated run reports in [runs/](runs/). This page covers the placement-study
 > fixture.
+>
+> The long-horizon narwhals pilot (#37) is
+> [pre-registered here](pilot-preregistration.md), and its results are in the
+> [2026-11-08 pilot report](pilot-report-2026-11-08.md). In short: Haiku came within
+> noise of Sonnet, and the comments skill did no better than a one-sentence
+> instruction.
 
 This is the first executable step of the [product roadmap](../roadmap.md), tracked
 in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). The user chose

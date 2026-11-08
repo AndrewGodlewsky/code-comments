@@ -69,7 +69,15 @@ integration-test result.
 - Whether a skill can write and maintain accurate explanations using evidence
   actually available during development.
 - Whether any benefit persists through successive code changes and fresh sessions.
+  - First evidence: the [2026-11-08 long-horizon pilot](../evaluation/pilot-report-2026-11-08.md).
+    Over six real narwhals PRs, the lean comments skill did no better than a
+    one-sentence instruction, and no arm caused a regression.
+  - Its limit: only one of the six steps separated the arms, so this is weak evidence
+    of no effect.
 - Whether less capable models become sufficiently reliable at a lower total cost.
+  - In the same pilot, Haiku came within noise of Sonnet and was about 4× cheaper per
+    passing step, with the full test suite available.
+  - Still open: longer chains, weaker test suites, and erosion that tests can't catch.
 
 ## Recommended repository work, in order
 

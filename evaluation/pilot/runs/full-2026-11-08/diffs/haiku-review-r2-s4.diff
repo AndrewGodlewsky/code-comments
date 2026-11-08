@@ -1,0 +1,950 @@
+diff --git a/src/narwhals/_utils.py b/src/narwhals/_utils.py
+index 6fe7b89..f90aa1d 100644
+--- a/src/narwhals/_utils.py
++++ b/src/narwhals/_utils.py
+@@ -54,6 +54,7 @@ from narwhals.dependencies import (
+     is_numpy_array_1d,
+     is_numpy_array_1d_bool,
+     is_numpy_array_1d_int,
++    is_numpy_scalar,
+     is_pandas_like_dataframe,
+     is_pandas_like_series,
+ )
+@@ -2294,6 +2295,43 @@ def extend_bool(
+     return (value,) * n_match if isinstance(value, bool) else tuple(value)
+ 
+ 
++def _not_bool_error(value: Any, name: str) -> TypeError:
++    type_name = "'None'" if value is None else f"'{type(value).__name__}' object"
++    msg = f"{type_name} is not an instance of 'bool'\nwhile processing '{name}'"
++    return TypeError(msg)
++
++
++def validate_bool_flags(
++    flags: bool | Iterable[bool],  # noqa: FBT001
++    n_keys: int,
++    *,
++    name: str,
++) -> bool | tuple[bool, ...]:
++    """Validate `descending` / `reverse` before they reach a backend.
++
++    Raises the same errors as Polars. A single `bool` is returned unchanged, so
++    backends keep their scalar fast paths (e.g. pandas `top_k` via `nlargest`).
++    """
++    if isinstance(flags, bool):
++        return flags
++    if isinstance(flags, (str, bytes)) or not isinstance(flags, Iterable):
++        raise _not_bool_error(flags, name)
++    values = tuple(flags)
++    if len(values) != n_keys:
++        msg = (
++            f"the length of `{name}` ({len(values)}) does not match "
++            f"the length of `by` ({n_keys})"
++        )
++        raise ValueError(msg)
++    for value in values:
++        is_bool = isinstance(value, bool) or (
++            is_numpy_scalar(value) and value.dtype.kind == "b"
++        )
++        if not is_bool:
++            raise _not_bool_error(value, name)
++    return values
++
++
+ class _NoDefault(Enum):
+     # "borrowed" from
+     # https://github.com/pandas-dev/pandas/blob/e7859983a814b1823cf26e3b491ae2fa3be47c53/pandas/_libs/lib.pyx#L2736-L2748
+diff --git a/src/narwhals/dataframe.py b/src/narwhals/dataframe.py
+index 28f6f9e..a4bd7c9 100644
+--- a/src/narwhals/dataframe.py
++++ b/src/narwhals/dataframe.py
+@@ -47,6 +47,7 @@ from narwhals._utils import (
+     predicates_contains_list_of_bool,
+     qualified_type_name,
+     supports_arrow_c_stream,
++    validate_bool_flags,
+ )
+ from narwhals.dependencies import is_numpy_array_2d, is_pyarrow_table
+ from narwhals.dtypes import _validate_dtype
+@@ -310,6 +311,7 @@ class BaseFrame(Generic[_FrameT]):
+         nulls_last: bool = False,
+     ) -> Self:
+         by = flatten([*flatten([by]), *more_by])
++        descending = validate_bool_flags(descending, len(by), name="descending")
+         return self._with_compliant(
+             self._compliant_frame.sort(*by, descending=descending, nulls_last=nulls_last)
+         )
+@@ -318,6 +320,7 @@ class BaseFrame(Generic[_FrameT]):
+         self, k: int, *, by: str | Iterable[str], reverse: bool | Sequence[bool] = False
+     ) -> Self:
+         flatten_by = flatten([by])
++        reverse = validate_bool_flags(reverse, len(flatten_by), name="reverse")
+         return self._with_compliant(
+             self._compliant_frame.top_k(k, by=flatten_by, reverse=reverse)
+         )
+diff --git a/tests/frame/sort_test.py b/tests/frame/sort_test.py
+index 7d62693..4eb9e1d 100644
+--- a/tests/frame/sort_test.py
++++ b/tests/frame/sort_test.py
+@@ -1,11 +1,20 @@
+ from __future__ import annotations
+ 
++import re
+ from typing import Any
+ 
++import numpy as np
+ import pytest
+ 
+ import narwhals as nw
+-from tests.utils import Constructor, assert_equal_data, skip_if_no_categorical_ordering
++import narwhals.stable.v1 as nw_v1
++import narwhals.stable.v2 as nw_v2
++from tests.utils import (
++    Constructor,
++    assert_equal_data,
++    frame_for_namespace,
++    skip_if_no_categorical_ordering,
++)
+ 
+ 
+ def test_sort(constructor: Constructor) -> None:
+@@ -110,3 +119,66 @@ def test_sort_dictionary_pyarrow(
+     assert_equal_data(result, {"c": expected})
+     # ordering does not decode the output
+     assert result.to_native().schema == native.schema
++
++
++NAMESPACES = [nw, nw_v1, nw_v2]
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("bad_flag", ["abc", 1, 0, None])
++def test_sort_descending_non_bool_item_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool, bad_flag: Any
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "is not an instance of 'bool'\nwhile processing 'descending'"
++    with pytest.raises(TypeError, match=re.escape(msg)):
++        df.sort("a", "b", descending=[True, bad_flag])
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("bad_flag", ["abc", 1, None])
++def test_sort_descending_non_bool_scalar_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool, bad_flag: Any
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "is not an instance of 'bool'\nwhile processing 'descending'"
++    with pytest.raises(TypeError, match=re.escape(msg)):
++        df.sort("a", "b", descending=bad_flag)
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++def test_sort_descending_length_mismatch_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "the length of `descending` (1) does not match the length of `by` (2)"
++    with pytest.raises(ValueError, match=re.escape(msg)):
++        df.sort("a", "b", descending=[True])
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("descending", [True, False])
++def test_sort_descending_single_bool_applies_to_all(
++    constructor: Constructor, ns: Any, *, lazy: bool, descending: bool
++) -> None:
++    # ties on "a" make sure the second key is flipped too
++    data = {"a": [1, 1, 2], "b": [3, 4, 5]}
++    df = frame_for_namespace(ns, constructor, data, lazy=lazy)
++    result = df.sort("a", "b", descending=descending)
++    expected = {"a": [2, 1, 1], "b": [5, 4, 3]} if descending else data
++    assert_equal_data(result, expected)
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++def test_sort_descending_numpy_bool_accepted(
++    constructor: Constructor, ns: Any, *, lazy: bool
++) -> None:
++    # `np.bool_` items are accepted, as in Polars
++    df = frame_for_namespace(ns, constructor, {"a": [1, 1, 2], "b": [3, 4, 5]}, lazy=lazy)
++    result = df.sort("a", "b", descending=[False, np.bool_(True)])
++    assert_equal_data(result, {"a": [1, 1, 2], "b": [4, 3, 5]})
+diff --git a/tests/frame/top_k_test.py b/tests/frame/top_k_test.py
+index 7bafe99..4a59225 100644
+--- a/tests/frame/top_k_test.py
++++ b/tests/frame/top_k_test.py
+@@ -1,9 +1,15 @@
+ from __future__ import annotations
+ 
++import re
++from typing import Any
++
+ import pytest
+ 
+ import narwhals as nw
++import narwhals.stable.v1 as nw_v1
++import narwhals.stable.v2 as nw_v2
+ from tests.utils import (
++    frame_for_namespace,
+     DUCKDB_VERSION,
+     POLARS_VERSION,
+     Constructor,
+@@ -75,3 +81,54 @@ def test_top_k_categorical(constructor: Constructor) -> None:
+     assert_equal_data(result, {"c": ["dog", "cat"], "n": [1, 2]})
+     result = df.top_k(2, by="c", reverse=True).sort("n")
+     assert_equal_data(result, {"c": ["cat", "bird"], "n": [2, 3]})
++
++
++NAMESPACES = [nw, nw_v1, nw_v2]
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("bad_flag", ["abc", 1, 0, None])
++def test_top_k_reverse_non_bool_item_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool, bad_flag: Any
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "is not an instance of 'bool'\nwhile processing 'reverse'"
++    with pytest.raises(TypeError, match=re.escape(msg)):
++        df.top_k(1, by=["a", "b"], reverse=[True, bad_flag])
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("bad_flag", ["abc", 1, None])
++def test_top_k_reverse_non_bool_scalar_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool, bad_flag: Any
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "is not an instance of 'bool'\nwhile processing 'reverse'"
++    with pytest.raises(TypeError, match=re.escape(msg)):
++        df.top_k(1, by=["a", "b"], reverse=bad_flag)
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++def test_top_k_reverse_length_mismatch_raises(
++    constructor: Constructor, ns: Any, *, lazy: bool
++) -> None:
++    df = frame_for_namespace(ns, constructor, {"a": [1, 2], "b": [3, 4]}, lazy=lazy)
++    msg = "the length of `reverse` (1) does not match the length of `by` (2)"
++    with pytest.raises(ValueError, match=re.escape(msg)):
++        df.top_k(1, by=["a", "b"], reverse=[True])
++
++
++@pytest.mark.parametrize("ns", NAMESPACES)
++@pytest.mark.parametrize("lazy", [False, True])
++@pytest.mark.parametrize("reverse", [True, False])
++def test_top_k_reverse_single_bool_applies_to_all(
++    constructor: Constructor, ns: Any, *, lazy: bool, reverse: bool
++) -> None:
++    # ties on "a" make sure the second key is used too
++    df = frame_for_namespace(ns, constructor, {"a": [1, 1, 2], "b": [3, 4, 5]}, lazy=lazy)
++    result = df.top_k(2, by=["a", "b"], reverse=reverse).sort("a", "b")
++    expected = {"a": [1, 1], "b": [3, 4]} if reverse else {"a": [1, 2], "b": [4, 5]}
++    assert_equal_data(result, expected)
+diff --git a/tests/utils.py b/tests/utils.py
+index 5bc6dd6..23363ce 100644
+--- a/tests/utils.py
++++ b/tests/utils.py
+@@ -1,338 +1,355 @@
+-from __future__ import annotations
+-
+-import math
+-import os
+-import sys
+-import warnings
+-from collections.abc import Callable
+-from contextlib import nullcontext
+-from datetime import date, datetime
+-from pathlib import Path
+-from typing import TYPE_CHECKING, Any, cast
+-
+-import pytest
+-
+-import narwhals as nw
+-from narwhals._utils import Implementation, parse_version
+-from narwhals.dependencies import get_numpy, get_pandas
+-from narwhals.translate import from_native
+-
+-if TYPE_CHECKING:
+-    from collections.abc import Mapping, Sequence
+-    from contextlib import AbstractContextManager
+-    from typing import TypeAlias
+-
+-    import pandas as pd
+-    from pyspark.sql import SparkSession
+-    from sqlframe.duckdb import DuckDBSession
+-
+-    from narwhals._native import NativeLazyFrame
+-    from narwhals.typing import Frame, IntoDataFrame, TimeUnit
+-
+-
+-def get_module_version_as_tuple(module_name: str) -> tuple[int, ...]:
+-    try:
+-        return parse_version(__import__(module_name).__version__)
+-    except ImportError:
+-        return (0, 0, 0)
+-
+-
+-IBIS_VERSION: tuple[int, ...] = get_module_version_as_tuple("ibis")
+-NUMPY_VERSION: tuple[int, ...] = get_module_version_as_tuple("numpy")
+-PANDAS_VERSION: tuple[int, ...] = get_module_version_as_tuple("pandas")
+-DUCKDB_VERSION: tuple[int, ...] = get_module_version_as_tuple("duckdb")
+-POLARS_VERSION: tuple[int, ...] = get_module_version_as_tuple("polars")
+-DASK_VERSION: tuple[int, ...] = get_module_version_as_tuple("dask")
+-PYARROW_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyarrow")
+-PYSPARK_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyspark")
+-CUDF_VERSION: tuple[int, ...] = get_module_version_as_tuple("cudf")
+-
+-Constructor: TypeAlias = Callable[[Any], "NativeLazyFrame | IntoDataFrame"]
+-ConstructorEager: TypeAlias = Callable[[Any], "IntoDataFrame"]
+-ConstructorLazy: TypeAlias = Callable[[Any], "NativeLazyFrame"]
+-ConstructorPandasLike: TypeAlias = Callable[[Any], "pd.DataFrame"]
+-
+-NestedOrEnumDType: TypeAlias = "nw.List | nw.Array | nw.Struct | nw.Enum"
+-"""`DType`s which **cannot** be used as bare types."""
+-
+-ID_PANDAS_LIKE = frozenset(
+-    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf")
+-)
+-ID_CUDF = frozenset(("cudf",))
+-_CONSTRUCTOR_FIXTURE_NAMES = frozenset[str](
+-    ("constructor_eager", "constructor", "constructor_pandas_like")
+-)
+-
+-
+-def _to_comparable_list(column_values: Any) -> Any:
+-    if isinstance(column_values, nw.Series) and column_values.implementation.is_pyarrow():
+-        import pyarrow as pa
+-
+-        if isinstance(column_values.to_native(), pa.Array):  # pragma: no cover
+-            # Narwhals Series for PyArrow should be backed by ChunkedArray, not Array.
+-            msg = "Did not expect to see Arrow Array here"
+-            raise TypeError(msg)
+-    if (
+-        hasattr(column_values, "_compliant_series")
+-        and column_values._compliant_series._implementation is Implementation.CUDF
+-    ):  # pragma: no cover
+-        column_values = column_values.to_pandas()
+-    if hasattr(column_values, "to_list"):
+-        return column_values.to_list()
+-    return list(column_values)
+-
+-
+-def skip_if_no_categorical_ordering(
+-    constructor: Constructor | ConstructorEager, /
+-) -> None:
+-    """Skip if the backend cannot order a `Categorical` column by its values.
+-
+-    - `pyspark`, `duckdb` and `ibis` have no categorical dtype.
+-    - `dask` encodes the categories per partition, so ordering them by value would
+-      need a compute.
+-    - `polars<1.32` orders by the physical encoding instead of by value
+-      (https://github.com/pola-rs/polars/pull/23779).
+-    - `pyarrow<15` cannot cast `string` to `dictionary`, so the column cannot even be
+-      created.
+-    """
+-    id_ = str(constructor)
+-    if any(x in id_ for x in ("pyspark", "duckdb", "ibis", "dask")):
+-        pytest.skip(reason="no `Categorical` dtype")
+-    if "polars" in id_ and POLARS_VERSION < (1, 32):
+-        pytest.skip(reason="orders `Categorical` by physical encoding")
+-    if "pyarrow_table" in id_ and PYARROW_VERSION < (15,):
+-        pytest.skip(reason="cannot cast `string` to `dictionary`")
+-
+-
+-def skip_if_no_windowed_corr_cov(constructor: Constructor, /) -> None:
+-    """Skip unless the backend supports `corr`/`cov` with `over`."""
+-    id_ = str(constructor)
+-    if not any(x in id_ for x in ("duckdb", "pyspark", "sqlframe")):
+-        pytest.skip(reason="no windowed `corr`/`cov`")
+-    if "duckdb" in id_ and DUCKDB_VERSION < (1, 3):
+-        pytest.skip(reason="`over` requires DuckDB 1.3.0")
+-
+-
+-def is_pd_na(value: Any) -> bool:
+-    return (pd := get_pandas()) is not None and pd.isna(value)
+-
+-
+-def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
+-    is_duckdb = (
+-        hasattr(result, "_compliant_frame")
+-        and result._compliant_frame._implementation is Implementation.DUCKDB
+-    )
+-    is_ibis = (
+-        hasattr(result, "_compliant_frame")
+-        and result._compliant_frame._implementation is Implementation.IBIS
+-    )
+-    is_spark_like = (
+-        hasattr(result, "_compliant_frame")
+-        and result._compliant_frame._implementation.is_spark_like()
+-    )
+-    if is_duckdb:
+-        result = from_native(result.collect("pyarrow"))
+-    if is_ibis:  # pragma: no cover
+-        result = from_native(result.to_native().to_pyarrow())
+-    if hasattr(result, "collect"):
+-        kwargs: dict[Implementation, dict[str, Any]] = {Implementation.POLARS: {}}
+-
+-        if os.environ.get("NARWHALS_POLARS_GPU", None):  # pragma: no cover
+-            kwargs[Implementation.POLARS].update({"engine": "gpu"})
+-        if os.environ.get("NARWHALS_POLARS_NEW_STREAMING", None):  # pragma: no cover
+-            kwargs[Implementation.POLARS].update({"engine": "streaming"})
+-
+-        result = result.collect(**kwargs.get(result.implementation, {}))
+-
+-    result_keys = (
+-        list(result.columns) if hasattr(result, "columns") else list(result.keys())
+-    )
+-    assert result_keys == list(expected.keys()), (
+-        f"Result keys {result_keys}, expected keys: {list(expected.keys())}"
+-    )
+-    result = {key: _to_comparable_list(result[key]) for key in expected}
+-
+-    for key, expected_value in expected.items():
+-        result_value = result[key]
+-        for i, (lhs, rhs) in enumerate(zip(result_value, expected_value, strict=True)):
+-            if isinstance(lhs, float) and not math.isnan(lhs):
+-                are_equivalent_values = rhs is not None and math.isclose(
+-                    lhs, rhs, rel_tol=0, abs_tol=1e-6
+-                )
+-            elif isinstance(lhs, float) and math.isnan(lhs):
+-                are_equivalent_values = rhs is None or math.isnan(rhs)
+-            elif isinstance(rhs, float) and math.isnan(rhs):
+-                are_equivalent_values = lhs is None or is_pd_na(lhs) or math.isnan(lhs)
+-            elif lhs is None:
+-                are_equivalent_values = rhs is None
+-            elif isinstance(lhs, list) and isinstance(rhs, list):
+-                are_equivalent_values = all(
+-                    left_side == right_side
+-                    for left_side, right_side in zip(lhs, rhs, strict=False)
+-                )
+-            elif is_pd_na(lhs):
+-                are_equivalent_values = is_pd_na(rhs)
+-            elif type(lhs) is date and type(rhs) is datetime:
+-                are_equivalent_values = datetime(lhs.year, lhs.month, lhs.day) == rhs
+-            elif (
+-                is_spark_like
+-                and isinstance(lhs, datetime)
+-                and isinstance(rhs, datetime)
+-                and rhs.tzinfo is None
+-                and lhs.tzinfo
+-            ):
+-                # PySpark converts timezone-naive to timezone-aware by default in many cases.
+-                # For now, we just assert that the local result matches the expected one.
+-                # https://github.com/narwhals-dev/narwhals/issues/2793
+-                are_equivalent_values = lhs.replace(tzinfo=None) == rhs
+-            else:
+-                are_equivalent_values = lhs == rhs
+-
+-            if (np := get_numpy()) is not None and isinstance(
+-                are_equivalent_values, np.bool_
+-            ):
+-                are_equivalent_values = bool(are_equivalent_values)
+-
+-            assert are_equivalent_values is True, (
+-                f"Mismatch at index {i}, key {key}: {lhs} != {rhs}\nExpected: {expected}\nGot: {result}"
+-            )
+-
+-
+-def assert_equal_series(
+-    result: nw.Series[Any], expected: Sequence[Any], name: str
+-) -> None:
+-    assert_equal_data(result.to_frame(), {name: expected})
+-
+-
+-def assert_equal_hash(left: Any, right: Any) -> None:
+-    """Assert that left and right produce identical hash values."""
+-    __tracebackhide__ = True
+-    assert left in {right}, (  # noqa: FURB171
+-        f"inputs do not compare equal by `__hash__`\n[left]: {left}\n[right]: {right}"
+-    )
+-
+-
+-def sqlframe_session() -> DuckDBSession:
+-    from sqlframe.duckdb import DuckDBSession
+-
+-    # NOTE: `__new__` override inferred by `pyright` only
+-    # https://github.com/eakmanrq/sqlframe/blob/772b3a6bfe5a1ffd569b7749d84bea2f3a314510/sqlframe/base/session.py#L181-L184
+-    return cast("DuckDBSession", DuckDBSession())  # type: ignore[redundant-cast]
+-
+-
+-def pyspark_session() -> SparkSession:  # pragma: no cover
+-    if is_spark_connect := os.environ.get("SPARK_CONNECT", None):
+-        from pyspark.sql.connect.session import SparkSession as _SparkSession
+-    else:
+-        from pyspark.sql import SparkSession as _SparkSession
+-    builder = _SparkSession.builder.appName("unit-tests")
+-    builder = (
+-        builder.remote(f"sc://localhost:{os.environ.get('SPARK_PORT', '15002')}")
+-        if is_spark_connect
+-        else builder.master("local[1]").config("spark.ui.enabled", "false")
+-    )
+-    ret = (
+-        builder.config("spark.default.parallelism", "1")
+-        .config("spark.sql.shuffle.partitions", "2")
+-        .config("spark.sql.session.timeZone", "UTC")
+-        .getOrCreate()
+-    )
+-    return cast("SparkSession", ret)
+-
+-
+-def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
+-    """Convert a pandas DataFrame to a Modin DataFrame if Modin is available."""
+-    try:
+-        import modin.pandas as mpd
+-    except ImportError:  # pragma: no cover
+-        return df_pandas.copy()
+-    else:
+-        with warnings.catch_warnings():
+-            warnings.filterwarnings("ignore", category=UserWarning)
+-            return mpd.DataFrame(df_pandas.to_dict(orient="list"))
+-
+-
+-def interchange_frame(df: pd.DataFrame) -> Any:
+-    """Return the interchange object of a pandas DataFrame.
+-
+-    `pandas-stubs` no longer declares `DataFrame.__dataframe__`, as the
+-    interchange protocol is deprecated since pandas 3.0.
+-    """
+-    return df.__dataframe__()  # type: ignore[operator]
+-
+-
+-def is_windows() -> bool:
+-    """Check if the current platform is Windows."""
+-    return sys.platform in {"win32", "cygwin"}
+-
+-
+-def windows_has_tzdata() -> bool:  # pragma: no cover
+-    """From PyArrow: python/pyarrow/tests/util.py."""
+-    return (Path.home() / "Downloads" / "tzdata").exists()
+-
+-
+-def is_pyarrow_windows_no_tzdata(constructor: Constructor, /) -> bool:
+-    """Skip test on Windows when the tz database is not configured."""
+-    return "pyarrow" in str(constructor) and is_windows() and not windows_has_tzdata()
+-
+-
+-def uses_pyarrow_backend(constructor: Constructor | ConstructorEager) -> bool:
+-    """Checks if the pandas-like constructor uses pyarrow backend."""
+-    return constructor.__name__ in {
+-        "pandas_pyarrow_constructor",
+-        "modin_pyarrow_constructor",
+-    }
+-
+-
+-def maybe_collect(df: Frame) -> Frame:
+-    """Collect to DataFrame if it is a LazyFrame.
+-
+-    Use this function to test specific behaviors during collection.
+-    For example, Polars only errors when we call `collect` in the lazy case.
+-    """
+-    return df.collect() if isinstance(df, nw.LazyFrame) else df
+-
+-
+-def time_unit_compat(time_unit: TimeUnit, request: pytest.FixtureRequest, /) -> TimeUnit:
+-    """Replace `time_unit` with one that is supported by the requested backend."""
+-    if _CONSTRUCTOR_FIXTURE_NAMES.isdisjoint(request.fixturenames):  # pragma: no cover
+-        msg = (
+-            f"`time_unit_compat` requires the test function to use a `constructor*` fixture.\n"
+-            f"Hint:\n\n"
+-            f"Try adding one of these as a parameter:\n    {sorted(_CONSTRUCTOR_FIXTURE_NAMES)!r}"
+-        )
+-        raise NotImplementedError(msg)
+-    request_id = request.node.callspec.id
+-    if "duckdb" in request_id:
+-        return "us"
+-    pandas_like = ID_PANDAS_LIKE - ID_CUDF
+-    if PANDAS_VERSION < (2,) and any(name in request_id for name in pandas_like):
+-        return "ns"
+-    return time_unit
+-
+-
+-def is_pyspark_connect(constructor: Constructor) -> bool:
+-    is_spark_connect = bool(os.environ.get("SPARK_CONNECT", None))
+-    return is_spark_connect and ("pyspark" in str(constructor))
+-
+-
+-def xfail_if_pyspark_connect(  # pragma: no cover
+-    constructor: Constructor, request: pytest.FixtureRequest, reason: str = ""
+-) -> None:
+-    if is_pyspark_connect(constructor):
+-        request.applymarker(pytest.mark.xfail(reason=reason))
+-
+-
+-def dask_no_convert_string() -> AbstractContextManager[object]:
+-    # Dask would otherwise convert object columns to pyarrow strings, which stringifies
+-    # list columns when the frame is constructed.
+-    try:
+-        import dask
+-    except ImportError:  # pragma: no cover
+-        return nullcontext()
+-    return dask.config.set({"dataframe.convert-string": False})
+-
+-
+-def any_integer_like_floats(values: list[Any]) -> bool:
+-    """Return True if any value is a float that represents an integer (e.g. 1.0, 2.0)."""
+-    return any(isinstance(v, float) and v.is_integer() for v in values)
++from __future__ import annotations
++
++import math
++import os
++import sys
++import warnings
++from collections.abc import Callable
++from contextlib import nullcontext
++from datetime import date, datetime
++from pathlib import Path
++from typing import TYPE_CHECKING, Any, cast
++
++import pytest
++
++import narwhals as nw
++import narwhals.stable.v1 as nw_v1
++from narwhals._utils import Implementation, is_eager_allowed, parse_version
++from narwhals.dependencies import get_numpy, get_pandas
++from narwhals.translate import from_native
++
++if TYPE_CHECKING:
++    from collections.abc import Mapping, Sequence
++    from contextlib import AbstractContextManager
++    from typing import TypeAlias
++
++    import pandas as pd
++    from pyspark.sql import SparkSession
++    from sqlframe.duckdb import DuckDBSession
++
++    from narwhals._native import NativeLazyFrame
++    from narwhals.typing import Frame, IntoDataFrame, TimeUnit
++
++
++def get_module_version_as_tuple(module_name: str) -> tuple[int, ...]:
++    try:
++        return parse_version(__import__(module_name).__version__)
++    except ImportError:
++        return (0, 0, 0)
++
++
++IBIS_VERSION: tuple[int, ...] = get_module_version_as_tuple("ibis")
++NUMPY_VERSION: tuple[int, ...] = get_module_version_as_tuple("numpy")
++PANDAS_VERSION: tuple[int, ...] = get_module_version_as_tuple("pandas")
++DUCKDB_VERSION: tuple[int, ...] = get_module_version_as_tuple("duckdb")
++POLARS_VERSION: tuple[int, ...] = get_module_version_as_tuple("polars")
++DASK_VERSION: tuple[int, ...] = get_module_version_as_tuple("dask")
++PYARROW_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyarrow")
++PYSPARK_VERSION: tuple[int, ...] = get_module_version_as_tuple("pyspark")
++CUDF_VERSION: tuple[int, ...] = get_module_version_as_tuple("cudf")
++
++Constructor: TypeAlias = Callable[[Any], "NativeLazyFrame | IntoDataFrame"]
++ConstructorEager: TypeAlias = Callable[[Any], "IntoDataFrame"]
++ConstructorLazy: TypeAlias = Callable[[Any], "NativeLazyFrame"]
++ConstructorPandasLike: TypeAlias = Callable[[Any], "pd.DataFrame"]
++
++NestedOrEnumDType: TypeAlias = "nw.List | nw.Array | nw.Struct | nw.Enum"
++"""`DType`s which **cannot** be used as bare types."""
++
++ID_PANDAS_LIKE = frozenset(
++    ("pandas", "pandas[nullable]", "pandas[pyarrow]", "modin", "modin[pyarrow]", "cudf")
++)
++ID_CUDF = frozenset(("cudf",))
++_CONSTRUCTOR_FIXTURE_NAMES = frozenset[str](
++    ("constructor_eager", "constructor", "constructor_pandas_like")
++)
++
++
++def _to_comparable_list(column_values: Any) -> Any:
++    if isinstance(column_values, nw.Series) and column_values.implementation.is_pyarrow():
++        import pyarrow as pa
++
++        if isinstance(column_values.to_native(), pa.Array):  # pragma: no cover
++            # Narwhals Series for PyArrow should be backed by ChunkedArray, not Array.
++            msg = "Did not expect to see Arrow Array here"
++            raise TypeError(msg)
++    if (
++        hasattr(column_values, "_compliant_series")
++        and column_values._compliant_series._implementation is Implementation.CUDF
++    ):  # pragma: no cover
++        column_values = column_values.to_pandas()
++    if hasattr(column_values, "to_list"):
++        return column_values.to_list()
++    return list(column_values)
++
++
++def frame_for_namespace(
++    ns: Any, constructor: Constructor, data: dict[str, Any], /, *, lazy: bool
++) -> Any:
++    """Build a `ns` frame from `constructor`, as a `LazyFrame` when `lazy`."""
++    frame = ns.from_native(constructor(data))
++    if not isinstance(frame, ns.DataFrame):
++        return frame
++    if lazy:
++        return frame.lazy()
++    if ns is nw_v1 and not is_eager_allowed(frame.implementation):
++        # `stable.v1` gives an eager `DataFrame` over a lazy-only backend, which
++        # `assert_equal_data` cannot collect.
++        pytest.skip("stable.v1 eager DataFrame over a lazy-only backend")
++    return frame
++
++
++def skip_if_no_categorical_ordering(
++    constructor: Constructor | ConstructorEager, /
++) -> None:
++    """Skip if the backend cannot order a `Categorical` column by its values.
++
++    - `pyspark`, `duckdb` and `ibis` have no categorical dtype.
++    - `dask` encodes the categories per partition, so ordering them by value would
++      need a compute.
++    - `polars<1.32` orders by the physical encoding instead of by value
++      (https://github.com/pola-rs/polars/pull/23779).
++    - `pyarrow<15` cannot cast `string` to `dictionary`, so the column cannot even be
++      created.
++    """
++    id_ = str(constructor)
++    if any(x in id_ for x in ("pyspark", "duckdb", "ibis", "dask")):
++        pytest.skip(reason="no `Categorical` dtype")
++    if "polars" in id_ and POLARS_VERSION < (1, 32):
++        pytest.skip(reason="orders `Categorical` by physical encoding")
++    if "pyarrow_table" in id_ and PYARROW_VERSION < (15,):
++        pytest.skip(reason="cannot cast `string` to `dictionary`")
++
++
++def skip_if_no_windowed_corr_cov(constructor: Constructor, /) -> None:
++    """Skip unless the backend supports `corr`/`cov` with `over`."""
++    id_ = str(constructor)
++    if not any(x in id_ for x in ("duckdb", "pyspark", "sqlframe")):
++        pytest.skip(reason="no windowed `corr`/`cov`")
++    if "duckdb" in id_ and DUCKDB_VERSION < (1, 3):
++        pytest.skip(reason="`over` requires DuckDB 1.3.0")
++
++
++def is_pd_na(value: Any) -> bool:
++    return (pd := get_pandas()) is not None and pd.isna(value)
++
++
++def assert_equal_data(result: Any, expected: Mapping[str, Any]) -> None:
++    is_duckdb = (
++        hasattr(result, "_compliant_frame")
++        and result._compliant_frame._implementation is Implementation.DUCKDB
++    )
++    is_ibis = (
++        hasattr(result, "_compliant_frame")
++        and result._compliant_frame._implementation is Implementation.IBIS
++    )
++    is_spark_like = (
++        hasattr(result, "_compliant_frame")
++        and result._compliant_frame._implementation.is_spark_like()
++    )
++    if is_duckdb:
++        result = from_native(result.collect("pyarrow"))
++    if is_ibis:  # pragma: no cover
++        result = from_native(result.to_native().to_pyarrow())
++    if hasattr(result, "collect"):
++        kwargs: dict[Implementation, dict[str, Any]] = {Implementation.POLARS: {}}
++
++        if os.environ.get("NARWHALS_POLARS_GPU", None):  # pragma: no cover
++            kwargs[Implementation.POLARS].update({"engine": "gpu"})
++        if os.environ.get("NARWHALS_POLARS_NEW_STREAMING", None):  # pragma: no cover
++            kwargs[Implementation.POLARS].update({"engine": "streaming"})
++
++        result = result.collect(**kwargs.get(result.implementation, {}))
++
++    result_keys = (
++        list(result.columns) if hasattr(result, "columns") else list(result.keys())
++    )
++    assert result_keys == list(expected.keys()), (
++        f"Result keys {result_keys}, expected keys: {list(expected.keys())}"
++    )
++    result = {key: _to_comparable_list(result[key]) for key in expected}
++
++    for key, expected_value in expected.items():
++        result_value = result[key]
++        for i, (lhs, rhs) in enumerate(zip(result_value, expected_value, strict=True)):
++            if isinstance(lhs, float) and not math.isnan(lhs):
++                are_equivalent_values = rhs is not None and math.isclose(
++                    lhs, rhs, rel_tol=0, abs_tol=1e-6
++                )
++            elif isinstance(lhs, float) and math.isnan(lhs):
++                are_equivalent_values = rhs is None or math.isnan(rhs)
++            elif isinstance(rhs, float) and math.isnan(rhs):
++                are_equivalent_values = lhs is None or is_pd_na(lhs) or math.isnan(lhs)
++            elif lhs is None:
++                are_equivalent_values = rhs is None
++            elif isinstance(lhs, list) and isinstance(rhs, list):
++                are_equivalent_values = all(
++                    left_side == right_side
++                    for left_side, right_side in zip(lhs, rhs, strict=False)
++                )
++            elif is_pd_na(lhs):
++                are_equivalent_values = is_pd_na(rhs)
++            elif type(lhs) is date and type(rhs) is datetime:
++                are_equivalent_values = datetime(lhs.year, lhs.month, lhs.day) == rhs
++            elif (
++                is_spark_like
++                and isinstance(lhs, datetime)
++                and isinstance(rhs, datetime)
++                and rhs.tzinfo is None
++                and lhs.tzinfo
++            ):
++                # PySpark converts timezone-naive to timezone-aware by default in many cases.
++                # For now, we just assert that the local result matches the expected one.
++                # https://github.com/narwhals-dev/narwhals/issues/2793
++                are_equivalent_values = lhs.replace(tzinfo=None) == rhs
++            else:
++                are_equivalent_values = lhs == rhs
++
++            if (np := get_numpy()) is not None and isinstance(
++                are_equivalent_values, np.bool_
++            ):
++                are_equivalent_values = bool(are_equivalent_values)
++
++            assert are_equivalent_values is True, (
++                f"Mismatch at index {i}, key {key}: {lhs} != {rhs}\nExpected: {expected}\nGot: {result}"
++            )
++
++
++def assert_equal_series(
++    result: nw.Series[Any], expected: Sequence[Any], name: str
++) -> None:
++    assert_equal_data(result.to_frame(), {name: expected})
++
++
++def assert_equal_hash(left: Any, right: Any) -> None:
++    """Assert that left and right produce identical hash values."""
++    __tracebackhide__ = True
++    assert left in {right}, (  # noqa: FURB171
++        f"inputs do not compare equal by `__hash__`\n[left]: {left}\n[right]: {right}"
++    )
++
++
++def sqlframe_session() -> DuckDBSession:
++    from sqlframe.duckdb import DuckDBSession
++
++    # NOTE: `__new__` override inferred by `pyright` only
++    # https://github.com/eakmanrq/sqlframe/blob/772b3a6bfe5a1ffd569b7749d84bea2f3a314510/sqlframe/base/session.py#L181-L184
++    return cast("DuckDBSession", DuckDBSession())  # type: ignore[redundant-cast]
++
++
++def pyspark_session() -> SparkSession:  # pragma: no cover
++    if is_spark_connect := os.environ.get("SPARK_CONNECT", None):
++        from pyspark.sql.connect.session import SparkSession as _SparkSession
++    else:
++        from pyspark.sql import SparkSession as _SparkSession
++    builder = _SparkSession.builder.appName("unit-tests")
++    builder = (
++        builder.remote(f"sc://localhost:{os.environ.get('SPARK_PORT', '15002')}")
++        if is_spark_connect
++        else builder.master("local[1]").config("spark.ui.enabled", "false")
++    )
++    ret = (
++        builder.config("spark.default.parallelism", "1")
++        .config("spark.sql.shuffle.partitions", "2")
++        .config("spark.sql.session.timeZone", "UTC")
++        .getOrCreate()
++    )
++    return cast("SparkSession", ret)
++
++
++def maybe_get_modin_df(df_pandas: pd.DataFrame) -> Any:  # pragma: no cover
++    """Convert a pandas DataFrame to a Modin DataFrame if Modin is available."""
++    try:
++        import modin.pandas as mpd
++    except ImportError:  # pragma: no cover
++        return df_pandas.copy()
++    else:
++        with warnings.catch_warnings():
++            warnings.filterwarnings("ignore", category=UserWarning)
++            return mpd.DataFrame(df_pandas.to_dict(orient="list"))
++
++
++def interchange_frame(df: pd.DataFrame) -> Any:
++    """Return the interchange object of a pandas DataFrame.
++
++    `pandas-stubs` no longer declares `DataFrame.__dataframe__`, as the
++    interchange protocol is deprecated since pandas 3.0.
++    """
++    return df.__dataframe__()  # type: ignore[operator]
++
++
++def is_windows() -> bool:
++    """Check if the current platform is Windows."""
++    return sys.platform in {"win32", "cygwin"}
++
++
++def windows_has_tzdata() -> bool:  # pragma: no cover
++    """From PyArrow: python/pyarrow/tests/util.py."""
++    return (Path.home() / "Downloads" / "tzdata").exists()
++
++
++def is_pyarrow_windows_no_tzdata(constructor: Constructor, /) -> bool:
++    """Skip test on Windows when the tz database is not configured."""
++    return "pyarrow" in str(constructor) and is_windows() and not windows_has_tzdata()
++
++
++def uses_pyarrow_backend(constructor: Constructor | ConstructorEager) -> bool:
++    """Checks if the pandas-like constructor uses pyarrow backend."""
++    return constructor.__name__ in {
++        "pandas_pyarrow_constructor",
++        "modin_pyarrow_constructor",
++    }
++
++
++def maybe_collect(df: Frame) -> Frame:
++    """Collect to DataFrame if it is a LazyFrame.
++
++    Use this function to test specific behaviors during collection.
++    For example, Polars only errors when we call `collect` in the lazy case.
++    """
++    return df.collect() if isinstance(df, nw.LazyFrame) else df
++
++
++def time_unit_compat(time_unit: TimeUnit, request: pytest.FixtureRequest, /) -> TimeUnit:
++    """Replace `time_unit` with one that is supported by the requested backend."""
++    if _CONSTRUCTOR_FIXTURE_NAMES.isdisjoint(request.fixturenames):  # pragma: no cover
++        msg = (
++            f"`time_unit_compat` requires the test function to use a `constructor*` fixture.\n"
++            f"Hint:\n\n"
++            f"Try adding one of these as a parameter:\n    {sorted(_CONSTRUCTOR_FIXTURE_NAMES)!r}"
++        )
++        raise NotImplementedError(msg)
++    request_id = request.node.callspec.id
++    if "duckdb" in request_id:
++        return "us"
++    pandas_like = ID_PANDAS_LIKE - ID_CUDF
++    if PANDAS_VERSION < (2,) and any(name in request_id for name in pandas_like):
++        return "ns"
++    return time_unit
++
++
++def is_pyspark_connect(constructor: Constructor) -> bool:
++    is_spark_connect = bool(os.environ.get("SPARK_CONNECT", None))
++    return is_spark_connect and ("pyspark" in str(constructor))
++
++
++def xfail_if_pyspark_connect(  # pragma: no cover
++    constructor: Constructor, request: pytest.FixtureRequest, reason: str = ""
++) -> None:
++    if is_pyspark_connect(constructor):
++        request.applymarker(pytest.mark.xfail(reason=reason))
++
++
++def dask_no_convert_string() -> AbstractContextManager[object]:
++    # Dask would otherwise convert object columns to pyarrow strings, which stringifies
++    # list columns when the frame is constructed.
++    try:
++        import dask
++    except ImportError:  # pragma: no cover
++        return nullcontext()
++    return dask.config.set({"dataframe.convert-string": False})
++
++
++def any_integer_like_floats(values: list[Any]) -> bool:
++    """Return True if any value is a float that represents an integer (e.g. 1.0, 2.0)."""
++    return any(isinstance(v, float) and v.is_integer() for v in values)

@@ -1,0 +1,135 @@
+diff --git a/docs/api-reference/dataframe.md b/docs/api-reference/dataframe.md
+index b21ce3c..9a11e87 100644
+--- a/docs/api-reference/dataframe.md
++++ b/docs/api-reference/dataframe.md
+@@ -6,6 +6,7 @@
+       members:
+         - __arrow_c_stream__
+         - __getitem__
++        - cast
+         - clone
+         - collect_schema
+         - columns
+diff --git a/docs/api-reference/lazyframe.md b/docs/api-reference/lazyframe.md
+index f9fafb7..a5c79f7 100644
+--- a/docs/api-reference/lazyframe.md
++++ b/docs/api-reference/lazyframe.md
+@@ -5,6 +5,7 @@
+     options:
+       members:
+         - collect
++        - cast
+         - collect_schema
+         - columns
+         - drop
+diff --git a/src/narwhals/_arrow/dataframe.py b/src/narwhals/_arrow/dataframe.py
+index e1c53a4..40e30df 100644
+--- a/src/narwhals/_arrow/dataframe.py
++++ b/src/narwhals/_arrow/dataframe.py
+@@ -407,6 +407,21 @@ class ArrowDataFrame(
+ 
+         return self._with_native(native_frame, validate_column_names=False)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        native = self.native
++        schema = native.schema
++        fields = list(schema)
++        arrays = list(native.columns)
++        for name, dtype in mapping.items():
++            idx = schema.get_field_index(name)
++            target = narwhals_to_native_dtype(dtype, self._version)
++            arrays[idx] = pc.cast(arrays[idx], target)
++            fields[idx] = fields[idx].with_type(target)
++        new_schema = pa.schema(fields, metadata=schema.metadata)
++        return self._with_native(
++            pa.Table.from_arrays(arrays, schema=new_schema), validate_column_names=False
++        )
++
+     def group_by(
+         self, keys: Sequence[str] | Sequence[ArrowExpr], *, drop_null_keys: bool
+     ) -> ArrowGroupBy:
+diff --git a/src/narwhals/dataframe.py b/src/narwhals/dataframe.py
+index 7ab91cc..bd1519c 100644
+--- a/src/narwhals/dataframe.py
++++ b/src/narwhals/dataframe.py
+@@ -24,6 +24,7 @@ from narwhals._expression_parsing import (
+     is_scalar_like,
+ )
+ from narwhals._typing import Arrow, Pandas, _LazyAllowedImpl, _LazyFrameCollectImpl
++from narwhals.dtypes import _validate_dtype
+ from narwhals._utils import (
+     Implementation,
+     Version,
+@@ -221,6 +222,22 @@ class BaseFrame(Generic[_FrameT]):
+         ]
+         return self._with_compliant(self._compliant_frame.with_columns(*compliant_exprs))
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        for dtype in mapping.values():
++            _validate_dtype(dtype)
++        if error := check_columns_exist(
++            list(mapping), available=self.collect_schema().names()
++        ):
++            raise error
++        if not mapping:
++            return self
++        compliant = self._compliant_frame
++        if compliant._implementation is Implementation.PYARROW:
++            return self._with_compliant(compliant.cast(mapping))
++        from narwhals.functions import col
++
++        return self.with_columns(col(k).cast(v) for k, v in mapping.items())
++
+     def select(
+         self, *exprs: IntoExpr | Iterable[IntoExpr], **named_exprs: IntoExpr
+     ) -> Self:
+@@ -1545,6 +1562,24 @@ class DataFrame(BaseFrame[DataFrameT]):
+         """
+         return super().with_columns(*exprs, **named_exprs)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        """Cast columns to new data types.
++
++        Columns not named in `mapping` are left unchanged, and column order is kept.
++        Equivalent to `with_columns(nw.col(k).cast(v) for k, v in mapping.items())`.
++
++        Arguments:
++            mapping: Mapping of column names to the data types to cast them to.
++
++        Examples:
++            >>> import pyarrow as pa
++            >>> import narwhals as nw
++            >>> df_native = pa.table({"a": [1, 2], "b": [3, 4]})
++            >>> nw.from_native(df_native).cast({"a": nw.Float64}).schema
++            Schema({'a': Float64, 'b': Int64})
++        """
++        return super().cast(mapping)
++
+     def select(
+         self, *exprs: IntoExpr | Iterable[IntoExpr], **named_exprs: IntoExpr
+     ) -> Self:
+@@ -2745,6 +2780,24 @@ class LazyFrame(BaseFrame[LazyFrameT]):
+             raise ValueError(msg)
+         return super().with_columns(*exprs, **named_exprs)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        """Cast columns to new data types.
++
++        Columns not named in `mapping` are left unchanged, and column order is kept.
++        Equivalent to `with_columns(nw.col(k).cast(v) for k, v in mapping.items())`.
++
++        Arguments:
++            mapping: Mapping of column names to the data types to cast them to.
++
++        Examples:
++            >>> import pyarrow as pa
++            >>> import narwhals as nw
++            >>> df_native = pa.table({"a": [1, 2], "b": [3, 4]})
++            >>> nw.from_native(df_native).cast({"a": nw.Float64}).schema
++            Schema({'a': Float64, 'b': Int64})
++        """
++        return super().cast(mapping)
++
+     def select(
+         self, *exprs: IntoExpr | Iterable[IntoExpr], **named_exprs: IntoExpr
+     ) -> Self:

@@ -557,7 +557,14 @@ def image_id(image: str) -> str:
 
 # Summary.
 
-def summarise(out: Path) -> dict:
+def without(junit: dict | None, exclude: tuple[str, ...]) -> dict | None:
+    """The report with every test whose id contains one of `exclude` removed (a sensitivity analysis)."""
+    if junit is None or not exclude:
+        return junit
+    return {test: value for test, value in junit.items() if not any(name in test for name in exclude)}
+
+
+def summarise(out: Path, exclude: tuple[str, ...] = ()) -> dict:
     out = Path(out)
     records = [json.loads(line) for line in (out / "results.jsonl").read_text(encoding="utf-8").splitlines()
                if line.strip()]
@@ -578,7 +585,7 @@ def summarise(out: Path) -> dict:
         failed_before = False
         for k in sorted(steps):
             record = steps[k]
-            junit = parse_junit(out / "junit" / f"{record['label']}.xml") \
+            junit = without(parse_junit(out / "junit" / f"{record['label']}.xml"), exclude) \
                 if (out / "junit" / f"{record['label']}.xml").exists() else None
             cost = sum(s.get("cost_usd") or 0 for s in record["sessions"])
             totals["cost_usd"] += cost
@@ -712,11 +719,16 @@ def main(argv: list[str] | None = None) -> None:
                    help="resume after a harness fix; the change and REASON are recorded in run.json")
     p = sub.add_parser("summary")
     p.add_argument("--out", required=True)
+    p.add_argument("--exclude-test", action="append", default=[], metavar="NAME",
+                   help="sensitivity analysis: drop tests whose id contains NAME (repeatable); not the primary result")
     p = sub.add_parser("cleanup")
     p.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     if args.command == "summary":
-        print(json.dumps(summarise(Path(args.out)), indent=2))
+        summary = summarise(Path(args.out), tuple(args.exclude_test))
+        if args.exclude_test:
+            summary["excluded_tests"] = args.exclude_test
+        print(json.dumps(summary, indent=2))
         return
     if args.command == "cleanup":
         cleanup(Path(args.out))

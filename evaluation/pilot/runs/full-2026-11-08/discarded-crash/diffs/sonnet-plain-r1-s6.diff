@@ -1,0 +1,38 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index 99e1f07..59aac13 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -8,7 +8,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -530,7 +530,23 @@ class ArrowSeriesNamespace(EagerSeriesNamespace["ArrowSeries", "ChunkedArrayAny"
+ def list_contains(array: ChunkedArrayAny, item: Any) -> ChunkedArrayAny:
+     arr = array.combine_chunks()
+     flat = pc.list_flatten(arr)
+-    hit = pc.is_null(flat) if item is None else pc.fill_null(pc.equal(flat, lit(item)), False)  # noqa: E501
++    if item is None:
++        hit = pc.is_null(flat)
++    else:
++        item_scalar = lit(item)
++        if (
++            pa.types.is_timestamp(flat.type)
++            and pa.types.is_timestamp(item_scalar.type)
++            and flat.type.unit != item_scalar.type.unit
++        ):
++            msg = f"cannot compare list items of type {flat.type} with {item!r}"
++            raise InvalidOperationError(msg)
++        try:
++            equal = pc.equal(flat, item_scalar)
++        except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError) as exc:
++            msg = f"cannot compare list items of type {flat.type} with {item!r}"
++            raise InvalidOperationError(msg) from exc
++        hit = pc.fill_null(equal, False)
+     hit_parents = pc.list_parent_indices(arr).filter(hit)
+     positions = pa.array(range(len(arr)), type=hit_parents.type)
+     found = pc.is_in(positions, value_set=hit_parents)

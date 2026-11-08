@@ -1,0 +1,123 @@
+diff --git a/src/narwhals/_duckdb/expr_list.py b/src/narwhals/_duckdb/expr_list.py
+index d39f751..56936a1 100644
+--- a/src/narwhals/_duckdb/expr_list.py
++++ b/src/narwhals/_duckdb/expr_list.py
+@@ -2,6 +2,8 @@ from __future__ import annotations
+ 
+ from typing import TYPE_CHECKING
+ 
++from duckdb import CoalesceOperator
++
+ from narwhals._compliant import LazyExprNamespace
+ from narwhals._compliant.any_namespace import ListNamespace
+ from narwhals._duckdb.utils import F, col, lambda_expr, lit, when
+@@ -36,9 +38,17 @@ class DuckDBExprListNamespace(
+         return self.compliant._with_elementwise(func)
+ 
+     def contains(self, item: NonNestedLiteral) -> DuckDBExpr:
+-        return self.compliant._with_elementwise(
+-            lambda expr: F("list_contains", expr, lit(item))
+-        )
++        def func(expr: Expression) -> Expression:
++            if item is None:
++                elem = col("_")
++                nulls = F("list_filter", expr, lambda_expr(elem, elem.isnull()))
++                return F("len", nulls) > lit(0)
++            return when(
++                expr.isnotnull(),
++                CoalesceOperator(F("list_contains", expr, lit(item)), lit(False)),
++            )
++
++        return self.compliant._with_elementwise(func)
+ 
+     def get(self, index: int) -> DuckDBExpr:
+         return self.compliant._with_elementwise(
+diff --git a/src/narwhals/_ibis/expr_list.py b/src/narwhals/_ibis/expr_list.py
+index c93e4bb..77d9657 100644
+--- a/src/narwhals/_ibis/expr_list.py
++++ b/src/narwhals/_ibis/expr_list.py
+@@ -25,7 +25,14 @@ class IbisExprListNamespace(LazyExprNamespace["IbisExpr"], ListNamespace["IbisEx
+         return self.compliant._with_callable(lambda expr: expr.unique())
+ 
+     def contains(self, item: NonNestedLiteral) -> IbisExpr:
+-        return self.compliant._with_callable(lambda expr: expr.contains(item))
++        def func(expr: ir.ArrayColumn) -> ir.Column:
++            if item is None:
++                result = expr.filter(lambda x: x.isnull()).length() > 0
++            else:
++                result = expr.contains(item).fill_null(False)
++            return cases((expr.isnull(), literal(None, type="boolean")), else_=result)
++
++        return self.compliant._with_callable(func)
+ 
+     def get(self, index: int) -> IbisExpr:
+         def _get(expr: ir.ArrayColumn) -> ir.Column:
+diff --git a/src/narwhals/_polars/expr.py b/src/narwhals/_polars/expr.py
+index a508895..de1bc45 100644
+--- a/src/narwhals/_polars/expr.py
++++ b/src/narwhals/_polars/expr.py
+@@ -557,12 +557,11 @@ class PolarsExprListNamespace(
+         return self.compliant._with_native(native_result)
+ 
+     def contains(self, item: Any) -> PolarsExpr:
+-        if self.compliant._backend_version < (1, 28):
+-            result: pl.Expr = pl.when(self.native.is_not_null()).then(
+-                self.native.list.contains(item)
+-            )
++        if item is None:
++            contains: pl.Expr = self.native.list.eval(pl.element().is_null()).list.any()
+         else:
+-            result = self.native.list.contains(item)
++            contains = self.native.list.contains(item).fill_null(False)
++        result = pl.when(self.native.is_not_null()).then(contains)
+         return self.compliant._with_native(result)
+ 
+ 
+diff --git a/src/narwhals/_spark_like/expr_list.py b/src/narwhals/_spark_like/expr_list.py
+index 1da4c51..b4f862e 100644
+--- a/src/narwhals/_spark_like/expr_list.py
++++ b/src/narwhals/_spark_like/expr_list.py
+@@ -29,7 +29,12 @@ class SparkLikeExprListNamespace(
+     def contains(self, item: NonNestedLiteral) -> SparkLikeExpr:
+         def func(expr: Column) -> Column:
+             F = self.compliant._F
+-            return F.array_contains(expr, F.lit(item))
++            if item is None:
++                return F.size(F.filter(expr, lambda x: x.isNull())) > 0
++            return F.when(
++                expr.isNotNull(),
++                F.coalesce(F.array_contains(expr, F.lit(item)), F.lit(False)),
++            )
+ 
+         return self.compliant._with_elementwise(func)
+ 
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 6e56846..706eb13 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -37,3 +37,25 @@ def test_contains_series(
+     df = nw.from_native(constructor_eager(data), eager_only=True)
+     result = df["a"].cast(nw.List(nw.Int32())).list.contains(2)
+     assert_equal_data({"a": result}, expected)
++
++
++@pytest.mark.parametrize(
++    ("item", "expected"),
++    [
++        (2, [False, True, False, False, None]),
++        (None, [True, False, False, False, None]),
++    ],
++)
++def test_contains_nulls(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    item: int | None,
++    expected: list[bool | None],
++) -> None:
++    if any(b in str(constructor) for b in ("dask", "modin", "cudf", "pyarrow", "pandas")):
++        request.applymarker(pytest.mark.xfail)
++    data = {"a": [[1, None], [2], [], [3], None]}
++    result = nw.from_native(constructor(data)).select(
++        nw.col("a").cast(nw.List(nw.Int32())).list.contains(item)
++    )
++    assert_equal_data(result, {"a": expected})

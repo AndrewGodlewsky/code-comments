@@ -1,0 +1,155 @@
+diff --git a/src/narwhals/_utils.py b/src/narwhals/_utils.py
+index 6fe7b89..115206b 100644
+--- a/src/narwhals/_utils.py
++++ b/src/narwhals/_utils.py
+@@ -2294,6 +2294,32 @@ def extend_bool(
+     return (value,) * n_match if isinstance(value, bool) else tuple(value)
+ 
+ 
++def validate_bool_flags(
++    value: bool | Sequence[bool], n_keys: int, *, arg_name: str
++) -> bool | tuple[bool, ...]:
++    """Check a per-key flag argument, raising the errors Polars raises.
++
++    A sequence is materialised so that one-shot iterables are not consumed by the check.
++    """
++    if isinstance(value, bool):
++        return value
++    flags = tuple(value)
++    if len(flags) != n_keys:
++        msg = (
++            f"the length of `{arg_name}` ({len(flags)}) does not match "
++            f"the length of `by` ({n_keys})"
++        )
++        raise ValueError(msg)
++    for flag in flags:
++        if not isinstance(flag, bool):
++            msg = (
++                f"{type(flag).__name__!r} object is not an instance of 'bool'\n"
++                f"while processing '{arg_name}'"
++            )
++            raise TypeError(msg)
++    return flags
++
++
+ class _NoDefault(Enum):
+     # "borrowed" from
+     # https://github.com/pandas-dev/pandas/blob/e7859983a814b1823cf26e3b491ae2fa3be47c53/pandas/_libs/lib.pyx#L2736-L2748
+diff --git a/src/narwhals/dataframe.py b/src/narwhals/dataframe.py
+index fac86d2..f4784cb 100644
+--- a/src/narwhals/dataframe.py
++++ b/src/narwhals/dataframe.py
+@@ -47,6 +47,7 @@ from narwhals._utils import (
+     predicates_contains_list_of_bool,
+     qualified_type_name,
+     supports_arrow_c_stream,
++    validate_bool_flags,
+ )
+ from narwhals.dependencies import is_numpy_array_2d, is_pyarrow_table
+ from narwhals.exceptions import (
+@@ -308,6 +309,7 @@ class BaseFrame(Generic[_FrameT]):
+         nulls_last: bool = False,
+     ) -> Self:
+         by = flatten([*flatten([by]), *more_by])
++        descending = validate_bool_flags(descending, len(by), arg_name="descending")
+         return self._with_compliant(
+             self._compliant_frame.sort(*by, descending=descending, nulls_last=nulls_last)
+         )
+@@ -316,6 +318,7 @@ class BaseFrame(Generic[_FrameT]):
+         self, k: int, *, by: str | Iterable[str], reverse: bool | Sequence[bool] = False
+     ) -> Self:
+         flatten_by = flatten([by])
++        reverse = validate_bool_flags(reverse, len(flatten_by), arg_name="reverse")
+         return self._with_compliant(
+             self._compliant_frame.top_k(k, by=flatten_by, reverse=reverse)
+         )
+diff --git a/tests/frame/sort_test.py b/tests/frame/sort_test.py
+index 7d62693..5246c4b 100644
+--- a/tests/frame/sort_test.py
++++ b/tests/frame/sort_test.py
+@@ -1,10 +1,13 @@
+ from __future__ import annotations
+ 
++import re
+ from typing import Any
+ 
+ import pytest
+ 
+ import narwhals as nw
++import narwhals.stable.v1 as nw_v1
++import narwhals.stable.v2 as nw_v2
+ from tests.utils import Constructor, assert_equal_data, skip_if_no_categorical_ordering
+ 
+ 
+@@ -110,3 +113,30 @@ def test_sort_dictionary_pyarrow(
+     assert_equal_data(result, {"c": expected})
+     # ordering does not decode the output
+     assert result.to_native().schema == native.schema
++
++
++@pytest.mark.parametrize("module", [nw, nw_v1, nw_v2])
++def test_sort_descending_length_mismatch(constructor: Constructor, module: Any) -> None:
++    df = module.from_native(constructor({"a": [1, 2], "b": [3, 4]}))
++    msg = "the length of `descending` (1) does not match the length of `by` (2)"
++    with pytest.raises(ValueError, match=re.escape(msg)):
++        df.sort("a", "b", descending=[True])
++
++
++@pytest.mark.parametrize("flag", ["abc", 1, 0, None])
++@pytest.mark.parametrize("module", [nw, nw_v1, nw_v2])
++def test_sort_descending_non_bool(
++    constructor: Constructor, module: Any, flag: Any
++) -> None:
++    df = module.from_native(constructor({"a": [1, 2], "b": [3, 4]}))
++    with pytest.raises(TypeError, match="is not an instance of 'bool'") as exc:
++        df.sort("a", "b", descending=[True, flag])
++    assert "while processing 'descending'" in str(exc.value)
++
++
++def test_sort_descending_single_bool_applies_to_all(constructor: Constructor) -> None:
++    df = nw.from_native(constructor({"a": [1, 1, 2], "b": [3, 4, 5]}))
++    result = df.sort("a", "b", descending=True)
++    assert_equal_data(result, {"a": [2, 1, 1], "b": [5, 4, 3]})
++    result = df.sort("a", "b", descending=(flag for flag in [True, True]))
++    assert_equal_data(result, {"a": [2, 1, 1], "b": [5, 4, 3]})
+diff --git a/tests/frame/top_k_test.py b/tests/frame/top_k_test.py
+index 7bafe99..69b5267 100644
+--- a/tests/frame/top_k_test.py
++++ b/tests/frame/top_k_test.py
+@@ -1,8 +1,13 @@
+ from __future__ import annotations
+ 
++import re
++from typing import Any
++
+ import pytest
+ 
+ import narwhals as nw
++import narwhals.stable.v1 as nw_v1
++import narwhals.stable.v2 as nw_v2
+ from tests.utils import (
+     DUCKDB_VERSION,
+     POLARS_VERSION,
+@@ -75,3 +80,22 @@ def test_top_k_categorical(constructor: Constructor) -> None:
+     assert_equal_data(result, {"c": ["dog", "cat"], "n": [1, 2]})
+     result = df.top_k(2, by="c", reverse=True).sort("n")
+     assert_equal_data(result, {"c": ["cat", "bird"], "n": [2, 3]})
++
++
++@pytest.mark.parametrize("module", [nw, nw_v1, nw_v2])
++def test_top_k_reverse_length_mismatch(constructor: Constructor, module: Any) -> None:
++    df = module.from_native(constructor({"a": [1, 2], "b": [3, 4]}))
++    msg = "the length of `reverse` (1) does not match the length of `by` (2)"
++    with pytest.raises(ValueError, match=re.escape(msg)):
++        df.top_k(1, by=["a", "b"], reverse=[True])
++
++
++@pytest.mark.parametrize("flag", ["abc", 1, 0, None])
++@pytest.mark.parametrize("module", [nw, nw_v1, nw_v2])
++def test_top_k_reverse_non_bool(
++    constructor: Constructor, module: Any, flag: Any
++) -> None:
++    df = module.from_native(constructor({"a": [1, 2], "b": [3, 4]}))
++    with pytest.raises(TypeError, match="is not an instance of 'bool'") as exc:
++        df.top_k(1, by=["a", "b"], reverse=[True, flag])
++    assert "while processing 'reverse'" in str(exc.value)

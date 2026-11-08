@@ -1,0 +1,109 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index bca91ee..1b38e7d 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -527,13 +527,33 @@ def concat_tables(
+ class ArrowSeriesNamespace(EagerSeriesNamespace["ArrowSeries", "ChunkedArrayAny"]): ...
+ 
+ 
++def _equal_or_raise(flat: Any, item: Any) -> Any:
++    from datetime import datetime
++
++    from narwhals.exceptions import InvalidOperationError
++
++    dtype = flat.type
++    if (
++        isinstance(item, datetime)
++        and pa.types.is_timestamp(dtype)
++        and dtype.unit != "us"
++    ):
++        msg = f"cannot compare a datetime item with list items of type {dtype}."
++        raise InvalidOperationError(msg)
++    try:
++        return pc.equal(flat, lit(item))
++    except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError) as exc:
++        msg = f"cannot check whether lists of {dtype} contain item {item!r}: {exc}"
++        raise InvalidOperationError(msg) from exc
++
++
+ def list_contains(array: ChunkedArrayAny, item: Any) -> ChunkedArrayAny:
+     arr = array.combine_chunks()
+     flat = pc.list_flatten(arr)
+     if item is None:
+         matches = pc.is_null(flat)
+     else:
+-        matches = pc.fill_null(pc.equal(flat, lit(item)), False)  # noqa: FBT003
++        matches = pc.fill_null(_equal_or_raise(flat, item), False)  # noqa: FBT003
+     hits = pc.filter(pc.list_parent_indices(arr), matches)
+     found = pc.is_in(pa.array(range(len(arr)), type=hits.type), value_set=hits)
+     result = pc.if_else(pc.is_valid(arr), found, lit(None, type=pa.bool_()))
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index 2afebfd..db296f6 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
+ from narwhals._compliant import LazyExprNamespace
+ from narwhals._compliant.any_namespace import ListNamespace
+ from narwhals._utils import not_implemented
++from narwhals.exceptions import InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     import pandas as pd
+@@ -74,7 +75,18 @@ def _sort(ser: pd.Series[Any], *, descending: bool, nulls_last: bool) -> pd.Seri
+ 
+ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskExpr"]):
+     def contains(self, item: NonNestedLiteral) -> DaskExpr:
+-        return self.compliant._with_callable(lambda expr: expr.map_partitions(_contains, item))
++        def func(expr: Any) -> Any:
++            try:
++                return expr.map_partitions(_contains, item)
++            except ValueError as exc:
++                cause: BaseException | None = exc
++                while cause is not None:
++                    if isinstance(cause, InvalidOperationError):
++                        raise cause from None
++                    cause = cause.__cause__ or cause.__context__
++                raise  # pragma: no cover
++
++        return self.compliant._with_callable(func)
+ 
+     def len(self) -> DaskExpr:
+         return self.compliant._with_callable(lambda expr: expr.map_partitions(_len))
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..9011da0 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,7 +1,7 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+@@ -212,3 +212,24 @@ def test_contains_none_non_orderable_inner_type_pyspark() -> None:  # pragma: no
+     )
+     result = nw.from_native(native).select("i", nw.col("a").list.contains(None)).sort("i")
+     assert_equal_data(result, {"i": [0, 1], "a": [True, False]})
++
++
++@pytest.mark.parametrize("n_rows", [0, 2])
++@pytest.mark.parametrize("item", [True, "a", datetime(2020, 1, 1)])
++def test_contains_incompatible_item_raises(
++    request: pytest.FixtureRequest, constructor: Constructor, item: Any, n_rows: int
++) -> None:
++    from narwhals.exceptions import InvalidOperationError
++
++    if any(x in str(constructor) for x in ("pandas", "pyarrow", "dask")):
++        if "pandas" in str(constructor) and "pyarrow" not in str(constructor):
++            pytest.skip(reason="needs pyarrow-backed lists")
++    else:
++        pytest.skip(reason="only pyarrow-backed backends are covered")
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[1, 2]] * 2}))
++    df = df.select(nw.col("a").cast(nw.List(nw.Int64())))
++    if n_rows == 0:
++        df = df.filter(nw.col("a").list.len() > 5)
++    with pytest.raises(InvalidOperationError):
++        df.select(nw.col("a").list.contains(item)).lazy().collect()

@@ -1,0 +1,189 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index 2b3e4bf..a7c431c 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -583,9 +583,47 @@ def list_agg(
+     )
+ 
+ 
++def _comparison_group(dtype: pa.DataType) -> object:
++    """Types in one group can be compared with `pc.equal`, a type from another can't."""
++    if pa.types.is_boolean(dtype):
++        return "bool"
++    if pa.types.is_integer(dtype) or pa.types.is_floating(dtype):
++        return "number"
++    if pa.types.is_decimal(dtype):
++        return "number"
++    if pa.types.is_string(dtype) or pa.types.is_large_string(dtype):
++        return "string"
++    if pa.types.is_timestamp(dtype):
++        return ("timestamp", dtype.unit)
++    return dtype
++
++
++def raise_if_incomparable_item(list_type: pa.DataType, item: Any) -> None:
++    """Raise if `item` can't be compared with the items of a `list_type` array.
++
++    Depends only on the type, so it also applies to empty arrays and to dask metadata.
++    """
++    from narwhals.exceptions import InvalidOperationError
++
++    inner = cast("pa.ListType", list_type).value_type
++    if item is None or pa.types.is_null(inner):
++        return
++    item_type = lit(item).type
++    if _comparison_group(item_type) != _comparison_group(inner):
++        msg = f"`list.contains` cannot check for {inner} values in {item_type} data"
++        raise InvalidOperationError(msg)
++
++
+ def list_contains(array: ChunkedArrayAny, item: Any) -> ChunkedArrayAny:
++    raise_if_incomparable_item(array.type, item)
+     flat = pc.list_flatten(array)
+-    matches = pc.is_null(flat) if item is None else pc.equal(flat, lit(item))
++    if item is None:
++        matches = pc.is_null(flat)
++    elif pa.types.is_null(cast("pa.ListType", array.type).value_type):
++        # Every item is null, so a non-null item is never found.
++        matches = pc.is_valid(flat)
++    else:
++        matches = pc.equal(flat, lit(item))
+     return _aggregate_per_list(
+         array,
+         matches,
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index 9778252..46c6e67 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -64,7 +64,11 @@ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskEx
+         version = self.compliant._version
+ 
+         def _contains(expr: dx.Series) -> dx.Series:
++            from narwhals._arrow.utils import raise_if_incomparable_item
++
+             _raise_if_not_pyarrow_list(expr)
++            # Dask wraps errors raised while inferring metadata, so check up front.
++            raise_if_incomparable_item(expr.dtype.pyarrow_dtype, item)
+             return expr.map_partitions(_list_contains, item=item, version=version)
+ 
+         return self.compliant._with_callable(_contains)
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..73a93eb 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,13 +1,14 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
++from narwhals.exceptions import InvalidOperationError
+ from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data, pyspark_session
+ 
+ if TYPE_CHECKING:
+@@ -29,6 +30,12 @@ def skip_or_xfail_unsupported(
+         pytest.importorskip("pyarrow")
+ 
+ 
++def skip_if_sql_backend(constructor: Constructor | ConstructorEager) -> None:
++    if any(backend in str(constructor) for backend in ("duckdb", "sqlframe")):
++        # These raise their own errors, at collection time, not `InvalidOperationError`.
++        pytest.skip(reason="SQL backends raise their own errors")
++
++
+ def test_contains_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+     skip_or_xfail_unsupported(request, constructor)
+     result = nw.from_native(constructor(data)).select(
+@@ -202,6 +209,86 @@ def test_contains_none_single_empty_list_expr(
+     assert_equal_data(result, {"a": [False]})
+ 
+ 
++@pytest.mark.parametrize(
++    ("values", "dtype", "item"),
++    [
++        ([[1, 2], None], nw.List(nw.Int64()), True),
++        ([[1, 2], None], nw.List(nw.Int64()), "a"),
++        ([["a"], None], nw.List(nw.String()), 1),
++        ([[True], None], nw.List(nw.Boolean()), 1),
++        ([[1.0], None], nw.List(nw.Float64()), True),
++    ],
++)
++def test_contains_incompatible_item_raises(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: nw.List,
++    item: Any,
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    skip_if_sql_backend(constructor)
++    df = nw.from_native(constructor({"a": values})).select(nw.col("a").cast(dtype))
++    with pytest.raises(InvalidOperationError, match="cannot check"):
++        assert_equal_data(df.select(nw.col("a").list.contains(item)), {"a": []})
++
++
++def test_contains_incompatible_item_empty_frame_raises(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    skip_if_sql_backend(constructor)
++    df = nw.from_native(constructor({"i": [0], "a": [[1]]})).filter(nw.col("i") > 5)
++    expr = nw.col("a").cast(nw.List(nw.Int64())).list.contains("a")
++    with pytest.raises(InvalidOperationError, match="cannot check"):
++        assert_equal_data(df.select(expr), {"a": []})
++
++
++def test_contains_datetime_precision_mismatch_raises(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    skip_if_sql_backend(constructor)
++    if "polars" in str(constructor):
++        # Polars only raises for nanosecond lists, and returns no match for millisecond.
++        pytest.skip(reason="Polars' datetime precision handling differs")
++    dtype = nw.List(nw.Datetime("ms"))
++    df = nw.from_native(constructor({"a": [[datetime(2020, 1, 1)], None]}))
++    expr = nw.col("a").cast(dtype).list.contains(datetime(2020, 1, 1))
++    with pytest.raises(InvalidOperationError, match="cannot check"):
++        assert_equal_data(df.select(expr), {"a": []})
++
++
++def test_contains_numeric_items(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[2, 3], [1, None]], "b": [[1.0], [2.5]]}))
++    result = df.select(
++        int_2=nw.col("a").cast(nw.List(nw.Int64())).list.contains(2.0),
++        int_15=nw.col("a").cast(nw.List(nw.Int64())).list.contains(1.5),
++        float_1=nw.col("b").cast(nw.List(nw.Float64())).list.contains(1),
++    )
++    expected = {
++        "int_2": [True, False],
++        "int_15": [False, False],
++        "float_1": [True, False],
++    }
++    assert_equal_data(result, expected)
++
++
++def test_contains_all_null_inner(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[None, None], [None], None]}))
++    result = df.select(
++        nw.col("a").cast(nw.List(nw.Int64())).list.contains(1),
++        none=nw.col("a").cast(nw.List(nw.Int64())).list.contains(None),
++    )
++    assert_equal_data(result, {"a": [False, False, None], "none": [True, True, None]})
++
++
+ @pytest.mark.slow
+ def test_contains_none_non_orderable_inner_type_pyspark() -> None:  # pragma: no cover
+     pytest.importorskip("pyspark")

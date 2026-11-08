@@ -1,0 +1,166 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index eaf5cf7..ce0a09f 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++from datetime import datetime
+ from functools import lru_cache
+ from typing import TYPE_CHECKING, Any, cast
+ 
+@@ -8,7 +9,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -642,6 +643,19 @@ def list_sort(
+ 
+ 
+ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArrayAny:
++    value_type = array.type.value_type
++    # pyarrow silently casts a datetime item to the list's unit, so a precision mismatch
++    # would match without raising. Checked on the types so that empty frames raise too.
++    if (
++        isinstance(item, datetime)
++        and pa.types.is_timestamp(value_type)
++        and pa.scalar(item).type.unit != value_type.unit
++    ):
++        msg = (
++            f"`list.contains` cannot check for {item!r} "
++            f"in a list of {value_type} values"
++        )
++        raise InvalidOperationError(msg)
+     # Linear in the number of list elements: compare the flattened values once, then
+     # read each row's match count off a cumulative sum at its start and end offsets.
+     arr = array.combine_chunks()
+@@ -649,7 +663,14 @@ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArra
+     if item is None:
+         matches = pc.is_null(flat)
+     else:
+-        matches = pc.fill_null(pc.equal(flat, item), False)
++        try:
++            matches = pc.fill_null(pc.equal(flat, item), False)
++        except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as exc:
++            msg = (
++                f"`list.contains` cannot check for {item!r} "
++                f"in a list of {value_type} values"
++            )
++            raise InvalidOperationError(msg) from exc
+     counts = pa.concat_arrays(
+         [pa.array([0], type=pa.int64()), pc.cumulative_sum(matches.cast(pa.int64()))]
+     )
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..4c512cf 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,13 +1,14 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime, timedelta
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
++from narwhals.exceptions import InvalidOperationError
+ from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data, pyspark_session
+ 
+ if TYPE_CHECKING:
+@@ -212,3 +213,89 @@ def test_contains_none_non_orderable_inner_type_pyspark() -> None:  # pragma: no
+     )
+     result = nw.from_native(native).select("i", nw.col("a").list.contains(None)).sort("i")
+     assert_equal_data(result, {"i": [0, 1], "a": [True, False]})
++
++
++
++PYARROW_LIST_IMPLEMENTATIONS = frozenset(
++    {
++        nw.Implementation.PANDAS,
++        nw.Implementation.MODIN,
++        nw.Implementation.DASK,
++        nw.Implementation.PYARROW,
++    }
++)
++
++
++@pytest.mark.parametrize(
++    ("values", "dtype", "item"),
++    [
++        ([[1, 2]], nw.Int64(), True),
++        ([[1, 2]], nw.Int64(), "a"),
++        ([[datetime(2020, 1, 1)]], nw.Datetime("ms"), datetime(2020, 1, 1)),
++        ([[datetime(2020, 1, 1)]], nw.Datetime("ns"), datetime(2020, 1, 1)),
++    ],
++)
++@pytest.mark.parametrize("empty", [False, True], ids=["rows", "no_rows"])
++def test_contains_incompatible_item_raises(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: DType,
++    item: Any,
++    empty: bool,
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    frame = nw.from_native(constructor({"a": values}))
++    if frame.implementation not in PYARROW_LIST_IMPLEMENTATIONS:
++        pytest.skip(reason="only pyarrow-backed backends raise on precision mismatch")
++    df = frame.select(nw.col("a").cast(nw.List(dtype)))
++    if empty:
++        df = df.head(0)
++    with pytest.raises(InvalidOperationError):
++        df.select(nw.col("a").list.contains(item)).lazy().collect()
++
++
++def test_contains_matching_precision(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[datetime(2020, 1, 1)]]}))
++    result = df.select(
++        nw.col("a").cast(nw.List(nw.Datetime("us"))).list.contains(datetime(2020, 1, 1))
++    )
++    assert_equal_data(result, {"a": [True]})
++
++
++@pytest.mark.parametrize(
++    ("item", "expected"),
++    [(2.0, [True, False]), (1.5, [False, False])],
++    ids=["2.0_matches_int_2", "1.5_no_match"],
++)
++def test_contains_float_item_on_int_list(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    item: float,
++    expected: list[bool],
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[2, 3], [4, 5]]}))
++    result = df.select(nw.col("a").cast(nw.List(nw.Int64())).list.contains(item))
++    assert_equal_data(result, {"a": expected})
++
++
++def test_contains_int_item_on_float_list(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[1.0, 2.5], [3.0]]}))
++    result = df.select(nw.col("a").cast(nw.List(nw.Float64())).list.contains(1))
++    assert_equal_data(result, {"a": [True, False]})
++
++
++def test_contains_all_null_list(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": [[None, None], None]}))
++    result = df.select(nw.col("a").cast(nw.List(nw.Int64())).list.contains(1))
++    assert_equal_data(result, {"a": [False, None]})

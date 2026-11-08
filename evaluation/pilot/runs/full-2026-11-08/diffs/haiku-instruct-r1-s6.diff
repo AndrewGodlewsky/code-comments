@@ -1,0 +1,168 @@
+diff --git a/src/narwhals/_arrow/utils.py b/src/narwhals/_arrow/utils.py
+index 8b0aca3..4588197 100644
+--- a/src/narwhals/_arrow/utils.py
++++ b/src/narwhals/_arrow/utils.py
+@@ -8,7 +8,7 @@ import pyarrow.compute as pc
+ 
+ from narwhals._compliant import EagerSeriesNamespace
+ from narwhals._utils import Implementation, Version, isinstance_or_issubclass
+-from narwhals.exceptions import ColumnNotFoundError
++from narwhals.exceptions import ColumnNotFoundError, InvalidOperationError
+ 
+ if TYPE_CHECKING:
+     from collections.abc import Iterable, Iterator, Mapping, Sequence
+@@ -641,6 +641,26 @@ def list_sort(
+     return pa.concat_tables([imploded_by_idx, pass_through]).sort_by(idx).column(v)
+ 
+ 
++def raise_if_incomparable_item(value_type: pa.DataType, item: NonNestedLiteral) -> None:
++    scalar = lit(item)
++    msg = (
++        f"Unable to check for item of type {type(item).__name__} "
++        f"in list values of type {value_type}."
++    )
++    # Unlike Polars, pyarrow silently casts between timestamp units.
++    if (
++        pa.types.is_timestamp(value_type)
++        and pa.types.is_timestamp(scalar.type)
++        and value_type.unit != scalar.type.unit
++    ):
++        raise InvalidOperationError(msg)
++    try:
++        # Dispatch fails on an empty array too, so empty frames raise as well.
++        pc.equal(pa.array([], type=value_type), scalar)
++    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as exc:
++        raise InvalidOperationError(msg) from exc
++
++
+ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArrayAny:
+     # Per-list match counts come from a prefix sum over the flattened values,
+     # so the cost is linear in the total number of elements.
+@@ -652,6 +672,7 @@ def list_contains(array: ChunkedArrayAny, item: NonNestedLiteral) -> ChunkedArra
+     if item is None:
+         matches = pc.is_null(flat)
+     else:
++        raise_if_incomparable_item(flat.type, item)
+         matches = pc.fill_null(pc.equal(flat, lit(item)), lit(False))
+     prefix = pa.concat_arrays(
+         [pa.array([0], type=pa.int64()), pc.cumulative_sum(matches.cast(pa.int64()))]
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index e2cfdad..cab757f 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -14,6 +14,7 @@ if TYPE_CHECKING:
+     from collections.abc import Callable
+ 
+     import dask.dataframe.dask_expr as dx
++    import pyarrow as pa
+ 
+     from narwhals._arrow.typing import ChunkedArrayAny
+     from narwhals._dask.expr import DaskExpr
+@@ -33,12 +34,17 @@ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskEx
+     unique = not_implemented()
+ 
+     def _with_arrow_list_func(
+-        self, arrow_func: Callable[[ChunkedArrayAny], ChunkedArrayAny]
++        self,
++        arrow_func: Callable[[ChunkedArrayAny], ChunkedArrayAny],
++        validate: Callable[[pa.DataType], None] | None = None,
+     ) -> DaskExpr:
+         def _func(expr: dx.Series) -> dx.Series:
+             if get_dtype_backend(expr.dtype, self.compliant._implementation) != "pyarrow":
+                 msg = "Only pyarrow-backed list columns are supported in dask."
+                 raise NotImplementedError(msg)
++            if validate is not None:
++                # Dask wraps errors raised while inferring metadata in `ValueError`.
++                validate(expr.dtype.pyarrow_dtype.value_type)
+             return expr.map_partitions(_apply_arrow_list_func, arrow_func=arrow_func)
+ 
+         return self.compliant._with_callable(_func)
+@@ -89,6 +95,11 @@ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskEx
+         )
+ 
+     def contains(self, item: NonNestedLiteral) -> DaskExpr:
+-        from narwhals._arrow.utils import list_contains
++        from narwhals._arrow.utils import list_contains, raise_if_incomparable_item
+ 
+-        return self._with_arrow_list_func(partial(list_contains, item=item))
++        validate = (
++            None if item is None else partial(raise_if_incomparable_item, item=item)
++        )
++        return self._with_arrow_list_func(
++            partial(list_contains, item=item), validate=validate
++        )
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 191714f..21b07e0 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -1,13 +1,14 @@
+ from __future__ import annotations
+ 
+ import math
+-from datetime import date
++from datetime import date, datetime
+ from decimal import Decimal
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+ 
+ import narwhals as nw
++from narwhals.exceptions import InvalidOperationError
+ from tests.utils import PANDAS_VERSION, POLARS_VERSION, assert_equal_data, pyspark_session
+ 
+ if TYPE_CHECKING:
+@@ -189,6 +190,54 @@ def test_contains_non_pyarrow_list_dask() -> None:
+         df.select(nw.col("a").list.contains(1))
+ 
+ 
++@pytest.mark.parametrize(
++    ("values", "dtype", "item"),
++    [
++        ([[1, 2]], nw.Int64(), True),
++        ([[1, 2]], nw.Int64(), "a"),
++        ([[datetime(2020, 1, 1)]], nw.Datetime("ns"), datetime(2020, 1, 1)),
++    ],
++)
++@pytest.mark.parametrize("num_rows", [1, 0])
++def test_contains_incomparable_item_raises(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: DType,
++    item: Any,
++    num_rows: int,
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    if any(backend in str(constructor) for backend in ("duckdb", "sqlframe")):
++        pytest.skip(reason="only pyarrow-backed list columns raise this error")
++    df = nw.from_native(constructor({"a": values})).head(num_rows)
++    with pytest.raises(InvalidOperationError):
++        df.select(nw.col("a").cast(nw.List(dtype)).list.contains(item)).collect()
++
++
++@pytest.mark.parametrize(
++    ("values", "dtype", "item", "expected"),
++    [
++        ([[2, 3]], nw.Int64(), 2.0, [True]),
++        ([[2, 3]], nw.Int64(), 1.5, [False]),
++        ([[1.0, 2.0]], nw.Float64(), 1, [True]),
++        ([[None, None]], nw.Int64(), 1, [False]),
++    ],
++)
++def test_contains_numeric_cross_type(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    values: list[Any],
++    dtype: DType,
++    item: Any,
++    expected: list[bool],
++) -> None:
++    skip_or_xfail_unsupported(request, constructor)
++    df = nw.from_native(constructor({"a": values}))
++    result = df.select(nw.col("a").cast(nw.List(dtype)).list.contains(item))
++    assert_equal_data(result, {"a": expected})
++
++
+ def test_contains_none_single_empty_list_expr(
+     request: pytest.FixtureRequest, constructor: Constructor
+ ) -> None:

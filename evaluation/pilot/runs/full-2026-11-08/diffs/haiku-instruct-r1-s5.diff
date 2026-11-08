@@ -1,0 +1,236 @@
+diff --git a/src/narwhals/_dask/expr_list.py b/src/narwhals/_dask/expr_list.py
+index 9681333..e2cfdad 100644
+--- a/src/narwhals/_dask/expr_list.py
++++ b/src/narwhals/_dask/expr_list.py
+@@ -1,42 +1,94 @@
+ from __future__ import annotations
+ 
++from functools import partial
+ from typing import TYPE_CHECKING
+ 
+ import pandas as pd
+ 
+ from narwhals._compliant import LazyExprNamespace
+ from narwhals._compliant.any_namespace import ListNamespace
++from narwhals._pandas_like.utils import get_dtype_backend
+ from narwhals._utils import not_implemented
+ 
+ if TYPE_CHECKING:
++    from collections.abc import Callable
++
+     import dask.dataframe.dask_expr as dx
+ 
++    from narwhals._arrow.typing import ChunkedArrayAny
+     from narwhals._dask.expr import DaskExpr
+     from narwhals.typing import NonNestedLiteral
+ 
+ 
+-def _list_contains(native: pd.Series, item: NonNestedLiteral) -> pd.Series:
+-    from narwhals._arrow.utils import list_contains
+-
+-    result = list_contains(native.array._pa_array, item)
++def _apply_arrow_list_func(
++    native: pd.Series, arrow_func: Callable[[ChunkedArrayAny], ChunkedArrayAny]
++) -> pd.Series:
++    result = arrow_func(native.array._pa_array)
+     return pd.Series(
+         pd.arrays.ArrowExtensionArray(result), index=native.index, name=native.name
+     )
+ 
+ 
+ class DaskExprListNamespace(LazyExprNamespace["DaskExpr"], ListNamespace["DaskExpr"]):
+-    len = not_implemented()
+     unique = not_implemented()
+-    get = not_implemented()
+-    min = not_implemented()
+-    max = not_implemented()
+-    mean = not_implemented()
+-    median = not_implemented()
+-    sum = not_implemented()
+-    sort = not_implemented()
++
++    def _with_arrow_list_func(
++        self, arrow_func: Callable[[ChunkedArrayAny], ChunkedArrayAny]
++    ) -> DaskExpr:
++        def _func(expr: dx.Series) -> dx.Series:
++            if get_dtype_backend(expr.dtype, self.compliant._implementation) != "pyarrow":
++                msg = "Only pyarrow-backed list columns are supported in dask."
++                raise NotImplementedError(msg)
++            return expr.map_partitions(_apply_arrow_list_func, arrow_func=arrow_func)
++
++        return self.compliant._with_callable(_func)
++
++    def len(self) -> DaskExpr:
++        import pyarrow as pa
++        import pyarrow.compute as pc
++
++        return self._with_arrow_list_func(
++            lambda array: pc.list_value_length(array).cast(pa.uint32())
++        )
++
++    def get(self, index: int) -> DaskExpr:
++        import pyarrow.compute as pc
++
++        return self._with_arrow_list_func(lambda array: pc.list_element(array, index))
++
++    def min(self) -> DaskExpr:
++        from narwhals._arrow.utils import list_agg
++
++        return self._with_arrow_list_func(partial(list_agg, func="min"))
++
++    def max(self) -> DaskExpr:
++        from narwhals._arrow.utils import list_agg
++
++        return self._with_arrow_list_func(partial(list_agg, func="max"))
++
++    def mean(self) -> DaskExpr:
++        from narwhals._arrow.utils import list_agg
++
++        return self._with_arrow_list_func(partial(list_agg, func="mean"))
++
++    def median(self) -> DaskExpr:
++        from narwhals._arrow.utils import list_agg
++
++        return self._with_arrow_list_func(partial(list_agg, func="approximate_median"))
++
++    def sum(self) -> DaskExpr:
++        from narwhals._arrow.utils import list_agg
++
++        return self._with_arrow_list_func(partial(list_agg, func="sum"))
++
++    def sort(self, *, descending: bool, nulls_last: bool) -> DaskExpr:
++        from narwhals._arrow.utils import list_sort
++
++        return self._with_arrow_list_func(
++            partial(list_sort, descending=descending, nulls_last=nulls_last)
++        )
+ 
+     def contains(self, item: NonNestedLiteral) -> DaskExpr:
+-        def func(expr: dx.Series) -> dx.Series:
+-            return expr.map_partitions(_list_contains, item=item)
++        from narwhals._arrow.utils import list_contains
+ 
+-        return self.compliant._with_callable(func)
++        return self._with_arrow_list_func(partial(list_contains, item=item))
+diff --git a/tests/expr_and_series/list/get_test.py b/tests/expr_and_series/list/get_test.py
+index 52ca338..6bd0150 100644
+--- a/tests/expr_and_series/list/get_test.py
++++ b/tests/expr_and_series/list/get_test.py
+@@ -15,7 +15,7 @@ data = {"a": [[1, 2], [None, 3], [None], None]}
+ def test_get_expr(
+     request: pytest.FixtureRequest, constructor: Constructor, index: int, expected: Any
+ ) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+ 
+     if "pandas" in str(constructor):
+diff --git a/tests/expr_and_series/list/len_test.py b/tests/expr_and_series/list/len_test.py
+index 918fda5..3e28f09 100644
+--- a/tests/expr_and_series/list/len_test.py
++++ b/tests/expr_and_series/list/len_test.py
+@@ -10,7 +10,7 @@ expected = {"a": [2, 3, None, 0, 1]}
+ 
+ 
+ def test_len_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+ 
+     if "pandas" in str(constructor):
+diff --git a/tests/expr_and_series/list/max_test.py b/tests/expr_and_series/list/max_test.py
+index 646bff2..0f9f091 100644
+--- a/tests/expr_and_series/list/max_test.py
++++ b/tests/expr_and_series/list/max_test.py
+@@ -15,7 +15,7 @@ expected = [4, -1, None, None, None]
+ 
+ 
+ def test_max_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+     if "pandas" in str(constructor):
+         if PANDAS_VERSION < (2, 2):
+diff --git a/tests/expr_and_series/list/mean_test.py b/tests/expr_and_series/list/mean_test.py
+index 9175d5b..d81aa0b 100644
+--- a/tests/expr_and_series/list/mean_test.py
++++ b/tests/expr_and_series/list/mean_test.py
+@@ -15,7 +15,7 @@ expected = [2.75, -1, None, None, None]
+ 
+ 
+ def test_mean_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+     if "pandas" in str(constructor):
+         if PANDAS_VERSION < (2, 2):
+diff --git a/tests/expr_and_series/list/median_test.py b/tests/expr_and_series/list/median_test.py
+index 0ead315..699969d 100644
+--- a/tests/expr_and_series/list/median_test.py
++++ b/tests/expr_and_series/list/median_test.py
+@@ -17,7 +17,7 @@ expected_pyarrow = [2.5, -1, None, None, None, 3]
+ 
+ 
+ def test_median_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")) or (
++    if "cudf" in str(constructor) or (
+         "polars" in str(constructor) and POLARS_VERSION < (0, 20, 7)
+     ):
+         request.applymarker(pytest.mark.xfail)
+@@ -37,7 +37,7 @@ def test_median_expr(request: pytest.FixtureRequest, constructor: Constructor) -
+     )
+     if any(
+         backend in str(constructor)
+-        for backend in ("pandas", "pyarrow", "pandas[pyarrow]")
++        for backend in ("pandas", "pyarrow", "pandas[pyarrow]", "dask")
+     ):
+         # there is a mismatch as pyarrow uses an approximate median
+         assert_equal_data(result, {"a": expected_pyarrow})
+diff --git a/tests/expr_and_series/list/min_test.py b/tests/expr_and_series/list/min_test.py
+index 2039f7d..759b85a 100644
+--- a/tests/expr_and_series/list/min_test.py
++++ b/tests/expr_and_series/list/min_test.py
+@@ -15,7 +15,7 @@ expected = [2, -1, None, None, None]
+ 
+ 
+ def test_min_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+     if "pandas" in str(constructor):
+         if PANDAS_VERSION < (2, 2):
+diff --git a/tests/expr_and_series/list/sort_test.py b/tests/expr_and_series/list/sort_test.py
+index 1866934..7dc16c3 100644
+--- a/tests/expr_and_series/list/sort_test.py
++++ b/tests/expr_and_series/list/sort_test.py
+@@ -60,7 +60,7 @@ def test_sort_expr_args(
+     nulls_last: bool,  # noqa: FBT001
+     expected: list[Any],
+ ) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+     if "ibis" in str(constructor) and descending:
+         # https://github.com/ibis-project/ibis/issues/11735
+@@ -95,7 +95,7 @@ def test_sort_series_args(
+     nulls_last: bool,  # noqa: FBT001
+     expected: list[Any],
+ ) -> None:
+-    if any(backend in str(constructor_eager) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor_eager):
+         request.applymarker(pytest.mark.xfail)
+     if "polars" in str(constructor_eager) and POLARS_VERSION < (0, 20, 5):
+         pytest.skip()
+diff --git a/tests/expr_and_series/list/sum_test.py b/tests/expr_and_series/list/sum_test.py
+index d66266e..92bab3d 100644
+--- a/tests/expr_and_series/list/sum_test.py
++++ b/tests/expr_and_series/list/sum_test.py
+@@ -15,7 +15,7 @@ expected = [11, -1, None, 0, 0]
+ 
+ 
+ def test_sum_expr(request: pytest.FixtureRequest, constructor: Constructor) -> None:
+-    if any(backend in str(constructor) for backend in ("dask", "cudf")):
++    if "cudf" in str(constructor):
+         request.applymarker(pytest.mark.xfail)
+     if "pandas" in str(constructor):
+         if PANDAS_VERSION < (2, 2):

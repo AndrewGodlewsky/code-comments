@@ -1,0 +1,159 @@
+diff --git a/docs/api-reference/dataframe.md b/docs/api-reference/dataframe.md
+index b21ce3c..9a11e87 100644
+--- a/docs/api-reference/dataframe.md
++++ b/docs/api-reference/dataframe.md
+@@ -6,6 +6,7 @@
+       members:
+         - __arrow_c_stream__
+         - __getitem__
++        - cast
+         - clone
+         - collect_schema
+         - columns
+diff --git a/docs/api-reference/lazyframe.md b/docs/api-reference/lazyframe.md
+index f9fafb7..d4749dc 100644
+--- a/docs/api-reference/lazyframe.md
++++ b/docs/api-reference/lazyframe.md
+@@ -4,6 +4,7 @@
+     handler: python
+     options:
+       members:
++        - cast
+         - collect
+         - collect_schema
+         - columns
+diff --git a/src/narwhals/_arrow/dataframe.py b/src/narwhals/_arrow/dataframe.py
+index e1c53a4..0cd84e8 100644
+--- a/src/narwhals/_arrow/dataframe.py
++++ b/src/narwhals/_arrow/dataframe.py
+@@ -407,6 +407,25 @@ class ArrowDataFrame(
+ 
+         return self._with_native(native_frame, validate_column_names=False)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        native = self.native
++        schema = native.schema
++        fields = []
++        arrays = []
++        for field, column in zip(schema, native.columns):
++            if field.name in mapping:
++                target = narwhals_to_native_dtype(mapping[field.name], self._version)
++                new_field = field.with_type(target)
++                column = pc.cast(column, target, safe=True)
++                fields.append(new_field)
++            else:
++                fields.append(field)
++            arrays.append(column)
++        new_schema = pa.schema(fields, metadata=schema.metadata)
++        return self._with_native(
++            pa.Table.from_arrays(arrays, schema=new_schema), validate_column_names=False
++        )
++
+     def group_by(
+         self, keys: Sequence[str] | Sequence[ArrowExpr], *, drop_null_keys: bool
+     ) -> ArrowGroupBy:
+diff --git a/src/narwhals/dataframe.py b/src/narwhals/dataframe.py
+index 7ab91cc..cad3716 100644
+--- a/src/narwhals/dataframe.py
++++ b/src/narwhals/dataframe.py
+@@ -277,6 +277,21 @@ class BaseFrame(Generic[_FrameT]):
+     def drop(self, *columns: Iterable[str], strict: bool) -> Self:
+         return self._with_compliant(self._compliant_frame.drop(columns, strict=strict))
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        from narwhals.dtypes import _validate_dtype
++        from narwhals.functions import col
++
++        mapping = dict(mapping)
++        for dtype in mapping.values():
++            _validate_dtype(dtype)
++        if error := check_columns_exist(mapping, available=self.collect_schema().names()):
++            raise error
++        if not mapping:
++            return self
++        if self._compliant_frame._implementation.is_pyarrow():
++            return self._with_compliant(self._compliant_frame.cast(mapping))
++        return self.with_columns(col(k).cast(v) for k, v in mapping.items())
++
+     def filter(
+         self, *predicates: IntoExpr | Iterable[IntoExpr], **constraints: Any
+     ) -> Self:
+@@ -1655,6 +1670,23 @@ class DataFrame(BaseFrame[DataFrameT]):
+         """
+         return super().drop(*flatten(columns), strict=strict)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        """Cast columns to new data types.
++
++        Columns not in `mapping` are left unchanged.
++
++        Arguments:
++            mapping: Mapping of column names to the data type to cast them to.
++
++        Examples:
++            >>> import pandas as pd
++            >>> import narwhals as nw
++            >>> df_native = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
++            >>> nw.from_native(df_native).cast({"a": nw.Float64}).schema
++            Schema({'a': Float64, 'b': Int64})
++        """
++        return super().cast(mapping)
++
+     def unique(
+         self,
+         subset: str | list[str] | None = None,
+@@ -2861,6 +2893,23 @@ class LazyFrame(BaseFrame[LazyFrameT]):
+         """
+         return super().drop(*flatten(columns), strict=strict)
+ 
++    def cast(self, mapping: Mapping[str, IntoDType]) -> Self:
++        """Cast columns to new data types.
++
++        Columns not in `mapping` are left unchanged.
++
++        Arguments:
++            mapping: Mapping of column names to the data type to cast them to.
++
++        Examples:
++            >>> import duckdb
++            >>> import narwhals as nw
++            >>> lf_native = duckdb.sql("SELECT * FROM VALUES (1, 3), (2, 4) df(a, b)")
++            >>> nw.from_native(lf_native).cast({"a": nw.Float64}).collect_schema()
++            Schema({'a': Float64, 'b': Int32})
++        """
++        return super().cast(mapping)
++
+     def unique(
+         self,
+         subset: str | list[str] | None = None,
+diff --git a/tests/frame/cast_test.py b/tests/frame/cast_test.py
+new file mode 100644
+index 0000000..93c078c
+--- /dev/null
++++ b/tests/frame/cast_test.py
+@@ -0,0 +1,25 @@
++from __future__ import annotations
++
++import pytest
++
++import narwhals as nw
++from narwhals.exceptions import ColumnNotFoundError
++from tests.utils import Constructor, assert_equal_data
++
++
++def test_cast(constructor: Constructor) -> None:
++    df = nw.from_native(constructor({"a": [1, 2], "b": [3, 4], "c": [5, 6]}))
++    result = df.cast({"c": nw.Float64, "a": nw.Int32})
++    assert result.collect_schema()["c"] == nw.Float64
++    assert result.collect_schema()["a"] == nw.Int32
++    assert result.collect_schema().names() == ["a", "b", "c"]
++    assert_equal_data(result, {"a": [1, 2], "b": [3, 4], "c": [5, 6]})
++    assert df.cast({}).collect_schema().names() == ["a", "b", "c"]
++
++
++def test_cast_errors(constructor: Constructor) -> None:
++    df = nw.from_native(constructor({"a": [1, 2]}))
++    with pytest.raises(ColumnNotFoundError):
++        df.cast({"z": nw.Int32})
++    with pytest.raises(TypeError, match="Expected Narwhals dtype"):
++        df.cast({"a": "int64"})  # type: ignore[dict-item]

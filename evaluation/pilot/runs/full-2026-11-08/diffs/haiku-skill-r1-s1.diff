@@ -1,0 +1,179 @@
+diff --git a/src/narwhals/_duckdb/expr_list.py b/src/narwhals/_duckdb/expr_list.py
+index d39f751..8e035fe 100644
+--- a/src/narwhals/_duckdb/expr_list.py
++++ b/src/narwhals/_duckdb/expr_list.py
+@@ -36,9 +36,18 @@ class DuckDBExprListNamespace(
+         return self.compliant._with_elementwise(func)
+ 
+     def contains(self, item: NonNestedLiteral) -> DuckDBExpr:
+-        return self.compliant._with_elementwise(
+-            lambda expr: F("list_contains", expr, lit(item))
+-        )
++        def func(expr: Expression) -> Expression:
++            if item is None:
++                # `list_contains(x, NULL)` is always NULL: test for null elements.
++                elem = col("_")
++                has_null = F("list_transform", expr, lambda_expr(elem, elem.isnull()))
++                return F("list_contains", has_null, lit(True))
++            # SQL returns NULL for a missing item when the list holds NULL; want False.
++            found = F("list_contains", expr, lit(item))
++            null_result = when(expr.isnull(), lit(None))
++            return null_result.when(found, lit(True)).otherwise(lit(False))
++
++        return self.compliant._with_elementwise(func)
+ 
+     def get(self, index: int) -> DuckDBExpr:
+         return self.compliant._with_elementwise(
+diff --git a/src/narwhals/_ibis/expr_list.py b/src/narwhals/_ibis/expr_list.py
+index c93e4bb..36d4786 100644
+--- a/src/narwhals/_ibis/expr_list.py
++++ b/src/narwhals/_ibis/expr_list.py
+@@ -25,7 +25,19 @@ class IbisExprListNamespace(LazyExprNamespace["IbisExpr"], ListNamespace["IbisEx
+         return self.compliant._with_callable(lambda expr: expr.unique())
+ 
+     def contains(self, item: NonNestedLiteral) -> IbisExpr:
+-        return self.compliant._with_callable(lambda expr: expr.contains(item))
++        def func(expr: ir.ArrayColumn) -> ir.BooleanValue:
++            if item is None:
++                # `contains(NULL)` is always NULL: test for null elements.
++                has_null = expr.filter(lambda x: x.isnull()).length() > 0
++                return cases((expr.isnull(), literal(None)), else_=has_null)
++            # SQL returns NULL for a missing item when the array holds NULL; want False.
++            return cases(
++                (expr.isnull(), literal(None)),
++                (expr.contains(item), literal(True)),
++                else_=literal(False),
++            )
++
++        return self.compliant._with_callable(func)
+ 
+     def get(self, index: int) -> IbisExpr:
+         def _get(expr: ir.ArrayColumn) -> ir.Column:
+diff --git a/src/narwhals/_polars/expr.py b/src/narwhals/_polars/expr.py
+index a508895..e22d90a 100644
+--- a/src/narwhals/_polars/expr.py
++++ b/src/narwhals/_polars/expr.py
+@@ -557,12 +557,10 @@ class PolarsExprListNamespace(
+         return self.compliant._with_native(native_result)
+ 
+     def contains(self, item: Any) -> PolarsExpr:
+-        if self.compliant._backend_version < (1, 28):
+-            result: pl.Expr = pl.when(self.native.is_not_null()).then(
+-                self.native.list.contains(item)
+-            )
+-        else:
+-            result = self.native.list.contains(item)
++        # Guard so that `fill_null(False)` cannot turn a null list into False.
++        result = pl.when(self.native.is_not_null()).then(
++            self.native.list.contains(item).fill_null(False)
++        )
+         return self.compliant._with_native(result)
+ 
+ 
+diff --git a/src/narwhals/_spark_like/expr_list.py b/src/narwhals/_spark_like/expr_list.py
+index 1da4c51..2a1fc7e 100644
+--- a/src/narwhals/_spark_like/expr_list.py
++++ b/src/narwhals/_spark_like/expr_list.py
+@@ -29,7 +29,13 @@ class SparkLikeExprListNamespace(
+     def contains(self, item: NonNestedLiteral) -> SparkLikeExpr:
+         def func(expr: Column) -> Column:
+             F = self.compliant._F
+-            return F.array_contains(expr, F.lit(item))
++            if item is None:
++                # `array_contains(x, NULL)` is always NULL: test for null elements.
++                has_null = F.transform(expr, lambda elem: elem.isNull())
++                return F.array_contains(has_null, F.lit(True))
++            # SQL returns NULL for a missing item when the array holds NULL; want False.
++            found = F.coalesce(F.array_contains(expr, F.lit(item)), F.lit(False))
++            return F.when(expr.isNotNull(), found)
+ 
+         return self.compliant._with_elementwise(func)
+ 
+diff --git a/tests/expr_and_series/list/contains_test.py b/tests/expr_and_series/list/contains_test.py
+index 6e56846..4dcfaf7 100644
+--- a/tests/expr_and_series/list/contains_test.py
++++ b/tests/expr_and_series/list/contains_test.py
+@@ -37,3 +37,83 @@ def test_contains_series(
+     df = nw.from_native(constructor_eager(data), eager_only=True)
+     result = df["a"].cast(nw.List(nw.Int32())).list.contains(2)
+     assert_equal_data({"a": result}, expected)
++
++
++null_data = {"a": [[1, None], None, [], [2, 3], [None]]}
++
++
++@pytest.mark.parametrize(
++    ("item", "expected_values"),
++    [(2, [False, None, False, True, False]), (None, [True, None, False, False, True])],
++)
++def test_contains_with_nulls_in_list(
++    request: pytest.FixtureRequest,
++    constructor: Constructor,
++    item: int | None,
++    expected_values: list[bool | None],
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    result = nw.from_native(constructor(null_data)).select(
++        nw.col("a").cast(nw.List(nw.Int32())).list.contains(item)
++    )
++    assert_equal_data(result, {"a": expected_values})
++
++
++def test_contains_none_only_empty_list(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    result = nw.from_native(constructor({"a": [[]]})).select(
++        nw.col("a").cast(nw.List(nw.Int32())).list.contains(None)
++    )
++    assert_equal_data(result, {"a": [False]})
++
++
++def test_contains_none_struct_inner(
++    request: pytest.FixtureRequest, constructor: Constructor
++) -> None:
++    if any(
++        backend in str(constructor)
++        for backend in ("dask", "modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    if "polars" in str(constructor):
++        # Polars itself raises for `list.contains(None)` on struct inner dtypes.
++        request.applymarker(pytest.mark.xfail)
++    if "sqlframe" in str(constructor):
++        # The constructor infers dict literals as MAP, which cannot be cast to STRUCT.
++        request.applymarker(pytest.mark.xfail)
++    dtype = nw.List(nw.Struct({"x": nw.Int32()}))
++    struct_data = {"a": [[{"x": 1}, None], None, [], [{"x": 1}]]}
++    result = nw.from_native(constructor(struct_data)).select(
++        nw.col("a").cast(dtype).list.contains(None)
++    )
++    assert_equal_data(result, {"a": [True, None, False, False]})
++
++
++@pytest.mark.parametrize(
++    ("item", "expected_values"),
++    [(2, [False, None, False, True, False]), (None, [True, None, False, False, True])],
++)
++def test_contains_series_with_nulls_in_list(
++    request: pytest.FixtureRequest,
++    constructor_eager: ConstructorEager,
++    item: int | None,
++    expected_values: list[bool | None],
++) -> None:
++    if any(
++        backend in str(constructor_eager)
++        for backend in ("modin", "cudf", "pyarrow", "pandas")
++    ):
++        request.applymarker(pytest.mark.xfail)
++    df = nw.from_native(constructor_eager(null_data), eager_only=True)
++    result = df["a"].cast(nw.List(nw.Int32())).list.contains(item)
++    assert_equal_data({"a": result}, {"a": expected_values})
