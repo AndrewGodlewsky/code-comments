@@ -83,6 +83,24 @@ class TaskAndPromptTests(unittest.TestCase):
         ]
         self.assertEqual(pilot.flagged_bash(events), ["pip install foo", "git fetch https://github.com/x"])
 
+    def test_string_messages_do_not_crash_the_parser(self):
+        # The full run (#43) crashed on a stream-json event whose `message` was a plain string.
+        from evaluation.skill_eval import live
+        lines = [
+            {"type": "system", "subtype": "init", "tools": [], "plugins": [], "skills": []},
+            {"type": "system", "subtype": "status", "message": "retrying after an API error"},
+            {"type": "assistant", "message": "not a dict"},
+            "a bare JSON string",
+            {"type": "assistant", "message": {"model": pilot.HAIKU, "content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": "uv pip install x"}}]}},
+            {"type": "result", "subtype": "success", "total_cost_usd": 0.01, "num_turns": 1, "result": "done"},
+        ]
+        stdout = "\n".join(json.dumps(line) for line in lines)
+        result = live.parse_session(stdout, "", 0, model=pilot.HAIKU, label="x", prompt="P",
+                                    skill_name=None, wall=1.0)
+        self.assertEqual(result["tool_calls"], 1)
+        self.assertEqual(pilot.flagged_bash(result["events"]), ["uv pip install x"])
+
 
 class JunitTests(unittest.TestCase):
     def setUp(self):

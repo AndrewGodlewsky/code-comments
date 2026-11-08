@@ -65,6 +65,12 @@ def build_plugin(skill: str, destination: Path) -> Path | None:
     return build_plugin_dir(skill_dir, destination, skill) if skill_dir else None
 
 
+def message_of(event: dict) -> dict:
+    """An event's message, or {}. Some stream-json events carry `message` as a plain string (#43)."""
+    message = event.get("message")
+    return message if isinstance(message, dict) else {}
+
+
 def _trace(events: list[dict], prompt: str, skill: str, model: str) -> tuple[list[dict], int]:
     init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
     turns = [{"role": "system", "content": (
@@ -74,7 +80,7 @@ def _trace(events: list[dict], prompt: str, skill: str, model: str) -> tuple[lis
         {"role": "user", "content": prompt}]
     tool_calls = 0
     for event in events:
-        content = event.get("message", {}).get("content")
+        content = message_of(event).get("content")
         if event.get("type") == "assistant" and isinstance(content, list):
             for block in content:
                 if block.get("type") == "text" and block.get("text", "").strip():
@@ -129,15 +135,17 @@ def parse_session(stdout: str, stderr: str, returncode: int, *, model: str, labe
     events = []
     for line in stdout.splitlines():
         try:
-            events.append(json.loads(line))
+            event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(event, dict):
+            events.append(event)
     result = next((e for e in reversed(events) if e.get("type") == "result"), None)
     if result is None:
         raise LiveError("harness_error", f"no result event (exit {returncode}): {stderr.strip()[-400:]}")
     usage = {k: result.get("usage", {}).get(k, 0) for k in
              ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")}
-    served = {e["message"].get("model") for e in events if e.get("type") == "assistant" and e.get("message", {}).get("model")}
+    served = {message_of(e)["model"] for e in events if e.get("type") == "assistant" and message_of(e).get("model")}
     if not served:
         raise LiveError("harness_error", "no assistant turn", usage=usage)
     if served != {model}:

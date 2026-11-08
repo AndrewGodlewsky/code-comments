@@ -137,7 +137,7 @@ def revision_prompt(prompt: str, findings: str) -> str:
 def flagged_bash(events: list[dict]) -> list[str]:
     commands = []
     for event in events:
-        content = event.get("message", {}).get("content")
+        content = live.message_of(event).get("content")
         if event.get("type") == "assistant" and isinstance(content, list):
             for block in content:
                 if block.get("type") == "tool_use" and block.get("name") == "Bash":
@@ -308,7 +308,15 @@ class Runner:
         if config_path.exists():
             config = json.loads(config_path.read_text(encoding="utf-8"))
             if config["harness_sha"] != harness_sha():
-                raise SystemExit("the harness changed since this run started; use a new --out")
+                reason = getattr(self.args, "accept_harness_change", None)
+                if not reason:
+                    raise SystemExit("the harness changed since this run started; use a new --out, or "
+                                     "--accept-harness-change REASON for a fix that changes no session or score")
+                config.setdefault("harness_changes", []).append(
+                    {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "from": config["harness_sha"],
+                     "to": harness_sha(), "reason": reason})
+                config["harness_sha"] = harness_sha()
+                config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         else:
             config = {"run_id": uuid.uuid4().hex[:8], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
                       "harness_sha": harness_sha(), "arms": self.args.arms, "reps": self.args.reps,
@@ -517,6 +525,12 @@ class Runner:
                         self.log(f"budget exhausted before {error}; stopping after step {k - 1}")
                         stopped = True
                         continue
+                    except Exception as error:  # record the other lanes' finished work, then stop (#43)
+                        label = f"{lane[0]}-r{lane[1]}-s{k}"
+                        self.append("errors.jsonl", {"label": label, "class": "crash", "message": repr(error)})
+                        self.log(f"{label}: runner error {error!r}; stopping after this step")
+                        stopped = True
+                        continue
                     self.append("results.jsonl", record)
                     pres[lane] = record["after"]
                     self.finished.add((*lane, k))
@@ -694,6 +708,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--cap", type=float, help="total USD cap for this run (needs the user's approval)")
     p.add_argument("--max-budget", type=float, default=2.0, help="per-session --max-budget-usd")
     p.add_argument("--timeout", type=float, default=1800, help="per-session timeout in seconds")
+    p.add_argument("--accept-harness-change", metavar="REASON",
+                   help="resume after a harness fix; the change and REASON are recorded in run.json")
     p = sub.add_parser("summary")
     p.add_argument("--out", required=True)
     p = sub.add_parser("cleanup")

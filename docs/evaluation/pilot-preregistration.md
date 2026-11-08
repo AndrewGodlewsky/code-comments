@@ -238,3 +238,33 @@ written before any model session ran.
   - **Run settings:** 2 repetitions, steps 1–6, 3 lanes at a time.
   - **Credential:** an OAuth token, so the cost figures are Claude Code's API-equivalent
     estimates.
+- **2026-11-08, runner crash at step 6, and the resume (#43).**
+  - **The crash.** Steps 1–5 finished in every lane, and step 6 was recorded for
+    `haiku-plain-r1` only. Then the session parser crashed on `haiku-plain-r2`'s step-6
+    output, because one stream-json event carried `message` as a plain string. That
+    exception was not a harness-failure type, so it stopped the runner's main loop.
+    The other 8 lanes kept running their step-6 sessions and scoring, but their
+    results were never recorded.
+  - **The fix.** The parser now skips non-dict messages and non-object lines. The
+    runner now records each lane's finished work even when another lane crashes. Run
+    with `--accept-harness-change`, the resume records the old and new harness hashes
+    in `run.json`. The fix changes no prompt, session command or score.
+  - **The discarded sessions.** The 8 lanes' step-6 outputs were moved, unopened, into
+    `discarded-crash/` in the run folder: 12 sessions, $1.05. Those lanes rerun step 6
+    from a clean reset to their step-5 state. The rerun is the result used, so nothing
+    is chosen after seeing an outcome. `haiku-plain-r2`'s crashed session left no
+    record, and its cost is unknown. Under the harness-failure rule above, its rerun
+    counts as the one retry.
+- **2026-11-08, a hidden test tied to the implementation (#43, found during the run).**
+  - Step 2's `test_contains_chunked` patches the private constants
+    `narwhals._arrow.utils._LIST_BLOCK_VALUES` and `_LIST_MIN_BLOCK_VALUES`. An arm
+    that doesn't define those exact names fails it, which breaks the "through the
+    public API" selection rule. The #40 validation missed it because the oracle
+    defines them.
+  - The test stays in `contains_test.py`, so it is part of step 6's hidden tests too.
+  - **Primary result:** the pre-registered scoring, unchanged.
+  - **Sensitivity result:** a second scoring with this one test excluded, marked as
+    decided after the data was seen.
+  - Two more step-2 tests (`test_contains_non_pyarrow_list_dask` and
+    `test_null_list_lit`) check behaviour the task statement doesn't clearly ask for.
+    They are listed in the report but not excluded.
