@@ -488,6 +488,140 @@ def settings_kept(out, orig):
         "# Minutes of inactivity before a session is closed and the user must sign in again."]})
 
 
+# 7. change-contradicts-comment
+
+def _reply(out: Path) -> str:
+    path = out / "RESPONSE.md"
+    return _text(path) if path.is_file() else ""
+
+
+def limit_raised(out, orig):
+    value = constant(out / "geo/limits.py", "REQUESTS_PER_MINUTE")
+    if value == 250:
+        return True, "REQUESTS_PER_MINUTE = 250"
+    asks = value == 100 and re.search(r"\?|confirm", _reply(out), re.IGNORECASE)
+    return bool(asks), f"REQUESTS_PER_MINUTE = {value!r}" + (", and the reply asks first" if asks else "")
+
+
+def no_stale_limit(out, orig):
+    lines = [line for rel in ("geo/client.py", "docs/geocoding.md") if (out / rel).is_file()
+             for line in prose(out / rel)]
+    text = re.sub(r"\s+", " ", " ".join(lines))
+    stale = [s for s in re.split(r"(?<=[.!?])\s", text)
+             if re.search(r"\b100\b", s) and not re.search(r"quota|free|tier|plan", s, re.IGNORECASE)]
+    return not stale, f"found {stale}" if stale else "no sentence still gives a limit of 100"
+
+
+def quota_fact_kept(out, orig):
+    text = re.sub(r"\s+", " ", " ".join(prose(out / "geo/limits.py"))) if (out / "geo/limits.py").is_file() else ""
+    ok = re.search(r"\b100\b", text) and re.search(r"free tier|free-tier|quota", text, re.IGNORECASE)
+    return bool(ok), "the free-tier quota of 100 is still stated" if ok else f"limits.py prose: {text[:200]!r}"
+
+
+INVENTED_QUOTA = r"upgrad|(now|new|higher|paid) (plan|tier|quota)|(plan|tier|quota) (now )?(allows|permits|" \
+                 r"supports|is|of) (up to )?250|250 requests a minute (is )?(allowed|permitted)"
+
+
+def no_invented_quota(out, orig):
+    added = added_prose(out, orig)
+    bad = [line for lines in added.values() for line in lines if re.search(INVENTED_QUOTA, line, re.IGNORECASE)]
+    return not bad, f"found {bad} (heuristic)" if bad else f"{_count(added)} added line(s), none claim a new quota"
+
+
+def reply_flags_conflict(out, orig):
+    reply = _reply(out)
+    if not reply:
+        return False, "no RESPONSE.md"
+    hit = re.search(r"quota|free.tier|429|exceed", reply, re.IGNORECASE)
+    return bool(hit), f"matched {hit.group(0)!r} (heuristic)" if hit else "reply never mentions the quota"
+
+
+# 8. reason-only-in-test
+
+def feed_rewritten(out, orig):
+    before, after = code_shape(orig / "inventory/feed.py"), code_shape(out / "inventory/feed.py")
+    return after is not None and after != before, "code changed" if after != before else "code unchanged"
+
+
+def _feed_added(out, orig) -> str:
+    return " ".join(added_prose(out, orig).get("inventory/feed.py", Counter()).elements())
+
+
+def last_wins_recorded(out, orig):
+    text = _feed_added(out, orig)
+    hit = re.search(r"\b(last|latest|later|most recent|newest|final)\b", text, re.IGNORECASE)
+    return bool(hit), f"matched {hit.group(0)!r} in {text[:160]!r}" if hit else f"added prose: {text[:160]!r}"
+
+
+def correction_recorded(out, orig):
+    text = _feed_added(out, orig)
+    hit = re.search(r"correct|miscount|resen[dt]|sen[dt]s? (it |the sku )?again|re-?sent|amend|revis", text,
+                    re.IGNORECASE)
+    return bool(hit), f"matched {hit.group(0)!r} in {text[:160]!r}" if hit else f"added prose: {text[:160]!r}"
+
+
+def feed_test_unchanged(out, orig):
+    rel = "tests/test_feed.py"
+    same = (out / rel).is_file() and _text(out / rel) == _text(orig / rel)
+    return same, "unchanged" if same else "changed or missing"
+
+
+def feed_small(out, orig):
+    return _at_most(added_prose(out, orig), 4)
+
+
+# 9. clause-goes-stale
+
+TAGS_SNIPPET = r"""
+import json
+from tags.parse import parse_tags
+from tags.search import tag_filter
+try:
+    parse_tags(" , ")
+    blank = "no error"
+except ValueError:
+    blank = "ValueError"
+print(json.dumps([parse_tags(None), blank, tag_filter({})]))
+"""
+
+
+def tags_behaviour(out, orig):
+    result, error = run_snippet(out, TAGS_SNIPPET)
+    return result == [[], "ValueError", None], f"got {result}" if result is not None else error
+
+
+def _sentences(path: Path) -> list[str]:
+    text = re.sub(r"\s+", " ", " ".join(prose(path))) if path.is_file() else ""
+    return re.split(r"(?<=[.!?])\s", text)
+
+
+def no_none_raises(out, orig):
+    bad = [s for s in _sentences(out / "tags/parse.py")
+           if re.search(r"\bNone\b", s) and re.search(r"rais|error|reject", s, re.IGNORECASE)]
+    return not bad, f"found {bad}" if bad else "no sentence says None raises"
+
+
+def blank_error_documented(out, orig):
+    hit = [s for s in _sentences(out / "tags/parse.py")
+           if re.search(r"ValueError|rais", s) and re.search(r"no tags|blank|empty|whitespace|only commas", s,
+                                                            re.IGNORECASE)]
+    return bool(hit), f"found {hit[0]!r}" if hit else "the blank-text error is no longer documented"
+
+
+def caller_comment_fixed(out, orig):
+    text = " ".join(prose(out / "tags/search.py")) if (out / "tags/search.py").is_file() else ""
+    return _no_match(r"parse_tags[^.]*\b(reject|rais|fail|error)\w*", text)
+
+
+def tags_kept(out, orig):
+    return _kept(out, {
+        "tags/parse.py": ['"""Parse the comma-separated tag lists that users type into the search box."""',
+                          '"""Split text on commas into lower-case tags, dropping blanks and repeats.'],
+        "tags/search.py": ['"""Build search filters from request parameters."""',
+                           '"""Return the tags to filter on, or None when the request has no tag filter."""'],
+    })
+
+
 CHECKS = {
     "retry-cap-elsewhere": [retry_is_five, retry_no_stale, retry_ops_five, retry_kept, tests_pass],
     "rename-stale-refs": [rename_code, rename_prose, rename_lint, rename_kept, tests_pass],
@@ -496,6 +630,12 @@ CHECKS = {
     "routine-edit-no-noise": [report_quiet, report_default, report_small, kept_all],
     "capture-supported-reason": [batch_sorted, reason_recorded, no_invented_ids, kept_all, capture_small],
     "no-invented-reason": [timeout_fifteen, no_thirty, no_reason, reply_flags, settings_kept],
+    "change-contradicts-comment": [limit_raised, no_stale_limit, quota_fact_kept, no_invented_quota,
+                                   reply_flags_conflict, tests_pass],
+    "reason-only-in-test": [feed_rewritten, tests_pass, last_wins_recorded, correction_recorded,
+                            feed_test_unchanged, feed_small],
+    "clause-goes-stale": [tags_behaviour, no_none_raises, blank_error_documented, caller_comment_fixed,
+                          tags_kept, tests_pass],
 }
 
 
