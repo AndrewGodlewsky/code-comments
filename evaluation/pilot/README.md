@@ -157,6 +157,39 @@ The oracle's 2 stale references are lint false positives. Step 1's comment in
 stale-reference count against this baseline, and check each hit by hand before
 counting it.
 
+### Smoke run (#42), 2026-11-08
+
+This was the first live run: the five model arms on step 1, with 1 repetition, an OAuth
+credential, `--cap 5` and `--max-budget 1`. It took 14 minutes, and Claude Code
+estimated the cost at $0.44. That estimate is reported under OAuth too.
+
+| Arm | Sessions | Turns | Wall time | Cost | Pass | Excess churn |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+| haiku-plain | implement | 46 | 237 s | $0.044 | yes | 0 |
+| haiku-instruct | implement | 58 | 422 s | $0.068 | yes | 5 |
+| haiku-skill | implement | 46 | 311 s | $0.058 | yes | 13 |
+| haiku-review | implement, review, revise | 41, 3, 30 | 240, 18, 193 s | $0.132 | yes | 15 |
+| sonnet-plain | implement | 13 | 51 s | $0.140 | yes | 14 |
+
+- **The harness works end to end:**
+  - No session failed.
+  - The model IDs resolved.
+  - The reviewer was read-only and returned concrete checklist findings, and the
+    revision session acted on them.
+  - The skill arm got the skill. `/cce:code-comments` expanded, and its first request
+    was 1,349 input tokens larger than haiku-plain's (the instruct arm's was 41 larger,
+    for its one sentence). Headless output doesn't echo the expanded prompt, so the
+    token count is the evidence.
+- **Every Haiku session installed packages from PyPI.** The flagged-Bash count was 8–11
+  per Haiku session and 0 for Sonnet. Haiku built `/tmp` virtualenvs with `uv` or `pip`
+  to try backends the image leaves out (ibis, pyspark, plus `jdk4py` and `ruff`).
+  - These packages were not covered by the #39 audit.
+  - They run in a container that also holds the credential.
+  - The installs also account for much of Haiku's wall time.
+  - This has to be settled before the full run.
+- **No high-churn steps or regressions.** Step 1 can't produce regressions. `summary`
+  reports rule 1 as firing, but with one step-attempt per arm that means nothing.
+
 ## Limits
 
 - `pip-audit` covers Python packages only. The Debian packages in the base image
