@@ -27,7 +27,8 @@ In the scope it governs, record what the evidence shows and the code does not:
   reliance (and when they would stop applying, if known)
 - the decisive choice that rules out a natural-looking wrong alternative
 - deliberate oddities, and why they are intentional
-- the reason for odd-looking code (look for it before simplifying)
+- the reason for odd-looking code. Before simplifying, look for it in tests,
+  callers and docs, then move it next to the code that depends on it
 - the source of a constant, not its copied value
 - a rejected alternative that a future editor would plausibly try
 
@@ -43,6 +44,12 @@ report.
   fixed.
 - Do not record ideas the evidence ruled out. Never invent issue ids.
 - Report unverifiable gaps to the user. Do not guess in a comment.
+- If you change a value or decision and no one gave a reason, record only the
+  new value. Tell the user in your reply that the reason is
+  missing, and ask for it.
+- If the requested change breaks a limit or requirement that a comment states,
+  still keep that stated fact. Make the change if asked, and tell the user about the
+  conflict in your reply. Do not rewrite the fact to fit the change.
 
 ## Restraint
 - Do not restate code, names, types or signatures.
