@@ -181,6 +181,16 @@ class CommandTests(unittest.TestCase):
         self.assertNotIn("--allowedTools", command)
         self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", command)
 
+    def test_sessions_disable_package_indexes_and_every_arm_is_told(self):
+        command = pilot.session_command("n", "vol", "P", model=pilot.HAIKU, tools=pilot.IMPLEMENT_TOOLS,
+                                        max_budget=1.0, credential="oauth")
+        image = command.index(pilot.AGENT_IMAGE)
+        for setting in pilot.NO_INSTALL_ENV:  # docker options must come before the image name
+            self.assertLess(command.index(setting), image)
+            self.assertEqual(command[command.index(setting) - 1], "-e")
+        for arm in pilot.LIVE_ARMS:
+            self.assertIn(pilot.ENVIRONMENT, pilot.base_prompt(arm, "TASK", "pandas"))
+
     def test_skill_session_mounts_plugin(self):
         command = pilot.session_command("n", "vol", "P", model=pilot.HAIKU, tools=pilot.IMPLEMENT_TOOLS,
                                         max_budget=1.0, credential="api-key", plugin_root=Path("plug"))

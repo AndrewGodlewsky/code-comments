@@ -216,3 +216,15 @@ written before any model session ran.
   tests pass, and the full suite has no failures after any step: from 15906 passed at
   the start commit to 16266 passed after step 6. The details are in
   `evaluation/pilot/README.md`.
+- **2026-11-08, package installs blocked (from the smoke run, #42).** Every Haiku
+  session in the smoke run installed PyPI packages the #39 audit didn't cover (ibis,
+  pyspark, `jdk4py`, `ruff`) into `/tmp` virtualenvs, in a container that also holds
+  the credential. Sonnet installed none. From now on, every session container sets
+  `PIP_NO_INDEX=1` and `UV_OFFLINE=1`, and every arm's prompt ends with the same
+  sentence: *"The environment is already set up. Don't install packages; package
+  downloads are disabled."*
+  - This is a change to the committed task statements, applied equally to all arms.
+  - An agent can still override the settings deliberately. The flagged-Bash count keeps
+    recording any attempt, and every attempt is reported.
+  - The smoke-run results were produced without this change. They are a harness check
+    only and are not pooled with the full run.

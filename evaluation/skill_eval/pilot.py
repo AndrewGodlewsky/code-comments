@@ -57,6 +57,10 @@ Review the change against this checklist, and nothing else:
 5. Stale comments: comments or docstrings the change made wrong.
 """
 REVIEW_DIFF_CHARS = 60000
+# The smoke run (#42) found every Haiku session installing unaudited PyPI packages. Every arm
+# gets the same note, and the session containers turn the package indexes off.
+ENVIRONMENT = "The environment is already set up. Don't install packages; package downloads are disabled."
+NO_INSTALL_ENV = ["PIP_NO_INDEX=1", "UV_OFFLINE=1"]
 
 ARMS = {
     "oracle": {"kind": "oracle"},
@@ -109,7 +113,7 @@ def parse_tasks(text: str) -> dict[int, str]:
 def base_prompt(arm: str, task: str, constructors: str) -> str:
     """The implementer prompt, without the skill prefix (live.py-style prefixing happens in the command)."""
     prompt = (f"{task}\n\nThe repository is narwhals, in the current directory. "
-              f"Run the tests with: {' '.join(test_command(constructors))}")
+              f"Run the tests with: {' '.join(test_command(constructors))}\n\n{ENVIRONMENT}")
     if ARMS[arm].get("instruct"):
         prompt += f"\n\n{INSTRUCT}"
     return prompt
@@ -248,6 +252,8 @@ def session_command(name: str, lane_volume: str, prompt: str, *, model: str, too
     command = ["docker", "run", "--rm", "-i", "--name", name,
                "-v", f"{lane_volume}:/work/narwhals" + (":ro" if read_only else ""),
                "-e", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "-e", CREDENTIALS[credential]]
+    for setting in NO_INSTALL_ENV:
+        command += ["-e", setting]
     if plugin_root:
         command += ["-v", f"{docker_path(plugin_root)}:/plugin:ro"]
     command += ["-w", "/work/narwhals", AGENT_IMAGE,
