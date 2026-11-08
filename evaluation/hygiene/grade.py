@@ -94,13 +94,24 @@ def added_prose(out: Path, orig: Path) -> dict[str, Counter]:
     return {rel: lines for rel, lines in found.items() if lines}
 
 
+def _joined(root: Path, rel: str) -> str:
+    path = root / rel
+    return " ".join(prose(path)) if path.is_file() else ""
+
+
 def lost_prose(out: Path, orig: Path, rename: tuple[str, str] | None = None) -> dict[str, Counter]:
+    """Lines of `orig` prose missing from `out`. Re-wrapping a comment is not a loss:
+    a line still counts as kept when its words appear, in order, in the file's prose."""
     before, after = prose_map(orig), prose_map(out)
     found = {}
     for rel, lines in before.items():
         if rename:
             lines = Counter({line.replace(*rename): n for line, n in lines.items()})
         missing = lines - after.get(rel, Counter())
+        if missing:
+            text = " " + _joined(out, rel) + " "
+            missing = Counter({line: n for line, n in missing.items()
+                               if f" {' '.join(line.split())} " not in text})
         if missing:
             found[rel] = missing
     return found

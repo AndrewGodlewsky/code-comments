@@ -8,6 +8,7 @@ one that did nothing.
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 _PATH = Path(__file__).resolve().parents[1] / "evaluation" / "hygiene" / "grade.py"
@@ -33,6 +34,19 @@ class HygieneGraderTest(unittest.TestCase):
         item = next(e for e in result["expectations"] if e["text"] == text)
         self.assertFalse(item["passed"])
         self.assertIn("human ruling", item["evidence"])
+
+    def test_rewrapped_comment_is_not_lost(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            orig, out = Path(tmp, "orig"), Path(tmp, "out")
+            orig.mkdir(), out.mkdir()
+            (orig / "a.py").write_text("# Rows are rounded first, so the total\n"
+                                       "# can differ by a cent.\nX = 1\n", encoding="utf-8")
+            (out / "a.py").write_text("# Rows are rounded first,\n"
+                                      "# so the total can differ by a cent.\nX = 1\n",
+                                      encoding="utf-8")
+            self.assertEqual(grade.lost_prose(out, orig), {})
+            (out / "a.py").write_text("# Rows are rounded first.\nX = 1\n", encoding="utf-8")
+            self.assertIn("a.py", grade.lost_prose(out, orig))
 
 
 if __name__ == "__main__":

@@ -78,7 +78,48 @@ the user), `grading.json` and `timing.json`. The skill-creator scripts then buil
   one-line reminder.
 - **Few runs.** Two runs per configuration per case can show a large effect, not a
   small one.
+- **The baseline still sees the repository's `AGENTS.md`.** Subagents inherit the
+  worktree's project instructions. They hold workflow rules, not comment guidance, so
+  the baseline is close to bare, but not bare.
+- **A with-skill run can skip the skill.** In iteration 1 one with-skill run never
+  opened `SKILL.md`. Check each with-skill transcript for the read, and exclude and
+  re-run any that skipped it. The run prompt now makes reading the skill the first step.
+- **The prose checks are text matches.** `lost_prose` treats a re-wrapped comment as
+  kept when its words still appear in order. A paraphrase still counts as a loss;
+  rule on it with an override.
 
 ## Iteration results
 
-None yet.
+Each iteration's grades, timings, replies (`RESPONSE.md`) and edits (`changes.diff`,
+against the case's `files/`) are in `iterations/iteration-N/`. Bulk outputs are not
+kept. `benchmark.json` holds the analyst notes.
+
+### Iteration 1 (2026-11-08): no difference
+
+Haiku subagents, two runs per configuration, 24 runs.
+
+| Case | With skill | Without skill |
+| --- | --- | --- |
+| `retry-cap-elsewhere` | 5/5, 5/5 | 5/5, 5/5 |
+| `rename-stale-refs` | 5/5, 5/5 | 5/5, 5/5 |
+| `comment-only-preserve` | 6/6, 6/6 | 6/6, 6/6 |
+| `routine-edit-no-noise` | 4/4, 4/4 | 4/4, 4/4 |
+| `capture-supported-reason` | 5/5, 5/5 | 5/5, 5/5 |
+| `no-invented-reason` | 4/5, 4/5 | 4/5, 4/5 |
+
+Both configurations pass 96.7% of checks. The skill adds about 2,000 tokens (5%) and
+3 seconds per run.
+
+- **The skill showed no gain over the bare model.** It did no harm either: every
+  preservation and restraint check passed in all 24 runs.
+- **Five cases are too easy.** Haiku without the skill already finds the distant
+  references, the stale comments and the ticket's reason. They cannot show a gain.
+- **One failure is shared by every run.** In `no-invented-reason`, no run invented a
+  reason, but no reply told the user that none was given. The skill does not ask for
+  that.
+- **Grading changes during the iteration.** `lost_prose` falsely failed a run that
+  re-wrapped a comment, and now accepts re-wrapping. One contaminated with-skill run
+  was excluded (kept in `excluded-runs/`) and re-run.
+
+Next: harder case variants, and a skill edit that asks the agent to tell the user
+when a change it records has no stated reason.
