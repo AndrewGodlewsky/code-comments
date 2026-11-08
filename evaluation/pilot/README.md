@@ -64,6 +64,41 @@ Notes for the runner (#41):
 - After scoring, the step's tests stay in the arm's tree, so later steps can detect
   regressions against them.
 
+## Stale-reference lint (#44), 2026-11-07
+
+`scripts/stale_refs.py` (stdlib only, tests in `tests/test_stale_refs.py`) reports
+comments and docstrings that name an identifier, dotted path, call, file or flag that
+no longer exists in the tree. The pilot uses its `--base-dir` mode, which reports only
+findings that are new since the step's starting tree. It runs on narwhals inside the
+container, with `--network none`.
+
+| Check | References | Findings | True | False positives |
+| --- | ---: | ---: | ---: | --- |
+| narwhals start commit, `--only src/narwhals` | 1906 | 44 | 3 | 41 (2.2% of references) |
+| This repository | 265 | 0 | 0 | 0 |
+| Skill-eval reference solutions, diff mode (20 cases) | — | 0 | 0 | 0 |
+| Skill-eval model end states, diff mode (720 runs) | — | 0 | 0 | 0 (53 before the fixes below) |
+
+- **The 3 true findings in narwhals.** `_compliant/dataframe.py:351` and `:361`
+  name `_evaluate_into_expr`, which is now `_evaluate_expr`. `_compliant/group_by.py:125`
+  names `CompliantExpr._depth`, which is not defined.
+- **The remaining false positives** are prose words and examples: `Narwhal`, `Other`,
+  `leaf` in an example, `min_by`/`max_by` as Polars names, and names from other
+  libraries such as `WindowsPath` and `ArrowDType`. Tuning took the count from 151 to 44.
+- **The 720 model end states.** These are the final trees of the regraded Sonnet and
+  Haiku skill-eval runs, rebuilt from their traces. All 53 earlier findings were false
+  positives of three kinds:
+  - a name the task's docs put in backticks but the code no longer reads (`issued_at`);
+  - a plural of a known name (`event_ids`, "`date`s");
+  - a method of a builtin type (`str.isalnum`).
+
+  The lint now accepts all three. The single semantic bad claim in those runs
+  (`sort-for-dedup`, Haiku v1) does not name missing code, so the lint does not catch
+  it. As expected, the lint catches name-level staleness, not wrong reasoning.
+- **A bug the tests caught.** In JavaScript-like files, a comment containing a quote
+  or backtick was read as the start of a string. One combined comment-or-string scan
+  fixed it.
+
 ## Limits
 
 - `pip-audit` covers Python packages only. The Debian packages in the base image
