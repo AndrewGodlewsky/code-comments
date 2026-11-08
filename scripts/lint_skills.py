@@ -21,7 +21,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ROOT / "skill-variants"
 PRINCIPLES = ROOT / "docs/skill/principles.md"
-CASES = ROOT / "evaluation/skill_eval/cases"
+# Case text a skill must not copy: the skill eval, plus the hygiene eval's cases and references.
+CASES = (
+    ROOT / "evaluation/skill_eval/cases",
+    ROOT / "evaluation/hygiene/cases",
+    ROOT / "evaluation/hygiene/references",
+)
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 ALLOWED_KEYS = {"name", "description", "license", "compatibility", "metadata"}
 NON_PORTABLE = [
@@ -97,7 +102,7 @@ def _words(text: str) -> list[str]:
 
 def case_shingles() -> set[tuple[str, ...]]:
     shingles: set[tuple[str, ...]] = set()
-    for path in CASES.rglob("*"):
+    for path in (p for cases in CASES for p in cases.rglob("*")):
         if path.is_file() and path.suffix in (".md", ".py", ".json"):
             words = _words(path.read_text(encoding="utf-8"))
             shingles.update(tuple(words[i:i + SHINGLE]) for i in range(len(words) - SHINGLE + 1))

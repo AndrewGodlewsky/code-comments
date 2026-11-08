@@ -1,0 +1,1 @@
+I changed the idle timeout from 30 to 15 minutes and updated the session docstring and docs/security.md to match. You didn't say why it changed, so I haven't recorded a reason beside the setting; if there is one (a policy, say), tell me and I'll add it.
