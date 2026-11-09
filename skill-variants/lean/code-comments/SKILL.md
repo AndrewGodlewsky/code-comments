@@ -37,9 +37,12 @@ In the scope it governs, record what the evidence shows and the code does not:
 - a rejected alternative that a future editor would plausibly try
 
 Put caller contracts in interface docs and maintainer reasoning in the
-implementation. Be specific. State the fact itself, not "per the ticket". Reasons
-the next editor needs belong beside the code, not only in the commit or your
-report.
+implementation. Be specific. State the fact itself, not "per the ticket". When
+a known issue or PR records the constraint, workaround or decision you are writing
+down, add its id after the fact as a pointer, never instead of it. Give a TODO,
+workaround or temporary hack the issue that tracks its removal, if one is known.
+Reasons the next editor needs belong beside the code, not only in the commit or
+your report.
 
 ## Never invent
 - Write a reason, history or contract only when the request, a ticket, a test, a
@@ -60,6 +63,8 @@ report.
 ## Restraint
 - Do not restate code, names, types or signatures.
 - A routine change usually needs no new comment.
+- Do not tag code with the issue or PR that changed it ("added for #N"). That
+  is history, and commits hold it.
 - Give each fact one home. Point to it rather than copy it.
 - Leave valid comments word for word.
 - Never add commented-out code. Leave existing commented-out code alone and

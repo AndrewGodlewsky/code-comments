@@ -623,6 +623,99 @@ def tags_kept(out, orig):
     })
 
 
+# 10. issue-pointer-beside-reason
+
+AMOUNT_SNIPPET = r"""
+import json
+from billing.export import export_row
+amounts = [12.5, 3, 7.25, 0.1 + 0.2]
+print(json.dumps([export_row({"id": i, "customer": "c", "amount": a})[2] for i, a in enumerate(amounts)]))
+"""
+
+VENDOR_REASON = r"reject|importer|validat|vendor|finance|whole file|entire file"
+
+
+def amounts_two_places(out, orig):
+    result, error = run_snippet(out, AMOUNT_SNIPPET)
+    return result == ["12.50", "3.00", "7.25", "0.30"], f"wrote {result}" if result is not None else error
+
+
+def vendor_reason_recorded(out, orig):
+    text = " ".join(added_prose(out, orig).get("billing/export.py", Counter()).elements())
+    hit = re.search(VENDOR_REASON, text, re.IGNORECASE)
+    return bool(hit), f"matched {hit.group(0)!r} in {text[:160]!r}" if hit else f"added prose: {text[:160]!r}"
+
+
+def issue_beside_reason(out, orig):
+    path = out / "billing/export.py"
+    lines = _text(path).splitlines() if path.is_file() else []
+    cited = [i for i, line in enumerate(lines) if re.search(r"#212\b", line)]
+    if not cited:
+        return False, "#212 not cited in billing/export.py"
+    for i in cited:
+        window = " ".join(lines[max(0, i - 3):i + 4])
+        if re.search(VENDOR_REASON, window, re.IGNORECASE):
+            return True, f"line {i + 1}: {lines[i].strip()!r}"
+    return False, f"#212 cited without the reason nearby: {lines[cited[0]].strip()!r}"
+
+
+def pointer_no_invented_ids(out, orig):
+    ids = {m.group(0) for m in re.finditer(r"\b[A-Z]{2,}-\d+\b|#\d+", prose_text(out))} - {"#212"}
+    return not ids, f"found {sorted(ids)}" if ids else "no other ids"
+
+
+# 11. no-issue-tag-routine
+
+TASKS_SNIPPET = r"""
+import io, json, os, tempfile
+from tasks.cli import main
+tasks = [{"title": "b", "done": False}, {"title": "x", "done": True},
+         {"title": "a", "done": False}, {"title": "c", "done": False}]
+fd, path = tempfile.mkstemp(suffix=".json")
+with os.fdopen(fd, "w") as handle:
+    json.dump(tasks, handle)
+result = {}
+for key, argv in (("limit", [path, "--limit", "2"]), ("plain", [path])):
+    out = io.StringIO()
+    code = main(argv, out=out)
+    result[key] = [code, out.getvalue().splitlines()]
+os.remove(path)
+print(json.dumps(result))
+"""
+
+
+def _tasks(out: Path):
+    key = str(out)
+    if key not in _TASKS_CACHE:
+        _TASKS_CACHE[key] = run_snippet(out, TASKS_SNIPPET)
+    return _TASKS_CACHE[key]
+
+
+_TASKS_CACHE: dict[str, tuple[object, str]] = {}
+
+
+def tasks_limit(out, orig):
+    result, error = _tasks(out)
+    if result is None:
+        return False, error
+    code, printed = result["limit"]
+    return code in (0, None) and printed == ["- b", "- a"], f"exit {code!r}, printed {printed!r}"
+
+
+def tasks_default(out, orig):
+    result, error = _tasks(out)
+    if result is None:
+        return False, error
+    code, printed = result["plain"]
+    return code in (0, None) and printed == ["- b", "- a", "- c"], f"exit {code!r}, printed {printed!r}"
+
+
+def no_issue_tag(out, orig):
+    # Raw text, so a tag in argparse help text counts too.
+    text = " ".join(_text(path) for path in _files(out) if path.suffix == ".py")
+    return _no_match(r"#\s?318\b|\b(issue|ticket|pr)\s*#?\s*318\b", text)
+
+
 CHECKS = {
     "retry-cap-elsewhere": [retry_is_five, retry_no_stale, retry_ops_five, retry_kept, tests_pass],
     "rename-stale-refs": [rename_code, rename_prose, rename_lint, rename_kept, tests_pass],
@@ -637,6 +730,9 @@ CHECKS = {
                             feed_test_unchanged, feed_small],
     "clause-goes-stale": [tags_behaviour, no_none_raises, blank_error_documented, caller_comment_fixed,
                           tags_kept, tests_pass],
+    "issue-pointer-beside-reason": [amounts_two_places, vendor_reason_recorded, issue_beside_reason,
+                                    pointer_no_invented_ids, kept_all, capture_small],
+    "no-issue-tag-routine": [tasks_limit, tasks_default, no_issue_tag, report_small, kept_all],
 }
 
 
