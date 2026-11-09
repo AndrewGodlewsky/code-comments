@@ -1,0 +1,1 @@
+I added a `--quiet` flag to the report command in `cli/report.py`. With it, the "Wrote N rows" line is no longer printed. The summary file is still written, the exit code is still 0, and behaviour without the flag is unchanged. I did not run it or any tests. No comments needed changing or adding, so I left them as they were.

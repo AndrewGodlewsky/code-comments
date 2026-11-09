@@ -1,0 +1,1 @@
+I added a `--quiet` flag to the report command in `cli/report.py`. With it, the "Wrote N rows to ..." line is not printed. Without it, behaviour is unchanged: the summary CSV is still written and the line still prints. I did not run it or add tests.
