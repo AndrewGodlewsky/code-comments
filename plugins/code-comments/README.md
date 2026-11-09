@@ -19,12 +19,16 @@ checklist:
 2. **Capture what the code cannot say.** Write down a reason, constraint or contract
    that the request, a ticket, a test or a doc gives and the code does not show. When
    a simplification hides a rule, state the rule and its reason beside the new code.
+   When a known issue or PR records the reason, add its id after it, as in
+   "(issue #212)", so a search for the issue finds the code. A TODO or workaround
+   gets the issue that tracks its removal.
 3. **Never invent.** If no reason was given, record only what changed and tell you
    the reason is missing. If a change breaks a stated limit, make the change, keep the
    outside fact (a vendor quota, a law), update every statement of what the code does,
-   and tell you about the conflict.
+   and tell you about the conflict. Never make up an issue id.
 4. **Restraint.** No comments that restate the code; a routine change usually needs
-   none. Accurate comments stay word for word.
+   none, and no "added for #N" tag, since the commits record which issue changed the
+   code. Accurate comments stay word for word.
 5. **Fit in.** Match the comment style already in the file.
 
 A comment-only request ("check the comments in this file") fixes false comments and
@@ -51,13 +55,14 @@ Little benefit, so turn it off if it gets in the way:
 
 ## Evidence so far
 
-On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 3, 2026-11-08:
-nine small cases, two Haiku runs each), this version passed 99.1% of checks, against
-95.4% for the previous version and 95.0% with no skill. It did better at recording a
-reason found only in a test and at telling the user a reason was missing, did no harm
-to accurate comments, and cost about the same. These are small samples on one weaker
-model, against a bare baseline rather than a one-line reminder, and the eval does not
-test whether Claude loads the skill on its own.
+On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 4, 2026-11-08:
+eleven small cases, two Haiku runs each), this version passed 97.7% of checks, against
+97.0% for the previous version and 91.4% with no skill. Only this version pointed from
+a reason to the issue that records it (both runs, against none for the others). The
+skill also did better at telling the user a reason was missing, and cost about the
+same. Runs with and without it sometimes reworded an accurate docstring. These are
+small samples on one weaker model, against a bare baseline rather than a one-line
+reminder, and the eval does not test whether Claude loads the skill on its own.
 
 ## Install
 

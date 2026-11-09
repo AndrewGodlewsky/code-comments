@@ -25,6 +25,8 @@ from). `references/<name>/` holds a hand-written good result for each case.
 | `change-contradicts-comment` | Stated limits | The user asks for 250 requests a minute, but a comment states the API's free-tier quota of 100 |
 | `reason-only-in-test` | Moving a reason that would be lost | A simplification drops the code's shape, and the only reason for "last update wins" is a test comment |
 | `clause-goes-stale` | Clause-level staleness | `parse_tags` stops raising on `None`; one clause of its docstring and a caller's comment go false |
+| `issue-pointer-beside-reason` | Pointing to the issue behind a reason | Issue #212 records the finance vendor's two-decimal rule. The id belongs after the stated reason, never instead of it |
+| `no-issue-tag-routine` | Not tagging routine work | Issue #318 asks for a `--limit` flag. The code should not gain an "added for #318" comment |
 
 Every case scores preservation or restraint as well as the target behaviour. Round 1
 of the tournament showed a skill can win on a proxy while doing harm: weaker models
@@ -233,3 +235,72 @@ Next: the one remaining failure is a run that searched for the reason and missed
 test. More runs of `reason-only-in-test` would show whether that is noise. The bigger
 open questions are the Limits above: a one-line-reminder baseline, a stronger model,
 and whether Claude loads the skill on its own.
+
+### Iteration 4 (2026-11-08): issue pointers
+
+The user asked for comments to point to the GitHub issue or PR behind the work, so a
+later agent searching for that issue finds the code. The skill (v4) gained three lines:
+
+- when a known issue or PR records the constraint, workaround or decision being
+  written down, add its id after the fact as a pointer, never instead of it; a TODO,
+  workaround or temporary hack gets the issue that tracks its removal, if known;
+- do not tag code with the issue that changed it ("added for #N"), because that is
+  history and commits hold it;
+- never invent issue ids.
+
+Two cases were added: `issue-pointer-beside-reason` (does the pointer appear, beside
+the reason) and `no-issue-tag-routine` (does a routine change stay untagged).
+Configurations: v4, the iteration-3 skill (`old_skill`, v3) and no skill. The v4 runs
+are new on all eleven cases. The v3 and no-skill runs are new on the two new cases and
+reused from iteration 3 on the other nine. Every v4 run read the skill first.
+
+| Case | With skill (v4) | Old skill (v3) | Without skill |
+| --- | --- | --- | --- |
+| `issue-pointer-beside-reason` | 5/6, 6/6 | 5/6, 4/6 | 3/6, 3/6 |
+| `reason-only-in-test` | 4/6, 6/6 | 6/6, 5/6 | 4/6, 5/6 |
+| `no-invented-reason` | 5/5, 5/5 | 5/5, 5/5 | 4/5, 4/5 |
+| `change-contradicts-comment` | 6/6, 6/6 | 6/6, 6/6 | 6/6, 6/6 |
+| `clause-goes-stale` | 6/6, 6/6 | 6/6, 6/6 | 6/6, 6/6 |
+| `no-issue-tag-routine` | all pass | all pass | all pass |
+| the other five | all pass | all pass | all pass |
+
+Pass rates: with skill 97.7% (115 of 118 checks), old skill 97.0% (114), without
+91.4% (107). The no-skill rate fell from 95.0% because the new pointer case is hard
+for it. Tokens: about 43,000 per run with either skill and 40,400 without. New v4 runs
+took 15 to 29 seconds.
+
+- **The pointer works.** Both v4 runs cited #212 beside the vendor's rule; no v3 or
+  no-skill run cited it. The best run added one comment and a fix:
+
+  ```diff
+       """Return value formatted for the export file."""
+  -    return str(value)
+  +    # The finance vendor's importer rejects the whole file unless every amount
+  +    # matches ^\d+\.\d{2}$, and it cannot be changed (issue #212).
+  +    return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+  ```
+
+- **Docstring rewrites are the common failure on the pointer case.** v4 run 1, v3
+  run 2 and both no-skill runs rewrote the accurate docstring "Return value formatted
+  for the export file." The no-skill runs also wrote more comment lines than the
+  case allows, and recorded the reason without the issue.
+- **`no-issue-tag-routine` does not discriminate.** No run in any configuration tagged
+  the code with #318. The case guards the new rule against harm; it shows the rule
+  causes no tagging, not that the rule prevents it.
+- **`reason-only-in-test` dipped.** v4 run 1 simplified the code, added no comment,
+  and told the user it found no reason, though the test holds one. Run 2 passed every
+  check. Iteration 3's run 2 failed the same way, so this looks like run-to-run
+  variance on a search Haiku sometimes skips, not a cost of the new lines. Watch it.
+- **Two stray files were deleted** before grading: a helper script that v4 run 2 of
+  `reason-only-in-test` wrote outside the repository, and a check folder from no-skill
+  run 1 of `no-issue-tag-routine`. Neither affected the grade. `benchmark.json` notes
+  both.
+
+The pointer behaviour is a clear gain on its one case (2 of 2 runs against 0 of 4).
+The usual caveats apply: two runs each, Haiku only, a bare baseline, triggering
+untested, and one case per new behaviour. The `issue-pointer-beside-reason` case gives
+the issue in the request; a case where the issue id appears only in a TODO or a linked
+doc would test the rule further.
+
+Next: more runs of `reason-only-in-test` and the pointer case, and the open Limits
+above.

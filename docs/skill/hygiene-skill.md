@@ -33,14 +33,19 @@ checklist:
    gives a reason, constraint or contract that the code does not show, write it down
    beside the code it governs. This includes a rule that a rewrite hides: if a
    simplification removes the code that made a rule visible, state the rule and its
-   reason beside the new code, even when behaviour is unchanged.
+   reason beside the new code, even when behaviour is unchanged. When a known issue
+   or PR records that reason, add its id after the reason, as in "(issue #212)", so
+   that searching for the issue finds the code. The id is a pointer and never
+   replaces the reason. A TODO or temporary workaround gets the issue that tracks
+   its removal, if one is known.
 3. **Never invent.** Write a reason only when the evidence supports it. If a change
    has no stated reason, record only what changed and tell the user the reason is
    missing. If a change breaks a stated limit, make the change and tell the user
    about the conflict: keep the outside fact (a vendor quota, a law), and update every
-   statement of what this code does.
-4. **Restraint.** Don't restate code. A routine change usually needs no new comment.
-   Leave accurate comments word for word.
+   statement of what this code does. Never invent an issue id.
+4. **Restraint.** Don't restate code. A routine change usually needs no new comment,
+   and no "added for #N" tag: which issue changed the code is history, and the
+   commits hold it. Leave accurate comments word for word.
 5. **Fit in.** Match the style already in the file.
 
 `/code-comments:stale-refs` adds a mechanical check. It lists comments in your
@@ -60,6 +65,10 @@ These are the behaviours the skill and its eval are built to test. Results from 
 - **Recording a reason that would otherwise be lost.** A ticket explains that rows
   must be sorted because a downstream loader merge-joins on them. Without a comment,
   the next editor sees an unexplained sort and may remove it.
+- **Pointing from the reason to its issue.** Issue #212 says a finance vendor's
+  importer rejects any amount without exactly two decimal places. The skill writes
+  that rule beside the formatting code and ends it with "(issue #212)", so a later
+  agent can search for #212 and land on the code, and can read the issue for more.
 - **Not inventing reasons.** When a value changes and nobody says why, the skill
   says to report the gap, not make up a rationale.
 - **Keeping a rule a rewrite would hide.** A convoluted loop that keeps the last
@@ -74,7 +83,7 @@ These are the behaviours the skill and its eval are built to test. Results from 
 - **Leaving good comments alone.** In a comment-only review, accurate comments,
   licence headers and tool directives stay exactly as they were.
 - **Staying quiet on routine work.** Adding a simple flag should not add a paragraph
-  of comments.
+  of comments, or an "added for #318" tag naming the issue that asked for it.
 
 ## What it helps with
 
@@ -110,26 +119,36 @@ It adds little, and you can switch it off, for:
 
 ## Evidence so far
 
-From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 3
-(2026-11-08), Haiku subagents, two runs per case on nine small cases:
+From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 4
+(2026-11-08), Haiku subagents, two runs per case on eleven small cases:
 
 | Configuration | Checks passed |
 | --- | --- |
-| This skill (v3) | 99.1% |
-| Previous version (v2) | 95.4% |
-| No skill | 95.0% |
+| This skill (v4) | 97.7% |
+| Previous version (v3) | 97.0% |
+| No skill | 91.4% |
 
-- **Gains over no skill:** recording a reason held only in a test (6/6 and 5/6,
-  against 4/6 and 5/6); telling the user a reason is missing (5/5 twice, against 4/5
-  twice). Earlier versions also did harm on the stated-limit case; v3 does not.
-- **No losses:** every preservation and restraint check passed. Cost is about the
-  same in tokens and time.
-- **Five cases do not discriminate.** Haiku without the skill already fixes distant
-  comments, renames and simple stale clauses.
+- **Issue pointers:** both v4 runs cited #212 beside the vendor's rule. No run of v3
+  or of the bare model cited it.
+- **Other gains over no skill:** telling the user a reason is missing (5/5 twice,
+  against 4/5 twice). Recording a reason held only in a test is mixed: v4 scored 4/6
+  and 6/6, v3 6/6 and 5/6, no skill 4/6 and 5/6. Earlier versions did harm on the
+  stated-limit case; v3 and v4 do not.
+- **Failures that remain:** a run with or without the skill sometimes rewrites an
+  accurate docstring while adding the reason (one v4 run, and both no-skill runs, on
+  the pointer case). One v4 run of the test-only-reason case missed the reason in
+  the test, as one v3 run did before.
+- **No tagging seen in any configuration.** No run tagged a routine change with its
+  issue, with or without the skill, so that case guards the rule rather than proves
+  it.
+- **Cost** is about the same: around 43,000 tokens a run with the skill and 40,400
+  without.
+- **Six cases do not discriminate.** Haiku without the skill already fixes distant
+  comments, renames and simple stale clauses, and leaves routine work untagged.
 
 Read these as small, encouraging signals, not proof:
 
-- Two runs per case, on one model, on a weaker model.
+- Two runs per case, on one model, on a weaker model, with one case per behaviour.
 - The baseline is a bare model, not a one-line "keep comments accurate" reminder,
   which the pilot found to be as good as the full skill downstream.
 - Triggering is untested: the eval tells the model to read the skill, so it does not
