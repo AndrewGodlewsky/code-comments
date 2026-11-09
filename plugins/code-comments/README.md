@@ -55,14 +55,20 @@ Little benefit, so turn it off if it gets in the way:
 
 ## Evidence so far
 
-On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 4, 2026-11-08:
-eleven small cases, two Haiku runs each), this version passed 97.7% of checks on
-average, against 97.0% for the previous version and 91.4% with no skill. Only this version pointed from
-a reason to the issue that records it (both runs, against none for the others). The
-skill also did better at telling the user a reason was missing, and cost about the
-same. Runs with and without it sometimes reworded an accurate docstring. These are
-small samples on one weaker model, against a bare baseline rather than a one-line
-reminder, and the eval does not test whether Claude loads the skill on its own.
+On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 5, 2026-11-08:
+eleven small cases), this version passed more checks than a one-line comment reminder
+and than no skill, on both models tried:
+
+| Model | This skill | One-line reminder | No skill |
+| --- | --- | --- | --- |
+| Haiku (3 runs per case) | 97.5% | 90.6% | 91.1% |
+| Sonnet (2 runs per case) | 97.4% | 94.4% | 93.3% |
+
+Only skill runs told the user that a change had no stated reason. On Haiku, only skill
+runs pointed from a reason to the issue that records it. The reminder sometimes deleted
+a true outside fact. The skill costs about 6% more tokens, and on Sonnet it once wrote
+more comment lines than a case allowed. These are small samples, and the eval does not
+test whether Claude loads the skill on its own.
 
 ## Install
 

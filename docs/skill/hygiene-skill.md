@@ -116,44 +116,51 @@ It adds little, and you can switch it off, for:
 - **Work where comments are generated** (API stubs, generated clients). Fix the
   generator instead.
 - **Non-code requests.** It is meant to stay quiet there. Whether it does is not yet
-  verified (see the evidence below).
+  verified, because the eval does not test triggering (see the evidence below).
 
 ## Evidence so far
 
-From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 4
-(2026-11-08), Haiku subagents, two runs per case on eleven small cases:
+From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 5
+(2026-11-08), on eleven small cases. Each arm ran three times per case on Haiku and
+twice on Sonnet. The reminder arm had no skill; its request ended with "Keep code
+comments accurate: fix or delete any comment, docstring or doc that your change makes
+false, and don't add comments that only restate the code."
 
-| Configuration | Checks passed (mean per run) |
-| --- | --- |
-| This skill (v4) | 97.7% |
-| Previous version (v3) | 97.0% |
-| No skill | 91.4% |
+| Configuration | Haiku | Sonnet |
+| --- | --- | --- |
+| This skill (v4) | 97.5% | 97.4% |
+| One-line reminder | 90.6% | 94.4% |
+| No skill | 91.1% | 93.3% |
 
-- **Issue pointers:** both v4 runs cited #212 beside the vendor's rule. No run of v3
-  or of the bare model cited it.
-- **Other gains over no skill:** telling the user a reason is missing (5/5 twice,
-  against 4/5 twice). Recording a reason held only in a test is mixed: v4 scored 4/6
-  and 6/6, v3 6/6 and 5/6, no skill 4/6 and 5/6. Earlier versions did harm on the
-  stated-limit case; v3 and v4 do not.
-- **Failures that remain:** a run with or without the skill sometimes rewrites an
-  accurate docstring while adding the reason (one v4 run, and both no-skill runs, on
-  the pointer case). One v4 run of the test-only-reason case missed the reason in
-  the test, as one v3 run did before.
+Figures are checks passed, as the mean per run.
+
+- **The skill beats the reminder on both models.** On Haiku the reminder did no
+  better than nothing; on Sonnet it added about a point.
+- **Reporting a missing reason:** every skill run told the user no reason was given
+  for the timeout change. No reminder or no-skill run did, on either model.
+- **Issue pointers:** on Haiku, every skill run cited #212 beside the vendor's rule
+  and no other run did. Sonnet cited it without the skill in three of four runs.
+- **Keeping outside facts:** the reminder deleted the vendor's free-tier quota in two
+  of three Haiku runs and one of two Sonnet runs. The skill kept it every time.
+- **Recording a reason held only in a test:** the skill did best on Sonnet (6/6 twice)
+  and was mixed on Haiku (4/6, 6/6, 6/6, against 5/6, 4/6, 5/6 for the reminder).
+- **Failures that remain:** in every arm, runs sometimes rewrite an accurate
+  docstring while adding the reason. On one case, both Sonnet skill runs (and one
+  no-skill run) wrote more comment lines than the case allowed.
 - **No tagging seen in any configuration.** No run tagged a routine change with its
-  issue, with or without the skill, so that case guards the rule rather than proves
-  it.
-- **Cost** is about the same: around 43,000 tokens a run with the skill and 40,400
-  without.
-- **Six cases do not discriminate.** Haiku without the skill already fixes distant
-  comments, renames and simple stale clauses, and leaves routine work untagged.
+  issue, so that case guards the rule rather than proves it.
+- **Cost:** about 6% more tokens with the skill (around 43,000 a run on Haiku against
+  40,500 to 40,800; 40,700 on Sonnet against 38,200 to 38,300).
+- **Five cases do not discriminate** on either model. Without the skill, both models
+  already fix distant comments, renames and simple stale clauses, leave accurate
+  comments alone, and leave routine work untagged.
 
-Read these as small, encouraging signals, not proof:
+Read these as small, consistent signals, not proof:
 
-- Two runs per case, on one model, on a weaker model, with one case per behaviour.
-- The baseline is a bare model, not a one-line reminder. The pilot found that one
-  general "keep the codebase clean" sentence did as well as the full skill
-  downstream; whether a one-line comment reminder matches the skill on these cases
-  is untested.
+- Two or three runs per case, one case per behaviour, one model family.
+- The pilot found that one general "keep the codebase clean" sentence did as well as
+  the full skill downstream. This eval shows the skill beats a comment-specific
+  sentence on single edits; it does not show any downstream benefit.
 - Triggering is untested: the eval tells the model to read the skill, so it does not
   show that Claude loads it on its own.
 

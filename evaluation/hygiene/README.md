@@ -88,22 +88,27 @@ repository, and do not use git, GitHub or any task tracking. When finished, writ
 message you would send the user to RESPONSE.md in that repository directory.
 ```
 
-For runs without a skill, the exception clause is left out.
+For runs without a skill, the exception clause is left out. In iteration 5's reminder
+arm, the request also ends with one sentence: "Keep code comments accurate: fix or
+delete any comment, docstring or doc that your change makes false, and don't add
+comments that only restate the code." Iteration 5 also ran every arm on Sonnet; its
+agents were told to read this prompt from a file instead of receiving it inline.
 
 ## Limits
 
 - **Triggering is not tested.** With-skill runs are told to read the skill file, so
   the eval measures what the skill does once loaded, not whether Claude picks it up.
-- **One model.** Runs use Haiku subagents: cheap, and the weaker model is where
-  Round 1 saw the skill do harm. A result on Haiku may not hold on a stronger model.
+- **Two models, one family.** Iterations 1 to 4 used Haiku subagents: cheap, and the
+  weaker model is where Round 1 saw the skill do harm. Iteration 5 added Sonnet. No
+  model outside the Claude family has been tried.
 - **Small cases.** Each repository is a few files. They test single behaviours, not
   long work. The [pilot](../../docs/evaluation/pilot-report-2026-11-08.md) is the
   long-horizon test, and it found no downstream benefit.
-- **The without-skill baseline is a bare model**, not the one-sentence instruction
-  the pilot compared against. A skill that beats the bare model here may not beat a
-  one-line reminder.
-- **Few runs.** Two runs per configuration per case can show a large effect, not a
-  small one.
+- **The one-line reminder was tested only in iteration 5.** Iterations 1 to 4
+  compared against a bare model. Iteration 5 added a one-sentence comment reminder,
+  the kind of instruction the pilot found as good as the full skill downstream.
+- **Few runs.** Two or three runs per configuration per case can show a large effect,
+  not a small one.
 - **The baseline still sees the repository's `AGENTS.md`.** Subagents inherit the
   worktree's project instructions. They hold workflow rules, not comment guidance, so
   the baseline is close to bare, but not bare.
@@ -304,3 +309,85 @@ doc would test the rule further.
 
 Next: more runs of `reason-only-in-test` and the pointer case, and the open Limits
 above.
+
+### Iteration 5 (2026-11-08): the skill against a one-line reminder
+
+Issue [#46](https://github.com/AndrewGodlewsky/code-comments/issues/46). The pilot
+found that one general sentence did as well as the full skill downstream, so this
+iteration asks whether the skill beats one comment-specific sentence on these cases,
+and whether the result holds on a stronger model. The skill is unchanged (v4). Arms:
+
+- **Skill v4.**
+- **Reminder:** no skill; the request ends with "Keep code comments accurate: fix or
+  delete any comment, docstring or doc that your change makes false, and don't add
+  comments that only restate the code."
+- **No skill.**
+
+Haiku ran three runs per arm per case. Its skill and no-skill runs 1 and 2 are the
+iteration-4 runs, reused unchanged; everything else is new. Sonnet ran two new runs
+per arm per case. Results are in `iterations/iteration-5-haiku/` and
+`iterations/iteration-5-sonnet/`.
+
+| Model | Skill v4 | Reminder | No skill |
+| --- | --- | --- | --- |
+| Haiku (33 runs per arm) | 97.5% | 90.6% | 91.1% |
+| Sonnet (22 runs per arm) | 97.4% | 94.4% | 93.3% |
+
+Pass rates are the mean of each run's rate. The skill cost about 6% more tokens on both
+models (Haiku about 43,200 per run against 40,800 and 40,500; Sonnet 40,700 against
+38,200 and 38,300).
+
+Cases where the arms differed (checks passed per run):
+
+| Case | Model | Skill v4 | Reminder | No skill |
+| --- | --- | --- | --- | --- |
+| `no-invented-reason` | Haiku | 5/5, 5/5, 5/5 | 4/5, 4/5, 4/5 | 4/5, 4/5, 4/5 |
+| | Sonnet | 5/5, 5/5 | 4/5, 4/5 | 4/5, 4/5 |
+| `issue-pointer-beside-reason` | Haiku | 5/6, 6/6, 4/6 | 3/6, 3/6, 3/6 | 3/6, 3/6, 2/6 |
+| | Sonnet | 6/6, 5/6 | 5/6, 5/6 | 6/6, 5/6 |
+| `change-contradicts-comment` | Haiku | 6/6, 6/6, 6/6 | 5/6, 6/6, 5/6 | 6/6, 6/6, 6/6 |
+| | Sonnet | 6/6, 6/6 | 6/6, 5/6 | 5/6, 6/6 |
+| `reason-only-in-test` | Haiku | 4/6, 6/6, 6/6 | 5/6, 4/6, 5/6 | 4/6, 5/6, 5/6 |
+| | Sonnet | 6/6, 6/6 | 6/6, 4/6 | 5/6, 5/6 |
+| `retry-cap-elsewhere` | Sonnet | 5/5, 5/5 | 5/5, 5/5 | 4/5, 5/5 |
+| `capture-supported-reason` | Sonnet | 4/5, 4/5 | 5/5, 5/5 | 4/5, 5/5 |
+
+Every other case passed every check in every run of every arm.
+
+- **The skill beats the reminder on both models.** On Haiku the reminder did no
+  better than no skill at all. On Sonnet it added about one point. The skill's margin
+  over the reminder is about 7 points on Haiku and 3 on Sonnet.
+- **Reporting a missing reason is the clearest gain.** Every skill run told the user
+  no reason was given for the timeout change; no reminder or no-skill run did, on
+  either model. One Haiku reminder run wrote no reply at all.
+- **Issue pointers help Haiku, not Sonnet.** On Haiku, every skill run cited #212
+  beside the vendor's rule and no other run did; reminder runs never stated the vendor
+  reason either. On Sonnet, three of the four runs without the skill cited #212. In
+  every arm, the common failure on this case is rewriting the accurate docstring
+  "Return value formatted for the export file."
+- **The reminder can delete a true comment.** On `change-contradicts-comment`, two
+  Haiku reminder runs and one Sonnet reminder run deleted the vendor's free-tier quota
+  of 100 requests a minute, which stayed true. "Fix or delete any comment your change
+  makes false" may have encouraged it. The skill kept the quota in every run.
+- **The skill made Sonnet wordier once.** On `capture-supported-reason`, both Sonnet
+  skill runs and one no-skill run added more comment lines than the case's limit of
+  four. Both reminder runs stayed within it. No Haiku run overshot on this case.
+- **Five cases still do not discriminate** on either model: `clause-goes-stale`,
+  `comment-only-preserve`, `no-issue-tag-routine`, `rename-stale-refs` and
+  `routine-edit-no-noise`.
+- **Grading change.** `grade.py` now skips tool caches (`.pytest_cache`,
+  `.mypy_cache`, `.ruff_cache`). One Haiku no-skill run had run pytest, and the
+  README that pytest writes into its cache was counted as added comments. That run
+  gained one check; no other score changed.
+- **Runs were not fully sandboxed.** In every arm, some runs wrote scratch files
+  outside their repository. Grading reads only the repository, so scores are unaffected.
+
+The skill earns its place on these cases: it beats a comment-specific one-line reminder
+on both models, by doing things the reminder does not ask for (report a missing reason,
+keep outside facts, point to the issue). The gain is small on Sonnet, where the bare
+model is already strong. The caveats stand: small cases, few runs, one model family,
+and triggering untested. The downstream pilot, where the skill did not beat a general
+sentence, is a separate question this eval does not answer.
+
+Next: test triggering with `claude plugin eval` (needs an approved spending cap), and
+watch the Sonnet verbosity on `capture-supported-reason`.
