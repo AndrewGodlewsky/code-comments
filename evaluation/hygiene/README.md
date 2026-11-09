@@ -325,7 +325,8 @@ and whether the result holds on a stronger model. The skill is unchanged (v4). A
 
 Haiku ran three runs per arm per case. Its skill and no-skill runs 1 and 2 are the
 iteration-4 runs, reused unchanged; everything else is new. Sonnet ran two new runs
-per arm per case. Results are in `iterations/iteration-5-haiku/` and
+per arm per case. Sonnet agents read the prompt from a file; Haiku agents got it
+inline, with the same text. Results are in `iterations/iteration-5-haiku/` and
 `iterations/iteration-5-sonnet/`.
 
 | Model | Skill v4 | Reminder | No skill |
@@ -359,7 +360,7 @@ Every other case passed every check in every run of every arm.
   over the reminder is about 7 points on Haiku and 3 on Sonnet.
 - **Reporting a missing reason is the clearest gain.** Every skill run told the user
   no reason was given for the timeout change; no reminder or no-skill run did, on
-  either model. One Haiku reminder run wrote no reply at all.
+  either model. One Haiku reminder run wrote no reply on this case.
 - **Issue pointers help Haiku, not Sonnet.** On Haiku, every skill run cited #212
   beside the vendor's rule and no other run did; reminder runs never stated the vendor
   reason either. On Sonnet, three of the four runs without the skill cited #212. In
@@ -369,9 +370,11 @@ Every other case passed every check in every run of every arm.
   Haiku reminder runs and one Sonnet reminder run deleted the vendor's free-tier quota
   of 100 requests a minute, which stayed true. "Fix or delete any comment your change
   makes false" may have encouraged it. The skill kept the quota in every run.
-- **The skill made Sonnet wordier once.** On `capture-supported-reason`, both Sonnet
-  skill runs and one no-skill run added more comment lines than the case's limit of
-  four. Both reminder runs stayed within it. No Haiku run overshot on this case.
+- **Comment length is where the reminder did best.** No reminder run went over a
+  case's comment-line limit. On `capture-supported-reason`, both Sonnet skill runs and
+  one Sonnet no-skill run added more than the limit of four. On
+  `issue-pointer-beside-reason`, Haiku skill run 3 and all three Haiku no-skill runs
+  added five lines against a limit of four.
 - **Five cases still do not discriminate** on either model: `clause-goes-stale`,
   `comment-only-preserve`, `no-issue-tag-routine`, `rename-stale-refs` and
   `routine-edit-no-noise`.
@@ -386,8 +389,10 @@ The skill earns its place on these cases: it beats a comment-specific one-line r
 on both models, by doing things the reminder does not ask for (report a missing reason,
 keep outside facts, point to the issue). The gain is small on Sonnet, where the bare
 model is already strong. The caveats stand: small cases, few runs, one model family,
-and triggering untested. The downstream pilot, where the skill did not beat a general
-sentence, is a separate question this eval does not answer.
+reused Haiku runs, different prompt delivery per model, and triggering untested. The
+downstream pilot, where the skill did not beat a general sentence, is a separate
+question this eval does not answer.
 
 Next: test triggering with `claude plugin eval` (needs an approved spending cap), and
-watch the Sonnet verbosity on `capture-supported-reason`.
+watch comment length, where the skill and no-skill runs went over and the reminder
+did not.

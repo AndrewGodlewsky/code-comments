@@ -66,9 +66,10 @@ and than no skill, on both models tried:
 
 Only skill runs told the user that a change had no stated reason. On Haiku, only skill
 runs pointed from a reason to the issue that records it. The reminder sometimes deleted
-a true outside fact. The skill costs about 6% more tokens, and on Sonnet it once wrote
-more comment lines than a case allowed. These are small samples, and the eval does not
-test whether Claude loads the skill on its own.
+a true outside fact. The skill costs about 6% more tokens. Three skill runs and four
+no-skill runs wrote more comment lines than a case allowed; no reminder run did. These
+are small samples from one model family, some Haiku runs are reused from an earlier
+iteration, and the eval does not test whether Claude loads the skill on its own.
 
 ## Install
 

@@ -35,6 +35,16 @@ class HygieneGraderTest(unittest.TestCase):
         self.assertFalse(item["passed"])
         self.assertIn("human ruling", item["evidence"])
 
+    def test_tool_caches_are_not_graded(self):
+        # pytest writes a README.md into .pytest_cache; it is not the run's prose.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for cache in (".pytest_cache", ".mypy_cache", ".ruff_cache"):
+                (root / cache).mkdir()
+                (root / cache / "README.md").write_text("# cache\n", encoding="utf-8")
+            (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+            self.assertEqual([p.name for p in grade._files(root)], ["app.py"])
+
     def test_rewrapped_comment_is_not_lost(self):
         with tempfile.TemporaryDirectory() as tmp:
             orig, out = Path(tmp, "orig"), Path(tmp, "out")

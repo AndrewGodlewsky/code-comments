@@ -145,19 +145,23 @@ Figures are checks passed, as the mean per run.
 - **Recording a reason held only in a test:** the skill did best on Sonnet (6/6 twice)
   and was mixed on Haiku (4/6, 6/6, 6/6, against 5/6, 4/6, 5/6 for the reminder).
 - **Failures that remain:** in every arm, runs sometimes rewrite an accurate
-  docstring while adding the reason. On one case, both Sonnet skill runs (and one
-  no-skill run) wrote more comment lines than the case allowed.
+  docstring while adding the reason. Seven runs wrote more comment lines than a case
+  allowed: three with the skill (two Sonnet, one Haiku) and four without it. No
+  reminder run did.
 - **No tagging seen in any configuration.** No run tagged a routine change with its
   issue, so that case guards the rule rather than proves it.
 - **Cost:** about 6% more tokens with the skill (around 43,000 a run on Haiku against
   40,500 to 40,800; 40,700 on Sonnet against 38,200 to 38,300).
 - **Five cases do not discriminate** on either model. Without the skill, both models
-  already fix distant comments, renames and simple stale clauses, leave accurate
-  comments alone, and leave routine work untagged.
+  already fix renames and simple stale clauses, leave accurate comments alone, and
+  leave routine work untagged.
 
 Read these as small, consistent signals, not proof:
 
 - Two or three runs per case, one case per behaviour, one model family.
+- The arms were not all run together. Haiku's skill and no-skill runs 1 and 2 are
+  reused from iteration 4. Sonnet agents read the prompt from a file, while Haiku
+  agents got it inline; the text was the same.
 - The pilot found that one general "keep the codebase clean" sentence did as well as
   the full skill downstream. This eval shows the skill beats a comment-specific
   sentence on single edits; it does not show any downstream benefit.
