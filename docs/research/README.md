@@ -5,11 +5,12 @@ For source passages without evaluative synthesis, start with the
 opposing positions, examples and coverage limits from available local sources.
 Use the [extraction workflow](../workflows/extract-comment-context.md) to add more.
 
-Current phase: move the researched hypothesis into offline evaluation development
-before deciding the skill's workflow. No skill implementation or model experiments
-have been completed. The [roadmap](../roadmap.md) tracks remaining work; the
-[offline fixture guide](../evaluation/README.md) documents the first executable
-diagnostic. Its results validate plumbing, not the product hypothesis.
+Current phase (2026-11-09): the performance hypothesis below was tested, and the
+[long-horizon pilot](../evaluation/pilot-report-2026-11-08.md) found no measurable
+downstream benefit. The product is now a comment hygiene skill with no performance
+claim (see the [purpose document](../skill/hygiene-skill.md)). This research remains
+the record of why the hypothesis was worth testing. The [roadmap](../roadmap.md)
+tracks remaining work.
 
 Start with the [2026-11-05 deep-dive synthesis](deep-dive-summary.md) for the
 problem breakdown, evidence assessment, existing systems, benchmark shortlist,
