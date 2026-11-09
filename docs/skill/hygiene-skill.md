@@ -115,8 +115,8 @@ It adds little, and you can switch it off, for:
   there is little to keep true.
 - **Work where comments are generated** (API stubs, generated clients). Fix the
   generator instead.
-- **Non-code requests.** It is meant to stay quiet there. Whether it does is not yet
-  verified, because the eval does not test triggering (see the evidence below).
+- **Non-code requests.** It stays quiet there: in the activation evals it never
+  loaded for a question, an explanation, a search or a release note.
 
 ## Evidence so far
 
@@ -165,8 +165,26 @@ Read these as small, consistent signals, not proof:
 - The pilot found that one general "keep the codebase clean" sentence did as well as
   the full skill downstream. This eval shows the skill beats a comment-specific
   sentence on single edits; it does not show any downstream benefit.
-- Triggering is untested: the eval tells the model to read the skill, so it does not
-  show that Claude loads it on its own.
+- The eval tells the model to read the skill. On its own, Claude rarely loads it (see
+  below), so these gains need the skill to be asked for.
+
+### Does it load on its own?
+
+Mostly not. The [activation evals](../../plugins/code-comments/evals/README.md)
+(2026-11-09, three runs per case, Claude Code 2.1.319) gave six code requests that
+should load it and four near misses that should not:
+
+| Model | Loaded when it should | Stayed out when it should |
+| --- | --- | --- |
+| Haiku | 0 of 18 runs | 12 of 12 runs |
+| Sonnet | 3 of 18 runs | 12 of 12 runs |
+
+Sonnet's three loads were all for the one request about comments ("tidy up the
+out-of-date comments"). No model loaded it to fix a bug, rename a function, review a
+file, add a parameter or make a ticket-driven change. Every run still did the task.
+The runs cost about $1.07 in all. Other plugins and built-in skills were available,
+and Bash was not allowed, so there was no shell near-miss case. Raising recall means
+changing the description and testing both sides again.
 
 ## What it is not
 

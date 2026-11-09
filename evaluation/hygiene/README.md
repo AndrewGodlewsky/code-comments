@@ -96,8 +96,11 @@ agents were told to read this prompt from a file instead of receiving it inline.
 
 ## Limits
 
-- **Triggering is not tested.** With-skill runs are told to read the skill file, so
-  the eval measures what the skill does once loaded, not whether Claude picks it up.
+- **Triggering is measured elsewhere, and it is low.** With-skill runs are told to
+  read the skill file, so this eval measures what the skill does once loaded. The
+  [activation evals](../../plugins/code-comments/evals/README.md) found that Claude
+  rarely loads it on its own: Haiku in 0 of 18 should-load runs and Sonnet in 3 of 18,
+  all on a comment-refresh request. Neither loaded it when it should not have.
 - **Two models, one family.** Iterations 1 to 4 used Haiku subagents: cheap, and the
   weaker model is where Round 1 saw the skill do harm. Iteration 5 added Sonnet. No
   model outside the Claude family has been tried.
