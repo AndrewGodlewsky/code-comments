@@ -37,7 +37,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import stale_refs  # noqa: E402
 
-SKIP_DIRS = {"__pycache__", ".git"}
+# Tool caches a run can leave behind (pytest writes a README.md into its cache).
+SKIP_DIRS = {"__pycache__", ".git", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 SKIP_FILES = {"RESPONSE.md"}  # the run's reply to the user, not repository prose
 
 
