@@ -264,8 +264,8 @@ reused from iteration 3 on the other nine. Every v4 run read the skill first.
 | `no-issue-tag-routine` | all pass | all pass | all pass |
 | the other five | all pass | all pass | all pass |
 
-Pass rates: with skill 97.7% (115 of 118 checks), old skill 97.0% (114), without
-91.4% (107). The no-skill rate fell from 95.0% because the new pointer case is hard
+Pass rates, as the mean of each run's rate: with skill 97.7% (115 of 118 checks in
+total), old skill 97.0% (114), without 91.4% (107). The no-skill rate fell from 95.0% because the new pointer case is hard
 for it. Tokens: about 43,000 per run with either skill and 40,400 without. New v4 runs
 took 15 to 29 seconds.
 

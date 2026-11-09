@@ -11,8 +11,9 @@ install and removal. Issue
 The project's original question was whether well-kept comments help a later, possibly
 weaker, model make correct changes. The
 [long-horizon pilot](../evaluation/pilot-report-2026-11-08.md) found no measurable
-benefit. On six real pull requests, the full skill did no better than a one-sentence
-instruction to keep comments accurate.
+benefit. On six real pull requests, the full skill did no better than one general
+sentence added to the task: "Keep the codebase clean: reuse what already exists,
+change only what the feature needs, and don't rewrite working code."
 
 That result does not make comments useless. It means **the skill cannot be sold as a
 performance improvement.** It can still do a narrower job: stop agents leaving
@@ -122,7 +123,7 @@ It adds little, and you can switch it off, for:
 From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 4
 (2026-11-08), Haiku subagents, two runs per case on eleven small cases:
 
-| Configuration | Checks passed |
+| Configuration | Checks passed (mean per run) |
 | --- | --- |
 | This skill (v4) | 97.7% |
 | Previous version (v3) | 97.0% |
@@ -149,8 +150,10 @@ From the [hygiene eval](../../evaluation/hygiene/README.md), iteration 4
 Read these as small, encouraging signals, not proof:
 
 - Two runs per case, on one model, on a weaker model, with one case per behaviour.
-- The baseline is a bare model, not a one-line "keep comments accurate" reminder,
-  which the pilot found to be as good as the full skill downstream.
+- The baseline is a bare model, not a one-line reminder. The pilot found that one
+  general "keep the codebase clean" sentence did as well as the full skill
+  downstream; whether a one-line comment reminder matches the skill on these cases
+  is untested.
 - Triggering is untested: the eval tells the model to read the skill, so it does not
   show that Claude loads it on its own.
 

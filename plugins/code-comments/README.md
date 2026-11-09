@@ -56,8 +56,8 @@ Little benefit, so turn it off if it gets in the way:
 ## Evidence so far
 
 On the [hygiene eval](../../evaluation/hygiene/README.md) (iteration 4, 2026-11-08:
-eleven small cases, two Haiku runs each), this version passed 97.7% of checks, against
-97.0% for the previous version and 91.4% with no skill. Only this version pointed from
+eleven small cases, two Haiku runs each), this version passed 97.7% of checks on
+average, against 97.0% for the previous version and 91.4% with no skill. Only this version pointed from
 a reason to the issue that records it (both runs, against none for the others). The
 skill also did better at telling the user a reason was missing, and cost about the
 same. Runs with and without it sometimes reworded an accurate docstring. These are
@@ -106,7 +106,9 @@ command.
 ## What it does not claim
 
 - **That it makes later work better.** In a six-step pilot on a real project, this
-  skill did no better than a one-sentence instruction to keep comments accurate.
+  skill did no better than one general sentence added to the task ("Keep the
+  codebase clean: reuse what already exists, change only what the feature needs, and
+  don't rewrite working code").
   See the [pilot report](../../docs/evaluation/pilot-report-2026-11-08.md).
 - **That it catches every stale comment.** The lint finds names that no longer exist.
   It cannot tell whether a comment's description of behaviour is still true.
