@@ -271,6 +271,32 @@ def run_tests(root: Path) -> tuple[bool, str]:
     return result.returncode == 0, f"unittest exit {result.returncode}: {tail[0]}"
 
 
+def run_hidden_tests(out: Path, hidden: Path) -> tuple[bool, str]:
+    """Run tests the agent never saw against the run's repository.
+
+    ``hidden`` is a folder laid out like the repository (usually holding a
+    ``hidden_tests/`` package). Both are copied into a scratch folder, so the run's own
+    files are never changed, and every ``hidden_tests/test_*.py`` is run with unittest.
+    """
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "repo"
+        shutil.copytree(out, repo, ignore=shutil.ignore_patterns(*SKIP_DIRS))
+        shutil.copytree(hidden, repo, dirs_exist_ok=True)
+        package = repo / "hidden_tests"
+        if not package.is_dir():
+            return False, f"no hidden_tests/ folder in {hidden}"
+        (package / "__init__.py").touch()
+        result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "hidden_tests", "-t", "."],
+                                cwd=repo, capture_output=True, text=True, timeout=120, env=_env())
+    lines = (result.stderr or result.stdout).strip().splitlines()
+    failures = [line for line in lines if line.startswith(("FAIL:", "ERROR:"))]
+    detail = "; ".join(failures[:3]) or (lines[-1] if lines else "")
+    return result.returncode == 0, f"hidden tests exit {result.returncode}: {detail}"
+
+
 def run_snippet(root: Path, code: str) -> tuple[object, str]:
     """Run Python code in root; it must print one JSON value on its last line."""
     result = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True,

@@ -120,6 +120,24 @@ class HarnessTest(unittest.TestCase):
         grading = json.loads((run / "grading.json").read_text(encoding="utf-8"))
         self.assertIn("ruled by hand", grading["expectations"][2]["evidence"])
 
+    def test_shipped_skill_arm_reads_the_shipped_skill(self):
+        entries = harness.prepare("toy", "it-1", ["shipped_skill"], 1, None, False)
+        self.assertIn("skill-snapshot/code-comments/SKILL.md", entries[0]["prompt"])
+        snapshot = self.home / "toy" / "eval" / "iterations" / "it-1" / "skill-snapshot" / "code-comments"
+        self.assertEqual((snapshot / "SKILL.md").read_text(encoding="utf-8"),
+                         (harness.SHIPPED / "SKILL.md").read_text(encoding="utf-8"))
+        with self.assertRaises(SystemExit):
+            harness.prepare("toy", "it-1", ["nope"], 1, None, False)
+
+    def test_focus_is_reported(self):
+        _write(self.home / "toy" / "eval" / "cases" / "raise-limit" / "graders" / "03-check.md",
+               "---\ntype: llm\nfocus: reply\n---\n\nThe reply says done.\n")
+        self.assertEqual([g["focus"] for g in harness.graders("toy", "raise-limit")], ["core", "core", "reply"])
+        harness.prepare("toy", "it-1", ["without_skill"], 1, None, False)
+        bench = harness.grade_iteration("toy", "it-1")
+        self.assertEqual(bench["arms"]["without_skill"]["by_focus"]["reply"], [0, 1])
+        self.assertEqual(bench["arms"]["without_skill"]["by_focus"]["core"], [1, 2])
+
     def test_held_out_split(self):
         self.assertEqual(harness.case_names("toy", "train"), ["raise-limit"])
         _write(self.home / "toy" / "eval" / "cases" / "raise-limit" / "case.yaml",
@@ -152,6 +170,22 @@ class HarnessTest(unittest.TestCase):
 
 
 class GradelibTest(unittest.TestCase):
+    def test_hidden_tests_run_on_a_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out, hidden = Path(tmp, "out"), Path(tmp, "hidden")
+            _write(out / "pkg" / "__init__.py", "")
+            _write(out / "pkg" / "calc.py", "def double(x):\n    return x * 2\n")
+            _write(hidden / "hidden_tests" / "test_calc.py",
+                   "import unittest\nfrom pkg.calc import double\n\n"
+                   "class T(unittest.TestCase):\n    def test_double(self):\n        self.assertEqual(double(3), 6)\n")
+            ok, evidence = gradelib.run_hidden_tests(out, hidden)
+            self.assertTrue(ok, evidence)
+            self.assertFalse((out / "hidden_tests").exists())
+            _write(out / "pkg" / "calc.py", "def double(x):\n    return x + 2\n")
+            ok, evidence = gradelib.run_hidden_tests(out, hidden)
+            self.assertFalse(ok)
+            self.assertIn("test_double", evidence)
+
     def test_slash_comments_skip_strings(self):
         source = 'const url = "http://x"; // real comment\n/** Block\n * line two */\nlet a = 1;\n'
         with tempfile.TemporaryDirectory() as tmp:

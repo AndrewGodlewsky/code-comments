@@ -50,9 +50,23 @@ python incubator/harness.py summary SKILL iteration-1-haiku iteration-1-sonnet
 its grades. It copies each case's `files/` into a fresh `outputs/` folder per run. It
 writes the exact prompt for each run to `runs.json` and `prompt.txt`. The prompt
 follows the hygiene eval's wording:
-- **with_skill** runs must read the snapshot `SKILL.md` first.
-- **reminder** runs get one sentence from `arms.json` added to the request.
+- **with_skill** runs must read the snapshot of the new skill's `SKILL.md` first.
+- **shipped_skill** runs must read a snapshot of the shipped `code-comments` skill first.
+  This arm asks whether the new skill adds anything the existing one does not.
+- **reminder** runs get one sentence from `arms.json` added to the request. The pilot
+  found one general sentence as good as the full skill downstream, so a new skill has to
+  beat this arm, not just the bare model.
 - **without_skill** runs get the request alone.
+
+Each grader's frontmatter sets a `focus`:
+- `core`: the target behaviour, graded by hidden tests where it can be. Hidden tests live
+  in `eval/hidden/<case>/hidden_tests/`. The agent never sees them, and
+  `gradelib.run_hidden_tests` runs them on a copy of the run.
+- `preservation`, `restraint`: what must not be damaged or added.
+- `reply`: what the message to the user says. These are mostly keyword checks.
+
+The benchmark reports each focus separately, so a keyword check on the reply cannot
+carry the headline on its own.
 
 `verify-reads` reads the agent transcripts and lists any with-skill run that did not
 read the skill before its first edit. Exclude and re-run those.

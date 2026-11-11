@@ -23,8 +23,13 @@ Commands:
 not change what a run read, copies each case's ``files/`` into
 ``<case>/<arm>/run-K/outputs/``, and writes ``runs.json``: one entry per run, with the
 exact prompt to give the agent that does the task. Arms: ``with_skill`` (read the
-snapshot first), ``reminder`` (no skill; the request ends with the sentence in
-``arms.json``) and ``without_skill``.
+snapshot of this skill first), ``shipped_skill`` (read a snapshot of the shipped
+code-comments skill first: does the new skill add anything it does not?), ``reminder``
+(no skill; the request ends with the sentence in ``arms.json``) and ``without_skill``.
+
+Each grader file's frontmatter may set ``focus``: ``core`` (the default), ``preservation``,
+``restraint`` or ``reply``. The benchmark reports each focus separately, so a reply checked
+by keyword does not hide inside the headline.
 
 ``grade`` writes each run's ``grading.json``, ``changes.diff`` and a copy of its reply
 (``RESPONSE.md``), then ``benchmark.json`` and ``benchmark.md`` for the iteration. A run
@@ -51,7 +56,11 @@ sys.path.insert(0, str(HERE))
 
 import gradelib  # noqa: E402
 
-ARMS = ("with_skill", "reminder", "without_skill")
+ARMS = ("with_skill", "shipped_skill", "reminder", "without_skill")
+SKILL_ARMS = ("with_skill", "shipped_skill")
+# The shipped hygiene skill. Its arm asks whether the new skill adds anything the
+# existing one does not already produce.
+SHIPPED = ROOT / "plugins" / "code-comments" / "skills" / "code-comments"
 
 
 # ------------------------------------------------------------------ discovery
@@ -103,11 +112,24 @@ def _frontmatter_split(body: str) -> tuple[str, str]:
     return "", body
 
 
-def statements(skill: str, case: str) -> list[str]:
-    texts = []
+FOCUSES = ("core", "preservation", "restraint", "reply")
+
+
+def graders(skill: str, case: str) -> list[dict]:
+    """Each grader file's statement and its ``focus`` (core, preservation, restraint or
+    reply; default core). Reply checks read the message to the user, usually by keyword,
+    so they are reported apart from the checks on the repository."""
+    items = []
     for path in sorted((eval_dir(skill) / "cases" / case / "graders").glob("*.md")):
-        texts.append(_frontmatter_split(gradelib.text(path))[1].strip())
-    return texts
+        head, body = _frontmatter_split(gradelib.text(path))
+        match = re.search(r"^focus:\s*([a-z-]+)\s*$", head, re.M)
+        focus = match.group(1) if match and match.group(1) in FOCUSES else "core"
+        items.append({"text": body.strip(), "focus": focus})
+    return items
+
+
+def statements(skill: str, case: str) -> list[str]:
+    return [g["text"] for g in graders(skill, case)]
 
 
 def task(skill: str, case: str) -> str:
@@ -118,12 +140,13 @@ def task(skill: str, case: str) -> str:
 
 
 def grade(skill: str, out: Path, case: str, checks: dict, overrides: dict | None = None) -> dict:
-    texts, fns = statements(skill, case), checks[case]
-    if len(texts) != len(fns):
-        raise SystemExit(f"{skill}/{case}: {len(texts)} grader files but {len(fns)} checks")
+    items, fns = graders(skill, case), checks[case]
+    if len(items) != len(fns):
+        raise SystemExit(f"{skill}/{case}: {len(items)} grader files but {len(fns)} checks")
     orig = eval_dir(skill) / "cases" / case / "files"
     expectations = []
-    for text, check in zip(texts, fns):
+    for item, check in zip(items, fns):
+        text = item["text"]
         try:
             passed, evidence = check(out, orig)
         except Exception as error:  # a broken run must not stop the grading of the rest
@@ -132,7 +155,7 @@ def grade(skill: str, out: Path, case: str, checks: dict, overrides: dict | None
             ruling = overrides[text]
             evidence = f"override: {ruling.get('evidence', '')} (check said {passed}: {evidence})"
             passed = bool(ruling["passed"])
-        expectations.append({"text": text, "passed": bool(passed), "evidence": evidence})
+        expectations.append({"text": text, "focus": item["focus"], "passed": bool(passed), "evidence": evidence})
     n = sum(e["passed"] for e in expectations)
     total = len(expectations)
     return {"expectations": expectations,
@@ -201,7 +224,7 @@ def lint(skill: str) -> list[str]:
 def subject_prompt(outputs: Path, request: str, arm: str, skill_md: Path, reminder: str) -> str:
     parts = [f"You are working in the repository at {outputs.as_posix()}"]
     exception = ""
-    if arm == "with_skill":
+    if arm in SKILL_ARMS:
         parts.append(f"Your first action must be to read {skill_md.as_posix()} in full. Then follow it.")
         exception = (", with one exception: reading the skill folder named above, and running any script "
                      "it tells you to run from that folder, is required and allowed even though it is "
@@ -216,9 +239,8 @@ def subject_prompt(outputs: Path, request: str, arm: str, skill_md: Path, remind
     return "\n\n".join(parts)
 
 
-def _snapshot(skill: str, iteration: Path) -> Path:
-    source = skill_dir(skill)
-    target = iteration / "skill-snapshot" / skill
+def _snapshot(source: Path, iteration: Path) -> Path:
+    target = iteration / "skill-snapshot" / source.name
     if target.exists():
         same = all((target / p.relative_to(source)).is_file()
                    and gradelib.text(target / p.relative_to(source)) == gradelib.text(p)
@@ -235,7 +257,14 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
     iteration = eval_dir(skill) / "iterations" / iteration_name
     iteration.mkdir(parents=True, exist_ok=True)
     reminder = json.loads(gradelib.text(eval_dir(skill) / "arms.json"))["reminder"]
-    snapshot = _snapshot(skill, iteration) if "with_skill" in arms else None
+    unknown = [a for a in arms if a not in ARMS]
+    if unknown:
+        raise SystemExit(f"unknown arms {unknown}; choose from {list(ARMS)}")
+    skill_md = {}
+    if "with_skill" in arms:
+        skill_md["with_skill"] = (_snapshot(skill_dir(skill), iteration) / "SKILL.md").resolve()
+    if "shipped_skill" in arms:
+        skill_md["shipped_skill"] = (_snapshot(SHIPPED, iteration) / "SKILL.md").resolve()
     entries = []
     for case in cases or case_names(skill, split):
         source = eval_dir(skill) / "cases" / case / "files"
@@ -252,7 +281,7 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
                     shutil.rmtree(run)
                 shutil.copytree(source, outputs)
                 prompt = subject_prompt(outputs.resolve(), task(skill, case), arm,
-                                        (snapshot / "SKILL.md").resolve() if snapshot else Path(), reminder)
+                                        skill_md.get(arm, Path()), reminder)
                 (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
                 entries.append({"id": f"{skill}/{iteration_name}/{case}/{arm}/run-{k}", "skill": skill,
                                 "iteration": iteration_name, "case": case, "arm": arm, "run": k,
@@ -298,7 +327,10 @@ def grade_iteration(skill: str, iteration_name: str) -> dict:
         (run / "changes.diff").write_text(_diff(eval_dir(skill) / "cases" / case / "files", out), encoding="utf-8")
         if result["replied"]:
             shutil.copyfile(out / "RESPONSE.md", run / "RESPONSE.md")
+        by_focus = {f: [sum(e["passed"] for e in result["expectations"] if e["focus"] == f),
+                        sum(1 for e in result["expectations"] if e["focus"] == f)] for f in FOCUSES}
         rows.append({"case": case, "arm": arm, "run": run.name, **result["summary"], "replied": result["replied"],
+                     "by_focus": by_focus,
                      "failed_checks": [e["text"] for e in result["expectations"] if not e["passed"]]})
     benchmark = _benchmark(skill, iteration_name, rows)
     (iteration / "benchmark.json").write_text(json.dumps(benchmark, indent=2) + "\n", encoding="utf-8")
@@ -315,7 +347,10 @@ def _benchmark(skill: str, iteration_name: str, rows: list[dict]) -> dict:
         by_arm[arm] = {"runs": len(rates), "mean_pass_rate": round(statistics.mean(rates), 4) if rates else None,
                        "checks_passed": sum(r["passed"] for r in rows if r["arm"] == arm),
                        "checks_total": sum(r["total"] for r in rows if r["arm"] == arm),
-                       "no_reply": sum(not r["replied"] for r in rows if r["arm"] == arm)}
+                       "no_reply": sum(not r["replied"] for r in rows if r["arm"] == arm),
+                       "by_focus": {f: [sum(r["by_focus"][f][0] for r in rows if r["arm"] == arm),
+                                        sum(r["by_focus"][f][1] for r in rows if r["arm"] == arm)]
+                                    for f in FOCUSES}}
     cases = sorted({r["case"] for r in rows})
     per_case = {case: {arm: [f"{r['passed']}/{r['total']}" for r in rows if r["case"] == case and r["arm"] == arm]
                        for arm in arms} for case in cases}
@@ -333,10 +368,15 @@ def _benchmark(skill: str, iteration_name: str, rows: list[dict]) -> dict:
 def _benchmark_md(b: dict) -> str:
     arms = list(b["arms"])
     lines = [f"# {b['skill']}: {b['iteration']}", "", "Pass rate is the mean of each run's share of checks passed.", "",
-             "| Arm | Runs | Mean pass rate | Checks passed | Runs with no reply |", "| --- | --- | --- | --- | --- |"]
+             "Core, preservation, restraint and reply are the checks passed with that `focus`, summed over runs. "
+             "Reply checks read the message to the user, mostly by keyword.", "",
+             "| Arm | Runs | Mean pass rate | Checks passed | Core | Preservation | Restraint | Reply | No reply |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for arm, s in b["arms"].items():
         rate = "n/a" if s["mean_pass_rate"] is None else f"{100 * s['mean_pass_rate']:.1f}%"
-        lines.append(f"| {arm} | {s['runs']} | {rate} | {s['checks_passed']}/{s['checks_total']} | {s['no_reply']} |")
+        focus = " | ".join(f"{p}/{t}" if t else "-" for p, t in (s["by_focus"][f] for f in FOCUSES))
+        lines.append(f"| {arm} | {s['runs']} | {rate} | {s['checks_passed']}/{s['checks_total']} | {focus} "
+                     f"| {s['no_reply']} |")
     lines += ["", "## Per case (checks passed per run)", "", "| Case | " + " | ".join(arms) + " |",
               "| --- |" + " --- |" * len(arms)]
     for case, cells in b["per_case"].items():
@@ -370,7 +410,7 @@ def verify_reads(skill: str, iteration_name: str, transcript_dirs: list[Path]) -
     """For every with_skill run, find the agent transcript that did it and check that the
     agent read the snapshot SKILL.md before editing anything."""
     iteration = eval_dir(skill) / "iterations" / iteration_name
-    entries = [e for e in json.loads(gradelib.text(iteration / "runs.json")) if e["arm"] == "with_skill"]
+    entries = [e for e in json.loads(gradelib.text(iteration / "runs.json")) if e["arm"] in SKILL_ARMS]
     wanted = {_norm(e["outputs"]): e["id"] for e in entries}
     found: dict[str, dict] = {}
     for directory in transcript_dirs:
