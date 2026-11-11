@@ -1,0 +1,16 @@
+# Portal limits and schedules
+
+## Search
+
+Search returns 100 results per page.
+
+## Address lookups
+
+Address lookups go to the Mapline geocoding API.
+Mapline's free tier allows 100 requests a minute per API key.
+A lookup gives up after 10 seconds.
+
+## Account export
+
+The account export runs nightly at 02:00 UTC.
+Deleted accounts are left out of the export, as section 4 of the privacy policy requires.

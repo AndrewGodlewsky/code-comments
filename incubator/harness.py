@@ -270,7 +270,7 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
         source = eval_dir(skill) / "cases" / case / "files"
         (iteration / case).mkdir(exist_ok=True)
         meta = {"eval_name": case, "prompt": task(skill, case), "assertions": statements(skill, case)}
-        (iteration / case / "eval_metadata.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        (iteration / case / "eval_metadata.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
         for arm in arms:
             for k in range(first_run, first_run + n_runs):
                 run = iteration / case / arm / f"run-{k}"
@@ -282,14 +282,14 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
                 shutil.copytree(source, outputs)
                 prompt = subject_prompt(outputs.resolve(), task(skill, case), arm,
                                         skill_md.get(arm, Path()), reminder)
-                (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
+                (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8", newline="\n")
                 entries.append({"id": f"{skill}/{iteration_name}/{case}/{arm}/run-{k}", "skill": skill,
                                 "iteration": iteration_name, "case": case, "arm": arm, "run": k,
                                 "outputs": outputs.resolve().as_posix(), "prompt": prompt})
     index = iteration / "runs.json"
     existing = json.loads(gradelib.text(index)) if index.is_file() else []
     keep = [e for e in existing if e["id"] not in {x["id"] for x in entries}]
-    index.write_text(json.dumps(keep + entries, indent=2) + "\n", encoding="utf-8")
+    index.write_text(json.dumps(keep + entries, indent=2) + "\n", encoding="utf-8", newline="\n")
     return entries
 
 
@@ -323,8 +323,8 @@ def grade_iteration(skill: str, iteration_name: str) -> dict:
         overrides = json.loads(gradelib.text(overrides_path)) if overrides_path.is_file() else None
         result = grade(skill, out, case, checks, overrides)
         result["replied"] = (out / "RESPONSE.md").is_file()
-        (run / "grading.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-        (run / "changes.diff").write_text(_diff(eval_dir(skill) / "cases" / case / "files", out), encoding="utf-8")
+        (run / "grading.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n")
+        (run / "changes.diff").write_text(_diff(eval_dir(skill) / "cases" / case / "files", out), encoding="utf-8", newline="\n")
         if result["replied"]:
             shutil.copyfile(out / "RESPONSE.md", run / "RESPONSE.md")
         by_focus = {f: [sum(e["passed"] for e in result["expectations"] if e["focus"] == f),
@@ -333,8 +333,8 @@ def grade_iteration(skill: str, iteration_name: str) -> dict:
                      "by_focus": by_focus,
                      "failed_checks": [e["text"] for e in result["expectations"] if not e["passed"]]})
     benchmark = _benchmark(skill, iteration_name, rows)
-    (iteration / "benchmark.json").write_text(json.dumps(benchmark, indent=2) + "\n", encoding="utf-8")
-    (iteration / "benchmark.md").write_text(_benchmark_md(benchmark), encoding="utf-8")
+    (iteration / "benchmark.json").write_text(json.dumps(benchmark, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (iteration / "benchmark.md").write_text(_benchmark_md(benchmark), encoding="utf-8", newline="\n")
     return benchmark
 
 
