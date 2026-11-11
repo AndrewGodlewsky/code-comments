@@ -2,11 +2,12 @@
 
 **Status: evaluated. It does not beat the one-line reminder.** Over 165 graded runs on
 Claude Haiku and Sonnet, the skill ties the reminder sentence in
-[eval/arms.json](eval/arms.json) on every graded check, in training and on the held-out
-cases. It beat the shipped `code-comments` skill only on Haiku's training cases, mostly in
-one case, and tied it on Sonnet and on the held-out pair. By this incubator's rule, the
-honest recommendation is the sentence, not this skill. Results are in
-[eval/RESULTS.md](eval/RESULTS.md), and the samples are small (see Limits).
+[eval/arms.json](eval/arms.json) on every graded check (after an auditor agent's rulings),
+in training and on the held-out cases. It beat the shipped `code-comments` skill only on
+Haiku's training cases, mostly in one case, and tied it on Sonnet and on the held-out
+pair. As this README said before the runs, a tie means the honest recommendation is the
+sentence, not this skill. Results are in [eval/RESULTS.md](eval/RESULTS.md), and the
+samples are small (see Limits).
 
 An incubator skill for issue [#50](https://github.com/AndrewGodlewsky/code-comments/issues/50),
 from ideation candidate C2 ([candidates](../ideation/2026-11-11-candidates.json)). The
@@ -182,9 +183,9 @@ python incubator/harness.py grade verify-before-relying --iteration heldout-haik
 python incubator/harness.py summary verify-before-relying iteration-1-haiku iteration-1-sonnet iteration-2-haiku iteration-2-sonnet heldout-haiku heldout-sonnet
 ```
 
-Each step was repeated with a `-sonnet` iteration (2 runs per cell; 1 for the gate). `verify-reads` lists
-any skill-arm run that edited before reading its skill; exclude and re-run those. Model
-runs cost money, and each campaign needs the user's approval first
+Each step was repeated with a `-sonnet` iteration (2 runs per cell; 1 for the gate).
+`verify-reads` lists any skill-arm run that edited before reading its skill; exclude and
+re-run those. Model runs cost money, and each campaign needs the user's approval first
 ([intent.md](../../intent.md), "Decisions still open").
 
 ## Results
@@ -204,15 +205,16 @@ the rulings are in [eval/RESULTS.md](eval/RESULTS.md); the reasoning is in
 
 What the numbers say:
 - **A tie with the reminder.** The sentence matched the skill on every graded check in
-  every iteration. Before the auditor's rulings, it scored one check higher on Haiku's
-  training cases (95/96 against 94/96).
+  every iteration that ran both. Before the auditor's rulings, it scored one check higher
+  on Haiku's training cases (95/96 against 94/96).
 - **A narrow lead over the shipped skill, on one model.** On Haiku's training cases the
   shipped skill noticed the real error in `request-quotes-stale-docstring`, built only the
   None check and asked permission for the rest (hidden tests 0/3, against 3/3 for the
   skill). It also damaged the synced doc in 2 of 3 runs. On Sonnet and on the held-out pair
   the shipped skill scored 100%.
 - **The hidden tests never favoured the skill over the bare model.** The bare model built
-  correct new code in every run of every case (training 20/20, held out 10/10). The skill's
+  correct new code in every run of every case with hidden tests (training 20/20, held out
+  10/10). The skill's
   whole gain over the bare model is on text checks: it corrected false descriptions (15 of
   15 runs against 4 of 15) and kept a requirement and a vendor fact in the doc sync (privacy
   5/5 against 2/5, quota 5/5 against 1/5). The reminder did the same.
@@ -228,56 +230,99 @@ What the numbers say:
 
 ## Limits
 
-- **Headroom may be small.** Xu and Wu put the effect down to the instruction channel,
-  and docstrings arrive as tool output. Their one sentence raised code-following to
-  91.4%, and this eval's reminder sentence is even fuller. The reminder may tie.
-- **The shipped skill may tie.** Its "Treat existing comments as claims" line covers the
-  core of the description cases.
-- **One rule bears directly on one case.** The library-default rule comes from research
-  finding 7 (Python's decimal default is half-even), and `helper-docstring-lies` is built
-  on that fact. Its example list no longer names a rounding mode, and the case is now
-  held out, so no skill edit is tuned on it. A `with_skill` win there may still owe more
-  to this one line than to the rest of the skill.
-- **The core column mixes two kinds of check.** Hidden tests measure what this skill
-  adds; text checks on corrections measure what the shipped skill also asks for. The
-  harness's focus labels are shared by every incubator skill, so read the two apart in
-  the per-check table (next steps, step 2).
+Of the eval:
+- **Few runs.** 2 or 3 runs per cell detect only large effects: 3/3 against 0/3 has a
+  two-sided Fisher exact p of 0.10, and 2/2 against 0/2 has 0.33. Three arms sit at the
+  ceiling in most cells, so the eval cannot rank them. A gap smaller than one failed run
+  in 15 would not show.
+- **Small fixtures.** Seven small Python cases of a few files each. In a real repository
+  the claim and the evidence against it can sit much further apart.
+- **One model family.** Claude Haiku and Sonnet only.
+- **Cases built by agents.** Every case, reference and hidden test was written by an
+  agent. None comes from a real repository or a user's report.
+- **Rulings made by an agent.** An auditor agent, not a human, made all seven rulings. Four
+  of them moved `with_skill` runs from fail to pass, and the tie with the reminder depends
+  on them (before them the reminder led by one check on Haiku).
+- **Reply checks are keyword heuristics** with known gaps. The cents reply check passes a
+  reply that reports the conflict but does not say which side is right. The false-alarm
+  check misses a negation more than three words away. The quota reply check only looks for
+  its keywords anywhere in the reply. Details in [eval/RESULTS.md](eval/RESULTS.md).
+- **Gate-based case selection.** A bare-model gate ran first on all seven cases, the
+  held-out pair included, and the request pair was hardened afterwards to leave room for a
+  gain ([eval/GATE.md](eval/GATE.md)). That favours cases where the bare model falls
+  short, which can widen the gap over the bare model. It does not favour the skill over the
+  reminder or the shipped skill.
+- **Prompt read from a file.** The agents read their task from a prompt file instead of
+  receiving it as a user's message, which is not how real requests arrive.
+- **Activation is untested.** The eval tells the agent to read the skill first, so it says
+  nothing about whether the description makes the skill load on its own. On its own, the
+  shipped skill loaded in 0 of 18 Haiku and 3 of 18 Sonnet runs, and requests rarely say
+  "check the docstring".
+- **The hidden tests had no headroom.** The bare model built correct new code in every
+  counted run of every case. So the eval never tested the skill's central claim, that it
+  stops new code being built on a false claim, in a setting where the bare model fails.
+  The gate's one such failure (Sonnet in `stale-cents-comment`) did not recur.
+- **The held-out pair is spent.** It was run once, on v2. It cannot judge a later version.
+
+Of the skill:
 - **Building on the code can be programming by coincidence.** The Pragmatic Programmer
   says to rely only on documented behaviour. When no test pins the behaviour, the skill
   asks the agent to state its assumption. That reports the risk; it does not remove it.
-- **Paranoia is the main cost.** Most claims are true (CASCADE: 814 consistent pairs to
-  71 inconsistent ones). The twins measure over-distrust only on these three requests.
+- **Paranoia is a possible cost, not seen here.** Most claims are true (CASCADE: 814
+  consistent pairs to 71 inconsistent ones). Every run of the three true twins passed in
+  every arm, but the twins measure over-distrust only on these three requests.
+- **The library-default rule changed no outcome.** `helper-docstring-lies` rests on
+  Decimal's half-even default, but every arm found it through the visible test that pins
+  it.
 - **Sorting claims by wording is a heuristic.** Real docs mix description and requirement
-  in one sentence.
-- **Activation is untested.** The eval tells the agent to read the skill. On its own the
-  shipped skill loaded in 0 of 18 Haiku and 3 of 18 Sonnet runs, and requests rarely say
-  "check the docstring".
-- **Verifying costs tokens.** That cost is unmeasured. The hygiene skill added about 6%.
-- **Small evidence base**: seven small Python cases, few runs, one model family.
+  in one sentence. The mixed-sentence rule (*judgement*) kept a false description in the
+  synced doc in every `with_skill` run.
+- **Cost.** Tokens were not measured. `with_skill` replies ran 15 to 19% longer than the
+  bare model's on the training cases.
 
 ## Next steps
 
-1. **Run the gate** (`without_skill`, training split, Haiku and Sonnet). A case every
-   bare run passes cannot discriminate. `stale-cents-comment` and, on Sonnet,
-   `request-quotes-stale-docstring` are the likeliest to sit at ceiling; harden or drop
-   such cases before running the other arms ([eval/CASES.md](eval/CASES.md), Headroom).
-2. **Run all four arms** on the training cases, then read the per-focus columns, not only
-   the headline. In the per-check table of `benchmark.md`, read the hidden-test rows
-   (statements starting "Hidden tests pass") apart from the core text checks on
-   corrections and kept rules, listed in [eval/CASES.md](eval/CASES.md). The hidden tests
-   carry the `shipped_skill` against `with_skill` question. Weight both over reply
-   keywords.
-3. **Count the noticed-but-followed runs** by hand: runs whose reply flags the false claim
-   but whose hidden test fails. This is Xu and Wu's pattern, and the benchmark does not
-   separate it.
-4. **Decide the deliverable.** If `shipped_skill` ties, record this as a variant finding
-   for #21/#48. If `reminder` ties, recommend the sentence. Publish either result.
-5. **Run the held-out pair once**, after the last skill edit.
-6. **Check the probe rule** in transcripts: count runs where a probe changed the outcome,
-   and runs that left files behind. A static docstring checker stays deferred until
-   transcripts show misses it would catch.
-7. **Settle the open policy question** with the user: correct an unasked-for false
-   docstring, or only report it. The skill corrects descriptions, following the
-   coordinator's direction.
-8. **Before any shipping decision**, run an activation eval on the description, and add
-   the reserve cases from [eval/CASES.md](eval/CASES.md), each with a true twin.
+The gate, the four-arm run, the noticed-but-followed count and the held-out run are done.
+In order:
+
+1. **Put the deliverable to the user.** The data supports recommending the reminder
+   sentence in [eval/arms.json](eval/arms.json), not this skill. Record it as a variant
+   finding for #21 and #48: the shipped skill tied this skill on Sonnet and on the held-out
+   pair. Do not move the skill into a plugin unless the user decides otherwise.
+2. **Report the shipped-skill result to its owners.** On Haiku in
+   `request-quotes-stale-docstring`, the shipped skill noticed the real ValueError, built
+   only the None check and asked permission (hidden tests 0/3; the bare model passed 3/3).
+   The run folders are `eval/iterations/iteration-1-haiku/request-quotes-stale-docstring/shipped_skill/run-{1,2,3}/`.
+   The cause, its scope and ask-first guidance, is a hypothesis. Test it with a targeted
+   eval of the shipped skill before changing it.
+3. **Test the `-B` line on its own.** It is the skill's only consistent edge. First ask the
+   user whether bytecode caches should count as stray files; the graders skip them for
+   every incubator skill (`gradelib.SKIP_DIRS`). If they should, run the reminder with one
+   added sentence about `python -B` against `with_skill`.
+4. **Fix the reply heuristics in `eval/grade.py`.**
+   - `stale-cents-comment` 06: read the sentence before the quote too; accept "say
+     otherwise" and "a false description"; stop counting "really"; and fail a reply that
+     reports the conflict without saying which side is right.
+   - The `06` false-alarm checks: count a sentence-initial negation ("No claims ... were
+     false").
+   - `docs-sync-keeps-requirements` 08: require 250 and 100 in one sentence that compares
+     them.
+
+   Then run `self-test`, re-grade every iteration, and check that each `overrides.json`
+   still agrees with its check or can be removed.
+5. **Build cases with hidden-test headroom before any more skill edits.** Only a case where
+   the bare model builds on a false claim can test the skill's main claim. Candidates are
+   the reserve cases in [eval/CASES.md](eval/CASES.md) and the hardening option for
+   `helper-docstring-lies` in [eval/GATE.md](eval/GATE.md) (move the half-even pin into a
+   ledger test). Gate each on the bare model and keep only those with hidden-test failures.
+   Build a fresh held-out pair, since this one is spent.
+6. **Settle "premise".** v2 still calls a comment's claim "the premise" in 2 of 10 Haiku
+   runs of the cents cases. All 5 held-out `with_skill` replies use it for a claim the
+   request implies but does not state. Decide whether an implied claim counts, then reword
+   the rule or drop the word.
+7. **Settle two policy questions with the user:** whether to correct an unasked-for false
+   docstring or only report it (the bare model left a false description in place in 11 of
+   15 runs, and reported the conflict in each of them), and whether a sentence mixing a
+   description with a requirement should stay whole.
+8. **Before any shipping decision**, run an activation eval on the description, run 5 or
+   more runs per cell, and add a model outside the Claude family.

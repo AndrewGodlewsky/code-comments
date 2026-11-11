@@ -187,12 +187,14 @@ The skill is instructions only. Each rule is traced to a source or labelled a hy
    and state the assumption in the reply. Hypothesis.
 8. **If the user's request repeats a false claim,** deliver what the user plainly wants and say
    first that the premise is wrong, with file:line (S6, S1). That this transfers to code is a
-   hypothesis.
+   hypothesis. *Eval note: v2 of the skill dropped "file:line" because v1's line citations
+   were sometimes impossible; see [eval/CHANGES.md](eval/CHANGES.md).*
 9. **Trust a true claim.** Leave it word for word. Add no defensive conversion and no confirmation
    question, and never call it stale (S9, S16, S20). karpathy-guidelines' "If uncertain, ask" (S21)
    pulls the other way, but a claim that checks out is not uncertain.
 10. **Report each false claim** with file:line and what the code really does (S1). Add no comment
-    beyond the correction (S16).
+    beyond the correction (S16). *Eval note: v2 locates each claim by file and the function,
+    constant or heading it sits in, not by line; see [eval/CHANGES.md](eval/CHANGES.md).*
 
 ## What this means for the eval
 
