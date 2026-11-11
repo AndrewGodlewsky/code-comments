@@ -21,11 +21,14 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ROOT / "skill-variants"
 PRINCIPLES = ROOT / "docs/skill/principles.md"
-# Case text a skill must not copy: the skill eval, plus the hygiene eval's cases and references.
+# Case text a skill must not copy: the skill eval, the hygiene eval's cases and references,
+# and every incubator skill's cases, references and hidden tests (#50).
 CASES = (
     ROOT / "evaluation/skill_eval/cases",
     ROOT / "evaluation/hygiene/cases",
     ROOT / "evaluation/hygiene/references",
+    *sorted(path for part in ("cases", "references", "hidden")
+            for path in (ROOT / "incubator").glob(f"*/eval/{part}")),
 )
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 ALLOWED_KEYS = {"name", "description", "license", "compatibility", "metadata"}
