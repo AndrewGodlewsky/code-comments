@@ -15,7 +15,8 @@ Commands:
     python incubator/harness.py self-test [SKILL ...]     references pass every check; inputs fail one
     python incubator/harness.py lint [SKILL ...]          skill format, portability, no copied case text
     python incubator/harness.py prepare SKILL --iteration NAME [--arms ...] [--runs N] [--cases ...] [--fresh]
-    python incubator/harness.py grade SKILL --iteration NAME
+                                        [--split all|train|held-out] [--first-run K]
+    python incubator/harness.py grade SKILL --iteration NAME [--force]
     python incubator/harness.py summary SKILL NAME [NAME ...]
     python incubator/harness.py verify-reads SKILL --iteration NAME TRANSCRIPT_DIR [...]
 
@@ -32,7 +33,11 @@ Each grader file's frontmatter may set ``focus``: ``core`` (the default), ``pres
 by keyword does not hide inside the headline.
 
 ``grade`` writes each run's ``grading.json``, ``changes.diff`` and a copy of its reply
-(``RESPONSE.md``), then ``benchmark.json`` and ``benchmark.md`` for the iteration. A run
+(``RESPONSE.md``), then ``benchmark.json`` and ``benchmark.md`` for the iteration. It
+needs every listed run's ``outputs/``, which is gitignored, so it refuses on a clone. It
+also refuses, unless ``--force``, when the case's ``files/`` or hidden tests differ from
+the fingerprint ``prepare`` stored in ``runs.json``, or when ``grade.py``, ``gradelib.py``
+or a grader file differs from the fingerprint in an existing ``benchmark.json``. A run
 directory may hold ``overrides.json`` ({grader text: {passed, evidence}}) to record a
 ruling on a heuristic check; the ruling and the check's own result both stay in the
 evidence.
@@ -41,7 +46,9 @@ evidence.
 from __future__ import annotations
 
 import argparse
+import ast
 import difflib
+import hashlib
 import importlib.util
 import json
 import re
@@ -101,14 +108,27 @@ def case_names(skill: str, split: str = "all") -> list[str]:
 
 
 def is_held_out(skill: str, case: str) -> bool:
+    """``held_out: true`` (or yes) in case.yaml. Any other value than true, yes, false or
+    no stops, so a typo cannot move a held-out case into training."""
     path = eval_dir(skill) / "cases" / case / "case.yaml"
-    return path.is_file() and re.search(r"^held_out:\s*true\s*$", gradelib.text(path), re.M) is not None
+    if not path.is_file():
+        return False
+    match = re.search(r"^held_out:\s*([^\s#]+)", gradelib.text(path), re.M)
+    if match is None:
+        return False
+    value = match.group(1).lower()
+    if value in ("true", "yes", "false", "no"):
+        return value in ("true", "yes")
+    raise SystemExit(f"{path}: held_out must be true or false, got {match.group(1)!r}")
 
 
-def _frontmatter_split(body: str) -> tuple[str, str]:
+def _frontmatter_split(body: str, where: str = "") -> tuple[str, str]:
+    body = body.lstrip("﻿")
     if body.startswith("---"):
-        _, head, rest = body.split("---", 2)
-        return head, rest
+        parts = body.split("---", 2)
+        if len(parts) < 3:
+            raise SystemExit(f"{where or 'a file'}: frontmatter opens with --- but never closes")
+        return parts[1], parts[2]
     return "", body
 
 
@@ -118,12 +138,15 @@ FOCUSES = ("core", "preservation", "restraint", "reply")
 def graders(skill: str, case: str) -> list[dict]:
     """Each grader file's statement and its ``focus`` (core, preservation, restraint or
     reply; default core). Reply checks read the message to the user, usually by keyword,
-    so they are reported apart from the checks on the repository."""
+    so they are reported apart from the checks on the repository. A focus outside these
+    four stops, so a typo cannot move a check into Core."""
     items = []
     for path in sorted((eval_dir(skill) / "cases" / case / "graders").glob("*.md")):
-        head, body = _frontmatter_split(gradelib.text(path))
-        match = re.search(r"^focus:\s*([a-z-]+)\s*$", head, re.M)
-        focus = match.group(1) if match and match.group(1) in FOCUSES else "core"
+        head, body = _frontmatter_split(gradelib.text(path), str(path))
+        match = re.search(r"^focus:\s*(\S+)", head, re.M)
+        focus = "core" if match is None else match.group(1).lower()
+        if focus not in FOCUSES:
+            raise SystemExit(f"{path}: focus {match.group(1)!r} is not one of {FOCUSES}")
         items.append({"text": body.strip(), "focus": focus})
     return items
 
@@ -133,16 +156,43 @@ def statements(skill: str, case: str) -> list[str]:
 
 
 def task(skill: str, case: str) -> str:
-    return _frontmatter_split(gradelib.text(eval_dir(skill) / "cases" / case / "prompt.md"))[1].strip()
+    path = eval_dir(skill) / "cases" / case / "prompt.md"
+    return _frontmatter_split(gradelib.text(path), str(path))[1].strip()
 
 
 # -------------------------------------------------------------------- grading
+
+
+def load_overrides(skill: str, case: str, path: Path) -> tuple[dict, list[str]]:
+    """Read one run's overrides.json. Return the rulings and a list of problems: keys that
+    match no grader text in the case, and rulings whose ``passed`` is not a JSON boolean
+    or whose ``evidence`` is not a string. A ruling whose grader was reworded would
+    otherwise stop applying without notice."""
+    try:
+        data = json.loads(gradelib.text(path))
+    except json.JSONDecodeError as error:
+        return {}, [f"{path}: not valid JSON: {error}"]
+    if not isinstance(data, dict):
+        return {}, [f"{path}: not a JSON object"]
+    texts = set(statements(skill, case))
+    problems = []
+    for key, ruling in data.items():
+        if key not in texts:
+            problems.append(f"{path}: ruling matches no grader text in {case}: {key[:80]!r}")
+        if not isinstance(ruling, dict) or not isinstance(ruling.get("passed"), bool):
+            problems.append(f"{path}: 'passed' must be a JSON true or false: {key[:80]!r}")
+        elif not isinstance(ruling.get("evidence", ""), str):
+            problems.append(f"{path}: 'evidence' must be a string: {key[:80]!r}")
+    return data, problems
 
 
 def grade(skill: str, out: Path, case: str, checks: dict, overrides: dict | None = None) -> dict:
     items, fns = graders(skill, case), checks[case]
     if len(items) != len(fns):
         raise SystemExit(f"{skill}/{case}: {len(items)} grader files but {len(fns)} checks")
+    unknown = sorted(set(overrides or {}) - {item["text"] for item in items})
+    if unknown:
+        raise SystemExit(f"{skill}/{case}: rulings match no grader text: {[k[:80] for k in unknown]}")
     orig = eval_dir(skill) / "cases" / case / "files"
     expectations = []
     for item, check in zip(items, fns):
@@ -153,8 +203,10 @@ def grade(skill: str, out: Path, case: str, checks: dict, overrides: dict | None
             passed, evidence = False, f"check raised {type(error).__name__}: {error}"
         if overrides and text in overrides:
             ruling = overrides[text]
+            if not isinstance(ruling.get("passed"), bool):
+                raise SystemExit(f"{skill}/{case}: ruling 'passed' must be a JSON true or false: {text[:80]!r}")
             evidence = f"override: {ruling.get('evidence', '')} (check said {passed}: {evidence})"
-            passed = bool(ruling["passed"])
+            passed = ruling["passed"]
         expectations.append({"text": text, "focus": item["focus"], "passed": bool(passed), "evidence": evidence})
     n = sum(e["passed"] for e in expectations)
     total = len(expectations)
@@ -164,14 +216,26 @@ def grade(skill: str, out: Path, case: str, checks: dict, overrides: dict | None
 
 
 def self_test(skill: str) -> list[str]:
-    """References must pass every check; the untouched inputs must fail at least one."""
+    """References must pass every check; the untouched inputs must fail at least one.
+    Every case's held_out value and every stored overrides.json must also be valid."""
     problems = []
     checks = load_checks(skill)
     cases = case_names(skill)
     if sorted(checks) != cases:
         problems.append(f"{skill}: cases {cases} but checks for {sorted(checks)}")
+    iterations = eval_dir(skill) / "iterations"
+    for path in sorted(iterations.rglob("overrides.json")) if iterations.is_dir() else []:
+        case = path.relative_to(iterations).parts[1]
+        if case not in cases:
+            problems.append(f"{path}: case {case!r} is not a case of {skill}")
+        else:
+            problems += load_overrides(skill, case, path)[1]
     for case in cases:
         folder = eval_dir(skill) / "cases" / case
+        try:
+            is_held_out(skill, case)
+        except SystemExit as error:
+            problems.append(str(error))
         for needed in ("prompt.md", "case.yaml", "place-files.sh", "files", "graders"):
             if not (folder / needed).exists():
                 problems.append(f"{skill}/{case}: missing {needed}")
@@ -210,11 +274,25 @@ def lint(skill: str) -> list[str]:
                 n = lint_skills.SHINGLE
                 shingles.update(tuple(words[i:i + n]) for i in range(len(words) - n + 1))
     problems += [f"{skill}: {hit}" for hit in lint_skills.leaked(directory, shingles)]
-    for script in directory.rglob("*.py"):
+    n = lint_skills.SHINGLE
+    for script in sorted(p for p in directory.rglob("*.py") if "__pycache__" not in p.parts):
+        rel = script.relative_to(directory).as_posix()
+        source = gradelib.text(script)
         try:
-            compile(gradelib.text(script), str(script), "exec")
+            compile(source, str(script), "exec")
+            tree = ast.parse(source)
         except SyntaxError as error:
-            problems.append(f"{skill}: {script.relative_to(directory).as_posix()} does not compile: {error}")
+            problems.append(f"{skill}: {rel} does not compile: {error}")
+            continue
+        # A skill-arm agent may read its scripts too. Check their comments, docstrings and
+        # string literals for copied case text, but not their code, so that a shared code
+        # idiom does not count as a copy.
+        parts = gradelib.prose(script) + [node.value for node in ast.walk(tree)
+                                          if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+        words = lint_skills._words("\n".join(parts))
+        hit = next((words[i:i + n] for i in range(len(words) - n + 1) if tuple(words[i:i + n]) in shingles), None)
+        if hit:
+            problems.append(f"{skill}: {rel}: shares eval case text near \"{' '.join(hit)}\"")
     return problems
 
 
@@ -239,17 +317,57 @@ def subject_prompt(outputs: Path, request: str, arm: str, skill_md: Path, remind
     return "\n\n".join(parts)
 
 
+def _skill_files(folder: Path) -> set[str]:
+    """A skill folder's files, leaving out the bytecode a run may write when it runs a
+    script from the snapshot."""
+    return {p.relative_to(folder).as_posix() for p in folder.rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"}
+
+
 def _snapshot(source: Path, iteration: Path) -> Path:
     target = iteration / "skill-snapshot" / source.name
     if target.exists():
-        same = all((target / p.relative_to(source)).is_file()
-                   and gradelib.text(target / p.relative_to(source)) == gradelib.text(p)
-                   for p in source.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+        rels = _skill_files(source)
+        same = rels == _skill_files(target) and all(
+            gradelib.text(target / rel) == gradelib.text(source / rel) for rel in rels)
         if not same:
             raise SystemExit(f"{target} differs from the current skill; use a new iteration name")
         return target
     shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
     return target
+
+
+def _hash_files(paths: dict[str, Path]) -> str:
+    """sha256 over (name, bytes) pairs in name order. Line endings are normalised, so a
+    checkout that turns LF into CRLF gives the same value."""
+    digest = hashlib.sha256()
+    for name in sorted(paths):
+        digest.update(name.encode("utf-8") + b"\0")
+        digest.update(paths[name].read_bytes().replace(b"\r\n", b"\n") + b"\0")
+    return digest.hexdigest()
+
+
+def _tree(folder: Path, prefix: str) -> dict[str, Path]:
+    if not folder.is_dir():
+        return {}
+    return {f"{prefix}/{p.relative_to(folder).as_posix()}": p for p in folder.rglob("*")
+            if p.is_file() and not any(part in gradelib.SKIP_DIRS for part in p.relative_to(folder).parts)}
+
+
+def inputs_fingerprint(skill: str, case: str) -> str:
+    """What a run starts from and is compared with: the case's files/ (copied into
+    outputs/ and diffed against) and its hidden tests."""
+    return _hash_files({**_tree(eval_dir(skill) / "cases" / case / "files", "files"),
+                        **_tree(eval_dir(skill) / "hidden" / case, "hidden")})
+
+
+def check_files(skill: str, cases: list[str]) -> dict[str, str]:
+    """sha256 of each file that decides a grade: grade.py, gradelib.py and the graders of
+    the given cases."""
+    paths = {"gradelib.py": Path(gradelib.__file__), "eval/grade.py": eval_dir(skill) / "grade.py"}
+    for case in cases:
+        paths.update(_tree(eval_dir(skill) / "cases" / case / "graders", f"eval/cases/{case}/graders"))
+    return {name: _hash_files({name: path}) for name, path in sorted(paths.items())}
 
 
 def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases: list[str] | None,
@@ -271,6 +389,7 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
         (iteration / case).mkdir(exist_ok=True)
         meta = {"eval_name": case, "prompt": task(skill, case), "assertions": statements(skill, case)}
         (iteration / case / "eval_metadata.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8", newline="\n")
+        fingerprint = inputs_fingerprint(skill, case)
         for arm in arms:
             for k in range(first_run, first_run + n_runs):
                 run = iteration / case / arm / f"run-{k}"
@@ -285,7 +404,8 @@ def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases
                 (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8", newline="\n")
                 entries.append({"id": f"{skill}/{iteration_name}/{case}/{arm}/run-{k}", "skill": skill,
                                 "iteration": iteration_name, "case": case, "arm": arm, "run": k,
-                                "outputs": outputs.resolve().as_posix(), "prompt": prompt})
+                                "outputs": outputs.resolve().as_posix(), "prompt": prompt,
+                                "inputs_fingerprint": fingerprint})
     index = iteration / "runs.json"
     existing = json.loads(gradelib.text(index)) if index.is_file() else []
     keep = [e for e in existing if e["id"] not in {x["id"] for x in entries}]
@@ -313,15 +433,71 @@ def iteration_runs(iteration: Path):
                     yield case_dir.name, arm_dir.name, run
 
 
-def grade_iteration(skill: str, iteration_name: str) -> dict:
+def _refusals(skill: str, iteration: Path) -> tuple[list[str], list[str], dict]:
+    """Why this iteration must not be graded now: (hard stops, stops --force lifts, the
+    current fingerprints). Nothing is written until both lists are empty."""
+    index = iteration / "runs.json"
+    if not index.is_file():
+        return [f"{index} is missing; nothing records which runs this iteration holds"], [], {}
+    entries = json.loads(gradelib.text(index))
+    hard, soft = [], []
+    missing = [e["id"] for e in entries
+               if not (iteration / e["case"] / e["arm"] / f"run-{e['run']}" / "outputs").is_dir()]
+    if missing:
+        hard.append(f"{len(missing)} of {len(entries)} listed runs have no outputs/ folder, for example "
+                    f"{missing[:3]}. outputs/ is gitignored and exists only where the runs were made, "
+                    "so a clone cannot regrade; grading now would replace the recorded results.")
+    if not entries:
+        hard.append(f"{index} lists no runs")
+    cases = sorted({e["case"] for e in entries})
+    inputs = {case: inputs_fingerprint(skill, case) for case in cases}
+    stale = sorted({e["case"] for e in entries if e.get("inputs_fingerprint") != inputs[e["case"]]})
+    if stale:
+        soft.append(f"the files/ or hidden tests of {stale} differ from those the runs started from (or "
+                    "runs.json records no fingerprint), so the diff and checks would compare against "
+                    "other files")
+    current = {"checks": check_files(skill, cases), "inputs": inputs}
+    bench = iteration / "benchmark.json"
+    if bench.is_file():
+        before = json.loads(gradelib.text(bench)).get("fingerprints", {}).get("checks")
+        if before != current["checks"]:
+            changed = sorted(k for k in set(before or {}) | set(current["checks"])
+                             if (before or {}).get(k) != current["checks"].get(k))
+            soft.append("benchmark.json was graded with other checks"
+                        + (f" (changed: {changed})" if before else " (it records no fingerprint)"))
+    return hard, soft, current
+
+
+def grade_iteration(skill: str, iteration_name: str, force: bool = False) -> dict:
+    """Grade every run listed in runs.json. Stops, writing nothing, when a listed run has
+    no outputs/, and, unless force, when the case inputs or the checks differ from those
+    the iteration was prepared or last graded with. A forced grade keeps the previous
+    fingerprints in benchmark.json beside the new ones."""
     iteration = eval_dir(skill) / "iterations" / iteration_name
+    hard, soft, fingerprints = _refusals(skill, iteration)
+    if hard or (soft and not force):
+        raise SystemExit(f"{skill}/{iteration_name}: not graded:\n- " + "\n- ".join(hard + soft)
+                         + ("" if hard else "\nPass --force to grade anyway; the old fingerprints are kept."))
     checks = load_checks(skill)
+    runs = list(iteration_runs(iteration))
+    rulings, problems = {}, []
+    for case in sorted({case for case, _, _ in runs}):
+        if case not in checks:
+            problems.append(f"{case}: grade.py has no checks for it")
+        elif len(statements(skill, case)) != len(checks[case]):
+            problems.append(f"{case}: {len(statements(skill, case))} grader files but {len(checks[case])} checks")
+    for case, arm, run in runs:
+        if (run / "overrides.json").is_file() and case in checks:
+            rulings[run], found = load_overrides(skill, case, run / "overrides.json")
+            problems += found
+    if problems:
+        raise SystemExit(f"{skill}/{iteration_name}: not graded:\n- " + "\n- ".join(problems))
+    if soft:
+        print(f"{skill}/{iteration_name}: graded with --force:\n- " + "\n- ".join(soft), file=sys.stderr)
     rows = []
-    for case, arm, run in iteration_runs(iteration):
+    for case, arm, run in runs:
         out = run / "outputs"
-        overrides_path = run / "overrides.json"
-        overrides = json.loads(gradelib.text(overrides_path)) if overrides_path.is_file() else None
-        result = grade(skill, out, case, checks, overrides)
+        result = grade(skill, out, case, checks, rulings.get(run))
         result["replied"] = (out / "RESPONSE.md").is_file()
         (run / "grading.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n")
         (run / "changes.diff").write_text(_diff(eval_dir(skill) / "cases" / case / "files", out), encoding="utf-8", newline="\n")
@@ -333,6 +509,15 @@ def grade_iteration(skill: str, iteration_name: str) -> dict:
                      "by_focus": by_focus,
                      "failed_checks": [e["text"] for e in result["expectations"] if not e["passed"]]})
     benchmark = _benchmark(skill, iteration_name, rows)
+    benchmark["fingerprints"] = fingerprints
+    previous = iteration / "benchmark.json"
+    old = json.loads(gradelib.text(previous)) if previous.is_file() else {}
+    if soft:
+        benchmark["forced"] = soft
+        if previous.is_file():
+            benchmark["previous_fingerprints"] = old.get("fingerprints")
+    else:  # a plain regrade keeps the record of an earlier forced one
+        benchmark.update({k: old[k] for k in ("forced", "previous_fingerprints") if k in old})
     (iteration / "benchmark.json").write_text(json.dumps(benchmark, indent=2) + "\n", encoding="utf-8", newline="\n")
     (iteration / "benchmark.md").write_text(_benchmark_md(benchmark), encoding="utf-8", newline="\n")
     return benchmark
@@ -407,47 +592,75 @@ def _norm(path: str) -> str:
 
 
 def verify_reads(skill: str, iteration_name: str, transcript_dirs: list[Path]) -> dict:
-    """For every with_skill run, find the agent transcript that did it and check that the
-    agent read the snapshot SKILL.md before editing anything."""
+    """For every skill-arm run, find the agent transcript that did it and check that the
+    agent read its own arm's snapshot SKILL.md before editing anything. A Read with a
+    limit or offset still counts (an agent may read in chunks) but is listed in
+    ``partial_reads``. Lines that are not JSON, such as the end of a transcript still
+    being written, are counted, not fatal."""
     iteration = eval_dir(skill) / "iterations" / iteration_name
     entries = [e for e in json.loads(gradelib.text(iteration / "runs.json")) if e["arm"] in SKILL_ARMS]
     wanted = {_norm(e["outputs"]): e["id"] for e in entries}
+    own = {}  # run id -> (the snapshot path its prompt named, that path below iterations/)
+    for e in entries:
+        named = re.search(r"Your first action must be to read (.+?) in full\.", e["prompt"])
+        name = skill if e["arm"] == "with_skill" else SHIPPED.name
+        own[e["id"]] = (_norm(named.group(1)) if named else None,
+                        _norm(f"/iterations/{iteration_name}/skill-snapshot/{name}/SKILL.md"))
     found: dict[str, dict] = {}
+    unparsable: dict[str, int] = {}
     for directory in transcript_dirs:
         for path in sorted(Path(directory).glob("agent-*.jsonl")):
-            first, tools, seen = None, [], set()
+            first, tools, seen, bad = None, [], set(), 0
             with path.open(encoding="utf-8") as fh:
                 for line in fh:
-                    event = json.loads(line)
-                    content = event.get("message", {}).get("content")
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        bad += 1
+                        continue
+                    message = event.get("message") if isinstance(event, dict) else None
+                    if not isinstance(message, dict):
+                        continue
+                    content = message.get("content")
                     if first is None and event.get("type") == "user" and isinstance(content, str):
                         first = content
                     if isinstance(content, list):
                         # Transcripts also hold later copies of earlier messages, so count each call once.
                         for c in content:
-                            if c.get("type") != "tool_use" or (c.get("id") and c["id"] in seen):
+                            if not isinstance(c, dict) or c.get("type") != "tool_use" \
+                                    or (c.get("id") and c["id"] in seen):
                                 continue
                             seen.add(c.get("id"))
                             tools.append(c)
+            if bad:
+                unparsable[path.name] = bad
             if not first:
                 continue
-            match = re.search(r"You are working in the repository at (\S+)", first.replace("\\", "/"))
-            if not match or _norm(match.group(1)) not in wanted:
+            # The path runs to the end of its line, so a folder name with a space survives.
+            match = re.search(r"You are working in the repository at ([^\n]+)", first.replace("\\", "/"))
+            if not match or _norm(match.group(1).strip()) not in wanted:
                 continue
-            run_id = wanted[_norm(match.group(1))]
-            read_first, read_at = False, None
+            run_id = wanted[_norm(match.group(1).strip())]
+            exact, suffix = own[run_id]
+            read_at, partial = None, False
             for i, tool in enumerate(tools):
-                target = _norm(json.dumps(tool.get("input", {})))
-                if tool.get("name") == "Read" and "skill-snapshot" in target and "skill.md" in target:
-                    read_at = i
+                inp = tool.get("input") if isinstance(tool.get("input"), dict) else {}
+                target = _norm(str(inp.get("file_path", "")))
+                if tool.get("name") == "Read" and (target == exact or target.endswith(suffix)):
+                    read_at, partial = i, "limit" in inp or "offset" in inp
                     break
             edits = [i for i, t in enumerate(tools) if t.get("name") in ("Edit", "Write", "MultiEdit", "NotebookEdit")]
             read_first = read_at is not None and (not edits or read_at < edits[0])
             found[run_id] = {"transcript": path.name, "read_skill": read_at is not None,
-                             "read_before_edit": read_first, "tool_calls": len(tools)}
+                             "read_before_edit": read_first, "partial_read": partial,
+                             "unparsable_lines": bad, "tool_calls": len(tools)}
     missing = sorted(set(wanted.values()) - set(found))
     return {"checked": len(found), "missing_transcripts": missing,
-            "skipped_skill": sorted(r for r, v in found.items() if not v["read_before_edit"]), "runs": found}
+            "skipped_skill": sorted(r for r, v in found.items() if not v["read_before_edit"]),
+            "partial_reads": sorted(r for r, v in found.items() if v["partial_read"]),
+            "transcripts_with_unparsable_lines": unparsable, "runs": found}
 
 
 # ----------------------------------------------------------------------- main
@@ -465,6 +678,8 @@ def main(argv=None) -> int:
     p.add_argument("--cases"); p.add_argument("--fresh", action="store_true")
     p.add_argument("--split", choices=("all", "train", "held-out"), default="all")
     p = sub.add_parser("grade"); p.add_argument("skill"); p.add_argument("--iteration", required=True)
+    p.add_argument("--force", action="store_true",
+                   help="grade although the case inputs or the checks changed since the runs were prepared or graded")
     p = sub.add_parser("summary"); p.add_argument("skill"); p.add_argument("iterations", nargs="+")
     p = sub.add_parser("verify-reads")
     p.add_argument("skill"); p.add_argument("--iteration", required=True); p.add_argument("transcripts", nargs="+")
@@ -484,7 +699,7 @@ def main(argv=None) -> int:
         print(json.dumps([{k: e[k] for k in ("id", "outputs")} for e in entries], indent=1))
         return 0
     if args.command == "grade":
-        b = grade_iteration(args.skill, args.iteration)
+        b = grade_iteration(args.skill, args.iteration, args.force)
         print(_benchmark_md(b))
         return 0
     if args.command == "summary":

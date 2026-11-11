@@ -13,12 +13,15 @@ and add JavaScript and TypeScript comments.
 from __future__ import annotations
 
 import ast
+import contextlib
 import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import tokenize
 from collections import Counter
 from pathlib import Path
@@ -215,7 +218,12 @@ class _DropDocstrings(ast.NodeTransformer):
 
 def code_shape(path: Path) -> str | None:
     """The file's code with comments and docstrings removed, for "code unchanged" checks.
-    Python is compared by AST; JavaScript/TypeScript by comment-free, whitespace-free text."""
+    Python is compared by AST; JavaScript/TypeScript by comment-free, whitespace-free text.
+    A missing file gives None. Python that does not parse gives its whitespace-normalised
+    text, so two different broken files do not compare as equal. Any other suffix raises
+    ValueError: use a file-type check such as a grader's shell or SQL check instead."""
+    if path.suffix not in SLASH_COMMENT and path.suffix != ".py":
+        raise ValueError(f"code_shape compares Python and JS/TS only, not {path.suffix or path.name}")
     if not path.is_file():
         return None
     if path.suffix in SLASH_COMMENT:
@@ -224,7 +232,7 @@ def code_shape(path: Path) -> str | None:
     try:
         tree = ast.parse(text(path))
     except SyntaxError:
-        return None
+        return "<unparsable>" + re.sub(r"\s+", " ", text(path))
     return ast.dump(_DropDocstrings().visit(tree))
 
 
@@ -263,10 +271,24 @@ def _env() -> dict[str, str]:
     return env
 
 
+@contextlib.contextmanager
+def _scratch(root: Path, extra: Path | None = None):
+    """A throwaway copy of root (with extra laid over it), so a grader's subprocess never
+    changes the files it grades. SKIP_DIRS, .git included, are not copied: a fixture
+    whose tests need git history would need .git kept."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "repo"
+        shutil.copytree(root, repo, ignore=shutil.ignore_patterns(*SKIP_DIRS))
+        if extra is not None:
+            shutil.copytree(extra, repo, dirs_exist_ok=True)
+        yield repo
+
+
 def run_tests(root: Path) -> tuple[bool, str]:
-    """Run the fixture's unittest suite (tests/ under root)."""
-    result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."],
-                            cwd=root, capture_output=True, text=True, timeout=120, env=_env())
+    """Run the fixture's unittest suite (tests/ under root), on a copy of root."""
+    with _scratch(root) as repo:
+        result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."],
+                                cwd=repo, capture_output=True, text=True, timeout=120, env=_env())
     tail = (result.stderr or result.stdout).strip().splitlines()[-1:] or [""]
     return result.returncode == 0, f"unittest exit {result.returncode}: {tail[0]}"
 
@@ -278,13 +300,7 @@ def run_hidden_tests(out: Path, hidden: Path) -> tuple[bool, str]:
     ``hidden_tests/`` package). Both are copied into a scratch folder, so the run's own
     files are never changed, and every ``hidden_tests/test_*.py`` is run with unittest.
     """
-    import shutil
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = Path(tmp) / "repo"
-        shutil.copytree(out, repo, ignore=shutil.ignore_patterns(*SKIP_DIRS))
-        shutil.copytree(hidden, repo, dirs_exist_ok=True)
+    with _scratch(out, hidden) as repo:
         package = repo / "hidden_tests"
         if not package.is_dir():
             return False, f"no hidden_tests/ folder in {hidden}"
@@ -298,9 +314,10 @@ def run_hidden_tests(out: Path, hidden: Path) -> tuple[bool, str]:
 
 
 def run_snippet(root: Path, code: str) -> tuple[object, str]:
-    """Run Python code in root; it must print one JSON value on its last line."""
-    result = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True,
-                            timeout=120, env=_env())
+    """Run Python code in a copy of root; it must print one JSON value on its last line."""
+    with _scratch(root) as repo:
+        result = subprocess.run([sys.executable, "-c", code], cwd=repo, capture_output=True, text=True,
+                                timeout=120, env=_env())
     if result.returncode != 0:
         return None, (result.stderr.strip().splitlines() or ["<no output>"])[-1]
     try:
