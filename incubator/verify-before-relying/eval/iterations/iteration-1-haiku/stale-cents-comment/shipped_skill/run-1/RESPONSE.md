@@ -1,0 +1,3 @@
+I added `add_card_fee(order)` in `orders/fees.py`. It adds the 30-cent card processing fee (`Decimal("0.30")`) to `order.total` and returns the same order. I also added `tests/test_fees.py` with two tests, and all five tests pass.
+
+One thing to check: the comment on `Order.total` in `orders/model.py` said the amount was "in integer cents", but the existing tests and the fee use `Decimal` dollars (for example `Decimal("12.50")`). I changed the comment to "in dollars as a Decimal" to match. If the total is actually meant to be integer cents, the fee needs to be `30` instead of `Decimal("0.30")`, and the comment change should be reverted. Please confirm which unit is correct.

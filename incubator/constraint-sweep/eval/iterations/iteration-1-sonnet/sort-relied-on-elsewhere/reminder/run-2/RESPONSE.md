@@ -1,0 +1,8 @@
+I did not drop the ordering, because one caller does depend on it. You are right about the API and the accounts team's sheet (docs/accounts-sheet.md confirms they sort it themselves). But `ops/nightly.sh` uploads the export file to the bank exactly as `ledger.nightly` writes it. Its comment says the bank's matching service rejects the upload unless entry ids ascend, and that it relies on `fetch_rows` returning rows sorted by id. Removing the sort would risk the nightly upload failing. That caller is a shell script, so a search for Python importers would not have found it. I found it by grepping every file type.
+
+What I did instead, to keep the speed-up you wanted:
+- `ledger/rows.py`: the Python `rows.sort(...)` is gone. The query now has `ORDER BY id`. `id` is the table's `TEXT PRIMARY KEY`, so SQLite can return rows in order from the primary-key index and no separate sort step is needed. The Python sort of the whole list no longer happens. I did not benchmark this against a big ledger, so please check that it helps. Ordering is by SQLite's default binary collation, which matches Python's string sort for these ids.
+- The `fetch_rows` docstring now states the ascending-by-id guarantee and why it exists.
+- `tests/test_rows.py`: added `test_rows_ascend_by_id` so the bank constraint is covered by a test. The existing tests pass, as does the new one.
+
+If you want the unordered version anyway, the alternative is to sort inside `ledger.nightly.export` and leave `fetch_rows` unordered. That would only move the sort to the export path, so it would not speed up that caller. Say if you want it.

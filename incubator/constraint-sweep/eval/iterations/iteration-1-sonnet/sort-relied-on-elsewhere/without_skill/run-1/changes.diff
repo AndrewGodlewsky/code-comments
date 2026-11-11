@@ -1,0 +1,65 @@
+--- a/ledger/nightly.py
++++ b/ledger/nightly.py
+@@ -7,8 +7,8 @@
+ 
+ 
+ def export(conn, fh):
+-    """Write every ledger row to fh as CSV."""
+-    write_rows(fetch_rows(conn), fh)
++    """Write every ledger row to fh as CSV, ascending by id (the bank requires it)."""
++    write_rows(fetch_rows(conn, ordered=True), fh)
+ 
+ 
+ def main(argv=None):
+--- a/ledger/rows.py
++++ b/ledger/rows.py
+@@ -4,9 +4,14 @@
+ Row = namedtuple("Row", "id account amount_pence memo")
+ 
+ 
+-def fetch_rows(conn):
+-    """Return the ledger rows."""
+-    cursor = conn.execute("SELECT id, account, amount_pence, memo FROM entries")
+-    rows = [Row(*record) for record in cursor.fetchall()]
+-    rows.sort(key=lambda row: row.id)
+-    return rows
++def fetch_rows(conn, ordered=False):
++    """Return the ledger rows.
++
++    Order is unspecified unless ordered=True, which returns them ascending by id
++    (sorted by the database, using the primary-key index). The nightly export needs
++    that: the bank's matching service rejects files whose ids do not ascend.
++    """
++    sql = "SELECT id, account, amount_pence, memo FROM entries"
++    if ordered:
++        sql += " ORDER BY id"
++    return [Row(*record) for record in conn.execute(sql).fetchall()]
+--- a/ops/nightly.sh
++++ b/ops/nightly.sh
+@@ -4,7 +4,7 @@
+ # The bank matches our file against its own statement in a single pass and
+ # rejects the upload unless the entry ids ascend. The file goes up exactly as
+ # ledger.nightly writes it, in the order fetch_rows returns the rows, so this
+-# relies on fetch_rows returning them sorted by id.
++# relies on fetch_rows(ordered=True), which ledger.nightly passes.
+ set -eu
+ 
+ spool=/var/spool/ledger
+--- a/tests/test_nightly.py
++++ b/tests/test_nightly.py
+@@ -17,6 +17,15 @@
+         self.assertEqual({tuple(line) for line in lines[1:]},
+                          {("E-0001", "4100", "1.20", "coffee"), ("E-0002", "4000", "5.00", "rent")})
+ 
++    def test_rows_ascend_by_id(self):
++        conn = connect()
++        add_entries(conn, [("E-0002", "4000", 500, "rent"), ("E-0003", "4100", 1, ""),
++                           ("E-0001", "4100", 120, "coffee")])
++        buf = io.StringIO()
++        export(conn, buf)
++        ids = [line[0] for line in csv.reader(io.StringIO(buf.getvalue()))][1:]
++        self.assertEqual(ids, ["E-0001", "E-0002", "E-0003"])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

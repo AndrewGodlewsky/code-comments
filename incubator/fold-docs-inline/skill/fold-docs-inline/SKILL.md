@@ -46,13 +46,19 @@ the page holds only kept claims, and nothing changed outside the page and commen
 
 ## The four fates
 **Dropped.** The code, names, types, signatures or tests at that spot already state
-it, or an accurate comment there already does. It gets no comment.
+it, or an accurate comment there already does. It gets no comment. A claim that only
+describes what the code is or does stays dropped, even if it could be read as a rule
+for later edits. Move it as a constraint only when the page itself states the rule or
+gives a reason for it; never supply the rule yourself.
 
 **Moved.** A fact owned by one piece of code that the code cannot show: a
 constraint, invariant, ordering, reason, coupling, outside contract the code relies
 on, or an alternative a later editor would plausibly try.
 - Write it once, in the file's comment style, at the narrowest scope it governs:
   the symbol whose change would break it. Keep any ticket id the page gives.
+- Prefer a comment, or add to a docstring the symbol already has. A docstring you
+  create holds only the moved fact. Give it no opening line saying what the code
+  does, because that line restates the code.
 - Take every value about this code from the code, never from the page.
 - Where an accurate comment already covers part of it, add only the missing part
   beside that comment and leave the comment word for word.
@@ -77,9 +83,12 @@ Only the code's own behaviour contradicts a claim: an outside fact the code brea
 reported.
 
 ## The fate list
-One line per claim, in page order: the claim, quoted or closely paraphrased; its
-fate; and its evidence. For moved, give the file and symbol. For dropped, say where
-the code states it. For not migrated, give the file, symbol and actual value.
+One line per sentence, bullet or table row, in page order: the claim, quoted or
+closely paraphrased; its fate; and its evidence. Splitting is for checking: where
+parts of one sentence have different fates, give each part its own line, and keep
+parts that share a fate on one line. Headings are not claims. For moved, give the
+file and symbol. For dropped, say where the code states it. For not migrated, give
+the file, symbol and actual value.
 
 After the list, name:
 - other files that also state a moved fact (an instruction file, another doc), by

@@ -81,13 +81,16 @@ instruction file or a decision record goes in the reply; the file stays as it is
 ## When the request carries the claim
 The user's request may repeat a claim, often copied from a docstring. Check it like
 any other. If it is false, deliver what the user plainly wants, built on the real
-behaviour, and open the reply by saying the premise is wrong, with file:line and
-what the code really does. If it is true, do exactly what was asked.
+behaviour, and open the reply by saying the premise is wrong, where the false text
+is, and what the code really does. If it is true, do exactly what was asked.
 
 ## Report
-- For each false claim you met: file:line, what it says, what the code does, and
-  what you did (corrected it, built around it, or kept it and why). A false premise
-  from the request goes first.
+- For each false claim you met: where it is (the file, and the function, constant or
+  heading it sits in), what it says, what the code does, and what you did (corrected
+  it, built around it, or kept it and why).
+- A false premise from the request goes first. A claim is the user's premise only when
+  the request itself states it; a false claim met in a comment, docstring or doc is
+  reported as that text's claim.
 - Corrections are the only comments this skill asks for. Any other comment follows
   the `code-comments` rules.
 

@@ -1,0 +1,53 @@
+--- a/docs/order-sync.md
++++ b/docs/order-sync.md
+@@ -1,11 +0,0 @@
+-# Order sync
+-
+-`orders/sync.py` makes the nightly copy of shop orders into the warehouse store.
+-
+-- `sync_orders()` reads the shop API one page at a time; an empty page means there are no
+-  more orders to read.
+-- `ShopClient.get_page()` tries each request up to 5 times, 2 seconds apart, because the
+-  shop API drops about one request in a thousand during its nightly maintenance (OPS-19).
+-- `PAGE_SIZE` has to stay at 250 or below: the shop API answers a larger page size with
+-  HTTP 400 and returns no orders.
+-- `OrderStore.upsert()` replaces any stored order that has the same order id.
+--- a/orders/client.py
++++ b/orders/client.py
+@@ -5,6 +5,8 @@
+ from orders.backoff import pause_after
+ from orders.settings import ATTEMPTS
+ 
++# The shop API answers a larger page size with HTTP 400 and no orders, so keep this
++# at 250 or below.
+ PAGE_SIZE = 200
+ 
+ 
+@@ -15,6 +17,9 @@
+ 
+     def get_page(self, page):
+         """Return one page of orders, or an empty list once every order has been read."""
++        # The shop API drops about one request in a thousand during its nightly
++        # maintenance (OPS-19), so a dropped request is retried, with the pause
++        # doubling after each failure (see pause_after).
+         for attempt in range(1, ATTEMPTS + 1):
+             try:
+                 return self.http.get("/orders", page=page, page_size=PAGE_SIZE)
+--- a/orders/store.py
++++ b/orders/store.py
+@@ -8,4 +8,5 @@
+         self.rows = {}
+ 
+     def upsert(self, order):
++        """Store a copy of the order, replacing any stored order with the same id."""
+         self.rows[order["id"]] = dict(order)
+--- a/orders/sync.py
++++ b/orders/sync.py
+@@ -12,6 +12,7 @@
+     page = 1
+     while True:
+         orders = client.get_page(page)
++        # An empty page is the shop API's signal that there are no more orders.
+         if not orders:
+             return written
+         for order in orders:

@@ -1,7 +1,12 @@
 # verify-before-relying
 
-**Status: built; evaluation pending.** No run has been graded, so nothing here is a
-result. The skill makes no performance claim.
+**Status: evaluated. It does not beat the one-line reminder.** Over 165 graded runs on
+Claude Haiku and Sonnet, the skill ties the reminder sentence in
+[eval/arms.json](eval/arms.json) on every graded check, in training and on the held-out
+cases. It beat the shipped `code-comments` skill only on Haiku's training cases, mostly in
+one case, and tied it on Sonnet and on the held-out pair. By this incubator's rule, the
+honest recommendation is the sentence, not this skill. Results are in
+[eval/RESULTS.md](eval/RESULTS.md), and the samples are small (see Limits).
 
 An incubator skill for issue [#50](https://github.com/AndrewGodlewsky/code-comments/issues/50),
 from ideation candidate C2 ([candidates](../ideation/2026-11-11-candidates.json)). The
@@ -58,7 +63,8 @@ not say:
    code and is corrected. A requirement or outside fact keeps its words, and the
    conflict is reported. This also covers a request to bring a doc in line with the code.
 4. **Correct the user's premise.** When the request repeats a false claim, deliver what
-   the user wants and say first that the premise is wrong, with file:line.
+   the user wants and say first that the premise is wrong, where the false text is, and
+   what the code really does.
 5. **Trust a true claim.** No defensive conversion, no guard for a case the claim rules
    out, no confirmation question, and the text stays word for word.
 
@@ -84,7 +90,7 @@ Leave it out for:
 
 ## How it works
 
-Instructions only: a `SKILL.md` with a 91-line body and no scripts. It reads the code each
+Instructions only: a `SKILL.md` with a 94-line body and no scripts. It reads the code each
 time and stores nothing. It has no index, generated docs view, memory store or lookup service
 ([ADR 0001](../../docs/adr/0001-context-lives-inline-no-central-index.md)). The probe is
 one shell call, such as `python -B -c` (`-B` stops Python writing bytecode caches), and
@@ -102,14 +108,17 @@ The rules, in the order the agent meets them:
    fact is kept and reported. The code changes to meet it only when the task is to fix
    that behaviour; when the user asked for the behaviour that breaks it, the change is
    made as asked and the conflict reported, as the shipped skill says.
-5. **Report** each false claim with file:line, putting a false premise from the request
-   first.
+5. **Report** each false claim by its file and the function, constant or heading it sits
+   in, putting a false premise from the request first. A claim counts as the user's
+   premise only when the request itself states it. (v1 asked for `file:line`; v2 dropped
+   that after it produced impossible line numbers, see
+   [eval/CHANGES.md](eval/CHANGES.md).)
 
 Two rules are marked *judgement* in the skill because no source supports them: treating
 lowercase "must" as a requirement (RFC 8174 limits that meaning to capitals), and
 treating a sentence that mixes a description with a requirement as a requirement, kept
-as written. No rule, marked or not, has been shown to improve results;
-[research.md](research.md) labels most of the others hypotheses too.
+as written. No rule, marked or not, has been shown to improve results over the one-line
+reminder; [research.md](research.md) labels most of the others hypotheses too.
 
 ## Its eval
 
@@ -155,27 +164,67 @@ Commands, from the repository root:
 python incubator/harness.py self-test verify-before-relying   # references pass, inputs fail
 python incubator/harness.py lint verify-before-relying        # format, portability, no copied case text
 
-# 1. Gate: bare model only, training cases, on each model
-python incubator/harness.py prepare verify-before-relying --iteration iteration-0-gate-haiku --arms without_skill --runs 2 --split train
+# 1. Gate: bare model only, for case selection (the gate here ran all seven cases)
+python incubator/harness.py prepare verify-before-relying --iteration gate-haiku --arms without_skill --runs 2
 #   ...give each prompt in eval/iterations/<name>/runs.json to a fresh agent of the chosen model...
-python incubator/harness.py grade verify-before-relying --iteration iteration-0-gate-haiku
+python incubator/harness.py grade verify-before-relying --iteration gate-haiku
 
-# 2. All four arms on the training cases
+# 2. All four arms on the training cases; after a skill edit, re-run with_skill only
 python incubator/harness.py prepare verify-before-relying --iteration iteration-1-haiku --runs 3 --split train
 python incubator/harness.py grade verify-before-relying --iteration iteration-1-haiku
 python incubator/harness.py verify-reads verify-before-relying --iteration iteration-1-haiku TRANSCRIPT_DIR
+python incubator/harness.py prepare verify-before-relying --iteration iteration-2-haiku --arms with_skill --runs 3 --split train
 
 # 3. Held-out pair, once, after the last skill edit
-python incubator/harness.py prepare verify-before-relying --iteration held-out-haiku --runs 3 --split held-out
-python incubator/harness.py grade verify-before-relying --iteration held-out-haiku
+python incubator/harness.py prepare verify-before-relying --iteration heldout-haiku --runs 3 --split held-out
+python incubator/harness.py grade verify-before-relying --iteration heldout-haiku
 
-python incubator/harness.py summary verify-before-relying iteration-1-haiku iteration-1-sonnet
+python incubator/harness.py summary verify-before-relying iteration-1-haiku iteration-1-sonnet iteration-2-haiku iteration-2-sonnet heldout-haiku heldout-sonnet
 ```
 
-Repeat each step with a `-sonnet` iteration. `verify-reads` lists any skill-arm run that
-edited before reading its skill; exclude and re-run those. Model runs cost money, and
-each campaign needs the user's approval first ([intent.md](../../intent.md), "Decisions
-still open").
+Each step was repeated with a `-sonnet` iteration (2 runs per cell; 1 for the gate). `verify-reads` lists
+any skill-arm run that edited before reading its skill; exclude and re-run those. Model
+runs cost money, and each campaign needs the user's approval first
+([intent.md](../../intent.md), "Decisions still open").
+
+## Results
+
+Mean pass rate and checks passed, after the rulings. Full tables, per-case results and
+the rulings are in [eval/RESULTS.md](eval/RESULTS.md); the reasoning is in
+[eval/ANALYSIS.md](eval/ANALYSIS.md).
+
+| Iteration | Skill | with_skill | shipped_skill | reminder | without_skill |
+| --- | --- | --- | --- | --- | --- |
+| Training, Haiku (3 runs per cell) | v1 | 100.0%, 96/96 | 93.9%, 90/96 | 100.0%, 96/96 | 86.7%, 82/96 |
+| Training, Sonnet (2 runs per cell) | v1 | 100.0%, 64/64 | 100.0%, 64/64 | 100.0%, 64/64 | 95.4%, 61/64 |
+| Training, Haiku, `with_skill` re-run | v2 | 100.0%, 96/96 | | | |
+| Training, Sonnet, `with_skill` re-run | v2 | 100.0%, 64/64 | | | |
+| Held out, Haiku | v2 | 100.0%, 36/36 | 100.0%, 36/36 | 100.0%, 36/36 | 97.2%, 35/36 |
+| Held out, Sonnet | v2 | 100.0%, 24/24 | 100.0%, 24/24 | 100.0%, 24/24 | 91.7%, 22/24 |
+
+What the numbers say:
+- **A tie with the reminder.** The sentence matched the skill on every graded check in
+  every iteration. Before the auditor's rulings, it scored one check higher on Haiku's
+  training cases (95/96 against 94/96).
+- **A narrow lead over the shipped skill, on one model.** On Haiku's training cases the
+  shipped skill noticed the real error in `request-quotes-stale-docstring`, built only the
+  None check and asked permission for the rest (hidden tests 0/3, against 3/3 for the
+  skill). It also damaged the synced doc in 2 of 3 runs. On Sonnet and on the held-out pair
+  the shipped skill scored 100%.
+- **The hidden tests never favoured the skill over the bare model.** The bare model built
+  correct new code in every run of every case (training 20/20, held out 10/10). The skill's
+  whole gain over the bare model is on text checks: it corrected false descriptions (15 of
+  15 runs against 4 of 15) and kept a requirement and a vendor fact in the doc sync (privacy
+  5/5 against 2/5, quota 5/5 against 1/5). The reminder did the same.
+- **The held-out pair showed no loss and no lead.** v2 scored 100% on new material, with no
+  over-distrust of the true twin. So did the shipped skill and the reminder.
+- **Ungraded, the skill's one consistent edge is a `-B` flag.** `with_skill` left bytecode
+  caches in 0 of 60 runs; every other arm left them in most runs (78 of 105). The graders
+  skip caches by design.
+- **Ungraded, v1's reply rules caused harm, and v2 fixed most of it.** v1's `file:line`
+  demand produced 112 line citations, 5 of them past the end of the file. v2 has none. v1
+  called a comment's claim "the premise" in 5 of 10 runs of the cents cases; v2 still did in
+  2 of 10.
 
 ## Limits
 

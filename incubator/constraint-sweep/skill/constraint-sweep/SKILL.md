@@ -14,8 +14,10 @@ it states.
 
 This complements the `code-comments` skill. That skill governs the comment text a change
 leaves behind; this one governs what you read before changing behaviour, and whether the
-code still honours constraints stated elsewhere. This skill asks for no comments. When
-your change needs one, follow `code-comments`.
+code still honours constraints stated elsewhere. This skill asks for no new comments.
+When your change needs one, or makes an existing one false in any file, follow
+`code-comments` for the wording. Fixing text your change made false is part of this
+change, not a follow-up for the user.
 
 ## 1. Name the symbols
 Before the first edit, list each function, method, class, constant and module whose
@@ -67,6 +69,11 @@ Treat each constraint as a claim and check it against the code it protects:
 ## 5. Change the code
 - **A live constraint binds.** Keep it with the first of these that fits:
   1. Keep the property where it is produced, by a means that still does what was asked.
+     Moving the work that provides it out of your symbol and into a dependent is not
+     this option: it edits a file the request did not name, and when the request is
+     about cost, that dependent still pays it. Look first for another way, such as a
+     cheaper one, for your symbol itself to provide the property. Move the work only
+     when there is none, and say why in the reply.
   2. If the request itself changes the property (it is what the user asked to change, or
      the form they named changes it), update each dependent site in the same change.
   3. If neither can keep it, make the change as asked, and report the break with the
@@ -76,7 +83,9 @@ Treat each constraint as a claim and check it against the code it protects:
   option above still allows it. Choose a different form only when the user stated a goal
   rather than a form, and then say why in the reply.
 - **A stale constraint does not block the change.** Make it, and report the stale text
-  with its file:line. Any fix to that wording follows `code-comments`.
+  with its file:line. If your change makes that text false, for example because it
+  describes behaviour your change removes, correct or delete it in the same change;
+  reporting it does not replace the fix. Otherwise leave the stale text as it is.
 - Before removing a symbol as unused, sort its hits. An import or call (a test's included),
   or a name that a config file, string, registry, script or CI step supplies for code to
   look up, is a use. Prose that only describes it is not. Remove what has no use, as asked.
@@ -92,7 +101,7 @@ Treat each constraint as a claim and check it against the code it protects:
 
 ## Report
 In the reply, list each constraint that shaped the change (file:line, what it says, what
-you did), each stale one, and each site of suspected reliance. Mention the sweep only when
-it changed the plan or found something stale.
+you did), each stale one and whether you corrected it, and each site of suspected
+reliance. Mention the sweep only when it changed the plan or found something stale.
 
 Rules marked *judgement* rest on reasoning, not on a measured result.

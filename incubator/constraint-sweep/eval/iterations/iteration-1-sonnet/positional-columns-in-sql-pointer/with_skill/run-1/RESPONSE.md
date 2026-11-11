@@ -1,0 +1,7 @@
+Currency is now a column in the CSV, directly after amount: `id, account, amount, currency, ts` (`exporter/csv_out.py`). I added a test for the position and the value, and the suite passes.
+
+One thing you need to know before deploying. `deploy/warehouse/load_ledger.sql:2-6` says the warehouse loader reads CSV fields by position (`c1`, `c2`, ...) and that new columns must go at the end, because anything after a new column would load into the wrong place. Putting currency beside amount would have shifted `ts` from c4 to c5 and loaded it as `posted_at` wrongly, which retention.sql would then act on. So I kept the placement you asked for and updated the loader in the same change. Its SELECT is now `c1, c2, c3, c5`, and I rewrote its comment (it no longer says "new columns go at the end") and the pointer comment in `csv_out.py`. Currency is not loaded into `ledger_raw`. `schema.sql` is unchanged, since only the CSV was requested.
+
+Deploy the exporter change and the updated `load_ledger.sql` together. If the new CSV is loaded with the old SQL, `posted_at` will receive the currency code.
+
+Nothing else was affected. `reports/monthly.py` and `docs/finance.md` read columns by header name, so they are unaffected. If you want currency in the warehouse too, that needs an `ALTER TABLE ledger_raw ADD COLUMN` (schema.sql says columns are only added at the end) and a matching change to the INSERT.

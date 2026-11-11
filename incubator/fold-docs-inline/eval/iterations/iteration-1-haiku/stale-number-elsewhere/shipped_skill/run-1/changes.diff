@@ -1,0 +1,49 @@
+--- a/docs/order-sync.md
++++ b/docs/order-sync.md
+@@ -1,11 +0,0 @@
+-# Order sync
+-
+-`orders/sync.py` makes the nightly copy of shop orders into the warehouse store.
+-
+-- `sync_orders()` reads the shop API one page at a time; an empty page means there are no
+-  more orders to read.
+-- `ShopClient.get_page()` tries each request up to 5 times, 2 seconds apart, because the
+-  shop API drops about one request in a thousand during its nightly maintenance (OPS-19).
+-- `PAGE_SIZE` has to stay at 250 or below: the shop API answers a larger page size with
+-  HTTP 400 and returns no orders.
+-- `OrderStore.upsert()` replaces any stored order that has the same order id.
+--- a/orders/client.py
++++ b/orders/client.py
+@@ -5,6 +5,8 @@
+ from orders.backoff import pause_after
+ from orders.settings import ATTEMPTS
+ 
++# The shop API answers a larger page size with HTTP 400 and returns no orders.
++# Keep this at or below 250.
+ PAGE_SIZE = 200
+ 
+ 
+@@ -14,7 +16,12 @@
+         self.sleep = sleep
+ 
+     def get_page(self, page):
+-        """Return one page of orders, or an empty list once every order has been read."""
++        """Return one page of orders, or an empty list once every order has been read.
++
++        The shop API drops about one request in a thousand during its nightly
++        maintenance (OPS-19), so a dropped request is retried up to ATTEMPTS times,
++        waiting longer after each failure (see pause_after).
++        """
+         for attempt in range(1, ATTEMPTS + 1):
+             try:
+                 return self.http.get("/orders", page=page, page_size=PAGE_SIZE)
+--- a/orders/sync.py
++++ b/orders/sync.py
+@@ -12,6 +12,7 @@
+     page = 1
+     while True:
+         orders = client.get_page(page)
++        # An empty page means the shop has no more orders to read.
+         if not orders:
+             return written
+         for order in orders:
