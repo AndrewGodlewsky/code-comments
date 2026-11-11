@@ -308,10 +308,13 @@ None, and no run was re-run.
   - no reminder or bare run read any snapshot.
 - **Where the output is.** Each counted iteration stores it as `verify-reads.json`. Its
   `skill_arms` and `skill_arm_runs` entries have the fields that
-  `harness.py verify-reads` returns. No script in the repository writes its other lists:
-  other-arm reads, wrong model, and runs with several or no transcripts. The `wf_*`
-  transcripts it read are not stored, so the reads cannot be re-checked from the
-  repository. `harness.py verify-reads` alone accepts a read of either snapshot.
+  `harness.py verify-reads` returned when they were written. No script in the repository
+  writes its other lists: other-arm reads, wrong model, and runs with several or no
+  transcripts; they come from the out-of-repository wrapper described in
+  [incubator/README.md](../../README.md). The `wf_*` transcripts it read are not stored,
+  so the reads cannot be re-checked from the repository. `harness.py verify-reads`
+  accepted a read of either snapshot when these files were written; since 2026-11-11 it
+  requires the arm's own.
 - **The one empty diff** is iteration-1 Haiku `without_skill` `sort-relied-on-elsewhere`
   run-2. Its reply deliberately declines to drop the sort and asks the user to choose, so
   it is graded as it stands. It fails check 02.

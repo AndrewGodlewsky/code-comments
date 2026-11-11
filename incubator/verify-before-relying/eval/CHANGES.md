@@ -29,7 +29,8 @@ change. The body grew from 91 to 94 lines.
      replies in `stale-cents-comment` called a comment's claim "the premise". The request made
      no claim about the code, so the reply wrongly tells the user their request was wrong. One
      `true-cents-comment` reply did the same. No other arm did either. In the two request
-     cases, `with_skill` used the word correctly in 10 of 10 runs.
+     cases, `with_skill` used the word correctly in 8 of 8 replies that use it (8 of 10 runs;
+     the 2 Sonnet `request-quotes-true-docstring` replies do not use it).
 
 What to expect in iteration 2: fewer false line pointers and no misplaced "premise", with no
 graded check worse than iteration 1. If a graded check drops, revert v2.
@@ -46,3 +47,6 @@ Docs outside the skill folder that are now out of date, for the coordinator:
 - It still says the skill reports each false claim "with file:line" (in "What it adds over
   the shipped skill", item 4, and in "How it works", rule 5).
 - `research.md`, "What this means for the skill's rules", items 8 and 10, says the same.
+
+Done 2026-11-11: the README now gives a 94-line body and the v2 wording for rule 5, and
+research.md items 8 and 10 carry eval notes.

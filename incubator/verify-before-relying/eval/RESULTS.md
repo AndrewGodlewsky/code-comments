@@ -192,7 +192,9 @@ auditor found no grader bug and no other misgrade.
 None. `verify-reads` found a transcript for every skill-arm run in every counted iteration
 (iteration 1: 50 of 50; iteration 2: 25 of 25; held out: 20 of 20). Every one read its
 `SKILL.md` snapshot before its first edit. No run lacked a reply, and none was re-run. The
-`verify-reads` output was checked by the auditor and is not stored in the repository.
+`verify-reads` output is stored as `iterations/<iteration>/verify-reads.json` for each
+counted iteration (iteration-1, iteration-2 and heldout, Haiku and Sonnet), written by the
+out-of-repository wrapper described in [incubator/README.md](../../README.md).
 
 The gate's 21 bare runs are not counted. They chose and hardened cases before the full run
 ([GATE.md](GATE.md)).

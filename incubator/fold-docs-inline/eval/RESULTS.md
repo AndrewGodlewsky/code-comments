@@ -1,7 +1,10 @@
 # fold-docs-inline: results
 
-**The skill beat the shipped `code-comments` skill and the bare model on both models, in
-training and on the held-out pair. It did not reliably beat the one-line reminder.**
+**The skill beat the shipped `code-comments` skill and the bare model in training, on both
+models. On the held-out pair it led both on checks. At run level only its full-marks lead
+over the bare model held (8/10 against 1/10, stratified exact p = 0.007). Its lead over the
+shipped skill is not established (8/10 against 4/10, p = 0.14; 1/10 for the shipped skill
+before three auditor rulings). It did not reliably beat the one-line reminder.**
 
 Against the reminder, by model and split:
 - **Sonnet training:** a tie.
@@ -72,8 +75,9 @@ read the skill first.
 - Sonnet runs often edited through Bash, which `verify-reads` does not count as an edit.
   So the auditors also checked the tool order by hand: the skill read came before any
   Bash or edit call.
-- Each iteration folder stores the result in `verify-reads.json`. The auditors wrote
-  these files; `harness.py verify-reads` only prints its result. The hand check of Bash
+- Each iteration folder stores the result in `verify-reads.json`. An out-of-repository
+  wrapper wrote these files (see [incubator/README.md](../../README.md));
+  `harness.py verify-reads` only prints its result. The hand check of Bash
   order is not stored.
 
 ## Headline
@@ -373,6 +377,8 @@ an `EXCLUDED.txt`:
 - The reminder original failed only its two reply checks. The reminder's one-check lead
   on held-out Haiku rests on its replacement: with the original, the reminder would pass
   55/60, one check behind the skill.
+- The bare original also failed core check 1, which its replacement passed. Of that
+  replacement's 3-check gain, 2 checks come from the reply and 1 does not.
 
 No skill-arm run was excluded, and no other run was re-run.
 

@@ -156,6 +156,6 @@ quoted its test name and its bank comment) into a ledger test. Leave
   against `reminder` question then rests mainly on the hidden tests: Sonnet in
   `stale-cents-comment`, and the hardened request case. The gate measured headroom over
   the bare model only.
-- The skill README (outside `eval/`) still says the gate is a next step. It could point
-  here. Its row for the request case ("the request repeats a half-true docstring") still
-  holds.
+- The skill README (outside `eval/`) said the gate was a next step when this was written.
+  It now records the gate as done and links here. Its row for the request case ("the
+  request repeats a half-true docstring") still holds.

@@ -29,8 +29,9 @@ it fails at run time.
 
 The opposite mistake is just as real. "The code is the truth, so make the text match"
 also erases the sentences that are right when the code is wrong: a requirement the code
-breaks, or a fact about a vendor. In the hygiene eval, a one-line "fix what is false"
-reminder deleted a true vendor quota in 3 of 5 iteration-5 runs. The bare model and the
+breaks, or a fact about a vendor. In the hygiene eval, a one-line reminder to "fix or
+delete any comment, docstring or doc that your change makes false" deleted a true vendor
+quota in 3 of 5 iteration-5 runs. The bare model and the
 shipped skill kept it every time (re-counted from
 `evaluation/hygiene/iterations/iteration-5-*/change-contradicts-comment/*/run-*/grading.json`).
 
@@ -223,7 +224,9 @@ What the numbers say:
   over-distrust of the true twin. So did the shipped skill and the reminder.
 - **Ungraded, the skill's one consistent edge over every other arm is no bytecode
   caches.** `with_skill` left them in 0 of 60 runs; every other arm left them in most runs
-  (78 of 105). Its probe line says to run `python -B`, and its iteration-1 runs did
+  (78 of 105). These are the writer's hand counts from each run's `outputs/`, which is not
+  committed, so they cannot be re-checked from the repository (see Limits). Its probe line
+  says to run `python -B`, and its iteration-1 runs did
   ([eval/ANALYSIS.md](eval/ANALYSIS.md)). Whether that line alone would do it is untested.
   The graders skip caches by design.
 - **Ungraded, v1's reply rules caused harm, and v2 fixed most of it.** v1's `file:line`
@@ -250,6 +253,12 @@ Of the eval:
   reply that reports the conflict but does not say which side is right. The false-alarm
   check misses a negation more than three words away. The quota reply check only looks for
   its keywords anywhere in the reply. Details in [eval/RESULTS.md](eval/RESULTS.md).
+- **Ungraded counts rest on one tally.** Reply length, bytecode caches, line citations and
+  "premise" counts were counted by the writer from each run's `outputs/`. They are not
+  graded and not in the benchmark. `outputs/` is not committed (`incubator/.gitignore`), so
+  the cache counts (0 of 60 against 78 of 105) cannot be re-checked. The other counts can,
+  from each run's `RESPONSE.md` ([eval/RESULTS.md](eval/RESULTS.md), "Where the numbers
+  come from").
 - **Gate-based case selection.** A bare-model gate ran first on all seven cases, the
   held-out pair included, and the request pair was hardened afterwards to leave room for a
   gain ([eval/GATE.md](eval/GATE.md)). That favours cases where the bare model falls

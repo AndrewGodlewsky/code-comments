@@ -224,6 +224,10 @@ which fairly tests whether rule 3 earns its place. In the hygiene eval a "fix or
 reminder deleted a true outside fact in two of three Haiku runs (R9 notes). This sentence may
 likewise delete operational content; record it if it does.
 
+*Superseded 2026-11-11: the reminder arm runs the longer sentence in eval/arms.json, which does
+say "check each claim against the code" (eval/CASES.md, "The reminder arm"). So the reminder arm
+does not test whether rule 3 earns its place.*
+
 ## Counterevidence and limits
 
 - **No downstream benefit is shown or claimed.** The pilot found none for the shipped skill

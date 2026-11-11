@@ -1,7 +1,7 @@
 # constraint-sweep eval cases
 
 Seven cases: five for training and two held out. Each case is a small Python
-repository of 11 to 16 files, aimed at one behaviour: before changing what existing
+repository of 12 to 16 files, aimed at one behaviour: before changing what existing
 code returns, orders, accepts or removes, read what other files' comments, docstrings
 and tests say about it. Keep every constraint that still binds, or report it, and
 report any that are stale. The prompts list no files, because the eval measures
@@ -11,7 +11,8 @@ in places that state nothing binding, so a single grep hit is not enough.
 All seven cases were designed before any run existed, and revised on 2026-11-11 after
 review, still before any run. The bare-model derivability gate then put four discovery
 cases at ceiling, and those four (plus the pointer twin, which mirrors its base case)
-were hardened on 2026-11-11. No skill-arm run has happened yet. [GATE.md](GATE.md) holds
+were hardened on 2026-11-11. No skill-arm run had happened then; results are in
+[RESULTS.md](RESULTS.md). [GATE.md](GATE.md) holds
 the gate results, the one grader fix and what changed in each case. Held-out cases
 (`held_out: true` in `case.yaml`) are never used to decide a skill edit.
 

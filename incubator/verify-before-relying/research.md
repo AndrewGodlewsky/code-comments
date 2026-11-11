@@ -145,7 +145,7 @@ Observations only. Interpretation follows in the next sections.
    is therefore half-even without anyone choosing it.
 8. **No repository eval has scored new code built on a stale claim.** Stale docstrings were fixed
    only in comment-only passes (S19). P-21 is untested, and C4's measure never ran (S17).
-9. **A "fix what is false" reminder deleted a true outside fact in 3 of 5 runs.** The bare model
+9. **A reminder to "fix or delete any comment, docstring or doc that your change makes false" deleted a true outside fact in 3 of 5 runs.** The bare model
    kept it in 5 of 5 and flagged the conflict every time (S18).
 10. **Eval subagents can see an AGENTS.md from outside the fixture** (S20).
 
@@ -238,6 +238,10 @@ The skill is instructions only. Each rule is traced to a source or labelled a hy
 - **Reminder** (`arms.json`): "If a comment, docstring or doc disagrees with the code, follow the
   code and tell me about the conflict." It is close to S1's measured sentence.
 - **Shipped-skill arm:** it decides whether this is a skill or a #21/#48 variant. Report a tie.
+
+*Superseded 2026-11-11, before any run: the split was swapped, and helper-docstring-lies and
+helper-docstring-true are held out (eval/CASES.md, "The split was swapped"). The reminder
+actually run is the sentence in eval/arms.json.*
 
 ## Counterevidence and limits
 

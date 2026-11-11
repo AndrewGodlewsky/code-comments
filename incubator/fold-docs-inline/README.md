@@ -11,8 +11,10 @@ home beside the code it governs. The fates are:
 The user reviews the per-claim fate list in the reply.
 
 **Status: evaluated, over 165 graded runs on Claude Haiku and Sonnet. It beats the
-shipped `code-comments` skill and the bare model, in training and on the held-out pair.
-It does not reliably beat the one-line reminder in [eval/arms.json](eval/arms.json).**
+shipped `code-comments` skill and the bare model in training. On the held-out pair it
+leads both on checks, but at run level only its full-marks lead over the bare model
+holds. Its held-out lead over the shipped skill is not established. It does not reliably
+beat the one-line reminder in [eval/arms.json](eval/arms.json).**
 
 Against the reminder:
 - it tied on Sonnet training;
@@ -254,9 +256,13 @@ Core checks passed, without the weight-0.5 placement rows, both models together:
 | Held out (v2) | 23/25 | 17/25 | 19/25 | 20/25 |
 
 What the numbers show:
-- **Over the shipped skill and the bare model: a clear gain that carried over.**
+- **Over the shipped skill and the bare model: a clear gain in training. Held out, a lead
+  on checks that holds at run level only against the bare model.**
   - Training, iteration 1: 222/225 checks for the skill, against 174/225 and 171/225.
-  - Held out: 96/100, against 82/100 and 79/100.
+  - Held out: 96/100 checks, against 82/100 and 79/100. Full-mark runs 8/10 against 4/10
+    for the shipped skill (stratified exact p = 0.14; 1/10, p = 0.0067, before three
+    auditor rulings on its stale-ordering-reason runs) and 1/10 for the bare model
+    (p = 0.0067). Full core 8/10 against 6/10 and 7/10.
   - Training, iteration 1, the shipped skill and the bare model:
     - left the page whole while copying its facts into code;
     - copied the page's restatements into docstrings;
@@ -269,8 +275,10 @@ What the numbers show:
 - **Over the reminder: not established.**
   - **Training, Haiku (+4 checks).** The lead is one case, `ops-notes-in-file-sections`
     (+6), less 2 on `restatement-only-page`, where v1 did worse. On the ops-notes case,
-    operational notes stayed out of code in 6/6 skill runs over v1 and v2, against 0/3
-    for the reminder (Fisher p = 0.10).
+    v1 kept the operational notes out of code in 3/3 runs, against 0/3 for the reminder
+    (Fisher p = 0.10). v2 also kept them out in 3/3, but the reminder was not re-run in
+    iteration 2 and v2 was revised on these training cases, so the v2 runs are not a
+    second comparison.
   - **Training, Sonnet.** A tie, 90/90 each.
   - **Held out, Haiku.** The reminder was one check ahead.
   - **Held out, Sonnet (+8 checks).** The lead is one case: both reminder runs on
@@ -453,7 +461,8 @@ The gate, the four-arm run, one revision (v2) and the held-out run are done. In 
    - measure words and list items, and check that the reply checks do not regress.
 8. **Harness fixes**, all in `incubator/harness.py`:
    - make `verify-reads` store its own result in the iteration folder (the stored
-     `verify-reads.json` files were written by the auditors);
+     `verify-reads.json` files were written by an out-of-repository wrapper; see
+     [incubator/README.md](../README.md));
    - add a `placement` focus, so the weight-0.5 rows leave Core;
    - tell run agents to write RESPONSE.md with a file-writing tool rather than a shell
      heredoc. The run-limits guard read `>` in reply text as a redirect, and blocked two

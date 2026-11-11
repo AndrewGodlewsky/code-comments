@@ -203,15 +203,19 @@ What the runs show:
 
   | Model | with_skill | shipped_skill | reminder | without_skill |
   | --- | --- | --- | --- | --- |
-  | Haiku, mean (median) words | 228 (232) | 197 (203) | 208 (199) | 186 (174) |
-  | Sonnet, mean (median) words | 245 (247) | 219 (218) | 199 (214) | 169 (186) |
+  | Haiku, mean (median) words | 228 (232) | 197 (203) | 208 (198) | 186 (174) |
+  | Sonnet, mean (median) words | 245 (246) | 219 (218) | 199 (214) | 169 (186) |
 
-  One cause is a sentence that reports an empty category ("none found", "no changelog,
-  ADR or instruction file ..."). A keyword count, so the figures are approximate:
+  A likely contributor is a sentence that reports an empty category ("none found", "no
+  changelog, ADR or instruction file ..."). A keyword count, so the figures are
+  approximate:
   - with_skill: 5/14 replies on Haiku, 10/10 on Sonnet;
   - reminder: 10/14 and 6/10;
   - shipped: 0/15 and 2/10;
   - bare: 1/15 and 0/10.
+
+  On Haiku more of the reminder's replies had one (10/14 against 5/14), so they do not
+  explain the skill's longer replies against the reminder there.
 
   One Haiku with_skill reply quoted the script command.
 - **Cost.** Means per graded run:
@@ -229,8 +233,9 @@ What the runs show:
 
 Interpretation:
 - The skill's harm here is length and cost.
-- The extra length comes partly from answering the reply list item by item, empty items
-  included.
+- Part of the extra length may come from answering the reply list item by item, empty
+  items included (on Sonnet). On Haiku the reminder had more such replies, so this does
+  not explain the skill's lead over it.
 - The harm is real but mild, and the reminder arm shows the same empty-category habit.
 
 ### Revision decision (v2)
@@ -322,8 +327,7 @@ What the runs show:
 - Run 3 had first searched the 4 in a call of its own, as v2 asks.
 
 Interpretation: the sentence was followed once and its warning missed twice. Every run
-read every file and passed every check, so a dropped hit cost nothing here. The change
-is untested.
+passed every check, so a dropped hit cost nothing here. The change is untested.
 
 ### Other differences from v1 (ungraded)
 
@@ -384,8 +388,8 @@ ruling.
   They ran once, after the last skill edit. The v2 and shipped-skill snapshots are
   byte-identical to the current files.
 - **Reads.** `verify-reads` found 12/12 Haiku and 8/8 Sonnet skill-arm runs that read
-  their snapshot before any edit, as the second tool call. No reminder or bare run read
-  a SKILL.md.
+  their snapshot before any edit. In each transcript the read was the second tool call.
+  No reminder or bare run read a SKILL.md.
 - **No exclusions and no rulings, and every run replied.** Neither case grades the reply.
 - **Audit coverage.** The auditor read every diff and every heuristic result in all 40
   runs, and upheld all four failures.
@@ -393,7 +397,8 @@ ruling.
   - `pointer-comment-needs-nothing` was described in CASES.md when the skill was first
     written, so it is a restraint guard, not a clean test.
   - `poll-interval-average-wait` was never described anywhere a skill writer reads.
-  - The v2 writer's directory listing printed both cases' file names.
+  - The v2 writer's directory listing printed both cases' file and grader file names,
+    such as `03-average-wait-recomputed.md`.
 
 ### Results by arm
 
@@ -501,8 +506,9 @@ reminder and the shipped skill, and a small, noisy lead over the bare model.
 - The README set a test in advance: if the shipped arm tied on the rename case or on
   every case, the skill is a plugin enhancement (#21, #48), not a new skill. The shipped
   arm tied on the rename case and came within one run on every other case.
-- The parts that set the skill apart, the script and the record sort, made no difference
-  here. Every run could read every file, and every arm kept the records the checks
-  protect.
+- The parts that set the skill apart, the script and the record sort, showed no effect
+  here. No traced fix came only from a script hit, though 20 iteration-2 runs were not
+  traced and no arm had the skill without the script. Every run could read every file,
+  and every arm kept the records the checks protect.
 - To measure what the skill adds, a case has to need the search step. It would have to
   be too large to read whole, and gated so that the reminder also misses.

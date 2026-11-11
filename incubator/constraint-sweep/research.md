@@ -194,6 +194,10 @@ rates by arm and by `context_in_other_file`.
 **Cases.** The split is suggested. Holding out the simplify and dead-code request types tests whether the trigger
 generalises.
 
+*Superseded 2026-11-11: eval/CASES.md has the cases and split as run. mirrored-column-order was replaced by
+positional-columns-in-sql-pointer. The held-out pair is first-wins-reason-in-caller and mention-without-constraint,
+and dispatched-by-name is training. The reminder actually run is the sentence in eval/arms.json.*
+
 | Case | Split | `context_in_other_file` | Constraint lives in | Natural wrong edit | Core hidden test |
 | --- | --- | --- | --- | --- | --- |
 | sort-relied-on-elsewhere | train | true | caller comment (merge join) | delete `sorted()` | reconcile pairs every row of out-of-order inserts |

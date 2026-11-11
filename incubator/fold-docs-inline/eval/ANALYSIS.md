@@ -348,8 +348,8 @@ Interpretation:
 
 ### Does with_skill beat the other arms on the held-out pair?
 
-- **Against `shipped_skill`:** yes, on both models. Haiku 56/60 against 47/60, with core 13/15 against 9/15. Sonnet 40/40 against 35/40.
-- **Against `without_skill`:** yes on the totals: Haiku 56/60 against 50/60, Sonnet 40/40 against 29/40.
+- **Against `shipped_skill`:** ahead on checks on both models (Haiku 56/60 against 47/60, with core 13/15 against 9/15; Sonnet 40/40 against 35/40), but not established at run level: full marks 8/10 against 4/10 (stratified exact p = 0.14), full core 8/10 against 6/10 (p = 0.60). Before three auditor rulings on shipped stale-ordering-reason runs (Haiku run-1, Sonnet runs 1 and 2), shipped full marks were 1/10 (p = 0.0067).
+- **Against `without_skill`:** yes on the totals: Haiku 56/60 against 50/60, Sonnet 40/40 against 29/40. Full marks 8/10 against 1/10 (p = 0.0067); full core 8/10 against 7/10 (p = 1.0).
   - On Haiku the bare model did better on core (15/15 against 13/15).
   - The skill's lead there is restraint, preservation and reply: restating docstrings, rewritten docstrings and claims given no fate.
 - **Against `reminder`:**

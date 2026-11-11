@@ -301,6 +301,13 @@ What the numbers show:
   was not measured (see Limits). The pointer twin could not show an effect, because its
   base case was at ceiling too. So this eval gives no evidence for the revisit condition,
   and none against it in larger repositories.
+  - Before the runs, Next step 4 and research.md (Counterevidence and limits) said "a null
+    result is ADR 0001's revisit trigger". The result was null, but that trigger is not
+    applied. The sentence treated "the skill shows no gain" as if it were the ADR's
+    condition. The condition needs readers to miss context in other files first, and
+    search or a pointer then not to fix it. The bare model passed every core check
+    (35/35) and discovery was not measured, so the first half was never observed. This
+    reading was decided after the runs.
 - **Ungraded differences**, counted from diffs and replies
   ([eval/RESULTS.md](eval/RESULTS.md)):
   - **The named form.** With the skill, the column went where the user asked and the
@@ -336,7 +343,8 @@ Of the eval:
   reminder and shipped-skill arms, not this skill.
 - **Skill reads cannot be re-checked.** The `verify-reads.json` files were made from
   transcripts that are not stored in the repository. No script in the repository writes
-  their other-arm and wrong-model lists.
+  their other-arm and wrong-model lists; they come from the out-of-repository wrapper
+  described in [incubator/README.md](../README.md).
 - **Gate-based case selection.**
   - A bare-model gate ran first on all seven cases, the held-out pair included. Four
     cases were then hardened to leave room for a gain ([eval/GATE.md](eval/GATE.md)).

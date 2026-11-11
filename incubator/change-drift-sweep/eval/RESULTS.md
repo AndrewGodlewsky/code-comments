@@ -11,7 +11,9 @@ Each gap is one check in one run, which is noise at 2 or 3 runs per cell.
 
 Its only clear margin is over the bare model on Haiku:
 - **Training:** 96/96 against 88/96. All 15 skill runs passed every core check, against
-  9 of 15 bare runs (two-sided Fisher p = 0.017, chosen after reading the runs).
+  9 of 15 bare runs (two-sided Fisher p = 0.017, chosen after reading the runs). The
+  test treats runs as independent, but the 6 bare shortfalls are all 3 runs of each of
+  2 of the 5 cases.
 - **Held out:** 36/36 against 34/36.
 
 The reminder closes that gap as fully (96/96 and 36/36), and the shipped skill nearly so
@@ -84,12 +86,15 @@ read the skill first.
 **Skill reads.** Audit agents ran `verify-reads` on every iteration:
 - Every skill-arm run read its snapshot SKILL.md before its first edit: iteration 1
   50/50 (53 counting the excluded originals), iteration 2 25/25, held out 20/20.
-- In every skill-arm transcript, that read was the second tool call, right after
-  `prompt.txt`. Sonnet often edited through Bash, which `verify-reads` does not count as
-  an edit, but always after the skill read.
+- The auditors report that in every skill-arm transcript, that read was the second tool
+  call, right after `prompt.txt`. Sonnet often edited through Bash, which `verify-reads`
+  does not count as an edit, but always after the skill read.
 - No reminder or bare run read a skill snapshot.
-- The `verify-reads` output was kept in the auditors' scratch folders, not in the
-  iteration folders.
+- Each counted iteration folder holds a `verify-reads.json`, recorded with the once-by-id
+  count when these results were committed. For the three re-run skill-arm runs (see
+  "Excluded runs") it names the excluded original's transcript, the one that sorts last,
+  so it holds no read evidence for those three counted runs. Their read rests on the
+  auditors' statement above.
 
 ## Headline
 
@@ -191,7 +196,7 @@ Every failed check, after rulings:
 - **Reminder Sonnet, `unit-spelled-ttl` run 2, check 02.** It left "fifteen minutes" in
   the `auth/views.py` docstring.
 - **Bare Sonnet, `default-value-drift` run 2, check 02.** It left "fifty at a time" in
-  the `exporter/sync.py` docstring, the same miss the gate's Sonnet run made.
+  the `exporter/sync.py` docstring, one of the two misses the gate's Sonnet run made.
 
 What the training cases show:
 - **Two hardened cases gave bare Haiku headroom:** `unit-spelled-ttl` and
@@ -290,7 +295,7 @@ Haiku and 10 Sonnet.
 | v2 change | Target in iteration 1 | v1 | v2 | Read |
 | --- | --- | --- | --- | --- |
 | 1. Read a line with the next line of its block | The wrapped quarter-hour idiom in the `auth/forms.py` docstring, `unit-spelled-ttl`, Haiku | left out of the list in 3/3 runs | listed in 2/2 runs that ran the script before editing; run 2 ran it only after its edits | **Fixed on this case.** The first call listed 10 lines in 7 files, against 9 in 6 for v1 with similar arguments. After the edit, run 3's list marked the wrapped "half an hour" `states new`. |
-| 2. A value under 10 gets a call of its own | One Haiku run's `--near` dropped a derived-figure line | 1/15 runs | `--near` used in 4/15 Haiku and 2/10 Sonnet runs | **Not testable here.** In `derived-backoff-total`, Haiku runs 1 and 3 each still put `--near` on a call that also held the derived figures. Run 3 had first searched the 4 in a call of its own, as v2 asks. Every run read every file and passed every check, so a dropped hit would cost nothing. |
+| 2. A value under 10 gets a call of its own | One Haiku run's `--near` dropped a derived-figure line | 1/15 runs | `--near` used in 4/15 Haiku and 2/10 Sonnet runs | **Not testable here.** In `derived-backoff-total`, Haiku runs 1 and 3 each still put `--near` on a call that also held the derived figures. Run 3 had first searched the 4 in a call of its own, as v2 asks. Every run passed every check, so a dropped hit would cost nothing. |
 
 What else iteration 2 shows:
 - **Scores held:** 96/96 on Haiku and 64/64 on Sonnet, the same as v1.
@@ -323,11 +328,13 @@ What else iteration 2 shows:
 | held out (v2) | 6/6 | 2/4 (pointer case only) |
 
 No other arm ran it. What the runs show:
-- **It never was the only route to a fix.** The iteration-1 auditor traced every
-  iteration-1 run, and the writer traced the iteration-2 `unit-spelled-ttl` runs and the
-  held-out runs. Each run had printed every relevant file before its first script call or
-  in the same command, or it ran the script only after editing. The script served as a
-  checklist and a final check.
+- **In every traced run it was not the only route to a fix.** The iteration-1 auditor
+  traced every iteration-1 run, and the writer traced the iteration-2 `unit-spelled-ttl`
+  runs and the held-out runs. The other 20 iteration-2 runs were not traced, and no arm
+  had the skill without the script, so the script's effect was not measured. Each traced
+  run had printed every relevant file before its first script call or in the same
+  command, or it ran the script only after editing. The script served as a checklist and
+  a final check.
 - **It did not flood.** Calls made before any edit listed 2 to 12 prose lines in 2 to 9
   files. Every line that was not a living description was one of these:
   - a record, with or without the `record?` hint;
@@ -378,16 +385,28 @@ Without the rulings, v2 would trail v1 by one check on each model. That would be
 artefact: the reply check misses the skill's own words.
 
 **No grader bug was recorded:** no check was wrong for every run. Three heuristic gaps
-remain in `eval/grade.py`:
+found in the runs remain in `eval/grade.py`:
 - `_C1_LIMIT_BEFORE` lacks "above";
 - `_C5_CONTRAST` lacks "false" and "drift", which SKILL.md's own wording leads to;
 - the poll case's check 02 has no variant for the "(ten minutes)" gloss.
+
+A fourth was known before the runs: `test_grade.py` pins a true added
+`unit-spelled-ttl` sentence that check 02 fails (`known-misgrade-contrast-sentence`,
+described in CASES.md). Every `unit-spelled-ttl` failure of check 02 left old text, so
+none was this misgrade.
 
 ## Excluded runs
 
 Four iteration-1 runs were excluded and re-run, all for the same environment fault: the
 run-limits guard misread the agent's shell command. The originals are kept in
-`iterations/<iteration>/excluded-runs/`, each with an `EXCLUDED.txt`.
+`iterations/<iteration>/excluded-runs/`, each with an `EXCLUDED.txt`. The grading auditor
+agent, not a human, made these exclusions after the runs. The exclusion rule written
+before the eval covered only skill-arm runs that skipped the skill read. The rule for
+runs the guard stopped, added to the README with these results, is: exclude and re-run a
+run the guard stopped before it wrote something its case grades (its edits, or
+`RESPONSE.md` in a case with a reply check), and keep a run stopped only from writing a
+reply its case does not grade. Each replacement scored higher than its original. That is
+expected, because each original lost graded checks to the block.
 
 | Run | What the guard blocked | Original, graded in memory | Replacement |
 | --- | --- | --- | --- |
@@ -397,7 +416,7 @@ run-limits guard misread the agent's shell command. The originals are kept in
 | Haiku `pre-existing-drift-reported` `shipped_skill` run 3 | the heredoc writing RESPONSE.md; it read "up to 250." after a `>` as a file name | 5/6: edits done, reply check failed | 6/6 |
 
 With the Haiku original, the shipped skill would score 94/96 on iteration-1 Haiku instead
-of 95/96. The three Sonnet originals made no edit at all.
+of 95/96 (93/96 without its ruling). The three Sonnet originals made no edit at all.
 
 Two more Haiku runs were kept without a reply:
 - iteration-1 `with_skill` `default-value-drift` run 2;
@@ -434,8 +453,8 @@ run was excluded.
   bare model used digits in 3/3. Sonnet used digits in every arm. Ungraded.
 - **It restated the new figure rather than pointing to the constant**, in nearly every
   corrected line. The shipped skill pointed to the constant more often. Both pass.
-- **On Haiku it ran `value_drift.py` in every run.** No other arm had the script. It
-  found nothing that reading had not.
+- **On Haiku it ran `value_drift.py` in every run.** No other arm had the script. In the
+  traced runs it found nothing that reading had not.
 - **v2 on Sonnet corrected the pre-existing flush figure toward the code** in 2/2 runs.
   No other run of any arm did. The other arms ran only in iteration 1, so this compares
   separate samples.
@@ -449,8 +468,10 @@ run was excluded.
 - **The bare Sonnet model nearly matched it** (63/64, 23/24). It is the cheapest arm on
   Sonnet training.
 - **Every other arm wrote shorter replies.** The skill's replies were the longest in
-  every iteration and on both models (see "Cost"). Part of the extra is sentences that
-  report an empty category. The reminder wrote these too.
+  every iteration and on both models (see "Cost"). In iteration 1 a keyword count found
+  sentences that report an empty category in 10/10 skill replies on Sonnet, which may be
+  part of the extra there. On Haiku the reminder had more such replies (10/14) than the
+  skill (5/14), so they do not explain the skill's lead over it (ANALYSIS.md).
 - **The shipped skill pointed to the constant** ("PAGE_SIZE rows per request") more
   often. That is a correction SKILL.md also allows, and one that does not drift again.
 
@@ -499,13 +520,22 @@ What the table shows:
 - Before-ruling figures come from each ruling's "check said" evidence.
 - Transcripts are matched to runs by the outputs path in their first message, which is
   how `verify-reads` matches them. Where a run was re-run, the later transcript is used.
-- Tool calls, tokens, script use and Edit errors were counted by the writer from the
-  transcripts.
+- Tool calls, tokens, script use, what each script call listed, Edit errors and the
+  model ids were counted by the writer or the auditors from the transcripts, which are
+  not in the repository.
   - Each transcript also stores copies of earlier messages in its request records.
     Counting those copies roughly doubles the tool counts.
-  - `harness.py verify-reads` counts them too, so its `tool_calls` field runs high.
+  - The committed `verify-reads.json` files count each call once too. They differ from
+    the cost table only in iteration-1 Haiku shipped_skill (14.1) and Sonnet with_skill
+    (7.4), because for the three re-run runs they record the excluded original's
+    transcript.
+  - A replay of the v1 snapshot's and the current script on the case fixtures confirms
+    the two script gaps above: for `--old "900 s"` v1 leaves out `auth/forms.py:3` and
+    v2 lists it, and for `--old "150 s" --old "2.5 min"` v2 does not list
+    `docs/fulfilment.md`.
 - Changelog, comment, word-form and parameter-rename counts come from each run's
-  `changes.diff`. They are ungraded.
+  `changes.diff`, and reply words from its RESPONSE.md, so they can be recounted from the
+  committed files. They are ungraded.
 - The originals of excluded runs were graded in memory with `harness.grade`, and nothing
   was written.
 - Fisher exact p-values are two-sided, for comparisons chosen after reading the runs.
