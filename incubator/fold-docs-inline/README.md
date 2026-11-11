@@ -10,13 +10,29 @@ home beside the code it governs. The fates are:
 
 The user reviews the per-claim fate list in the reply.
 
-**Status: built; evaluation pending.** No run has been made, so there is no result to
-report. The skill makes no performance claim. It is ideation candidate C6 for issue
+**Status: evaluated, over 165 graded runs on Claude Haiku and Sonnet. It beats the
+shipped `code-comments` skill and the bare model, in training and on the held-out pair.
+It does not reliably beat the one-line reminder in [eval/arms.json](eval/arms.json).**
+
+Against the reminder:
+- it tied on Sonnet training;
+- it was one check behind on Haiku held-out;
+- it was ahead on Haiku training (+4 checks) and Sonnet held-out (+8 checks), each lead
+  coming from a single case at 2 or 3 runs per cell.
+
+Its one consistent edge over the reminder is page handling. It slimmed or deleted the
+retired page as the answer key expects, and never left it whole: 0 of 60 runs. The reminder left the page
+whole in 3 of 35 runs. The results are in [eval/RESULTS.md](eval/RESULTS.md), and the
+samples are small (see Limits).
+
+It is ideation candidate C6 for issue
 [#50](https://github.com/AndrewGodlewsky/code-comments/issues/50), and it does not ship.
 
-- Skill: [skill/fold-docs-inline/SKILL.md](skill/fold-docs-inline/SKILL.md)
+- Skill: [skill/fold-docs-inline/SKILL.md](skill/fold-docs-inline/SKILL.md) (v2)
 - Research: [research.md](research.md)
-- Eval design: [eval/CASES.md](eval/CASES.md)
+- Eval design: [eval/CASES.md](eval/CASES.md); case selection: [eval/GATE.md](eval/GATE.md)
+- Results: [eval/RESULTS.md](eval/RESULTS.md); analysis: [eval/ANALYSIS.md](eval/ANALYSIS.md);
+  skill edits: [eval/CHANGES.md](eval/CHANGES.md)
 
 ## The problem
 
@@ -61,6 +77,10 @@ each fact one home" and "Do not restate code". This skill adds:
 
 It does not repeat the shipped skill's writing rules. When both are installed, the
 shipped skill governs how each added comment reads.
+
+These additions were designed before any run. "Results" below says which of them made a
+measured difference. Against the shipped skill, most did. Against the reminder, only the
+page handling and, on Haiku, the kept fate did.
 
 ## When to use it
 
@@ -130,6 +150,9 @@ Grades follow [research.md](research.md):
 | One home: moved and dropped claims leave the page, with no "moved" note | P-26; R13; ADR 0001; the devjiro fix (R6) | practitioner. Counterevidence: Google suggests an onward pointer (R12) |
 | The reply is a per-claim fate list | Judges' fix suggestion for C6; in the hygiene eval the clearest discriminator was a reply duty | hypothesis |
 | Report other files that duplicate a moved fact, and links to the page | context-layers.md §4 audit duty (untested); E10 | judgement |
+| Prefer a comment or an existing docstring; a docstring the skill creates holds only the moved fact, with no opening line saying what the code does (v2) | Iteration 1: 4 of 15 Haiku runs created a docstring that opened by restating the code; iteration 2: 0 of 15 | repo-eval |
+| A claim that only describes the code stays dropped; it moves as a constraint only when the page states the rule or gives its reason (v2) | Iteration 1: one Haiku run moved a description as an invented, widened rule; iteration 2: 0 of 3. The shipped skill's "Never invent" | repo-eval |
+| One fate-list line per sentence, split only where fates differ; headings are not claims (v2) | Iteration 1: the skill's replies were the longest arm in every case. Iteration 2 showed no measurable shortening | repo-eval; no effect shown |
 
 ## The eval
 
@@ -148,7 +171,7 @@ Grades follow [research.md](research.md):
   - `without_skill` gets the request alone.
 - **Traps:** in every stale case the value that contradicts the page sits in a different
   file from where the moved fact must be written. Two cases hold a partly true claim: a
-  true reason that must move, in the same sentence as a stale count that must not. One
+  true reason that must move, in the same sentence as a stale value that must not. One
   case has an `AGENTS.md` that repeats a moved fact.
 - **Graded:** only what nobody disputes:
   - a stale claim reaches no added comment and no other document, negated or not;
@@ -180,6 +203,98 @@ The reply checks are keyword heuristics, so a win there needs reading the replie
 it is reported. If the skill does not beat the reminder and the shipped skill, that null
 result goes here.
 
+Neither expected difference appeared:
+- **The reply duties.** The reminder gave every claim a fate and reported the `AGENTS.md`
+  duplicate in every run, though its sentence asks for neither: reply checks 70/70,
+  against the skill's 69/70.
+- **The partly true claims.** Every arm kept the stale value out of the code in nearly
+  every run. The skill's two held-out failures were both splitting errors on Haiku.
+
+What did separate the skill from the reminder was not a duty the reminder lacks. It was
+two decisions:
+- whether to edit the page at all;
+- on Haiku, whether an operational note that names a function stays in a document.
+
+## Results
+
+165 graded runs:
+
+| Run set | Runs |
+| --- | --- |
+| Iteration 1 (v1, training, all arms) | 100 |
+| Iteration 2 (v2, training, `with_skill` only) | 25 |
+| Held out (v2, all arms) | 40 |
+
+What else applies to these runs:
+- **Gate runs.** The 21 gate runs are not counted.
+- **Exclusions.** Two held-out runs were excluded and re-run, because the run-limits guard
+  blocked them from writing their reply.
+- **Skill reads.** Every skill-arm run read its skill before its first edit.
+- **Rulings.** The numbers include 27 rulings by auditor agents. Net, they cost the skill
+  2 checks and gave the reminder 5.
+
+Mean pass rate and checks passed, from `harness.py summary`:
+
+| Iteration | with_skill | shipped_skill | reminder | without_skill |
+| --- | --- | --- | --- | --- |
+| `iteration-1-haiku` (v1) | 97.4%, 132/135 | 71.3%, 95/135 | 94.8%, 128/135 | 71.4%, 96/135 |
+| `iteration-1-sonnet` (v1) | 100.0%, 90/90 | 89.1%, 79/90 | 100.0%, 90/90 | 82.8%, 75/90 |
+| `iteration-2-haiku` (v2) | 99.3%, 134/135 | not run | not run | not run |
+| `iteration-2-sonnet` (v2) | 100.0%, 90/90 | not run | not run | not run |
+| `heldout-haiku` (v2) | 93.3%, 56/60 | 79.3%, 47/60 | 95.5%, 57/60 | 82.8%, 50/60 |
+| `heldout-sonnet` (v2) | 100.0%, 40/40 | 88.6%, 35/40 | 81.8%, 32/40 | 73.5%, 29/40 |
+
+Core checks passed, without the weight-0.5 placement rows, both models together:
+
+| Split | with_skill | shipped_skill | reminder | without_skill |
+| --- | --- | --- | --- | --- |
+| Training, iteration 1 (v1) | 54/55 | 36/55 | 52/55 | 35/55 |
+| Training, iteration 2 (v2) | 55/55 | not run | not run | not run |
+| Held out (v2) | 23/25 | 17/25 | 19/25 | 20/25 |
+
+What the numbers show:
+- **Over the shipped skill and the bare model: a clear gain that carried over.**
+  - Training, iteration 1: 222/225 checks for the skill, against 174/225 and 171/225.
+  - Held out: 96/100, against 82/100 and 79/100.
+  - Training, iteration 1, the shipped skill and the bare model:
+    - left the page whole while copying its facts into code;
+    - copied the page's restatements into docstrings;
+    - wrote the disputed rule into code as a to-do;
+    - missed the `AGENTS.md` duplicate.
+  - The shipped skill scored no better than the bare model on Haiku training (71.3%
+    against 71.4%).
+  - On held-out Haiku the bare model did better on core (15/15 against 13/15), but lost
+    on restraint, preservation and reply.
+- **Over the reminder: not established.**
+  - **Training, Haiku (+4 checks).** The lead is one case, `ops-notes-in-file-sections`
+    (+6), less 2 on `restatement-only-page`, where v1 did worse. On the ops-notes case,
+    operational notes stayed out of code in 6/6 skill runs over v1 and v2, against 0/3
+    for the reminder (Fisher p = 0.10).
+  - **Training, Sonnet.** A tie, 90/90 each.
+  - **Held out, Haiku.** The reminder was one check ahead.
+  - **Held out, Sonnet (+8 checks).** The lead is one case: both reminder runs on
+    `four-fates-page` left the page whole for the user to delete (p = 0.33).
+- **The held-out pair, the main test of whether it generalises:**
+  - **Carried over:** the page decision (0 of 10 runs left the page whole), no
+    preservation harm (25/25), restraint 19/20, and a fate for every claim (20/20).
+  - **Did not carry over:** the Haiku lead over the reminder. Neither held-out case tests
+    operational notes that name a function.
+  - **New on Haiku:** the skill's two failures were both at the split boundary. One run
+    left a true reason out because it sat beside a stale value. Another moved a rule
+    whose only stated reason was stale.
+- **v2 fixed two of its three targets on the training cases:**
+  - created docstrings that open by restating the code: 4/15 Haiku runs to 0/15;
+  - a description moved as a rule (`restatement-only-page` core 01, Haiku): 2/3 to 3/3.
+
+  Its third change, shorter fate lists, had no measurable effect: 416 to 423 words on
+  Haiku.
+- **Cost: longer replies.** The skill's replies ran 1.5 to 1.7 times the reminder's length
+  (Haiku held-out: 450 words against 265). Part of this is the per-claim fate list with
+  evidence, which is the deliverable.
+- **Close calls.** Two ungraded or close calls go to the user (see Next steps):
+  - a page detail the code neither states nor contradicts, such as a currency unit;
+  - whether a reason given for a stale value should move.
+
 ## Running the eval
 
 From the repository root:
@@ -199,18 +314,73 @@ iteration name. Exclude and re-run any skill-arm run that `verify-reads` reports
 reading the skill before its first edit. Record rulings on paraphrases in the run's
 `overrides.json`.
 
+The held-out pair (`four-fates-page`, `stale-ordering-reason`) has now run once, on v2.
+It is spent: it cannot judge a later version. A v3 needs a fresh held-out pair.
+
 ## Limits
 
+Of the eval:
+- **Few runs.** 2 or 3 runs per cell detect only large effects. Two-sided Fisher exact
+  p-values:
+  - 3/3 against 0/3: 0.10;
+  - 2/2 against 0/2: 0.33;
+  - 0/5 against 3/5: 0.17.
+
+  Every lead over the reminder is one case at these sizes. Totals pool checks that one
+  decision can fail together, so they describe the runs; they are not tests.
+- **Small fixtures.** Seven small Python repositories with short pages, one case per
+  behaviour and one phrasing per request. A long real page will need more judgement than
+  the cases test.
+- **One model family.** Claude Haiku and Sonnet only. The iteration folders do not
+  record exact model versions.
+- **Cases built by agents.** Every case, reference, grader and hidden test was written by
+  an agent. None comes from a real repository or a user's report.
+- **Rulings made by agents.** All 27 rulings (`overrides.json`) were made by auditor
+  agents, not a human.
+  - Net, they cost the skill 2 checks and gave the reminder 5.
+  - One threshold paraphrase was ruled a fail in iteration 2. The same paraphrase passed
+    unruled in two iteration-1 runs. Either choice leaves every comparison as it is.
+  - Several anchors in `eval/grade.py` misgrade some paraphrases (listed in RESULTS.md).
+- **Gate-based case selection.**
+  - A bare-model gate ran first on all seven cases, the held-out pair included. Two
+    cases were rebuilt to leave headroom, one of them held out ([eval/GATE.md](eval/GATE.md)).
+  - The gate was not re-run on the rebuilt fixtures. The bare model still passed their
+    stale checks in most runs: `stale-number-elsewhere` 4 of 5, `stale-ordering-reason`
+    4 of 5.
+  - Selection by a bare gate favours cases where the bare model falls short.
+- **Held-out exposure.** No skill edit drew on the held-out cases. But the v2 writer read
+  GATE.md and CASES.md, which summarise them, and the gate shaped one of them.
+- **Prompt read from a file.** Each agent read its task from `prompt.txt` as its first
+  tool call. A real request arrives as a user's message.
+- **Activation is untested.**
+  - The eval tells the skill arms to read the skill first, so it says nothing about
+    whether the description makes the skill load on its own.
+  - On its own, the shipped skill loaded in 0 of 18 Haiku and 3 of 18 Sonnet
+    should-load runs (#20).
+- **Iteration 2 is compared across runs.** v2 ran only `with_skill`. It is compared with
+  the other arms' iteration-1 runs.
+- **Keyword reply checks.** The reply checks are anchors and keywords. The auditors read
+  every failed check and at least a third of the passing heuristic results in each arm.
+  For iteration 2 and the held-out pair they read all of them. A paraphrase can still
+  slip through.
+- **Not measured:** tokens, turns, cost, and whether the user finds the longer fate list
+  worth reading.
+- **Some behaviours are ungraded.** These include the fate of a big-picture sentence and
+  of a page detail the code does not state, such as a currency unit. They come from the
+  writer's reading of runs.
+
+Of the skill:
 - **No downstream benefit is shown or claimed.** The user's fuller theory is that a
   docs folder helps weaker models on large projects. Retiring a page can remove help
   that this eval does not measure, so the skill is not advice to delete docs.
 - **The kept/moved boundary is a hypothesis** (context-layers.md §4). The eval grades
   only claims at its clear ends.
-- **Graders are partly keyword and anchor checks.** A paraphrase that drops a number
-  or ticket id can misgrade.
-- **The cases are small.** There is one case per behaviour, the code is Python only,
-  and the pages are short. A long real page will need more judgement than the cases
-  test.
+- **The split boundary is its weak point on Haiku.** Two held-out runs got it wrong in
+  opposite directions:
+  - one left a true reason out because it sat beside a stale value;
+  - one moved a rule whose only stated reason was stale.
+- **Longer replies.** The skill's replies ran 1.5 to 1.7 times the reminder's length,
+  and v2's change to the fate list did not shorten them.
 - **One home stops at the named page.** Duplicates in instruction files and other
   documents are reported, not removed. Until the user acts on the report, the fact still
   has two homes.
@@ -220,31 +390,78 @@ reading the skill before its first edit. Record rulings on paraphrases in the ru
   - giving instruction files a fate list only.
 - **Comments drift too.** Moving a fact does not keep it true; the shipped skill and its
   `stale-refs` check do that afterwards.
-- **Activation is not measured.** The trigger is an explicit, named request, the
-  favourable case seen in #20, but no activation eval has been run.
 
 ## Next steps
 
-1. Pilot the training split on Haiku and Sonnet with all four arms. Paid runs need the
-   user's approval, with the estimated and actual cost reported.
-2. Grade the pilot, check reads with `verify-reads`, and record overrides. Then compare
-   `with_skill` against `reminder` and `shipped_skill` focus by focus. Report a tie or a
-   loss as a result.
-3. Edit the skill only from training-split failures. Then run the held-out split once.
-4. Ask the user the open questions:
+The gate, the four-arm run, one revision (v2) and the held-out run are done. In order:
+
+1. **Put the result to the user.**
+   - The graded data support the skill over the shipped skill and the bare model, not
+     over the reminder sentence in [eval/arms.json](eval/arms.json).
+   - Do not move the skill into a plugin unless the user decides to.
+   - Offer the user two options:
+     - use the reminder sentence;
+     - keep the skill for its page handling and its per-claim evidence.
+2. **Ask the user the open questions.** The first two are new from the runs:
+   - When the page gives a reason for a value the code contradicts, should the reason
+     move to the code's value, or be quoted back with the stale value? Held-out
+     `four-fates-page` split the arms on this.
+   - What fate does a page detail get when the code neither states nor contradicts it?
+     Three Haiku runs gave a currency unit three different fates.
    - Is a module docstring an acceptable home for the big picture (inline-only-tradeoffs
      Q1)?
    - May a slimmed page keep a one-line onward pointer?
    - Should not-migrated claims stay in the page, flagged, instead of leaving it?
    - Should the skill ever edit an instruction file the user names?
-5. Add a read-only `doc_claims.py` worksheet only if runs show missed stale claims. It
-   would list the names and values each claim mentions and where the code defines them.
-   It would use the standard library only and store nothing.
-6. Consider the case research.md proposed that this set still lacks: a TypeScript page
-   with a cross-file pointer. The bystander `AGENTS.md` and the partly true claim are now
-   part of `slim-page-one-home`, `stale-number-elsewhere` and `four-fates-page`.
-7. Decide whether the harness gets a `placement` focus, so that the weight-0.5 placement
-   checks leave the Core column, and whether research.md's shorter reminder sentence
-   should run as a second reminder arm. Both need changes to `incubator/harness.py`.
-8. If the user wants it in the plugin, write activation cases for it, including near
-   misses: updating a doc for a change, explaining a doc, and writing a setup README.
+3. **Test the page-handling edge against a stronger reminder.** If the user wants the
+   skill and the reminder told apart:
+   - Add a second reminder arm whose sentence also says to edit the page yourself,
+     leaving on it only what has no code home. `harness.prepare` reads only `reminder`,
+     so this needs a harness change.
+   - Run it against `with_skill` with 5 or more runs per cell, on Haiku and Sonnet. Use
+     the cases where the two diverged: `ops-notes-in-file-sections`,
+     `slim-page-one-home` and `four-fates-page`. `four-fates-page` is no longer a
+     held-out test.
+4. **Fix the anchor gaps in `eval/grade.py`.** RESULTS.md, "Rulings", lists nine. Then:
+   - run `python incubator/harness.py self-test fold-docs-inline`;
+   - re-grade every iteration with `harness.py grade`;
+   - check that each `overrides.json` ruling still matches the check or is no longer
+     needed. Keep the rulings as a record.
+5. **Settle the threshold-paraphrase standard.** The run is
+   `iteration-2-haiku/ops-notes-in-file-sections/with_skill/run-3`. A human should decide
+   whether its ruling stands:
+   - if it stands, add the same ruling to `iteration-1-haiku/ops-notes-in-file-sections`
+     `with_skill/run-2` and `reminder/run-2`;
+   - if not, withdraw it.
+
+   Then re-grade and update RESULTS.md.
+6. **Do not edit the skill from the held-out failures.** If the split boundary is worth
+   fixing:
+   - build training cases for both errors: a true reason attached to a stale value, and
+     a rule whose only stated reason is stale;
+   - gate them on the bare model (Haiku x3, Sonnet x2) and keep cases with bare
+     failures;
+   - make a v3 from training failures only;
+   - build a fresh held-out pair, and run it once.
+7. **Decide whether reply length matters.** If the user finds the fate list too long:
+   - try one change on the training cases, such as a cap on lines or one line per page
+     bullet;
+   - measure words and list items, and check that the reply checks do not regress.
+8. **Harness fixes**, all in `incubator/harness.py`:
+   - store each `verify-reads` result in the iteration folder;
+   - add a `placement` focus, so the weight-0.5 rows leave Core;
+   - tell run agents to write RESPONSE.md with a file-writing tool rather than a shell
+     heredoc. The run-limits guard read `>` in reply text as a redirect, and blocked two
+     runs.
+9. **Before any shipping decision:**
+   - run an activation eval, with should-load requests and near misses: updating a doc
+     for a change, explaining a doc, writing a setup README;
+   - add an arm with both this skill and `code-comments` loaded, since that is how they
+     would ship;
+   - use a model outside the Claude family;
+   - try one long page from a real repository.
+10. **Deferred, as before:**
+    - a read-only `doc_claims.py` worksheet, only if runs show missed stale claims. In
+      60 skill runs, one carried part of a stale claim into a comment. It had found the
+      contradiction, and the error was in the split, which a worksheet would not fix.
+    - the TypeScript case with a cross-file pointer that research.md proposed.
