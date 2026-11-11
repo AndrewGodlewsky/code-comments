@@ -4,10 +4,10 @@
 Claude Haiku and Sonnet, the skill ties the reminder sentence in
 [eval/arms.json](eval/arms.json) on every graded check (after an auditor agent's rulings),
 in training and on the held-out cases. It beat the shipped `code-comments` skill only on
-Haiku's training cases, mostly in one case, and tied it on Sonnet and on the held-out
-pair. As this README said before the runs, a tie means the honest recommendation is the
-sentence, not this skill. Results are in [eval/RESULTS.md](eval/RESULTS.md), and the
-samples are small (see Limits).
+Haiku's training cases (96/96 against 90/96, half the gap in one case), and tied it on
+Sonnet and on the held-out pair. As this README said before the runs, a tie means the
+honest recommendation is the sentence, not this skill. Results are in
+[eval/RESULTS.md](eval/RESULTS.md), and the samples are small (see Limits).
 
 An incubator skill for issue [#50](https://github.com/AndrewGodlewsky/code-comments/issues/50),
 from ideation candidate C2 ([candidates](../ideation/2026-11-11-candidates.json)). The
@@ -214,15 +214,18 @@ What the numbers say:
   the shipped skill scored 100%.
 - **The hidden tests never favoured the skill over the bare model.** The bare model built
   correct new code in every run of every case with hidden tests (training 20/20, held out
-  10/10). The skill's
-  whole gain over the bare model is on text checks: it corrected false descriptions (15 of
-  15 runs against 4 of 15) and kept a requirement and a vendor fact in the doc sync (privacy
-  5/5 against 2/5, quota 5/5 against 1/5). The reminder did the same.
+  10/10). Of the 20 checks the skill gained over the bare model, 18 are text checks: it
+  corrected false descriptions (15 of 15 runs against 4 of 15) and kept a requirement and
+  a vendor fact in the doc sync (privacy 5/5 against 2/5, quota 5/5 against 1/5). The
+  other two are one preservation and one reply check in Haiku's doc sync. The reminder did
+  the same.
 - **The held-out pair showed no loss and no lead.** v2 scored 100% on new material, with no
   over-distrust of the true twin. So did the shipped skill and the reminder.
-- **Ungraded, the skill's one consistent edge is a `-B` flag.** `with_skill` left bytecode
-  caches in 0 of 60 runs; every other arm left them in most runs (78 of 105). The graders
-  skip caches by design.
+- **Ungraded, the skill's one consistent edge over every other arm is no bytecode
+  caches.** `with_skill` left them in 0 of 60 runs; every other arm left them in most runs
+  (78 of 105). Its probe line says to run `python -B`, and its iteration-1 runs did
+  ([eval/ANALYSIS.md](eval/ANALYSIS.md)). Whether that line alone would do it is untested.
+  The graders skip caches by design.
 - **Ungraded, v1's reply rules caused harm, and v2 fixed most of it.** v1's `file:line`
   demand produced 112 line citations, 5 of them past the end of the file. v2 has none. v1
   called a comment's claim "the premise" in 5 of 10 runs of the cents cases; v2 still did in
@@ -251,7 +254,9 @@ Of the eval:
   held-out pair included, and the request pair was hardened afterwards to leave room for a
   gain ([eval/GATE.md](eval/GATE.md)). That favours cases where the bare model falls
   short, which can widen the gap over the bare model. It does not favour the skill over the
-  reminder or the shipped skill.
+  reminder or the shipped skill. GATE.md planned to re-run the gate on the hardened pair
+  before the other arms; that re-run did not happen. In the counted runs the bare model
+  still passed the pair's hidden tests 10/10 (5/5 in each case).
 - **Prompt read from a file.** The agents read their task from a prompt file instead of
   receiving it as a user's message, which is not how real requests arrive.
 - **Activation is untested.** The eval tells the agent to read the skill first, so it says
@@ -261,7 +266,8 @@ Of the eval:
 - **The hidden tests had no headroom.** The bare model built correct new code in every
   counted run of every case. So the eval never tested the skill's central claim, that it
   stops new code being built on a false claim, in a setting where the bare model fails.
-  The gate's one such failure (Sonnet in `stale-cents-comment`) did not recur.
+  The gate's one run that built on a false claim (Sonnet in `stale-cents-comment`) did not
+  recur.
 - **The held-out pair is spent.** It was run once, on v2. It cannot judge a later version.
 
 Of the skill:
@@ -270,7 +276,9 @@ Of the skill:
   asks the agent to state its assumption. That reports the risk; it does not remove it.
 - **Paranoia is a possible cost, not seen here.** Most claims are true (CASCADE: 814
   consistent pairs to 71 inconsistent ones). Every run of the three true twins passed in
-  every arm, but the twins measure over-distrust only on these three requests.
+  every arm, one `with_skill` run only by ruling (v1, `iteration-1-haiku`
+  `true-cents-comment` run-2, false-alarm check 06). The twins measure over-distrust only
+  on these three requests.
 - **The library-default rule changed no outcome.** `helper-docstring-lies` rests on
   Decimal's half-even default, but every arm found it through the visible test that pins
   it.
@@ -278,7 +286,8 @@ Of the skill:
   in one sentence. The mixed-sentence rule (*judgement*) kept a false description in the
   synced doc in every `with_skill` run.
 - **Cost.** Tokens were not measured. `with_skill` replies ran 15 to 19% longer than the
-  bare model's on the training cases.
+  bare model's on the training cases, and 32% longer on Haiku's held-out cases. On
+  Sonnet's held-out cases they were the shortest of the four arms.
 
 ## Next steps
 
@@ -295,10 +304,10 @@ In order:
    The run folders are `eval/iterations/iteration-1-haiku/request-quotes-stale-docstring/shipped_skill/run-{1,2,3}/`.
    The cause, its scope and ask-first guidance, is a hypothesis. Test it with a targeted
    eval of the shipped skill before changing it.
-3. **Test the `-B` line on its own.** It is the skill's only consistent edge. First ask the
-   user whether bytecode caches should count as stray files; the graders skip them for
-   every incubator skill (`gradelib.SKIP_DIRS`). If they should, run the reminder with one
-   added sentence about `python -B` against `with_skill`.
+3. **Test the `-B` line on its own.** It is the skill's only consistent edge over every
+   other arm. First ask the user whether bytecode caches should count as stray files; the
+   graders skip them for every incubator skill (`gradelib.SKIP_DIRS`). If they should, run
+   the reminder with one added sentence about `python -B` against `with_skill`.
 4. **Fix the reply heuristics in `eval/grade.py`.**
    - `stale-cents-comment` 06: read the sentence before the quote too; accept "say
      otherwise" and "a false description"; stop counting "really"; and fail a reply that

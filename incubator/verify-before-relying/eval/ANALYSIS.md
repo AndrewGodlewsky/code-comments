@@ -120,8 +120,9 @@ Failed to prevent: no graded failure.
 Caused, ungraded:
 1. False line numbers in 3 of 25 replies: 5 of 112 citations impossible, plus 2 off by
    one. In one reply every pointer is wrong.
-2. A comment's claim framed as the user's premise in 5 runs, while the request cases use
-   "premise" correctly 10 of 10 times.
+2. A comment's claim framed as the user's premise in 5 runs, while in the request cases
+   all 8 replies that use "premise" use it correctly (the 2 Sonnet
+   `request-quotes-true-docstring` replies do not use it).
 3. "No false claims" sentences, one of which tripped a keyword check. The reminder writes
    similar sentences.
 
@@ -150,20 +151,23 @@ Prevented, ungraded: bytecode caches (`with_skill` 0/25, reminder 19/25, all oth
   the runs do not have.
 - `with_skill`, the reminder and Sonnet's shipped runs all sit at the ceiling, so the eval
   cannot rank them. A gap under one failed run in 15 would not show.
-- The hidden tests never separate `with_skill` from bare (20/20 each). The whole measured
-  gain over bare is on text checks, which the reminder asks for in so many words.
+- The hidden tests never separate `with_skill` from bare (20/20 each). Of the 17 checks
+  gained over bare, 15 are text checks, which the reminder asks for in so many words. The
+  other two are Haiku docs-sync 05 (preservation) and 08 (reply).
 - One fixture family of five small Python cases.
 - The rulings were made by an agent.
 
 ### Interpretation and decision
 
 The skill does what it claims here, but the one-sentence reminder ties it. The
-recommendation leans to the sentence unless the held-out cases show a difference. The only
-measured edge over the reminder is the bytecode caches, from a single `-B` line.
+recommendation leans to the sentence unless the held-out cases show a difference. Apart
+from slightly shorter replies, the only measured edge over the reminder is the bytecode
+caches. The `with_skill` runs used `python -B`, so the single `-B` line is the likely
+source; that is untested.
 
 The shipped skill looks harmful on Haiku in `request-quotes-stale-docstring`: bare 3/3
-correct, shipped 0/3 after noticing. Its scope and ask-first guidance is a plausible
-cause. That is a hypothesis.
+correct, shipped 0/3 after noticing (p = 0.10, so not established). Its scope and
+ask-first guidance is a plausible cause. That is a hypothesis.
 
 The mixed-sentence rule leaves a false description in a synced doc, while the reminder's
 Haiku runs added a status line that will go stale once the bug is fixed. That is a policy
@@ -200,7 +204,7 @@ edit. Every run wrote a reply.
 | Line numbers cited in replies | 112 in 25 runs | 0 |
 | Citations past the end of a file | 5, in 3 runs | 0 |
 | A comment's claim called "the premise" (the two cents cases) | 5 of 10 runs | 2 of 10 (Haiku `stale-cents-comment` run-1 and run-2) |
-| "Premise" used for a claim the request states (the two request cases) | 10 of 10 replies that use it | still correct |
+| "Premise" used for a claim the request states (the two request cases) | 8 of 8 replies that use it (8 of 10 runs) | still correct |
 | Mean reply words, Haiku / Sonnet | 191 / 160 | 183 / 161 |
 | Haiku docs-sync reply words | 313 | 285 |
 | Runs leaving `__pycache__` | 0 of 25 | 0 of 25 |
@@ -314,7 +318,8 @@ other arm uses the word.
   sign that the v1 to v2 wording edits overfit the training cases.
 - **It shows no advantage over either competitor.** The shipped skill and the reminder also
   scored 100%. On the training cases the skill's only graded lead over the shipped skill
-  came from Haiku in one case; here the shipped skill did as well on both models.
+  came from Haiku, half of it in one case; here the shipped skill did as well on both
+  models.
 - **The pair cannot test the skill's main claim.** Every arm, the bare model included,
   built correct new code (hidden tests 20/20). The only separating check is a docstring
   correction that the reminder asks for in so many words. 5/5 against 2/5 against the bare
@@ -326,11 +331,12 @@ other arm uses the word.
 ### Conclusion
 
 Over training and held-out runs alike, the skill ties the one-line reminder on every graded
-check. It ties the shipped skill everywhere except Haiku's training cases, where its lead
-rests mainly on 3 runs of one case (p = 0.10). As the skill README set out before the runs,
-a tie means the honest recommendation is the reminder sentence, not this skill. The `-B`
-probe line, its only consistent ungraded edge, could be tested as a one-line addition to
-the reminder or to the shipped skill.
+check. It ties the shipped skill everywhere except Haiku's training cases, where half its
+lead (3 of 6 checks) comes from 3 runs of one case (p = 0.10). As the skill README set out
+before the runs, a tie means the honest recommendation is the reminder sentence, not this
+skill. Its only consistent ungraded edge over every other arm, no bytecode caches, likely
+comes from the `-B` probe line. That line could be tested as a one-line addition to the
+reminder or to the shipped skill.
 
 This held-out pair has now been used. Any v3 decided on these results needs a fresh
 held-out pair. That pair should have headroom in its hidden tests: a case where the bare

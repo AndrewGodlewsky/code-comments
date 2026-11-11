@@ -1,9 +1,16 @@
 # constraint-sweep: results
 
-**On graded checks, the skill ties the one-line reminder and the bare model on both models,
-in training and on the held-out pair.** It beat the shipped `code-comments` skill only on
-the training cases, because the shipped skill broke a constraint it had found in 6 of 25
-iteration-1 runs. On the held-out pair all four arms tie.
+**On graded checks, the skill shows no reliable gain over the one-line reminder or the
+bare model on either model, in training or on the held-out pair.** It ties them on core
+checks. In iteration 1 its all-checks leads are one or two checks, inside run-to-run
+variation. v2 is compared with the other arms' iteration-1 runs, a separate sample. It
+leads by 6 checks on Haiku (94/96 against 88/96 for the reminder and the bare model) and
+by 2 or 3 on Sonnet (64/64 against 62/64 and 61/64). Against the reminder on Haiku, 4 of
+those 6 are sort checks 04 and 07, which v2 failed in 1/3 runs and the reminder in 3/3
+(p = 0.40). So these leads are not established either. It beat the shipped
+`code-comments` skill only on the training cases, because the shipped skill broke a
+constraint it had found in 6 of 25 iteration-1 runs. On the held-out pair all four arms
+tie on core.
 
 The bare model passed every core check it was given: 25 of 25 in training and 10 of 10
 held out. So the eval never tested the skill's main claim, that it stops a change from
@@ -248,16 +255,18 @@ What this shows:
   - Every reply in every arm named `billing/trial_clock.sql` (20/20).
   - So the bare model found the reason in the other file without help, as it did in
     every training case.
-- **So the held-out result is a tie with all three competitors.** With no headroom, it
-  tests only that the skill does no harm on new material. It cannot test whether a gain
-  generalises, because there was no graded gain to carry over.
-- **Ungraded, the skill came out behind on both held-out cases** (table above):
+- **So the held-out result is a core tie with all three competitors**, and within one
+  check of each on all checks. With no headroom, it tests only that the skill does no
+  harm on new material. It cannot test whether a gain generalises, because there was no
+  graded gain to carry over.
+- **Ungraded, the skill came out behind the shipped skill on both held-out cases**
+  (table above):
   - On first-wins, the shipped skill and the reminder wrote the trial-clock reason into
-    the docstring more often (5/5 each against 3/5).
-  - On the restraint case, every `with_skill` reply reported the search. Its own Report
-    rule says to mention the sweep only when it changed the plan or found something
-    stale. One Haiku reply (run-2) called the four descriptive mentions "live"
-    constraints.
+    the docstring more often (5/5 each against 3/5). The bare model did in 1/5.
+  - On the restraint case, every `with_skill` reply reported the search, as did every
+    reminder reply. The skill's own Report rule says to mention the sweep only when it
+    changed the plan or found something stale. One Haiku reply (run-2) called the four
+    descriptive mentions "live" constraints.
 
 ## Rulings (overrides) by arm
 
@@ -297,8 +306,12 @@ None, and no run was re-run.
 - **Held-out arm checks.** The auditor also confirmed that:
   - no held-out skill-arm run read the other skill arm's snapshot;
   - no reminder or bare run read any snapshot.
-- **Where the output is.** The `verify-reads` output was checked by the auditors and is
-  not stored in the repository.
+- **Where the output is.** Each counted iteration stores it as `verify-reads.json`. Its
+  `skill_arms` and `skill_arm_runs` entries have the fields that
+  `harness.py verify-reads` returns. No script in the repository writes its other lists:
+  other-arm reads, wrong model, and runs with several or no transcripts. The `wf_*`
+  transcripts it read are not stored, so the reads cannot be re-checked from the
+  repository. `harness.py verify-reads` alone accepts a read of either snapshot.
 - **The one empty diff** is iteration-1 Haiku `without_skill` `sort-relied-on-elsewhere`
   run-2. Its reply deliberately declines to drop the sort and asks the user to choose, so
   it is graded as it stands. It fails check 02.
@@ -320,8 +333,8 @@ show that the hardening did not create core headroom.
     currency next to amount and left the positional load alone, so currency codes load
     into the wrong column.
   - **The sort break** (Haiku runs 1 and 3, Sonnet run-1). The run dropped the sort and
-    rewrote the upload script's comment to say the upload "may be rejected", citing the
-    request ("you asked only to drop it").
+    rewrote the upload script's comment to say the upload could be rejected. The replies
+    cite the request (Haiku run-1: "you asked only to drop it").
 - **Held out.** They tie.
 - **Ungraded.** `with_skill` kept the form the user named on the positional pair: 10/10
   against 2/10.
@@ -369,8 +382,9 @@ show that the hardening did not create core headroom.
 - **They wrote the reason into the code more often** (held out, first-wins).
   - The shipped skill and the reminder put the trial-clock reason in the docstring in 5/5
     runs each; `with_skill` did in 3/5 (Haiku 1/3).
-  - The skill asks for no new comments, so this follows its design. The shipped skill's
-    aim is to keep that reason beside the code.
+  - The skill asks for no new comments, which may explain this. That is an
+    interpretation, not tested. The shipped skill's aim is to keep that reason beside the
+    code.
   - Every arm stayed within the three-line limit.
 - **They kept the reply to the change** (held out, restraint case).
   - The shipped skill and the bare model did not report a search when it found nothing.
@@ -389,10 +403,13 @@ show that the hardening did not create core headroom.
 
   v2 replies on training ran 232 (Haiku) and 215 (Sonnet) words. In the iterations where
   all four arms ran, the reminder's replies were the longest in every cell.
-- **Sonnet never moved the sort into a consumer.** `with_skill` on Haiku did (v1 3/3, v2
-  1/3). The v2 Haiku run that moved it named `ORDER BY id` as the cheaper option in its
-  reply. It did not use it "because you asked for the sort to be dropped". v2's rule
-  says to look for that first.
+- **Sonnet `with_skill` never moved the sort into a consumer.** `with_skill` on Haiku did
+  (v1 3/3, v2 1/3). The other arms did too: the reminder in 4/5 runs, the bare model in
+  3/5 and the shipped skill in 1/5. The bare count includes Sonnet run-1, whose export
+  passes an `ordered=True` flag to an `ORDER BY id` in `fetch_rows`. So this is a
+  failure to prevent, not something only the skill did. The v2 Haiku run that moved it
+  named `ORDER BY id` as the cheaper option in its reply. It did not use it "because you
+  asked for the sort to be dropped". v2's rule says to look for that first.
 - **They did not widen the scope.** Only one run in any arm did:
   - It was iteration-1 Sonnet `with_skill`, pointer run-2.
   - It added a currency column to the warehouse table, so an existing warehouse needs a

@@ -78,7 +78,7 @@ What each run did with the order the upload script needs:
 - **Moving the sort fails two checks.** Every run that moved the ordering into the export path edited the export module, which fails check 07. It also rewrote the upload script's comment to name the new sort, which fails check 04. That rewrite follows from the move: once the sort moves, the comment's claim about the producer is false. With_skill's six Haiku failures are exactly these two checks in three runs.
 - **The Haiku with_skill replies knew the alternative.** Run 1 says 'the next option is an `ORDER BY id` in SQL, which I have not tried'. Runs 2 and 3 justify the move by calling the export 'the only place that builds the bank file' and 'the only place that needs the order'.
 - **The Sonnet with_skill runs kept the property where it is produced**, at the database. They touched only the producer and its docstring, with the smallest diffs of any arm (5 and 11 changed lines).
-- **The shipped skill's arm broke the upload in three runs** (Haiku 2, Sonnet 1). It found the constraint each time and rewrote the script's comment to say the upload 'may be rejected'. Its reply cites the request ('you asked only to drop it').
+- **The shipped skill's arm broke the upload in three runs** (Haiku 2, Sonnet 1). It found the constraint each time and rewrote the script's comment to say the upload could be rejected. Each reply cites the request (Haiku run 1: 'you asked only to drop it').
 - **The bare Haiku run that changed nothing** declined to act and asked the user to choose. It failed check 02 (the Python sort is still there).
 
 #### `stale-constraint-elsewhere`
@@ -224,7 +224,9 @@ per cell would be tuning to noise. The held-out pair ran next, on v2.
 - **Run once, after the last edit.** The pair ran a single time, after the last skill
   edit, and no skill edit was informed by it.
 - **Reads verified.** Every skill-arm run read its own snapshot before its first edit,
-  and no run read the other arm's. No reminder or bare run read a snapshot.
+  and no run read the other arm's. No reminder or bare run read a snapshot. This rests
+  on `verify-reads.json`, whose transcripts are not stored ([RESULTS.md](RESULTS.md),
+  "Excluded runs").
 - **No rulings, exclusions or reruns.** An auditor agent wrote no rulings, excluded no
   run and re-ran none. It left two Sonnet reply close calls unruled: a closing "Let me
   know if" or "Say if" sentence, in a reminder run and a shipped-skill run. Neither
@@ -263,9 +265,9 @@ The only failed check: Haiku reminder run-1 on `mention-without-constraint`. It 
   - without_skill: 1/5.
 
   Every run stayed within check 05's three-line limit. The skill asks for no new
-  comments, so its runs leave the reason out more often than the arms that read the
-  shipped skill or are told to "keep, or tell me about" constraints. 3/5 against 5/5 has
-  p = 0.44.
+  comments, which may be why its runs leave the reason out more often than the arms that
+  read the shipped skill or are told to "keep, or tell me about" constraints. That is an
+  interpretation, not tested. 3/5 against 5/5 has p = 0.44.
 
 #### `mention-without-constraint`
 
@@ -278,8 +280,11 @@ The only failed check: Haiku reminder run-1 on `mention-without-constraint`. It 
   descriptive mentions. No run did that.
 - **Unscored: the replies reported a search that found nothing.**
   - Every `with_skill` reply (5/5) and every reminder reply (5/5) reports the search and
-    lists the four files that mention `round_price`. Shipped-skill and bare replies do
-    not (0/5 each).
+    lists the four files that mention `round_price`. Shipped-skill and bare replies
+    report no search (0/5 each). Most still name the four callers as unaffected, and two
+    bare Haiku replies (run-1, run-3) list all four files. The closest call is
+    shipped-skill Sonnet run-2: it describes the callers' comments without reporting a
+    search. So the line between the two is the writer's reading.
   - The skill's Report rule says to mention the sweep only when it changed the plan or
     found something stale, so `with_skill` broke its own rule here in every run.
   - Haiku `with_skill` run-2 also calls the four descriptive mentions "live" constraints,
@@ -298,11 +303,11 @@ The only failed check: Haiku reminder run-1 on `mention-without-constraint`. It 
 - **It did no harm on new material.** v2 scored 100% on both cases on both models. The
   restraint case found no over-reach from either v2 change.
 - **It showed no gain to carry over.** The bare model, the shipped skill and the reminder
-  also passed every core check. On graded checks the held-out result is a tie with all
-  three. On first-wins, the only held-out case where the constraint lives in another
-  file, the bare model was at ceiling. So this pair cannot test whether the skill's
-  training behaviour generalises; it only shows that the skill does no harm on new
-  material.
+  also passed every core check. On core the held-out result is a tie with all three, and
+  on all checks it is within one check of each. On first-wins, the only held-out case
+  where the constraint lives in another file, the bare model was at ceiling. So this
+  pair cannot test whether the skill's training behaviour generalises; it only shows
+  that the skill does no harm on new material.
 - **The ungraded differences favour the other arms slightly.**
   - The reason went beside the code less often than with the shipped skill or the
     reminder.

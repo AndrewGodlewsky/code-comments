@@ -2,10 +2,10 @@
 
 **The skill ties the one-line reminder on every graded check, on both models, in training
 and on the held-out cases.** It beat the shipped `code-comments` skill on Haiku's training
-cases (96/96 against 90/96), mostly in one case. That lead did not show on Sonnet or on
-the held-out pair, where the shipped skill also scored 100%. Every arm with any guidance
-beat the bare model, and only on text checks. No arm's new code was better than the bare
-model's on the hidden tests, in any case.
+cases (96/96 against 90/96), half of it (3 of 6 checks) in one case. That lead did not
+show on Sonnet or on the held-out pair, where the shipped skill also scored 100%. Every arm
+with any guidance beat the bare model, with nearly all of the gain on core text checks. No
+arm's new code was better than the bare model's on the hidden tests, in any case.
 
 These are small samples: 2 or 3 runs per cell, seven small Python cases, one model family.
 The reasoning behind each number is in [ANALYSIS.md](ANALYSIS.md), and the skill edits in
@@ -251,3 +251,7 @@ The gate's 21 bare runs are not counted. They chose and hardened cases before th
   and `overrides.json` where a ruling exists.
 - Reply length, caches, line citations and "premise" counts were counted from each run's
   `outputs/` by the writer of this file. They are not graded and not in the benchmark.
+  `outputs/` is not committed (`incubator/.gitignore`), so the cache counts cannot be
+  re-checked from the repository. The other counts can, from each run's `RESPONSE.md`.
+  Checking the citations past the end of a file also needs each file's length, from the
+  case's `files/` and the run's `changes.diff`.

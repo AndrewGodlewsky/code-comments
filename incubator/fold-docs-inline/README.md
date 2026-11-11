@@ -20,10 +20,11 @@ Against the reminder:
 - it was ahead on Haiku training (+4 checks) and Sonnet held-out (+8 checks), each lead
   coming from a single case at 2 or 3 runs per cell.
 
-Its one consistent edge over the reminder is page handling. It slimmed or deleted the
-retired page as the answer key expects, and never left it whole: 0 of 60 runs. The reminder left the page
-whole in 3 of 35 runs. The results are in [eval/RESULTS.md](eval/RESULTS.md), and the
-samples are small (see Limits).
+Page handling held in every skill run. It slimmed or deleted the retired page as the
+answer key expects, and never left it whole: 0 of 60 runs. The reminder left the page
+whole in 3 of 35 runs, all on one held-out case, `four-fates-page`, so the edge over the
+reminder rests on one case. The results are in [eval/RESULTS.md](eval/RESULTS.md), and
+the samples are small (see Limits).
 
 It is ideation candidate C6 for issue
 [#50](https://github.com/AndrewGodlewsky/code-comments/issues/50), and it does not ship.
@@ -273,7 +274,8 @@ What the numbers show:
   - **Training, Sonnet.** A tie, 90/90 each.
   - **Held out, Haiku.** The reminder was one check ahead.
   - **Held out, Sonnet (+8 checks).** The lead is one case: both reminder runs on
-    `four-fates-page` left the page whole for the user to delete (p = 0.33).
+    `four-fates-page` left the page whole for the user to delete (p = 0.33), and left
+    the NOTIF-9 reason out of the code.
 - **The held-out pair, the main test of whether it generalises:**
   - **Carried over:** the page decision (0 of 10 runs left the page whole), no
     preservation harm (25/25), restraint 19/20, and a fate for every claim (20/20).
@@ -374,7 +376,9 @@ Of the skill:
   docs folder helps weaker models on large projects. Retiring a page can remove help
   that this eval does not measure, so the skill is not advice to delete docs.
 - **The kept/moved boundary is a hypothesis** (context-layers.md §4). The eval grades
-  only claims at its clear ends.
+  only claims at its clear ends. The rigour and skeptic judges asked for the user to
+  confirm the boundary before building. The skill was built first, and the
+  module-docstring question is still open (see Next steps).
 - **The split boundary is its weak point on Haiku.** Two held-out runs got it wrong in
   opposite directions:
   - one left a true reason out because it sat beside a stale value;
@@ -448,7 +452,8 @@ The gate, the four-arm run, one revision (v2) and the held-out run are done. In 
      bullet;
    - measure words and list items, and check that the reply checks do not regress.
 8. **Harness fixes**, all in `incubator/harness.py`:
-   - store each `verify-reads` result in the iteration folder;
+   - make `verify-reads` store its own result in the iteration folder (the stored
+     `verify-reads.json` files were written by the auditors);
    - add a `placement` focus, so the weight-0.5 rows leave Core;
    - tell run agents to write RESPONSE.md with a file-writing tool rather than a shell
      heredoc. The run-limits guard read `>` in reply text as a redirect, and blocked two

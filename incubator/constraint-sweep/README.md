@@ -5,11 +5,12 @@ model on any graded check.** The skill was graded over 165 runs on Claude Haiku 
 Sonnet:
 - **Core checks.** It tied the reminder sentence in [eval/arms.json](eval/arms.json) and
   the bare model, in training and on the held-out pair.
-- **The held-out pair.** All four arms tied.
+- **The held-out pair.** All four arms tied on core. The only failed check in any arm
+  was one reminder run's edit to `README.md`.
 - **The shipped skill.** It beat the shipped `code-comments` skill only on the training
   cases. There the shipped skill broke a constraint it had found in 6 of 25 runs.
-- **No headroom.** The bare model passed every core check it was given (35 of 35), so
-  these fixtures left no room to test the skill's main claim.
+- **No core headroom.** The bare model passed every core check it was given (35 of
+  35), so these fixtures left no room to test the skill's main claim.
 - **One ungraded edge.** It kept the column position the user asked for and updated the
   positional load in step: 10 of 10 runs, against 3 of 10 with the reminder and 0 of 10
   bare. The graders accept both outcomes.
@@ -44,9 +45,9 @@ the writing half (put the fact beside the code). Nothing tells the reader to sea
 What the evidence said before this eval (details and limits in [research.md](research.md)):
 - **Discovery had never been measured in this repository.** All 11 hygiene prompts list
   their input files, and their fixtures hold 2 to 7 files.
-- **No run in this repository had broken behaviour.** That covers round 1, the pilot, and
-  all 15 iteration-5 `reason-only-in-test` runs. So the headroom this skill targets was a
-  hypothesis. This eval found none (see Results).
+- **No run checked in this repository had broken behaviour.** The check covered round 1,
+  the pilot, and all 15 iteration-5 `reason-only-in-test` runs. So the headroom this
+  skill targets was a hypothesis. This eval found none (see Results).
 - **Outside this repository, behaviour changes slip past visible tests.**
   - In Dristi and Dwyer, 19-35% of LLM refactorings changed behaviour, and about 21% of
     those passed the existing tests.
@@ -67,6 +68,8 @@ governs the comment text a change leaves behind. Its one search line, "Before
 simplifying, look for it in tests, callers and docs", is there to find a reason to write
 down. Hygiene iteration 2 found that "The new "look in tests" line did not produce
 the behaviour" ([evaluation/hygiene/README.md](../../evaluation/hygiene/README.md)).
+That behaviour was recording a test's reason in the docstring, and the prompt listed the
+test file, so it measured recording, not search.
 
 This skill governs what the agent reads **before** changing behaviour, and whether the
 code still honours constraints stated in other files. It adds:
@@ -207,8 +210,9 @@ run and is kept in `eval/reserve/`.
 How the checks work:
 - **Core checks** are hidden tests in `eval/hidden/<case>/hidden_tests/`. They exercise
   the consumer, not the edited function alone.
-- **Restraint checks** confirm the request was done (so refusing loses) and that files
-  the run only read are byte-identical.
+- **Restraint checks** confirm the request was done (so refusing loses). In every case
+  but `stale-constraint-elsewhere`, they also confirm that files the run only read are
+  byte-identical.
 - **Reply checks** are keyword heuristics, reported apart from the rest. Most are scored
   only when the outcome they describe happened.
 
@@ -285,31 +289,32 @@ Core checks passed (hidden tests), both models together:
 What the numbers show:
 - **No graded gain over the reminder or the bare model.** The leads are one or two checks
   at 2 or 3 runs per cell, inside run-to-run variation. Core ties everywhere.
-- **The held-out pair, the main test of whether it generalises, is a tie.**
+- **The held-out pair, the main test of whether it generalises, is a tie on core.**
   - No arm lost a core check, and every reply in every arm named the billing view that
     holds the reason.
   - The skill did no harm on new material, but there was no gain to carry over.
 - **The win over the shipped skill is the shipped skill's harm.** In 6 of 25 iteration-1
   runs the shipped skill found the constraint, broke it, and said so in its reply. The
   bare model and the reminder did this in none.
-- **ADR 0001's revisit question.** On these fixtures, readers did not miss context in
-  other files: the bare model passed every core check. The pointer twin could not show
-  an effect, because its base case was at ceiling too. So this eval gives no evidence for
-  the revisit condition, and none against it in larger repositories.
+- **ADR 0001's revisit question.** On these fixtures, the bare model passed every core
+  check, so its replies and diffs show no missed context in other files. Discovery itself
+  was not measured (see Limits). The pointer twin could not show an effect, because its
+  base case was at ceiling too. So this eval gives no evidence for the revisit condition,
+  and none against it in larger repositories.
 - **Ungraded differences**, counted from diffs and replies
   ([eval/RESULTS.md](eval/RESULTS.md)):
   - **The named form.** With the skill, the column went where the user asked and the
-    load was renumbered in step: 20/20 runs over v1 and v2. The reminder did this in
-    3/10 runs, the shipped skill in 2/10 and the bare model in 0/10. The other runs
-    appended it at the end, or left the load broken (shipped skill, 3 runs).
+    load was renumbered in step: 10/10 runs on v1 and again on v2. In iteration 1 the
+    reminder did this in 3/10 runs, the shipped skill in 2/10 and the bare model in 0/10.
+    The other runs appended it at the end, or left the load broken (3 shipped-skill runs).
   - **v1's stale comment.** v1 left a comment its own change made false in 5/5 runs; every
     other arm fixed it (15/15). v2 fixed it in 5/5.
   - **The sort fix.** v2 kept the sort at the producer (`ORDER BY id`) in 4/5 runs,
     against v1's 2/5. That gain is not established.
   - **Held out, against the skill.** The shipped skill and the reminder wrote the
-    billing reason into the code more often (5/5 against 3/5). On the restraint case the
-    skill's replies reported a search that changed nothing (5/5), against its own Report
-    rule.
+    billing reason into the code more often (5/5 against 3/5). The bare model did in 1/5.
+    On the restraint case the skill's replies reported a search that changed nothing
+    (5/5), against its own Report rule. So did the reminder's (5/5).
   - **Reply length.** Replies ran 10 to 21% longer than the bare model's. They were
     shorter than the reminder's in the iterations where both ran.
 
@@ -329,6 +334,9 @@ Of the eval:
   and the passing results of every heuristic check, and decided to make no rulings. It
   left three close calls unruled. The two on held-out Sonnet replies would lower the
   reminder and shipped-skill arms, not this skill.
+- **Skill reads cannot be re-checked.** The `verify-reads.json` files were made from
+  transcripts that are not stored in the repository. No script in the repository writes
+  their other-arm and wrong-model lists.
 - **Gate-based case selection.**
   - A bare-model gate ran first on all seven cases, the held-out pair included. Four
     cases were then hardened to leave room for a gain ([eval/GATE.md](eval/GATE.md)).
@@ -355,7 +363,7 @@ Of the eval:
 - **Discovery was not measured.** [eval/discovery.py](eval/discovery.py) was never run,
   so whether each run found the evidence is inferred from its reply and diff. It is
   still untested on real transcripts.
-- **Tokens and turns were not measured.**
+- **Tokens, turns and cost were not measured.**
 - **The held-out pair is spent.** It ran once, on v2, and cannot judge a later version.
   It tests the trigger only on a "simplify" request; the dead-code and add-a-field
   requests are training cases.
@@ -377,8 +385,9 @@ Of the skill:
     producer-side fix and did not use it.
   - Every held-out restraint reply reported a sweep that changed nothing.
 - **It asks for no new comments.** On held-out first-wins it wrote the reason beside
-  the code less often than the shipped skill. If both skills are installed together that
-  may not matter, but no arm tested them together.
+  the code less often than the shipped skill. That rule may be why; that is an
+  interpretation, not tested. If both skills are installed together that may not matter,
+  but no arm tested them together.
 - **The pointer comparison rests on one task**, and both twins were at ceiling.
 - **Overlap with C2.** The skeptic judge would give `stale-constraint-elsewhere` to
   verify-before-relying. Read their results on it together.
@@ -390,10 +399,14 @@ The gate, the four-arm run, one revision and the held-out run are done. In order
 1. **Put the deliverable to the user.** The graded data supports recommending the
    reminder sentence in [eval/arms.json](eval/arms.json), not this skill. Do not move the
    skill into a plugin unless the user decides otherwise.
+   - The reminder showed no graded gain over the bare model either. Both passed core
+     25/25 and 10/10, and on all checks they were within one check of each other in
+     every iteration. So this rests on the tie rule set before the runs, not on a measured
+     benefit of the sentence.
 2. **Ask the user whether the named form matters.** It is the skill's one consistent
-   edge: the column went where the user asked, with the load renumbered, in 20/20 runs
-   against 3/10 for the reminder. The graders accept appending at the end with an
-   explanation.
+   edge: the column went where the user asked, with the load renumbered, in 10/10 runs
+   on v1 and again on v2, against 3/10 for the reminder in iteration 1. The graders
+   accept appending at the end with an explanation.
    - If the user wants the named form kept, add one sentence on it to the reminder
      ("keep the form I asked for, and update what depends on it").
    - Then run that arm against `with_skill` on the positional pair, Haiku x3 and

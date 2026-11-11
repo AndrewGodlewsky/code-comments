@@ -65,14 +65,32 @@ Each grader's frontmatter sets a `focus`:
 - `preservation`, `restraint`: what must not be damaged or added.
 - `reply`: what the message to the user says. These are mostly keyword checks.
 
-The benchmark reports each focus separately, so a keyword check on the reply cannot
-carry the headline on its own.
+The headline is the mean of each run's share of checks passed. Within a run every check
+counts the same, reply checks included, and the harness does not read a grader's
+`weight:` field. Each run then counts the same, so the headline can differ from the
+pooled checks-passed ratio. The benchmark also reports each focus separately, so a lead that rests on keyword checks
+of the reply shows up there.
 
-`verify-reads` reads the agent transcripts and lists any with-skill run that did not
-read the skill before its first edit. Exclude and re-run those.
+`verify-reads` reads the agent transcripts and lists any skill-arm run (`with_skill` or
+`shipped_skill`) that made no Read call on a snapshot `SKILL.md` before its first Edit,
+Write, MultiEdit or NotebookEdit call. Exclude and re-run those. Shell commands count as
+neither: a file written by a heredoc or `sed` is not seen as an edit, and a skill read
+with `cat` is not seen as a read.
 
 `tests/test_incubator.py` runs every skill's self-test and lint with the rest of the
 suite, and tests the harness on a synthetic skill.
+
+## Limits shared by every eval here
+
+- Skill arms are told to read the skill first, so no eval here tests whether a skill
+  loads on its own.
+- No arm loads a new skill together with `code-comments`, which is how it would ship.
+- The harness records no model id. Only an iteration's name says Haiku or Sonnet, so
+  exact model versions are not kept.
+- In verify-before-relying, fold-docs-inline and constraint-sweep, each agent read its
+  task from `prompt.txt` instead of receiving it as a user's message. Every case,
+  reference and hidden test in those skills was written by an agent, none from a real
+  repository. The fixtures are small, and the models are one family.
 
 ## Rules for every skill here
 

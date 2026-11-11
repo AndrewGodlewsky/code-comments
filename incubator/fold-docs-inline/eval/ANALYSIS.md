@@ -6,7 +6,7 @@
 
 - **Scope.** The training split only: five cases, four arms. Haiku had 3 runs per cell (60 runs) and Sonnet 2 per cell (40 runs). Both iterations' `skill-snapshot/` copies of `SKILL.md` match v1 byte for byte, so every `with_skill` run read the same text.
 - **Grades** are the recorded `grading.json` of each run. They include 18 rulings in 15 run folders, each in that run's `overrides.json`. All were made by an auditor agent, not a human. No grade was changed for this analysis. (Corrected after the held-out run: this line first said 15 overrides.)
-- **Read order.** Neither iteration folder stores a `verify-reads` result. The audit agent ran it on both iterations: every skill-arm run (30/30 Haiku, 20/20 Sonnet) read its snapshot `SKILL.md` before its first edit. (Corrected after the held-out run: this line first said the read order was unverified, because the audit record had not been read.)
+- **Read order.** The audit agent ran `verify-reads` on both iterations and stored its result in each folder's `verify-reads.json`, written outside the harness: every skill-arm run (30/30 Haiku, 20/20 Sonnet) read its snapshot `SKILL.md` before its first edit. `verify-reads` counts only Edit, Write, MultiEdit and NotebookEdit calls as edits, not Bash. The auditors checked the Bash order by hand, and that check is not stored. (Corrected after the held-out run: this line first said the read order was unverified, because the audit record had not been read.)
 - **Sample size.** Two or three runs per cell detect only large effects. The largest difference between `with_skill` and `reminder` on any check is 3/3 against 0/3 (Haiku, `ops-notes-in-file-sections`). A Fisher exact test on that table gives p = 0.10, two-sided, and it comes from one case. Totals summed over a model pool checks that are not independent: one decision can fail two or three checks in a run. Read the totals as descriptions, not as tests.
 - **Placement** rows (`weight: 0.5`, counted in Core by the harness) passed in every run of every arm. They separate nothing and are shown apart below.
 - **Held-out exposure.** While orienting I read GATE.md and CASES.md, which summarise both held-out cases. I did not open their files under `cases/`, `references/` or `hidden/`. No v2 change draws on them. Each change rests on the `with_skill` training runs quoted below.
@@ -154,7 +154,7 @@ Runs show:
   - Sonnet run 1 rewrote the settings comment, which fails preservation 07.
 
 Interpretation:
-- Only one run in 25 (bare Haiku, by override) wrote the stale spacing into a comment. Every reply flagged it.
+- Only one run in 20 (bare Haiku, by override) wrote the stale spacing into a comment. Every reply flagged it.
 - The case separates the arms on restraint, not on the stale claim.
 
 ### What the skill prevented, failed to prevent, or caused
@@ -354,9 +354,9 @@ Interpretation:
   - The skill's lead there is restraint, preservation and reply: restating docstrings, rewritten docstrings and claims given no fate.
 - **Against `reminder`:**
   - Haiku: a tie on core (13/15 each), with the reminder one check ahead overall (57/60 against 56/60).
-  - Sonnet: 40/40 against 32/40. All eight checks come from the two reminder runs that left the `four-fates-page` page whole.
+  - Sonnet: 40/40 against 32/40. All eight checks come from the two reminder runs that left the `four-fates-page` page whole. Leaving the page whole fails three checks in each run on its own, as the bare Sonnet runs show. Leaving the NOTIF-9 reason out of the code adds the placement row. Core 02 fails for both reasons.
   - This is the reverse of training, where the lead was on Haiku and Sonnet tied.
-  - Interpretation: on new cases, the skill's advantage over the reminder is the page-handling decision, seen in one case on one model. It is not a general win.
+  - Interpretation: on new cases, the skill's advantage over the reminder is mostly the page-handling decision, seen in one case on one model. It is not a general win.
 
 ### What the held-out pair says about generalisation
 

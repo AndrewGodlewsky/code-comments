@@ -9,10 +9,10 @@ Against the reminder, by model and split:
 - **Haiku training (+4 checks) and Sonnet held-out (+8 checks):** the skill was ahead.
   Each lead comes from a single case, and rests on 2 or 3 runs per cell.
 
-The one behaviour that held in every skill run is page handling. With the skill, the page was
-slimmed when a note with no code home remained and deleted when none did. It was never
-left whole: 0 of 60 runs. The reminder left it whole in 3 of 35 runs, the shipped skill
-in 12 of 35 and the bare model in 6 of 35.
+Page handling held in every skill run. With the skill, the page was slimmed when a note
+with no code home remained and deleted when none did. It was never left whole: 0 of 60
+runs. The reminder left it whole in 3 of 35 runs, all on held-out `four-fates-page`. The
+shipped skill did so in 12 of 35 and the bare model in 6 of 35.
 
 These are small samples: 2 or 3 runs per cell, seven small Python cases built by agents,
 one model family. The reasoning behind the numbers is in [ANALYSIS.md](ANALYSIS.md), the
@@ -72,7 +72,9 @@ read the skill first.
 - Sonnet runs often edited through Bash, which `verify-reads` does not count as an edit.
   So the auditors also checked the tool order by hand: the skill read came before any
   Bash or edit call.
-- The results are in the audit records, not stored in the iteration folders.
+- Each iteration folder stores the result in `verify-reads.json`. The auditors wrote
+  these files; `harness.py verify-reads` only prints its result. The hand check of Bash
+  order is not stored.
 
 ## Headline
 
@@ -170,7 +172,7 @@ What separated the arms in training:
   reminder never did.
 - **Restatement restraint.** In every case the shipped skill and the bare model copied
   the page's restatements into docstrings far more often than the skill or the reminder.
-- **`stale-number-elsewhere` sat near ceiling on its stale check.** 24 of 25 iteration-1
+- **`stale-number-elsewhere` sat near ceiling on its stale check.** 19 of 20 iteration-1
   runs kept "2 seconds apart" out of the code. The only failure was bare Haiku run 3, by
   ruling. CASES.md said to report this rather than harden the case again.
 
@@ -217,16 +219,18 @@ What the held-out runs show:
 - **Against the reminder, it does not carry over consistently.**
   - Haiku: the reminder passed 57/60 and the skill 56/60. Core tied at 13/15.
   - Sonnet: the skill passed 40/40 and the reminder 32/40.
-  - The Sonnet gap is one case and one decision. Both reminder runs on `four-fates-page`
+  - The Sonnet gap is one case and two decisions. Both reminder runs on `four-fates-page`
     left the page whole for the user to delete ("docs/digests.md itself is untouched,
     since you're removing it"). They copied the kept notes into README.md and
-    docs/oncall.md, and left out the NOTIF-9 reason. With 2 runs per arm, 2/2 against
-    0/2 has a two-sided Fisher exact p of 0.33.
+    docs/oncall.md, and left out the NOTIF-9 reason. Leaving the page whole fails three
+    checks in each run on its own, as the bare Sonnet runs show. Leaving out the reason
+    adds the placement row. Core 02 fails for both reasons. With 2 runs per arm, 2/2
+    against 0/2 has a two-sided Fisher exact p of 0.33.
   - So the training pattern did not repeat. In training the skill's lead over the
     reminder was on Haiku and Sonnet tied; held out, the lead is on Sonnet and Haiku is
     a tie or slightly behind.
-- **Bare Haiku did best on held-out core** (15/15). It lost on restraint (7/12),
-  preservation (12/15) and reply (10/12):
+- **Bare Haiku did best on held-out core** (15/15). It trailed the skill and the
+  reminder on restraint (7/12), preservation (12/15) and reply (10/12):
   - restating docstrings;
   - the `write_feed` docstring rewritten;
   - claims given no fate in the reply.
@@ -286,8 +290,8 @@ A new single failure appeared in v2:
   - `reminder` run 2: "Refunds of this amount in EUR or more need a second approver".
 
   So the two iterations were not ruled to one standard.
-  - Applying the iteration-2 standard to iteration 1 would give Haiku `with_skill` v1
-    131/135 (96.7%) and the reminder 127/135 (94.1%).
+  - Applying the iteration-2 standard to iteration 1 would give Haiku `with_skill` v1 a
+    mean pass rate of 96.6% (131/135 checks) and the reminder 94.1% (127/135).
   - Withdrawing it would give v2 135/135.
   - Either way, no comparison changes direction.
 
@@ -366,6 +370,9 @@ The originals are kept as evidence in `iterations/heldout-haiku/excluded-runs/`,
 an `EXCLUDED.txt`:
 - Without a reply, they graded 7/9 (reminder) and 4/9 (bare).
 - The replacement runs graded 9/9 and 7/9.
+- The reminder original failed only its two reply checks. The reminder's one-check lead
+  on held-out Haiku rests on its replacement: with the original, the reminder would pass
+  55/60, one check behind the skill.
 
 No skill-arm run was excluded, and no other run was re-run.
 
@@ -378,7 +385,9 @@ No skill-arm run was excluded, and no other run was re-run.
   - The reminder left the page whole in 3 of 35 runs, all on held-out `four-fates-page`.
     The shipped skill did so in 12 of 35 and the bare model in 6 of 35.
   - The checks grade this through "one home" and "in exactly one document".
-  - It is the source of the skill's held-out Sonnet lead over the reminder.
+  - Of the eight checks in the skill's held-out Sonnet lead over the reminder, leaving
+    the page whole would fail six on its own. The other two are the placement row: the
+    reminder runs left the NOTIF-9 reason out of the code.
 - **On Haiku, it kept operational notes that name a function out of the code.**
   `ops-notes-in-file-sections`: 6/6 runs over v1 and v2, against 0/3 for each other arm.
   This is the source of its training Haiku lead over the reminder. Fisher p = 0.10 for

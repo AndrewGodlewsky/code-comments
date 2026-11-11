@@ -35,7 +35,8 @@ scores and reasons.
    Each judge checked the claims it relied on against the repository.
 
 The ideators' web findings were not audited at this stage. Each chosen skill's
-`research.md` verifies the sources it uses.
+`research.md` lists its sources and says they were opened. Only verify-before-relying's
+and change-drift-sweep's say each web quote was checked on the page.
 
 ## Scores
 
@@ -55,7 +56,10 @@ The ideators' web findings were not audited at this stage. Each chosen skill's
 ## Why these four
 
 - **Two judge picks plus one rescue.** C1 and C2 are on every judge's list of four. C3
-  is on two. C6 ranks fourth because it is the most direct attack on the founding
+  is on two. The judges split on C3 and C7. The intent judge wanted C7 as a review mode
+  of C3's detector. The skeptic left C3 off its list, put C7 on it, and wanted C7 to
+  absorb C3's detector, which would make C3 redundant. The build followed the intent
+  judge. C6 ranks fourth because it is the most direct attack on the founding
   problem (intent judge: 9). The rigour and skeptic judges marked it down, so it is
   built in a narrow form.
 - **Each covers a different moment:**
@@ -74,7 +78,7 @@ The ideators' web findings were not audited at this stage. Each chosen skill's
 | --- | --- |
 | Run a no-skill derivability gate first, and drop or harden cases both bare models pass | The build workflow's gate and harden stages; each skill's `eval/GATE.md` |
 | Keep hidden tests out of `files/` | `eval/hidden/<case>/hidden_tests/`, run by `gradelib.run_hidden_tests` |
-| Give reply keyword checks little weight | Graders carry a `focus`; the benchmark reports `reply` separately |
+| Give reply keyword checks little weight | Graders carry a `focus`; the benchmark reports `reply` separately. Its headline pass rate, a mean of per-run rates, still gives a reply check the same weight as any other check in its run, and the harness ignores grader weights |
 | Add a shipped-skill falsification arm | `shipped_skill` arm in `incubator/harness.py` |
 | Do not let `lint_skills.py` miss the new cases | `scripts/lint_skills.py` now includes every incubator skill's cases, references and hidden tests in its copied-text check, so shipped-skill variants cannot copy them either |
 | C1: frame in the user's terms; instructions plus a grep recipe first, script later; no file list in prompts; distractors | C1's brief |
