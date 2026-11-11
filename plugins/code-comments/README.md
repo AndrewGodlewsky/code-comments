@@ -69,7 +69,12 @@ runs pointed from a reason to the issue that records it. The reminder sometimes 
 a true outside fact. The skill costs about 6% more tokens. Three skill runs and four
 no-skill runs wrote more comment lines than a case allowed; no reminder run did. These
 are small samples from one model family, some Haiku runs are reused from an earlier
-iteration, and the eval does not test whether Claude loads the skill on its own.
+iteration, and the eval tells the model to read the skill.
+
+Claude rarely loads the skill on its own. In the [activation evals](evals/README.md),
+Haiku loaded it in none of 18 code requests that should have loaded it, and Sonnet in
+3 of 18, all for a request to tidy comments. Neither loaded it for questions or other
+requests it should stay out of.
 
 ## Install
 
@@ -82,8 +87,9 @@ In Claude Code:
 
 To try a local checkout instead, run `/plugin marketplace add <path to this repository>`.
 
-The skill loads on its own when you ask Claude to edit, fix, refactor or review code.
-You can also ask for it by name ("use the code-comments skill").
+The skill is meant to load when you ask Claude to edit, fix, refactor or review code,
+but in testing it mostly did not (see above). To be sure it is used, ask for it by name
+("use the code-comments skill").
 
 The stale-reference command needs Python 3.10 or newer on `PATH` and a git
 repository. It uses nothing outside the standard library.

@@ -198,7 +198,22 @@ represent "the less capable model the hypothesis is about". That was wrong. In
 that run, Haiku *wrote* the comments. The hypothesis concerns weaker models *reading*
 context and making later changes. The round tests the skill's writing behaviour
 only (see `docs/skill/tournament-2026-11-07.md`).
-The [roadmap](docs/roadmap.md) links the remaining work and spending decision.
+
+Update (2026-11-09): the long-horizon pilot (#37,
+[report](docs/evaluation/pilot-report-2026-11-08.md)) found **no measurable downstream
+benefit** from the skill. The product was narrowed to a **comment hygiene** skill:
+keep comments true, record reasons the code cannot show, never invent a reason, and
+add no noise. It makes no performance claim. It ships as a Claude Code plugin (#45),
+and Orca, Codex and GitHub Copilot are parked. It activates the way Claude Code skills
+do, when its description matches the request; whether that happens is being measured
+(#20). The user approved paid runs for the activation eval (#20) and the wider hygiene
+eval (#21), with the estimated and actual cost to be reported.
+
+The [roadmap](docs/roadmap.md) links the remaining work.
+
+The paragraph below is the founding position. The 2026-11-09 update above settles
+activation (the skill loads on demand, from its description) and packaging (a Claude
+Code plugin) for now.
 
 Research and experiments should inform activation, comment categories, language
 coverage, model selection, corpus selection, release thresholds, and the balance

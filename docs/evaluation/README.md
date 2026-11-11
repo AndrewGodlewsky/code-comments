@@ -11,10 +11,10 @@
 > noise of Sonnet, and the comments skill did no better than a one-sentence
 > instruction.
 
-This is the first executable step of the [product roadmap](../roadmap.md), tracked
-in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). The user chose
-offline work only. There are no model calls, credentials, API adapters or new
-package dependencies. These checks are not benchmark results for a model or skill.
+This was the first executable step of the original [product roadmap](../roadmap.md), tracked
+in [#5](https://github.com/AndrewGodlewsky/code-comments/issues/5). It was built
+when the user had chosen offline work only. It makes no model calls and has no
+credentials, API adapters or new package dependencies. These checks are not benchmark results for a model or skill.
 
 ## Run locally
 
