@@ -6,7 +6,9 @@
 It reads, under ROOT, the comments and docstrings of code files and every line of Markdown
 and text docs; with --strings, also the string literals in code (help text, error and log
 messages). It reads them fresh on every run, writes nothing and stores nothing. It needs
-Python 3.10 or newer and nothing outside the standard library.
+Python 3.10 or newer and nothing outside the standard library. A line is read together
+with the next line of the same comment, docstring or paragraph, so a form wrapped across
+the break is found; it is listed at the line where it starts.
 
 A numeric --old value matches prose that states it:
 - in digits, with or without thousands separators (2400, 2,400). Digits are bounded, so 24
@@ -377,7 +379,7 @@ class Match:
     means: str
 
 
-def find(text: str, patterns: list[Pattern]) -> list[Match]:
+def _spans(text: str, patterns: list[Pattern]) -> list[tuple[int, int, Match]]:
     spans = []
     numbers = mask(text)  # numeric forms never match inside a date, time, version or #N
     for pattern in patterns:
@@ -389,9 +391,13 @@ def find(text: str, patterns: list[Pattern]) -> list[Match]:
     kept, end = [], -1
     for start, stop, match in spans:  # the longest form wins where forms overlap
         if start >= end:
-            kept.append(match)
+            kept.append((start, stop, match))
             end = stop
     return kept
+
+
+def find(text: str, patterns: list[Pattern]) -> list[Match]:
+    return [match for _, _, match in _spans(text, patterns)]
 
 
 # --------------------------------------------------------------------- prose
@@ -554,6 +560,26 @@ def _near(proses: list[Prose], i: int, near: re.Pattern) -> bool:
     return any(near.search(text) for text in around)
 
 
+# A line that opens a new Markdown block (list item, quote, table row, heading) does not
+# continue the sentence on the line before it, and nothing continues a heading or a row.
+_BLOCK_START = re.compile(r"^\s*(?:[-*+>|]|#{1,6}|\d+[.)])(?:\s|$)")
+_ONE_LINE_BLOCK = re.compile(r"^\s*(?:\||#{1,6}(?:\s|$))")
+
+
+def _found_on_line(proses: list[Prose], i: int, patterns: list[Pattern]) -> list[Match]:
+    """The forms that start on line i. When the next prose line continues the same
+    sentence, the two are read as one, so a form wrapped across the break ("half an" /
+    "hour") is found, and a number is judged by the unit that follows it there."""
+    here = proses[i]
+    there = proses[i + 1] if i + 1 < len(proses) else None
+    head = here.text.rstrip()
+    if there is None or there.line != here.line + 1 or there.where != here.where or not head \
+            or not there.text.strip() or _BLOCK_START.match(there.text) or _ONE_LINE_BLOCK.match(here.text):
+        return find(here.text, patterns)
+    joined = head + ("" if head.endswith("-") else " ") + there.text.strip()
+    return [match for start, _, match in _spans(joined, patterns) if start < len(head)]
+
+
 def scan(root: Path, patterns: list[Pattern], new_patterns: list[Pattern] | None = None,
          near: re.Pattern | None = None, strings: bool = False) -> list[Hit]:
     hits = []
@@ -562,11 +588,11 @@ def scan(root: Path, patterns: list[Pattern], new_patterns: list[Pattern] | None
         rel = path.relative_to(base).as_posix()
         proses = prose_of(path, strings)
         for i, prose in enumerate(proses):
-            matches = find(prose.text, patterns)
+            matches = _found_on_line(proses, i, patterns)
             if not matches or (near and not _near(proses, i, near)):
                 continue
             hints = path_hints(rel)
-            if new_patterns and find(prose.text, new_patterns):
+            if new_patterns and _found_on_line(proses, i, new_patterns):
                 hints.append("states new")
             hits.append(Hit(rel, prose.line, prose.where, " ".join(prose.text.split()), matches, hints))
     return sorted(hits, key=lambda h: (h.path, h.line))

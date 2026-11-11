@@ -230,6 +230,34 @@ class ProseTest(unittest.TestCase):
         self.assertEqual(found, [("app/cli.py", 1, "docstring"), ("app/cli.py", 4, "string"),
                                  ("app/cli.py", 5, "string"), ("web/a.ts", 1, "string"), ("web/a.ts", 1, "comment")])
 
+    def test_a_form_wrapped_onto_the_next_line_is_found(self):
+        files = {"app/jobs.py": ('"""Run the import jobs.\n\nA job that stalls for half an\n'
+                                 'hour is stopped and its lock is freed.\n"""\n'
+                                 "# Workers rest for a two-\n# hour window each night.\n"),
+                 "docs/jobs.md": ("Workers sleep for forty-five\nminutes between runs.\n\n"
+                                  "The old loader keeps a stale\ncopy of the index.\n")}
+        with Repo(files) as repo:
+            found = [(h["path"], h["line"], h["where"], [m["form"] for m in h["matches"]])
+                     for h in repo.hits("--old", "30", "--unit", "min", "--old", "2 h", "--old", "2700 s",
+                                        "--old", "stale copy")]
+        self.assertEqual(found, [("app/jobs.py", 3, "docstring", ["half an hour"]),
+                                 ("app/jobs.py", 6, "comment", ["two-hour"]),
+                                 ("docs/jobs.md", 1, "doc", ["forty-five minutes"]),
+                                 ("docs/jobs.md", 4, "doc", ["stale copy"])])
+
+    def test_the_next_line_also_decides_the_unit(self):
+        with Repo({"docs/ops.md": "Builds are kept for 7\ndays, then deleted.\n"}) as repo:
+            self.assertEqual(repo.hits("--old", "7 s"), [])
+            self.assertEqual([h["line"] for h in repo.hits("--old", "7 day")], [1])
+
+    def test_no_join_across_a_blank_line_a_new_item_or_a_heading(self):
+        source = ("Keep the stale\n\ncopy apart.\n\n- keep the stale\n- copy apart\n\n"
+                  "## The stale\ncopy is gone.\n")
+        with Repo({"docs/ops.md": source}) as repo:
+            self.assertEqual(repo.hits("--old", "stale copy"), [])
+        with Repo({"docs/ops.md": "- keep the stale\n  copy apart\n"}) as repo:
+            self.assertEqual([h["line"] for h in repo.hits("--old", "stale copy")], [1])
+
     def test_other_files_are_not_read(self):
         with Repo({"data.json": '{"note": "2700 s"}', "logo.png": "2700 s"}) as repo:
             self.assertEqual(repo.hits("--old", "2700"), [])

@@ -43,9 +43,11 @@ holds this file), on Python 3.10 or newer:
   unit (ms, s, min, h, day, week, B, KB, KiB, MB, MiB, GB, GiB), or `--unit` sets one
   for all. A name, flag or path matches as text; for one that starts with a dash,
   write `--old=--legacy`.
-- A value under 10 matches many unrelated lines. Add `--near` with words for the thing
-  you changed, such as `--near "replica|shard"`, to keep only hits on or beside a line
-  that names it.
+- A value under 10 matches many unrelated lines. Search it in a call of its own, with
+  `--near` and words for the thing you changed, such as `--near "replica|shard"`, to
+  keep only hits on or beside a line that names it. `--near` and `--unit` apply to
+  every `--old` in the call, so in a shared call they also drop or misread the other
+  forms, such as a derived figure on a line that never names the thing.
 - Add `--strings` to read string literals in code too: help text, error and log
   messages.
 - Each hit is `file:line`, where it sits (comment, docstring, string, doc, or fenced in
