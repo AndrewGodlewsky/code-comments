@@ -31,7 +31,7 @@ skill READMEs headline.
 | [verify-before-relying](verify-before-relying/README.md) | 220/220 | 214/220 | 220/220 | 200/220 | Tie after the rulings. Before them the reminder led by one check on Haiku training (95/96 against 94/96) | Recommend the reminder sentence, not the skill |
 | [fold-docs-inline](fold-docs-inline/README.md) | 318/325 | 256/325 | 307/325 | 250/325 | Not established: each lead comes from one case | Offer the reminder sentence, or the skill for its page handling |
 | [constraint-sweep](constraint-sweep/README.md) | 208/215 | 196/215 | 204/215 | 204/215 | Tie on core. The bare model passed every core check (35/35), so there was no headroom | Recommend the reminder sentence, by the rule set before the runs |
-| [change-drift-sweep](change-drift-sweep/README.md) | 220/220 | 218/220 | 219/220 | 208/220 | Tie | Its rule set before the runs makes it a plugin enhancement (#21, #48) |
+| [change-drift-sweep](change-drift-sweep/README.md) | 220/220 | 218/220 | 219/220 | 208/220 | Tie | Offer three options: the reminder sentence; a plugin enhancement (#21, #48), as its rule set before the runs says; or keep it only if a search-step case separates it |
 
 Across the four skills, with 140 runs per arm, counted from each iteration's
 `benchmark.json` and `grading.json`:
@@ -81,7 +81,7 @@ incubator/
       grade.py          one mechanical check per grader file
       CASES.md, GATE.md, CHANGES.md, RESULTS.md, ANALYSIS.md
                         case design, case selection, skill edits, results, reasoning
-      HELD-OUT.md       held-out case design, kept from the skill writer (where a skill has one)
+      HELD-OUT.md       held-out case design, kept from skill writers since the build review (where a skill has one)
       iterations/<name>/  run records, grades, benchmark.md and verify-reads.json;
                         outputs/ is gitignored
 ```
@@ -242,12 +242,49 @@ itself, so a shared code idiom is not counted as a copy.
 - The reminder sentence was only ever appended to the request. Where it would live in
   real use is untested.
 
+**Held-out exposure during the builds.** The coordinator of #50 scanned every build and
+revise agent's transcript in the workflow journals, counting each tool call once by its
+id. The transcripts and the scan scripts are outside the repository, so this cannot be
+re-checked from git.
+- **v1 skill writers** (build workflows `wf_eb24caeb-690` for the first three skills and
+  `wf_e21f275b-c43` for change-drift-sweep). Each ran `cat` on its `eval/CASES.md` and
+  `eval/arms.json`. None opened `eval/cases/`, `eval/references/` or `eval/hidden/`: 0
+  tool calls named a held-out case. But CASES.md then described every case, the held-out
+  pair included. At the skills' first commits it names `helper-docstring-lies` 5 times
+  (verify-before-relying, `d398939`), `four-fates-page` 5 and `stale-ordering-reason` 5
+  (fold-docs-inline, `0679686`), and `first-wins-reason-in-caller` 4 and
+  `mention-without-constraint` 2 (constraint-sweep, `a90cc95`). change-drift-sweep's
+  writer read CASES.md before the build reviewer moved the held-out descriptions to
+  `eval/HELD-OUT.md`, while it still described both held-out cases,
+  `pointer-comment-needs-nothing` and `poll-interval-per-day`. The second was then
+  replaced by `poll-interval-average-wait`, which no writer saw described.
+- **Build fixers**, which fixed the adversarial reviewer's findings before the gate,
+  read and edited held-out case files and, in the same session, edited the skill. Tool
+  calls naming a held-out case: verify-before-relying 6, fold-docs-inline 6,
+  constraint-sweep 10, change-drift-sweep 8 (among them building
+  `poll-interval-average-wait`). Each skill's README Limits names the skill edits.
+- **v2 revisers** made 0 tool calls naming a held-out case, in all four skills.
+
+So each held-out pair guards the v2 revision against overfitting, as designed. It is not
+a blind test of v1's rules, whose authors saw the held-out cases described (the writers)
+or in full (the fixers). Every held-out comparison with the reminder and the shipped skill
+was a tie or a lead that is not established, so this exposure produced no false win. It
+weakens any reading that a skill "carried over" or "generalised" to its held-out pair,
+and, by inference, fold-docs-inline's one held-out lead that holds, its full marks over
+the bare model.
+
+Next time: keep held-out cases out of CASES.md from the start; build them after the skill
+is frozen, or let no agent that saw them edit the skill; and add a transcript check for
+this to the harness.
+
 ## Rules for every skill here
 
 - **Score preservation and restraint alongside the target behaviour.** Round 1 of the
   tournament showed that a skill can win on a proxy while doing harm.
 - **Keep held-out cases.** Cases marked `held_out: true` in `case.yaml` are never used
-  to decide a skill edit. They are run at the end, as a check on overfitting.
+  to decide a skill edit. They are run at the end, as a check on overfitting. In #50 the
+  v2 revisers made no tool call naming a held-out case, but the v1 builds were not kept
+  blind to them (see "Held-out exposure during the builds" above).
 - **Record rulings, never hide them.** A heuristic check that misgrades a run gets an
   `overrides.json` entry that says who made the ruling and why. The check's own result
   stays in the evidence.

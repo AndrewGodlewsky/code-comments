@@ -230,10 +230,14 @@ What the p-values say:
 
 ## Held-out cases: does the skill generalise?
 
-The held-out pair is the main test of whether rules tuned on the training cases carry
-over to new material. No skill edit looked at it. It ran once, on v2, after the last edit.
-The bare gate did run on both cases, before `first-wins-reason-in-caller` was hardened.
-Gate runs decide no skill edit ([GATE.md](GATE.md)).
+The held-out pair was meant as the main test of whether rules tuned on the training cases
+carry over to new material. No v2 edit looked at it. It ran once, on v2, after the last
+edit. The bare gate did run on both cases, before `first-wins-reason-in-caller` was
+hardened. Gate runs decide no skill edit ([GATE.md](GATE.md)). But v1 was not written
+blind to the pair. The v1 writer read CASES.md, which then described both cases. The
+build fixer read and edited their files and, in the same session, made 7 edits to
+SKILL.md ([README](../README.md) Limits). So the pair guards the v2 revision against
+overfitting; it is not a blind test of v1's rules.
 
 | Case: check | with_skill | shipped_skill | reminder | without_skill |
 | --- | --- | --- | --- | --- |

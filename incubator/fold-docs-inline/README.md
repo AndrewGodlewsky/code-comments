@@ -284,7 +284,10 @@ What the numbers show:
   - **Held out, Sonnet (+8 checks).** The lead is one case: both reminder runs on
     `four-fates-page` left the page whole for the user to delete (p = 0.33), and left
     the NOTIF-9 reason out of the code.
-- **The held-out pair, the main test of whether it generalises:**
+- **The held-out pair, meant as the main test of whether it generalises.** It guards the
+  v2 revision against overfitting, but it is not a blind test of v1's rules, whose writer
+  saw both cases described and whose build fixer edited them (see Limits, "Held-out
+  exposure"). So "carried over" means it held on cases the skill's authors had seen:
   - **Carried over:** the page decision (0 of 10 runs left the page whole), no
     preservation harm (25/25), restraint 19/20, and a fate for every claim (20/20).
   - **Did not carry over:** the Haiku lead over the reminder. Neither held-out case tests
@@ -358,8 +361,20 @@ Of the eval:
     stale checks in most runs: `stale-number-elsewhere` 4 of 5, `stale-ordering-reason`
     4 of 5.
   - Selection by a bare gate favours cases where the bare model falls short.
-- **Held-out exposure.** No skill edit drew on the held-out cases. But the v2 writer read
-  GATE.md and CASES.md, which summarise them, and the gate shaped one of them.
+- **Held-out exposure.** The pair is not a blind test of v1's rules.
+  - The v1 writer opened no held-out case file, but it read `eval/CASES.md`, which then
+    described both held-out cases (at `0679686` it names `four-fates-page` 5 times and
+    `stale-ordering-reason` 5 times).
+  - The build fixer made 6 tool calls naming a held-out case, read and edited those case
+    files, and in the same session made 6 edits to SKILL.md.
+  - The v2 reviser made no tool call naming a held-out case, though it read GATE.md and
+    CASES.md, which summarise them. The gate shaped one of them.
+  - So the pair guards v2 against overfitting. Its comparisons with the reminder and the
+    shipped skill are not established, so the exposure produced no false win there. Its
+    one held-out lead that holds, full marks over the bare model (8/10 against 1/10), is
+    on cases the skill's authors had seen, which may have helped it (a hypothesis).
+  - Counts are from the coordinator's scan of the build transcripts
+    ([incubator README](../README.md), "Held-out exposure during the builds").
 - **Prompt read from a file.** Each agent read its task from `prompt.txt` as its first
   tool call. A real request arrives as a user's message.
 - **Activation is untested.**

@@ -138,8 +138,13 @@ checks.
 
 ## Held-out cases: does the skill generalise?
 
-The held-out pair is the main test of whether rules tuned on the training cases carry over
-to new material. No skill edit looked at it, and it ran once, on v2, after the last edit.
+The held-out pair was meant as the main test of whether rules tuned on the training cases
+carry over to new material. No v2 edit looked at it, and it ran once, on v2, after the
+last edit. But v1's rules were not written blind to it. The v1 writer read CASES.md,
+which then described both cases. The build fixer read and edited the held-out case files
+and, in the same session, made 4 edits to SKILL.md, among them the library-default and
+named-helper rules that are this pair's traps ([README](../README.md) Limits). So the pair
+guards the v2 revision against overfitting; it is not a blind test of v1's rules.
 
 | Check | with_skill | shipped_skill | reminder | without_skill |
 | --- | --- | --- | --- | --- |

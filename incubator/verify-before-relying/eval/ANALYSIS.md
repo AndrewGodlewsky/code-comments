@@ -224,7 +224,9 @@ change, which the case allows.
 
 The two held-out cases, `helper-docstring-lies` and its true twin `helper-docstring-true`,
 ran once, after the last skill edit, on all four arms: Haiku 3 runs per case per arm (24
-runs) and Sonnet 2 (16 runs). No skill edit looked at them. The `with_skill` snapshot is v2,
+runs) and Sonnet 2 (16 runs). No v2 edit looked at them, but the build fixer had read
+and edited them before the gate, and in the same session made 4 edits to
+SKILL.md ([README](../README.md) Limits). The `with_skill` snapshot is v2,
 identical to the current `SKILL.md`; the shipped-skill snapshot matches the shipped skill.
 `verify-reads` found all 20 skill-arm runs, and each read its snapshot before its first
 edit. An extra scan matched all 40 runs to one transcript each, from the expected model,
@@ -315,7 +317,9 @@ other arm uses the word.
 
 - **The skill carried over without loss.** v2 scored 100% on new material on both models,
   as it did on the training cases. The true twin shows no over-distrust. So there is no
-  sign that the v1 to v2 wording edits overfit the training cases.
+  sign that the v1 to v2 wording edits overfit the training cases. That is all the pair
+  can show: v1's rules were written by agents that had seen it, described in CASES.md or
+  in full, so the 100% is not a blind test of them.
 - **It shows no advantage over either competitor.** The shipped skill and the reminder also
   scored 100%. On the training cases the skill's only graded lead over the shipped skill
   came from Haiku, half of it in one case; here the shipped skill did as well on both

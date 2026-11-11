@@ -246,12 +246,16 @@ first example was not kept. The replacement computes a per-day count. The only c
 graded a per-day count was `poll-interval-per-day`, a held-out case, so a held-out case most
 likely decided that edit. That breaks the incubator rule that held-out cases never decide a
 skill edit. The review of 2026-11-11 found this. In response:
-- that case was replaced with one no skill writer has seen;
+- that case was replaced with one no skill writer has seen described,
+  `poll-interval-average-wait`; the build fixer below built it;
 - the held-out cases moved out of `eval/CASES.md` into `eval/HELD-OUT.md`, which skill
   writers do not read.
 
 **Edits after the review (2026-11-11).** A fixer changed SKILL.md and the script from the
-review's findings, adding nothing taken from the cases:
+review's findings. The account recorded here is that it added nothing taken from the
+cases. It was not blind to them: in the same session it made 8 tool calls naming a
+held-out case, among them building `poll-interval-average-wait` (see Limits, "Held-out
+exposure"). Its edits:
 - **Pre-existing drift.** The rule changed from "report it and leave it". It is now: always
   report it; leave it, or correct its figure toward the code.
 - **`--near`.** Use it for values under 10.
@@ -265,8 +269,9 @@ review's findings, adding nothing taken from the cases:
 - **One new idiom:** "an hour and a half".
 
 One script finding came from running it on a training case: for 7 s it listed "7 days" in
-`derived-backoff-total`. The other probes were hand-written lines. No held-out case informed
-a script or SKILL.md change.
+`derived-backoff-total`. The other probes were hand-written lines. No held-out case is
+recorded as informing a script or SKILL.md change, but that rests on this account, not on
+blinding.
 
 **Edits after iteration 1 (v2).** Two changes came from misses in the search step of Haiku
 `with_skill` runs, though every run still passed every check
@@ -295,8 +300,10 @@ README and SKILL.md hold:
   - a flag rename with records that must stay byte-identical;
   - drift that predates the change, which must be reported whether or not it is corrected.
 
-  The two held-out cases are a restraint guard and a generalisation check. Only
-  [eval/HELD-OUT.md](eval/HELD-OUT.md) describes them, and a skill writer does not read it.
+  The two held-out cases are a restraint guard and a generalisation check. Since the build
+  review, only [eval/HELD-OUT.md](eval/HELD-OUT.md) describes them, and a skill writer does
+  not read it. The build fixer that built the generalisation check also edited the skill
+  (see Limits).
 - **Prompts** read as a user would write them and, unlike the hygiene eval's, list no input
   files.
 - **Arms:**
@@ -400,7 +407,9 @@ What the numbers show:
   - a note added to an accepted ADR.
 
   On Sonnet the bare model scored 63/64 and 23/24.
-- **The held-out pair, the main test of whether it generalises.**
+- **The held-out pair, meant as the main test of whether it generalises.** It guards v2
+  against overfitting, but it is not a blind test of v1's rules: the build fixer that
+  built `poll-interval-average-wait` also edited SKILL.md and the script (see Limits).
   - **Carried over:** every `with_skill` run in `poll-interval-average-wait` corrected
     both averages derived by halving (5/5). That form is not on SKILL.md's list, and one
     of the averages sits in a module that never names the setting. Every run in every arm
@@ -504,14 +513,25 @@ Of the eval:
     ambiguous gloss).
   - Selection by a bare gate favours cases where the bare model falls short. It does
     not favour cases that separate a skill from a good reminder.
-- **Held-out exposure.**
-  - No skill edit drew on the current held-out pair, and its contents were not opened for
-    v2. The held-out case it replaced, `poll-interval-per-day`, most likely decided one
-    edit (see Provenance).
+- **Held-out exposure.** The pair is not a blind test of v1's rules.
+  - No v2 edit drew on the current held-out pair: the v2 reviser made no tool call naming
+    a held-out case. Its directory listing printed the held-out file and grader file
+    names, such as `03-average-wait-recomputed.md`.
+  - The v1 writer opened no held-out case file, but it read CASES.md before the build
+    reviewer moved the held-out descriptions to HELD-OUT.md. Of the held-out cases it
+    could have seen, `poll-interval-per-day` most likely decided one edit (see
+    Provenance). It was replaced by `poll-interval-average-wait`, which no writer saw
+    described.
   - The pointer case was described in CASES.md when the skill was first written, so it
     is a restraint guard, not a clean test.
-  - The v2 writer's directory listing printed the held-out file and grader file names,
-    such as `03-average-wait-recomputed.md`.
+  - The build fixer made 8 tool calls naming a held-out case, among them building
+    `poll-interval-average-wait`, and in the same session edited SKILL.md and
+    `value_drift.py`.
+  - So the pair guards v2 against overfitting. It tied with the reminder and the shipped
+    skill, so the exposure produced no false win, but the "carried over" result above
+    is on a case built by an agent that also edited the skill.
+  - Counts are from the coordinator's scan of the build transcripts
+    ([incubator README](../README.md), "Held-out exposure during the builds").
 - **Prompt read from a file.** Each agent read its task from `prompt.txt` as its first
   tool call. A real request arrives as a user's message.
 - **Activation is untested.**

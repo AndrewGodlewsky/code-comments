@@ -49,7 +49,8 @@ A case whose results may be used to decide a skill edit.
 A case that is never used to decide a skill edit. It is run with the compared arms once,
 after the last edit, as a check on overfitting, and after that it is spent. A gate may
 run it first, without any skill arm, to choose or harden it; no gate result on it may
-decide a skill edit.
+decide a skill edit. It tests a skill version blind only if no agent that saw it, in full
+or described, edited that version.
 _Avoid_: test case, validation case
 
 **Gate** (case selection):

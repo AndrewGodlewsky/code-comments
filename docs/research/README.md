@@ -134,7 +134,7 @@ here:
     short, not cases that separate a skill from a good sentence.
   - A case kept because the reminder missed in the gate will tend to flatter the skill
     on that case. So the check on generalisation must be a fresh held-out pair that was
-    not gated on the reminder.
+    not gated on the reminder, and that no agent who edits the skill has seen.
 - **Run a shipped-skill arm.**
   - It was the only arm to fail hidden tests: 111 of 120 runs passed, against 120 of 120
     in every other arm. Six runs broke a constraint stated elsewhere, and three built only
@@ -154,12 +154,23 @@ here:
   kept. Each skill ran its pair in all four arms once, after its last edit; the bare gate
   had already run it. Two fold-docs-inline held-out Haiku runs were excluded for a guard
   fault and re-run.
-  - Some exposure still happened:
-    - change-drift-sweep's first writer read CASES.md while it described the held-out
-      cases, and the held-out `poll-interval-per-day` most likely decided a skill edit.
-      That case was replaced, and held-out case design moved to `eval/HELD-OUT.md`, which
-      skill writers do not read. The pointer case had already been described in CASES.md,
-      so it is a restraint guard, not a clean test.
+  - Exposure happened in every build, so no held-out pair is a blind test of v1's rules.
+    It guards the v2 revision against overfitting, as designed. The counts come from the
+    coordinator's scan of the build transcripts ([incubator](../../incubator/README.md),
+    "Held-out exposure during the builds"):
+    - Every v1 writer read its `eval/CASES.md`, which then described every case, the
+      held-out pair included. No writer opened a held-out case file.
+    - Every build fixer read and edited held-out case files and, in the same session,
+      edited its skill. Tool calls naming a held-out case: verify-before-relying 6,
+      fold-docs-inline 6, constraint-sweep 10, change-drift-sweep 8.
+    - The v2 revisers made no tool call naming a held-out case.
+    - Every held-out comparison with the reminder and the shipped skill was a tie or a
+      lead that is not established, so the exposure produced no false win there. It
+      weakens any reading that a skill "carried over" or "generalised".
+    - change-drift-sweep's held-out `poll-interval-per-day` most likely decided a skill
+      edit. That case was replaced, and held-out case design moved to `eval/HELD-OUT.md`,
+      which skill writers do not read. The pointer case had already been described in
+      CASES.md, so it is a restraint guard, not a clean test.
     - A directory listing printed change-drift-sweep's held-out file and grader file
       names to the v2 writer.
     - fold-docs-inline's v2 writer read GATE.md and CASES.md, which summarise its held-out
@@ -170,8 +181,9 @@ here:
   - fold-docs-inline's reminder lead of one check on held-out Haiku (57/60 against 56/60,
     pooled) rests on one of the re-runs. With the excluded original, the reminder would
     have 55/60.
-  - Proposal (untested): keep held-out case design out of every file a skill writer reads,
-    as change-drift-sweep's HELD-OUT.md now does.
+  - Proposal (untested): keep held-out cases out of CASES.md from the start; build them
+    after the skill is frozen, or let no agent that saw them edit the skill; and add a
+    transcript check for this to the harness.
   - A spent pair is not a second generalisation check.
 - **Treat a gate as case selection, and re-gate after hardening.**
   - Gate runs were never counted.

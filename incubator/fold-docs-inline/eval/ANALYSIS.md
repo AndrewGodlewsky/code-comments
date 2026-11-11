@@ -260,7 +260,7 @@ The checks the iteration-1 decision asked for:
 
 - **Scope.** v2, all four arms, on the two held-out cases (`four-fates-page`, `stale-ordering-reason`). Haiku 3 runs per cell (24 runs), Sonnet 2 (16 runs). They ran once, after the last skill edit.
 - **Exposure before the run.**
-  - No skill edit drew on these cases.
+  - No v2 edit drew on these cases. v1 was not written blind to them: the v1 writer read CASES.md, which then described both (it names each 5 times at `0679686`), and the build fixer made 6 tool calls naming a held-out case, read and edited their files, and in the same session made 6 edits to SKILL.md before the gate ([README](../README.md) Limits). So the pair guards v2 against overfitting; it is not a blind test of v1's rules.
   - The derivability gate did run the bare model on them before any evaluation. `stale-ordering-reason` was rebuilt from that gate run ([GATE.md](GATE.md)), so its design was shaped by bare-model behaviour.
   - The v2 writer read GATE.md and CASES.md, which summarise both cases (see Iteration 1, "Held-out exposure").
 - **Rulings.** 8 rulings by auditor agents (two audits; the second kept all 8 from the first):
@@ -359,6 +359,8 @@ Interpretation:
   - Interpretation: on new cases, the skill's advantage over the reminder is mostly the page-handling decision, seen in one case on one model. It is not a general win.
 
 ### What the held-out pair says about generalisation
+
+Less than it seems. The skill's v1 writer saw both cases described and its build fixer edited them (Exposure, above), so "carried over" here means held on cases the skill's authors had seen. That weakens the full-marks lead over the bare model most, since it is the one held-out lead that holds.
 
 **Carried over:**
 - **The page decision.** Slim when a kept note remains, delete when none does, never leave the page whole: 0 of 10 held-out runs left it whole, as in 0 of 50 training runs.

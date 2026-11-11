@@ -35,7 +35,9 @@ elsewhere: follow a helper into its file and its tests (the request pair), build
 what the tests pin (stale cents, stale request), meet the need beside a helper that does
 not fit (stale request), and trust a true claim without guards (all three true twins).
 So a held-out gap shows whether the trained rules carry over to new material.
-Never use them to decide a skill edit.
+Never use them to decide a skill edit. In the build the cases were not kept from the
+skill's authors: this file described both cases when the v1 writer read it, and the
+build fixer that edited them also edited SKILL.md ([README](../README.md) Limits).
 
 The split was swapped before any run. At first the request pair was held out, but that
 pair is the only one to use the skill's "When the request carries the claim" section, so

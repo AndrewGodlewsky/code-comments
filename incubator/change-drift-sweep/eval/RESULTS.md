@@ -22,7 +22,9 @@ The reminder closes that gap as fully (96/96 and 36/36), and the shipped skill n
 The held-out case built to test generalisation, `poll-interval-average-wait`, did not trip
 the skill. Every `with_skill` run found both averages derived by halving, a form SKILL.md
 does not list. So did every reminder run and every shipped-skill run. The bare model left
-one of them stale in 2 of 5 runs.
+one of them stale in 2 of 5 runs. The build fixer that built this case also edited
+SKILL.md and the script in the same session, so it is not a blind test of v1's rules
+([README](../README.md) Limits).
 
 These are small samples: 2 or 3 runs per cell, seven small Python cases built by agents,
 one model family. In every case a run could read the whole repository, so the search
@@ -64,8 +66,12 @@ This file counts 165 graded runs.
 **Skill versions.** Each iteration keeps the files its runs read in `skill-snapshot/`:
 - Both iteration-1 snapshots are v1 (SKILL.md, 106 lines), byte-identical to each other
   and to the committed v1.
-- The iteration-2 and held-out snapshots are byte-identical to the current v2 (108
-  lines).
+- The iteration-2 and held-out snapshots are the evaluated v2 (108 lines). The current
+  SKILL.md adds one bullet that no run used (111 lines, see [CHANGES.md](CHANGES.md)).
+  The current `value_drift.py` also differs from the snapshot's, and no run used it: it
+  reads halves ("two and a half minutes" for 150 s), lists skipped `build/` and `dist/`
+  folders and files over 2 MB as "not read", reads Terraform comments, and matches
+  one-letter units case-sensitively. It has 41 unit tests, against the snapshot's 36.
 - Every shipped-skill snapshot is byte-identical to
   `plugins/code-comments/skills/code-comments/`.
 
@@ -230,8 +236,13 @@ Every held-out failure is check 02 of `poll-interval-average-wait`:
 ## Held-out cases: does the skill generalise?
 
 The held-out pair is the main test of whether the skill works beyond the cases it was
-revised on. No skill edit drew on these cases. They ran once, on v2, after the last
-edit.
+revised on. No v2 edit drew on these cases. They ran once, on v2, after the last
+edit. But v1 was not written blind to them. The v1 writer read CASES.md while it still
+described the pointer case and the replaced `poll-interval-per-day`. The build fixer made
+8 tool calls naming a held-out case, among them building `poll-interval-average-wait`,
+and in the same session edited SKILL.md and `value_drift.py` ([README](../README.md)
+Limits). So the pair guards the v2 revision against overfitting; it is not a blind test
+of v1's rules.
 
 | Model | with_skill | shipped_skill | reminder | without_skill |
 | --- | --- | --- | --- | --- |

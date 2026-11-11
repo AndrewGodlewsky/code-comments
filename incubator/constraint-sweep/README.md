@@ -289,10 +289,13 @@ Core checks passed (hidden tests), both models together:
 What the numbers show:
 - **No graded gain over the reminder or the bare model.** The leads are one or two checks
   at 2 or 3 runs per cell, inside run-to-run variation. Core ties everywhere.
-- **The held-out pair, the main test of whether it generalises, is a tie on core.**
+- **The held-out pair, meant as the main test of whether it generalises, is a tie on
+  core.**
   - No arm lost a core check, and every reply in every arm named the billing view that
     holds the reason.
   - The skill did no harm on new material, but there was no gain to carry over.
+  - The pair guards v2 against overfitting, but it is not a blind test of v1's rules,
+    whose authors had seen it (see Limits, "Held-out exposure in the build").
 - **The win over the shipped skill is the shipped skill's harm.** In 6 of 25 iteration-1
   runs the shipped skill found the constraint, broke it, and said so in its reply. The
   bare model and the reminder did this in none.
@@ -375,6 +378,15 @@ Of the eval:
 - **The held-out pair is spent.** It ran once, on v2, and cannot judge a later version.
   It tests the trigger only on a "simplify" request; the dead-code and add-a-field
   requests are training cases.
+- **Held-out exposure in the build.** The v1 writer opened no held-out case file, but it
+  read `eval/CASES.md`, which then described both held-out cases (at `a90cc95` it names
+  `first-wins-reason-in-caller` 4 times and `mention-without-constraint` 2 times). The
+  build fixer made 10 tool calls naming a held-out case, read and edited those case
+  files, and in the same session made 7 edits to SKILL.md. The v2 reviser made no tool
+  call naming a held-out case. So the pair guards v2 against overfitting, but it is not a
+  blind test of v1's rules. It was a tie on core, so the exposure produced no false win.
+  Counts are from the coordinator's scan of the build transcripts
+  ([incubator README](../README.md), "Held-out exposure during the builds").
 
 Of the skill:
 - **Grep is incomplete.** It misses:

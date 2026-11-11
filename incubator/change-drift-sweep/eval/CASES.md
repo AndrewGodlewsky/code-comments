@@ -18,6 +18,9 @@ diff, is out of scope for v1.
 edits the skill reads this file but not that one. They do not open `cases/`,
 `references/`, `hidden/` or `test_grade.py`, which holds held-out variants. A held-out
 case is never used to decide a skill edit (see [the incubator rules](../../README.md)).
+This split came in at the build review. The v1 writer had read this file while it still
+described the held-out cases, and the build fixer that then built
+`poll-interval-average-wait` also edited the skill ([README](../README.md) Limits).
 
 | Case | Held out | Behaviour | Trap | Where the needed evidence lives | Heuristic checks |
 | --- | --- | --- | --- | --- | --- |

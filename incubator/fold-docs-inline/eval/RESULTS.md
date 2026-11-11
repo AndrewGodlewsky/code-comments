@@ -203,7 +203,11 @@ By focus within each held-out case:
 ## Held-out cases: does the skill generalise?
 
 The held-out pair is the main test of whether the skill works beyond the cases it was
-revised on. No skill edit drew on these cases. They ran once, on v2, after the last edit.
+revised on. No v2 edit drew on these cases. They ran once, on v2, after the last edit.
+But v1 was not written blind to them. The v1 writer read CASES.md, which then described
+both. The build fixer read and edited their files and, in the same session, made 6 edits
+to SKILL.md ([README](../README.md) Limits). So the pair guards the v2 revision against
+overfitting; it is not a blind test of v1's rules.
 
 | Model | with_skill | shipped_skill | reminder | without_skill |
 | --- | --- | --- | --- | --- |
@@ -213,9 +217,14 @@ revised on. No skill edit drew on these cases. They ran once, on v2, after the l
 Core here excludes placement.
 
 What the held-out runs show:
-- **Over the shipped skill and the bare model, the result carries over.** With the skill:
-  - Haiku: 56/60, against 47/60 and 50/60.
-  - Sonnet: 40/40, against 35/40 and 29/40.
+- **Over the bare model, the result carries over, on cases the skill's authors had seen
+  (see above). Over the shipped skill, it leads on checks only.** With the skill:
+  - Haiku: 56/60, against 47/60 for the shipped skill and 50/60 for the bare model.
+  - Sonnet: 40/40, against 35/40 for the shipped skill and 29/40 for the bare model.
+  - At run level, full marks are 8/10 against 1/10 for the bare model (stratified exact
+    p = 0.007; full core 8/10 against 7/10), and 8/10 against 4/10 for the shipped skill
+    (p = 0.14; 1/10 before three auditor rulings), so the lead over the shipped skill is
+    not established.
   - On Haiku the skill led the shipped skill on core, preservation, restraint and reply.
     It led the bare model on preservation, restraint and reply, but trailed it on core
     (13/15 against 15/15).
@@ -263,9 +272,10 @@ What the held-out runs show:
   - `stale-ordering-reason` was rebuilt after the gate to leave headroom, and the bare
     model still passed its stale check in 4 of 5 runs.
 
-**Interpretation.** On new material the skill kept its advantage over the shipped skill
-and the bare model, and did no preservation harm (25/25). Its edge over the reminder is
-not established in either direction:
+**Interpretation.** On new material the skill kept a run-level full-marks lead over the
+bare model and a check-level lead over the shipped skill that is not established at run
+level (8/10 against 4/10, p = 0.14), and did no preservation harm (25/25). Its edge over
+the reminder is not established in either direction:
 - the lead on Sonnet comes from one case where the reminder left the page whole;
 - Haiku is a one-check difference the other way.
 

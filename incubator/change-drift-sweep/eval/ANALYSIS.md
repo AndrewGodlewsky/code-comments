@@ -393,10 +393,13 @@ ruling.
 - **No exclusions and no rulings, and every run replied.** Neither case grades the reply.
 - **Audit coverage.** The auditor read every diff and every heuristic result in all 40
   runs, and upheld all four failures.
-- **Exposure.** No skill edit drew on these cases.
+- **Exposure.** No v2 edit drew on these cases. v1 was not written blind to them.
   - `pointer-comment-needs-nothing` was described in CASES.md when the skill was first
     written, so it is a restraint guard, not a clean test.
-  - `poll-interval-average-wait` was never described anywhere a skill writer reads.
+  - `poll-interval-average-wait` was never described anywhere a skill writer reads. But
+    the build fixer built it, in a session with 8 tool calls naming a held-out case, and
+    in the same session edited SKILL.md and `value_drift.py` ([README](../README.md)
+    Limits).
   - The v2 writer's directory listing printed both cases' file and grader file names,
     such as `03-average-wait-recomputed.md`.
 
@@ -442,9 +445,10 @@ What the runs show:
   for the packers' five minutes (20/20 on check 04).
 
 Interpretation:
-- The skill generalised to a form it does not list. Its derived-figure step led every
-  Haiku run to compute the halved figure before searching, and every run then corrected
-  it.
+- The skill handled a form it does not list. Its derived-figure step led every Haiku run
+  to compute the halved figure before searching, and every run then corrected it. This
+  is weaker evidence that it generalised than it looks: the agent that built the case
+  also edited SKILL.md and the script (Exposure, above).
 - The script's own matching did not generalise. Reading found the worded average.
 - The reminder sentence, which names "figures computed from it", did as well in every
   run. So did the shipped skill on the figures themselves.

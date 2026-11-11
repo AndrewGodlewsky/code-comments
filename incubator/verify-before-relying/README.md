@@ -139,10 +139,11 @@ skill itself could cause. The seventh is a docs sync with mixed claims.
 | `helper-docstring-true` | held out | its true twin |
 
 The held-out pair uses material no training case uses. Apart from the library-default
-line, the rules it needs are exercised by training cases, so it can show whether tuned
-rules carry over to new material. The split was swapped
-before any run: the request pair, held out at first, was the only pair to use the
-"request carries the claim" section, so it could not detect overfitting.
+line, the rules it needs are exercised by training cases, so it was meant to show whether
+tuned rules carry over to new material. It can do so only for the v2 edits: v1's rules
+were not written blind to it (see Limits, "Held-out exposure in the build"). The split
+was swapped before any run: the request pair, held out at first, was the only pair to use
+the "request carries the claim" section, so it could not detect overfitting.
 
 The core checks are hidden behavioural tests on the new code wherever there is new code,
 plus text checks on corrected descriptions and kept requirements. Preservation and
@@ -278,6 +279,17 @@ Of the eval:
   The gate's one run that built on a false claim (Sonnet in `stale-cents-comment`) did not
   recur.
 - **The held-out pair is spent.** It was run once, on v2. It cannot judge a later version.
+- **Held-out exposure in the build.** The v1 writer opened no held-out case file, but it
+  read `eval/CASES.md`, which then described both held-out cases (at `d398939` it names
+  `helper-docstring-lies` 5 times). The build fixer made 6 tool calls naming a held-out
+  case, read and edited those case files, and in the same session made 4 edits to
+  SKILL.md. Among them are the rule that where the body leaves an argument out the
+  library default applies, and the rule for a named helper whose pinned behaviour does
+  not fit: the traps of the held-out pair. The v2 reviser made no tool call naming a
+  held-out case. So the pair guards v2's edits against overfitting, but it is not a blind
+  test of v1's rules. It produced no false win: the reminder and the shipped skill also
+  scored 100% on it. Counts are from the coordinator's scan of the build transcripts
+  ([incubator README](../README.md), "Held-out exposure during the builds").
 
 Of the skill:
 - **Building on the code can be programming by coincidence.** The Pragmatic Programmer
@@ -334,10 +346,10 @@ In order:
    `helper-docstring-lies` in [eval/GATE.md](eval/GATE.md) (move the half-even pin into a
    ledger test). Gate each on the bare model and keep only those with hidden-test failures.
    Build a fresh held-out pair, since this one is spent.
-6. **Settle "premise".** v2 still calls a comment's claim "the premise" in 2 of 10 Haiku
-   runs of the cents cases. All 5 held-out `with_skill` replies use it for a claim the
-   request implies but does not state. Decide whether an implied claim counts, then reword
-   the rule or drop the word.
+6. **Settle "premise".** v2 still calls a comment's claim "the premise" in 2 of 10 runs
+   of the cents cases (both Haiku, 2 of 6 Haiku runs). All 5 held-out `with_skill`
+   replies use it for a claim the request implies but does not state. Decide whether an
+   implied claim counts, then reword the rule or drop the word.
 7. **Settle two policy questions with the user:** whether to correct an unasked-for false
    docstring or only report it (the bare model left a false description in place in 11 of
    15 runs, and reported the conflict in each of them), and whether a sentence mixing a

@@ -222,7 +222,12 @@ per cell would be tuning to noise. The held-out pair ran next, on v2.
   four arms, on `first-wins-reason-in-caller` and `mention-without-constraint`. Haiku had
   3 runs per cell and Sonnet 2.
 - **Run once, after the last edit.** The pair ran a single time, after the last skill
-  edit, and no skill edit was informed by it.
+  edit, and no skill edit was informed by its results.
+- **Exposure before the run.** No v2 edit drew on the pair: the v2 reviser made no tool
+  call naming a held-out case. v1 was not written blind to it. The v1 writer read
+  CASES.md, which then described both cases, and the build fixer made 10 tool calls
+  naming a held-out case, read and edited their files, and in the same session made 7
+  edits to SKILL.md before the gate ([README](../README.md) Limits).
 - **Reads verified.** Every skill-arm run read its own snapshot before its first edit,
   and no run read the other arm's. No reminder or bare run read a snapshot. This rests
   on `verify-reads.json`, whose transcripts are not stored ([RESULTS.md](RESULTS.md),
@@ -307,7 +312,8 @@ The only failed check: Haiku reminder run-1 on `mention-without-constraint`. It 
   on all checks it is within one check of each. On first-wins, the only held-out case
   where the constraint lives in another file, the bare model was at ceiling. So this
   pair cannot test whether the skill's training behaviour generalises; it only shows
-  that the skill does no harm on new material.
+  that the skill does no harm on new material. Even that is material v1's authors had
+  seen (Exposure, above), so it checks the v2 revision, not v1's rules blind.
 - **The ungraded differences favour the other arms slightly.**
   - The reason went beside the code less often than with the shipped skill or the
     reminder.
