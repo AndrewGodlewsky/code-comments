@@ -5,7 +5,11 @@
 
 It reads, under ROOT, the comments and docstrings of code files and every line of Markdown
 and text docs; with --strings, also the string literals in code (help text, error and log
-messages). It reads them fresh on every run, writes nothing and stores nothing. It needs
+messages). It skips version-control, dependency and cache folders. It also skips build/
+and dist/ folders and files over 2 MB, and lists each of those as "not read": pass a
+listed folder as ROOT to sweep it. A file that is not UTF-8 is read with replacement
+characters and listed too. It reads them fresh on every run, writes nothing and stores
+nothing. It needs
 Python 3.10 or newer and nothing outside the standard library. A line is read together
 with the next line of the same comment, docstring or paragraph, so a form wrapped across
 the break is found; it is listed at the line where it starts.
@@ -15,13 +19,14 @@ A numeric --old value matches prose that states it:
   does not match 240, 2.4, 2024 or 24,000. Dates (2026-06-30), clock times (02:30),
   version strings (1.2.0) and issue numbers (#4) are never read as values;
 - in number words (nine, twenty-five, one hundred and twenty), plus "twice" for 2 and
-  "a dozen" for 12;
+  "a dozen" for 12, and a whole number and a half ("two and a half") from 2.5 up;
 - with a unit (--unit, or one written on the value, as in --old "9 s"), as the same
   quantity in every unit of its family where it comes out round, followed by a unit:
   7200 s also matches "120 min", "2 hours", "two-hour" and "2h". A converted quantity
   matches only with a unit beside it. Sizes are read both ways, 1 KB as 1,000 and as
   1,024 bytes. When the value has a unit, a bare number followed by a different unit is
-  not a hit: for 7 s, "7 days" is not listed.
+  not a hit: for 7 s, "7 days" is not listed. A half, one and a half and a quarter of an
+  hour are read as idioms of their unit; other fractions, ordinals and rates are not read.
 Any other --old value (a flag, config key, name or path) matches as literal text, so
 --legacy does not match --legacy-mode. Write a value that starts with a dash as
 --old=--legacy.
@@ -69,12 +74,16 @@ PY = {".py", ".pyi"}
 SLASH = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".kt", ".c",
          ".h", ".cc", ".cpp", ".hpp", ".cs", ".swift", ".scala", ".php"}
 HASH = {".sh", ".bash", ".zsh", ".rb", ".pl", ".r", ".toml", ".yaml", ".yml", ".cfg",
-        ".ini", ".conf", ".env", ".ps1", ".tf"}
+        ".ini", ".conf", ".env", ".ps1"}
+HCL = {".tf", ".tfvars", ".hcl"}  # Terraform: #, // and /* */ comments
 HASH_NAMES = {"Makefile", "makefile", "GNUmakefile", "Dockerfile", "Justfile", "justfile",
               ".env"}
 DOCS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".adoc"}
 DOC_NAMES = {"README", "CHANGELOG", "CHANGES", "HISTORY", "NEWS", "NOTES"}
 MAX_BYTES = 2_000_000
+# Skipped folders worth naming: generated or packaged code that can still carry comments.
+# Version-control, dependency and cache folders are skipped without a word.
+NAMED_SKIPS = {"build", "dist"}
 
 
 # ---------------------------------------------------------------------- units
@@ -114,7 +123,11 @@ _LOWER = {name.lower(): u for name, u in reversed(list(_EXACT.items()))}
 
 
 def find_unit(name: str) -> Unit | None:
-    return _EXACT.get(name) or _LOWER.get(name.lower())
+    """A unit by name. As in prose, case is ignored only for names longer than one letter:
+    "M" is not "m" (minutes), and "S" is not "s"."""
+    if name in _EXACT:
+        return _EXACT[name]
+    return _LOWER.get(name.lower()) if len(name) > 1 else None
 
 
 def _round(q: float) -> bool:
@@ -201,6 +214,20 @@ def number_words(n: int) -> set[str]:
         forms.add(spell(n // 100) + " hundred")
     forms |= {2: {"twice"}, 12: {"a dozen", "dozen"}}.get(n, set())
     return forms
+
+
+def amount_words(q: float) -> set[str]:
+    """Number words for q: a whole number, or a whole number of 2 or more and a half
+    ("two and a half"). A half and one and a half are idioms of their units."""
+    if q == int(q):
+        return number_words(int(q))
+    if q >= 2 and 2 * q == int(2 * q):
+        return {w + " and a half" for w in number_words(int(q)) - {"twice", "a dozen", "dozen"}}
+    return set()
+
+
+# Not the whole number when "and a half" follows: "two" in "two and a half minutes".
+_NOT_HALF = r"(?![\s\xa0-]+and[\s\xa0-]+a[\s\xa0-]+half)"
 
 
 def _word_regex(form: str) -> str:
@@ -347,11 +374,10 @@ def patterns_for(value: Value) -> list[Pattern]:
     out = [Pattern("digits", label, re.compile(
         DIGIT_BEFORE + "(?:" + _alt(map(re.escape, digit_forms(value.amount, value.given)))
         + ")" + DIGIT_AFTER + NO_SCALE + other))]
-    if value.amount == int(value.amount):
-        words = number_words(int(value.amount))
-        if words:
-            out.append(Pattern("word", label, re.compile(
-                r"(?<![\w-])(?:" + _alt(map(_word_regex, words)) + r")(?!\w)" + other, re.I), _word_ok))
+    words = amount_words(value.amount)
+    if words:
+        out.append(Pattern("word", label, re.compile(
+            r"(?<![\w-])(?:" + _alt(map(_word_regex, words)) + r")(?!\w)" + _NOT_HALF + other, re.I), _word_ok))
     if value.unit is None:
         return out
     for unit, q, binary in equivalents(value.amount, value.unit):
@@ -360,7 +386,7 @@ def patterns_for(value: Value) -> list[Pattern]:
         digits = _alt(map(re.escape, digit_forms(q)))
         out.append(Pattern("unit", means, re.compile(
             DIGIT_BEFORE + "(?:" + digits + ")" + _unit_names(unit), re.I)))
-        spelled = number_words(int(q)) - {"twice", "dozen"} if q == int(q) else set()
+        spelled = amount_words(q) - {"twice", "dozen"}
         if spelled:
             words = _alt(map(_word_regex, spelled))
             out.append(Pattern("unit", means, re.compile(
@@ -444,6 +470,7 @@ _SLASH_TOKEN = re.compile(r"(?P<comment>//[^\n]*|/\*.*?\*/)|(?P<string>\"(?:\\.|
                           r"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)", re.S)
 _HASH_TOKEN = re.compile(r"(?P<comment>(?<![^\s])#[^\n]*|^[ \t]*;[^\n]*)|(?P<string>\"(?:\\.|[^\"\\\n])*\""
                          r"|'[^'\n]*')", re.M)
+_HCL_TOKEN = re.compile(r"(?P<comment>#[^\n]*|//[^\n]*|/\*.*?\*/)|(?P<string>\"(?:\\.|[^\"\\\n])*\")", re.S)
 
 
 def scanned_prose(source: str, token: re.Pattern, strings: bool = False) -> list[Prose]:
@@ -451,8 +478,10 @@ def scanned_prose(source: str, token: re.Pattern, strings: bool = False) -> list
     quote inside a comment does not open a string and a comment marker inside a string is
     not a comment."""
     out = []
+    start, counted = 1, 0  # count newlines only since the previous match, not from the top
     for match in token.finditer(source):
-        start = source.count("\n", 0, match.start()) + 1
+        start += source.count("\n", counted, match.start())
+        counted = match.start()
         if match.group("comment") is None:
             if strings:
                 out += _lines_of(start, "string", match.group("string")[1:-1])
@@ -476,39 +505,74 @@ def doc_prose(source: str) -> list[Prose]:
     return out
 
 
-def prose_of(path: Path, strings: bool = False) -> list[Prose]:
+def _decode(data: bytes) -> tuple[str, bool]:
+    """The text, and whether it had to be read with replacement characters. UTF-8 first;
+    UTF-16 when the file starts with its byte-order mark; otherwise UTF-8 with
+    replacement, so digits and ASCII words are still found."""
+    try:
+        return data.decode("utf-8-sig"), False
+    except UnicodeDecodeError:
+        if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            try:
+                return data.decode("utf-16"), False
+            except UnicodeDecodeError:
+                pass
+        return data.decode("utf-8", errors="replace"), True
+
+
+def prose_of(path: Path, strings: bool = False, notes: list | None = None) -> list[Prose]:
+    """The prose lines of one file. A file over MAX_BYTES or one that cannot be read, and
+    one read with replacement characters, is recorded in notes as (path, reason)."""
     suffix, name = path.suffix.lower(), path.name
     if suffix in PY:
         kind = "py"
     elif suffix in SLASH:
         kind = "slash"
+    elif suffix in HCL:
+        kind = "hcl"
     elif suffix in HASH or name in HASH_NAMES:
         kind = "hash"
     elif suffix in DOCS or (not path.suffix and name.upper() in DOC_NAMES):
         kind = "doc"
     else:
         return []
+    notes = [] if notes is None else notes
     try:
         if path.stat().st_size > MAX_BYTES:
+            notes.append((path, f"not read: over {MAX_BYTES // 1_000_000} MB"))
             return []
-        source = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
-    except (OSError, UnicodeDecodeError):
+        source, lossy = _decode(path.read_bytes())
+    except OSError as error:
+        notes.append((path, f"not read: {error.strerror or error}"))
         return []
+    if lossy:
+        notes.append((path, "not UTF-8: read with replacement characters"))
+    source = source.replace("\r\n", "\n")
     if kind == "py":
         return python_prose(source, strings)
     if kind == "doc":
         return doc_prose(source)
-    return scanned_prose(source, _SLASH_TOKEN if kind == "slash" else _HASH_TOKEN, strings)
+    token = {"slash": _SLASH_TOKEN, "hcl": _HCL_TOKEN}.get(kind, _HASH_TOKEN)
+    return scanned_prose(source, token, strings)
 
 
-def iter_files(root: Path) -> list[Path]:
+def iter_files(root: Path, notes: list | None = None) -> list[Path]:
+    """The files under root, skipping SKIP_DIRS, *.egg-info and this skill's own folder.
+    A skipped build/, dist/ or *.egg-info folder is recorded in notes as (path, reason)."""
     if root.is_file():
         return [root]
     out = []
     top = root.resolve()
+    notes = [] if notes is None else notes
     for directory, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.endswith(".egg-info")
-                         and not (Path(directory, d).resolve() == SELF_DIR and SELF_DIR != top))
+        keep = []
+        for d in sorted(dirs):
+            if d in SKIP_DIRS or d.endswith(".egg-info"):
+                if d in NAMED_SKIPS or d.endswith(".egg-info"):
+                    notes.append((Path(directory, d), "not read: build output folder"))
+            elif not (Path(directory, d).resolve() == SELF_DIR and SELF_DIR != top):
+                keep.append(d)
+        dirs[:] = keep
         out += [Path(directory, f) for f in sorted(files)]
     return out
 
@@ -581,12 +645,16 @@ def _found_on_line(proses: list[Prose], i: int, patterns: list[Pattern]) -> list
 
 
 def scan(root: Path, patterns: list[Pattern], new_patterns: list[Pattern] | None = None,
-         near: re.Pattern | None = None, strings: bool = False) -> list[Hit]:
+         near: re.Pattern | None = None, strings: bool = False,
+         notes: list | None = None) -> list[Hit]:
+    """The hits under root. Pass a list as notes to collect, as (relative path, reason),
+    each folder or file that was skipped and each file read with replacement characters."""
     hits = []
     base = root.parent if root.is_file() else root
-    for path in iter_files(root):
+    found: list = []
+    for path in iter_files(root, found):
         rel = path.relative_to(base).as_posix()
-        proses = prose_of(path, strings)
+        proses = prose_of(path, strings, found)
         for i, prose in enumerate(proses):
             matches = _found_on_line(proses, i, patterns)
             if not matches or (near and not _near(proses, i, near)):
@@ -595,6 +663,8 @@ def scan(root: Path, patterns: list[Pattern], new_patterns: list[Pattern] | None
             if new_patterns and _found_on_line(proses, i, new_patterns):
                 hints.append("states new")
             hits.append(Hit(rel, prose.line, prose.where, " ".join(prose.text.split()), matches, hints))
+    if notes is not None:
+        notes += [(path.relative_to(base).as_posix(), reason) for path, reason in found]
     return sorted(hits, key=lambda h: (h.path, h.line))
 
 
@@ -648,15 +718,20 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"--near is not a regular expression: {error}")
     olds = [parse_value(raw, unit) for raw in args.old]
     new = parse_value(args.new, unit) if args.new else None
+    notes: list[tuple[str, str]] = []
     hits = scan(args.root, [p for v in olds for p in patterns_for(v)], patterns_for(new) if new else None,
-                near, args.strings)
+                near, args.strings, notes)
+    not_read = [(path, reason) for path, reason in notes if reason.startswith("not read")]
+    lossy = [path for path, reason in notes if not reason.startswith("not read")]
     status = 1 if hits and args.check else 0
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     if args.json:
         print(json.dumps({"old": [describe(v) for v in olds], "new": describe(new) if new else None,
-                          "near": args.near, "hits": [asdict(h) for h in hits]}, indent=1))
+                          "near": args.near, "hits": [asdict(h) for h in hits],
+                          "not_read": [{"path": path, "reason": reason} for path, reason in not_read],
+                          "read_with_replacement": lossy}, indent=1))
         return status
     for value in olds:
         print(f"old {describe(value)}")
@@ -664,6 +739,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"new {describe(new)}")
     for hit in hits:
         print(render(hit))
+    if not_read:
+        print(f"{len(not_read)} file{'s' * (len(not_read) != 1)} or folders not read: "
+              + "; ".join(f"{path} ({reason[len('not read: '):]})" for path, reason in not_read)
+              + ". Pass a folder as ROOT to sweep it.")
+    if lossy:
+        print(f"{len(lossy)} file{'s' * (len(lossy) != 1)} not UTF-8, read with replacement characters: "
+              + "; ".join(lossy) + ".")
     narrowed = f" near /{args.near}/" if args.near else ""
     if hits:
         files = len({h.path for h in hits})
@@ -671,7 +753,8 @@ def main(argv: list[str] | None = None) -> int:
               "These are candidates: read each in context and decide.")
     else:
         print(f"No comment, docstring or doc line{narrowed} states an old form. The search covers digits, "
-              "number words and round unit conversions, not paraphrase or figures you did not pass.")
+              "number words (whole numbers and halves), a few half and quarter idioms and round unit "
+              "conversions, not paraphrase, other fractions or figures you did not pass.")
     return status
 
 

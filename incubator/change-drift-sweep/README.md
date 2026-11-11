@@ -48,8 +48,8 @@ change affects, so they drift."
 The opposite mistake is as real. "Fix every doc the change made false", read literally,
 rewrites records that are true about their own date: a released changelog entry, an ADR, a
 dated report, a migration note. It can also delete an outside fact that shares the number. In
-the hygiene eval a one-line "fix what is false" reminder deleted a true vendor quota in 3 of
-5 iteration-5 runs ([research.md](research.md), R4).
+the hygiene eval a one-line reminder to "fix or delete any comment, docstring or doc that
+your change makes false" deleted a true vendor quota in 3 of 5 iteration-5 runs ([research.md](research.md), R4).
 
 ## What it adds over the shipped skill and stale-refs
 
@@ -120,10 +120,16 @@ python <skill folder>/scripts/value_drift.py <repository root> --old "7200 s" --
   value under 10 to be searched in a call of its own (v2). `--strings` also reads string
   literals in code. `--json` prints the hits as JSON.
 - **What it reads.** Python comments and docstrings (by `tokenize` and `ast`, so code literals
-  are skipped), `//`, `/* */` and `#` comments in other languages and config files, and every
-  line of Markdown and text docs. With `--strings`, also the string literals of code (help
-  text, error and log messages), labelled `string`. Lines inside fenced blocks are labelled
-  `fenced`. It skips caches, `.git`, `node_modules` and its own folder.
+  are skipped), `//`, `/* */` and `#` comments in other languages and config files (all three
+  in Terraform files since the review after the runs), and every line of Markdown and text
+  docs. With `--strings`, also the string literals of code (help text, error and log
+  messages), labelled `string`. Lines inside fenced blocks are labelled `fenced`. It skips
+  caches, `.git`, `node_modules` and its own folder. Since that review it also lists what
+  it skips that could hold prose: `build/`, `dist/` and `*.egg-info` folders at any depth,
+  and files over 2 MB, under "not read" (`not_read` in `--json`). A listed folder can be
+  swept by passing it as ROOT. A file that is not UTF-8 is read with replacement
+  characters and listed as such. The runs used the script before these changes, which
+  dropped those files and folders without a word.
 - **Wrapped lines (v2).** Each prose line is read together with the next line of the same
   comment, docstring, string or paragraph, so a form wrapped across a line break is found.
   It is listed at the line where it starts. Two lines are not joined across a blank line, a
@@ -134,7 +140,8 @@ python <skill folder>/scripts/value_drift.py <repository root> --old "7200 s" --
     version strings and issue numbers (`#4`) are masked first, so 30 does not match
     2026-06-30 or 02:30.
   - Number words, including hyphenated and "and" forms, but not a word inside a larger number
-    ("five" in "twenty-five").
+    ("five" in "twenty-five"). Since the review after the runs, also a whole number and a
+    half ("two and a half minutes" for 150 s), and no longer "two" inside it for 2 min.
   - Round conversions to other units of the same family, matched only with a unit beside them,
     so a stray "45" is not read as 45 minutes. A number word needs a space or hyphen before its
     unit, so "ones" is not one second.
@@ -168,8 +175,13 @@ The unit tests cover:
 
 ```sh
 cd incubator/change-drift-sweep/skill/change-drift-sweep/scripts
-python -B -m unittest     # 36 tests
+python -B -m unittest     # 41 tests (36 when the runs used it)
 ```
+
+The script and one SKILL.md bullet changed after every run, in review fixes listed in
+[eval/CHANGES.md](eval/CHANGES.md) ("After the runs"). No run used those changes. The
+version each run read is in its iteration's `skill-snapshot/`, and the results above
+are for those snapshots.
 
 On this repository's `docs/` folder, `--old 3` lists 1,114 prose lines. Adding
 `--near "retr|attempt|tries"` brings that to 53. v1 and v2 give the same counts. These
@@ -265,7 +277,7 @@ a script or SKILL.md change.
   dropped a derived-figure line from a shared call.
 
 The held-out cases were not opened for v2. One recursive directory listing printed their
-file names.
+file and grader file names.
 
 research.md is the record of the first design and was not changed. Where it differs, this
 README and SKILL.md hold:
@@ -304,7 +316,8 @@ README and SKILL.md hold:
     with a contrast.
 
   Sentence-level checks are heuristics; a misgrade gets an `overrides.json` ruling.
-  `eval/test_grade.py` pins the checks with 107 graded variants.
+  `eval/test_grade.py` pins the checks with 107 graded variants: 34 good results, 72 bad
+  ones and 1 known misgrade (a true `unit-spelled-ttl` sentence that check 02 fails).
 
 The reminder nearly states the list of forms and the sorting rule in one sentence, and it also
 asks for mismatches the change did not cause to be reported. A tie on the core checks is the
@@ -338,7 +351,10 @@ that arm the stale-refs script path in the rename case is an open step.
 What else applies to these runs:
 - **Gate runs.** The 21 gate runs are not counted.
 - **Exclusions.** Four iteration-1 runs were excluded and re-run, because the run-limits
-  guard misread their shell commands.
+  guard misread their shell commands. An auditor agent decided this after the runs; the
+  rule written before the eval excluded only skill-arm runs that skipped the skill read.
+  Two Haiku runs that the guard stopped from writing a reply were kept, because their
+  cases do not grade the reply.
 - **Skill reads.** Every skill-arm run read its skill before its first edit.
 - **Rulings.** The numbers include three rulings by auditor agents, all turning a
   heuristic fail into a pass: two for `with_skill` in iteration 2, one for the shipped
@@ -365,8 +381,8 @@ Core checks passed, both models together:
 
 What the numbers show:
 - **Against the reminder and the shipped skill: a tie.** Over iteration 1 and the
-  held-out pair, the skill passed 220/220 checks, the reminder 219/220 and the shipped
-  skill 218/220. Each miss is one run:
+  held-out pair, the skill passed 220/220 checks (v1 in training, v2 held out), the
+  reminder 219/220 and the shipped skill 218/220. Each miss is one run:
   - the reminder left "fifteen minutes" in one Sonnet docstring;
   - the shipped skill's Haiku reply left out the pre-existing flush mismatch once;
   - the shipped skill wrote one ambiguous gloss on held-out Haiku.
@@ -376,8 +392,10 @@ What the numbers show:
   skill on every other case.
 - **Against the bare model: a gain on Haiku only.** Haiku training: 96/96 against 88/96.
   All 15 skill runs passed every core check, against 9 of 15 bare runs (two-sided Fisher
-  p = 0.017, chosen after reading the runs). The bare misses were:
-  - a wrapped quarter-hour idiom and a banner time (`unit-spelled-ttl`);
+  p = 0.017, chosen after reading the runs). The test treats runs as independent, but the
+  6 bare shortfalls are all 3 runs of each of 2 cases. The bare misses were:
+  - a wrapped quarter-hour idiom, or a "fifteen minutes" docstring and a banner time
+    (`unit-spelled-ttl`);
   - two figures worked out from the old batch size (`pre-existing-drift-reported`);
   - a note added to an accepted ADR.
 
@@ -394,9 +412,12 @@ What the numbers show:
     changed only the constant, so the skill did not cause over-editing.
 - **v2 fixed its script target and changed no score.** The script now lists a form
   wrapped across a line break. It did so in both iteration-2 runs that ran it before
-  editing. The `--near` change could not be tested, because every run read every file.
-- **The script made no difference to any result.** Haiku ran it in every skill run, Sonnet
-  in 4 of 24. No traced fix came only from a script hit: each run had read the files first.
+  editing. The `--near` change could not be tested: every run passed every check, so a
+  dropped hit cost nothing.
+- **No traced fix came only from a script hit.** Haiku ran it in every skill run, Sonnet
+  in 4 of 24. Each traced run had read the files first. The trace left out 20 of the 25
+  iteration-2 runs, and no arm had the skill without the script, so the script's effect
+  was not measured.
 - **Ungraded differences.** Most favour the skill over the bare model and the shipped
   skill, but not over the reminder:
   - it never created a changelog section where none existed; the bare model did in 9 of
@@ -418,8 +439,9 @@ From the repository root:
 ```sh
 python incubator/harness.py lint change-drift-sweep
 python incubator/harness.py self-test change-drift-sweep
-# Gate: the bare arm first, on both models
-python incubator/harness.py prepare change-drift-sweep --iteration gate-haiku --arms without_skill --runs 2 --split train
+# Gate: the bare arm first, on both models (the recorded gate ran all seven cases,
+# the held-out pair included; see Limits)
+python incubator/harness.py prepare change-drift-sweep --iteration gate-haiku --arms without_skill --runs 2
 # Then the training split with all four arms
 python incubator/harness.py prepare change-drift-sweep --iteration iteration-1-haiku --runs 3 --split train
 #   give each prompt in eval/iterations/iteration-1-haiku/runs.json to a fresh agent of the chosen model
@@ -435,7 +457,12 @@ python incubator/harness.py summary change-drift-sweep iteration-1-haiku iterati
 Further steps:
 - Run the held-out cases only once, at the end, under their own iteration name.
 - Exclude and re-run any skill-arm run that `verify-reads` reports as not reading the skill
-  before its first edit, and any run the run-limits guard stopped before it could finish.
+  before its first edit.
+- Exclude and re-run any run the run-limits guard stopped before it wrote something its
+  case grades: its edits, or `RESPONSE.md` in a case with a reply check. Keep, and grade as
+  it stands, a run the guard stopped only from writing a reply its case does not grade.
+  This rule was written after the iteration-1 runs. It covers the four excluded runs and
+  the two kept ones (see eval/RESULTS.md, "Excluded runs").
 - For each `with_skill` run, note from the transcript whether `value_drift.py` ran, what it
   listed, and whether any fix came only from a script hit. This separates the script's value
   from the instructions' value.
@@ -471,14 +498,20 @@ Of the eval:
     ([eval/GATE.md](eval/GATE.md)).
   - The gate was not re-run on the hardened fixtures. The iteration-1 bare arm was the
     first measure. It showed headroom on Haiku in two of the four hardened training cases
-    and on Sonnet in none. `derived-backoff-total` stayed at ceiling for every arm.
+    and on Sonnet in none. `derived-backoff-total` stayed at ceiling for every arm. In
+    the held-out run, the hardened held-out case, `poll-interval-average-wait`, showed
+    headroom on both models: 2 of 5 bare runs had full marks (one Haiku shortfall is the
+    ambiguous gloss).
   - Selection by a bare gate favours cases where the bare model falls short. It does
     not favour cases that separate a skill from a good reminder.
 - **Held-out exposure.**
-  - No skill edit drew on the held-out cases, and their contents were not opened for v2.
+  - No skill edit drew on the current held-out pair, and its contents were not opened for
+    v2. The held-out case it replaced, `poll-interval-per-day`, most likely decided one
+    edit (see Provenance).
   - The pointer case was described in CASES.md when the skill was first written, so it
     is a restraint guard, not a clean test.
-  - The v2 writer's directory listing printed the held-out file names.
+  - The v2 writer's directory listing printed the held-out file and grader file names,
+    such as `03-average-wait-recomputed.md`.
 - **Prompt read from a file.** Each agent read its task from `prompt.txt` as its first
   tool call. A real request arrives as a user's message.
 - **Activation is untested.**
@@ -486,8 +519,8 @@ Of the eval:
     whether the description makes the skill load on its own.
   - On its own, the shipped skill loaded in 0 of 18 Haiku and 3 of 18 Sonnet
     should-load runs (#20).
-- **The shipped arm had no stale-refs.** It read the shipped SKILL.md only. It tied anyway,
-  so adding stale-refs could only help it.
+- **The shipped arm had no stale-refs.** It read the shipped SKILL.md only. It tied anyway.
+  That adding stale-refs would only help it is a hypothesis; no run tested it.
 - **Iteration 2 is compared across runs.** v2 ran only `with_skill`, and is compared with
   the other arms' iteration-1 runs.
 - **Keyword checks.** The sentence and reply checks are heuristics. The auditors read every
@@ -495,7 +528,9 @@ Of the eval:
   slip through.
 - **Some behaviours are ungraded:** new changelog sections, unrequested comments,
   renamed internal parameters and number word form. Their counts come from the writer's
-  reading of the diffs.
+  reading of the diffs, and can be recounted from each run's committed `changes.diff`.
+  Tool calls, tokens, script use and Edit errors come from transcripts, which are not in
+  the repository.
 
 Of the skill:
 - **No gain over a one-sentence reminder is shown.** On these cases the reminder in
@@ -509,8 +544,10 @@ Of the skill:
   - rates and frequencies ("twice a day" for a 12-hour interval);
   - conversions that do not come out round (0.0625 MiB);
   - ordinals, fractions other than a half or a quarter, and prose in other languages;
-  - "two and a half minutes" from 150 s or 2.5 min. The held-out runs confirmed this:
-    only reading found that sentence, except in the one run that passed the phrase itself.
+  - Before the review after the runs, "two and a half minutes" from 150 s or 2.5 min. The
+    held-out runs scored that earlier script: only reading found that sentence, except in
+    the one run that passed the phrase itself. The script now lists it, so
+    `poll-interval-average-wait` no longer tests this gap blind.
 
   Reading cannot recover a form nobody listed.
 - **Small values still flood without `--near`.** An old value of 1, 2 or 3 matches many
@@ -528,8 +565,9 @@ Of the skill:
 - **Other languages are read heuristically** (`//`, `/* */` and `#` comments). reST code blocks
   are not labelled as fenced.
 - **Longer replies.** The skill's replies were the longest of all arms in every iteration.
-  Part of the length is sentences that report an empty category ("no ADR or instruction
-  file ..."). v2 did not address this.
+  On Sonnet part of the length may be sentences that report an empty category ("no ADR
+  or instruction file ..."), found in 10/10 iteration-1 skill replies. On Haiku more of
+  the reminder's replies had one (10/14 against 5/14). v2 did not address this.
 
 ## Next steps
 
@@ -564,11 +602,12 @@ The gate, the four-arm run, one revision (v2) and the held-out run are done. In 
    iteration with `harness.py grade`, and check whether each `overrides.json` ruling is
    still needed. Keep the rulings as a record.
 4. **Harness fixes**, all in `incubator/harness.py`:
-   - `verify-reads` counts every `tool_use` block in a transcript, including the copies of
-     earlier messages in its request records, so `tool_calls` runs about double. Count
-     each tool call once, by id, from the assistant messages.
+   - Done after these results: `verify-reads` now counts each tool call once, by id. The
+     committed change-drift-sweep `verify-reads.json` files already counted that way.
    - When a run was excluded and re-run at the same outputs path, `verify-reads` reports
-     whichever transcript sorts last. Report every match, or the latest one.
+     whichever transcript sorts last. Report every match, or the latest one. In the
+     committed files this names the excluded original for all three re-run skill-arm
+     runs.
    - Make `verify-reads` store its result in the iteration folder.
    - Record the model id from the transcript in each run's grading.
    - Tell run agents to edit files and write RESPONSE.md with the file-writing tools, at

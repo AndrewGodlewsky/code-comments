@@ -3,7 +3,8 @@
 Each version lists what changed in `skill/change-drift-sweep/` (SKILL.md and the script)
 and why. The evidence behind each change is in the iteration-1 analysis (ANALYSIS.md,
 "Iteration 1"). No change was informed by the held-out cases. They were not run, and
-their contents were not opened. One recursive directory listing printed their file names.
+their contents were not opened. One recursive directory listing printed their file and
+grader file names (README Provenance).
 
 ## v2 (after iteration 1)
 
@@ -82,3 +83,25 @@ Checks after the change:
   ("3.") as the value 3. The run left it alone, and no failure followed.
 - **Sonnet never ran the script.** In all 10 `with_skill` runs it printed every file and
   edited with `sed`. The script is optional by design, so this is not a failure.
+
+## After the runs (review fixes, 2026-11-11)
+
+A code review after every run changed the script and one SKILL.md bullet. No run used
+these changes: every iteration's `skill-snapshot/` keeps the version that was run, and
+no result was regraded because of them.
+- **Halves.** Number words now include a whole number and a half, so 150 s or 2.5 min
+  lists "two and a half minutes". `--old "2 min"` no longer lists "two" inside it. The
+  held-out runs scored the earlier script, so `poll-interval-average-wait` no longer
+  tests this gap blind.
+- **What it skips is named.** `build/`, `dist/` and `*.egg-info` folders and files over
+  2 MB are listed as "not read" (`not_read` in `--json`), and a file that is not UTF-8
+  is read with replacement characters and listed, where before all of these were
+  dropped without a word. SKILL.md section 2 gained one bullet saying so.
+- **Terraform.** `.tf`, `.tfvars` and `.hcl` files are read for `#`, `//` and `/* */`
+  comments; before, only `#`.
+- **One-letter units keep their case.** `--unit M` is an error and `--old "5 M"` is
+  literal text, where before both meant 5 minutes.
+- **Line numbers are counted once.** The comment scanner no longer recounts newlines
+  from the top of the file for each comment, which took seconds on a 1 MB file.
+
+The script's tests went from 36 to 41.

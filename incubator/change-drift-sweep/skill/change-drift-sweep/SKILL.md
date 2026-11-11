@@ -56,6 +56,9 @@ holds this file), on Python 3.10 or newer:
   it finds hits.
 - It reads the files fresh, writes nothing and stores nothing. It cannot compute
   derived figures or see paraphrase: pass what you worked out, and read each hit.
+- It skips `build/` and `dist/` folders and files over 2 MB, and prints them as "not
+  read". Search any of those that could state the value, for example by passing the
+  folder as the root.
 
 **Without the script**, grep (or `rg`) the whole repository, ignoring case, one `-e`
 per form, and keep the hits in comments, docstrings, docs and user-facing strings

@@ -7,6 +7,7 @@ import io
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -168,6 +169,24 @@ class UnitTest(unittest.TestCase):
         self.assertIsNone(vd.parse_value("3x", None).amount)
         self.assertEqual(forms("a 3x speed-up", "3x"), ["3x"])
 
+    def test_a_whole_number_and_a_half(self):
+        self.assertEqual(forms("the job waits two and a half minutes", "150 s"), ["two and a half minutes"])
+        self.assertEqual(forms("the job waits two and a half minutes", "2.5 min"), ["two and a half minutes"])
+        self.assertEqual(forms("a two-and-a-half-minute wait", "150 s"), ["two-and-a-half-minute"])
+        self.assertEqual(forms("two and a half hours", "2.5 h"), ["two and a half hours"])
+        self.assertEqual(forms("seven and a half hours", "27000 s"), ["seven and a half hours"])
+        self.assertEqual(forms("one and a half minutes", "90 s"), ["one and a half minutes"])
+        self.assertEqual(forms("two minutes", "150 s"), [])
+        self.assertEqual(forms("the job waits two and a half minutes", "2 min"), [])  # not "two"
+
+    def test_one_letter_units_keep_their_case(self):
+        for name in ("M", "S", "b"):
+            self.assertIsNone(vd.find_unit(name), name)
+        self.assertEqual(vd.find_unit("MINUTES").key, "min")
+        self.assertEqual(vd.find_unit("kb").key, "KB")
+        self.assertEqual(vd.find_unit("m").key, "min")
+        self.assertIsNone(vd.parse_value("5 M", None).amount)  # matched as literal text
+
 
 class TextTest(unittest.TestCase):
     def test_flags_are_bounded(self):
@@ -266,6 +285,40 @@ class ProseTest(unittest.TestCase):
         with Repo({"node_modules/x/README.md": "2700 s", ".git/notes.md": "2700 s"}) as repo:
             self.assertEqual(repo.hits("--old", "2700"), [])
 
+    def test_skipped_files_and_folders_are_named(self):
+        files = {"scripts/build/release.py": "# Waits 2700 s\n", "docs/dist/guide.md": "2700 s\n",
+                 "node_modules/x/README.md": "2700 s\n", "docs/big.md": "2700 s\n" + "x\n" * 60}
+        with Repo(files) as repo:
+            (repo.root / "docs" / "latin1.md").write_bytes("Caf\xe9 waits 2700 s.\n".encode("latin-1"))
+            saved = vd.MAX_BYTES
+            vd.MAX_BYTES = 100
+            try:
+                _, out = repo.run("--old", "2700", "--json")
+                _, text = repo.run("--old", "2700")
+            finally:
+                vd.MAX_BYTES = saved
+        report = json.loads(out)
+        self.assertEqual([(h["path"], h["line"]) for h in report["hits"]], [("docs/latin1.md", 1)])
+        self.assertEqual(sorted(n["path"] for n in report["not_read"]),
+                         ["docs/big.md", "docs/dist", "scripts/build"])  # node_modules is not named
+        self.assertEqual(report["read_with_replacement"], ["docs/latin1.md"])
+        self.assertIn("3 files or folders not read: ", text)
+        self.assertIn("1 file not UTF-8, read with replacement characters: docs/latin1.md.", text)
+
+    def test_terraform_comments_in_every_style(self):
+        source = ('# restart after 2700 s\nlocals {\n  // restart after 2700 s\n  wait = 2700 /* 2700 s */\n'
+                  '  note = "2700 s // not a comment"\n}\n')
+        with Repo({"infra/main.tf": source}) as repo:
+            self.assertEqual([h["line"] for h in repo.hits("--old", "2700")], [1, 3, 4])
+
+    def test_line_numbers_after_block_comments(self):
+        source = "/* one\n * two\n * three */\nconst a = 1; // 2700 s\n" + "let b = 'x'; // y\n" * 4000 + "// 2700 s\n"
+        started = time.perf_counter()
+        with Repo({"web/a.js": source}) as repo:
+            lines = [h["line"] for h in repo.hits("--old", "2700")]
+        self.assertEqual(lines, [4, 4005])
+        self.assertLess(time.perf_counter() - started, 5)  # line counting is linear in file size
+
 
 class HintTest(unittest.TestCase):
     def test_record_hints_from_the_path(self):
@@ -290,7 +343,8 @@ class CliTest(unittest.TestCase):
             self.assertEqual(repo.run("--old", "3", "--check")[0], 1)
             self.assertEqual(repo.run("--old", "5", "--check")[0], 0)
             with contextlib.redirect_stderr(io.StringIO()):
-                for bad in (["--old", "3", "--unit", "parsec"], [], ["--old", "3", "--near", "("]):
+                for bad in (["--old", "3", "--unit", "parsec"], [], ["--old", "3", "--near", "("],
+                            ["--old", "5", "--unit", "M"]):
                     with self.assertRaises(SystemExit) as raised:
                         repo.run(*bad)
                     self.assertEqual(raised.exception.code, 2)
