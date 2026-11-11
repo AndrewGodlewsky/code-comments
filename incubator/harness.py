@@ -81,8 +81,19 @@ def load_checks(skill: str) -> dict:
     return module.CHECKS
 
 
-def case_names(skill: str) -> list[str]:
-    return sorted(p.name for p in (eval_dir(skill) / "cases").iterdir() if p.is_dir())
+def case_names(skill: str, split: str = "all") -> list[str]:
+    """Case names, optionally only the training cases or only the held-out ones
+    (``held_out: true`` in case.yaml)."""
+    names = sorted(p.name for p in (eval_dir(skill) / "cases").iterdir() if p.is_dir())
+    if split == "all":
+        return names
+    held = {n for n in names if is_held_out(skill, n)}
+    return [n for n in names if (n in held) == (split == "held-out")]
+
+
+def is_held_out(skill: str, case: str) -> bool:
+    path = eval_dir(skill) / "cases" / case / "case.yaml"
+    return path.is_file() and re.search(r"^held_out:\s*true\s*$", gradelib.text(path), re.M) is not None
 
 
 def _frontmatter_split(body: str) -> tuple[str, str]:
@@ -220,13 +231,13 @@ def _snapshot(skill: str, iteration: Path) -> Path:
 
 
 def prepare(skill: str, iteration_name: str, arms: list[str], n_runs: int, cases: list[str] | None,
-            fresh: bool, first_run: int = 1) -> list[dict]:
+            fresh: bool, first_run: int = 1, split: str = "all") -> list[dict]:
     iteration = eval_dir(skill) / "iterations" / iteration_name
     iteration.mkdir(parents=True, exist_ok=True)
     reminder = json.loads(gradelib.text(eval_dir(skill) / "arms.json"))["reminder"]
     snapshot = _snapshot(skill, iteration) if "with_skill" in arms else None
     entries = []
-    for case in cases or case_names(skill):
+    for case in cases or case_names(skill, split):
         source = eval_dir(skill) / "cases" / case / "files"
         (iteration / case).mkdir(exist_ok=True)
         meta = {"eval_name": case, "prompt": task(skill, case), "assertions": statements(skill, case)}
@@ -407,6 +418,7 @@ def main(argv=None) -> int:
     p.add_argument("--arms", default=",".join(ARMS)); p.add_argument("--runs", type=int, default=1)
     p.add_argument("--first-run", type=int, default=1)
     p.add_argument("--cases"); p.add_argument("--fresh", action="store_true")
+    p.add_argument("--split", choices=("all", "train", "held-out"), default="all")
     p = sub.add_parser("grade"); p.add_argument("skill"); p.add_argument("--iteration", required=True)
     p = sub.add_parser("summary"); p.add_argument("skill"); p.add_argument("iterations", nargs="+")
     p = sub.add_parser("verify-reads")
@@ -422,7 +434,8 @@ def main(argv=None) -> int:
     if args.command == "prepare":
         arms = [a for a in args.arms.split(",") if a]
         cases = args.cases.split(",") if args.cases else None
-        entries = prepare(args.skill, args.iteration, arms, args.runs, cases, args.fresh, args.first_run)
+        entries = prepare(args.skill, args.iteration, arms, args.runs, cases, args.fresh, args.first_run,
+                          args.split)
         print(json.dumps([{k: e[k] for k in ("id", "outputs")} for e in entries], indent=1))
         return 0
     if args.command == "grade":

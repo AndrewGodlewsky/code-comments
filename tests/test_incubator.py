@@ -120,6 +120,14 @@ class HarnessTest(unittest.TestCase):
         grading = json.loads((run / "grading.json").read_text(encoding="utf-8"))
         self.assertIn("ruled by hand", grading["expectations"][2]["evidence"])
 
+    def test_held_out_split(self):
+        self.assertEqual(harness.case_names("toy", "train"), ["raise-limit"])
+        _write(self.home / "toy" / "eval" / "cases" / "raise-limit" / "case.yaml",
+               "name: raise-limit\nheld_out: true\n")
+        self.assertEqual(harness.case_names("toy", "train"), [])
+        self.assertEqual(harness.case_names("toy", "held-out"), ["raise-limit"])
+        self.assertEqual(harness.case_names("toy"), ["raise-limit"])
+
     def test_snapshot_refuses_a_changed_skill(self):
         harness.prepare("toy", "it-1", ["with_skill"], 1, None, False)
         _write(self.home / "toy" / "skill" / "toy" / "SKILL.md", "---\nname: toy\ndescription: Changed.\n---\n")
