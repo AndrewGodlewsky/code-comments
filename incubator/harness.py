@@ -415,7 +415,7 @@ def verify_reads(skill: str, iteration_name: str, transcript_dirs: list[Path]) -
     found: dict[str, dict] = {}
     for directory in transcript_dirs:
         for path in sorted(Path(directory).glob("agent-*.jsonl")):
-            first, tools = None, []
+            first, tools, seen = None, [], set()
             with path.open(encoding="utf-8") as fh:
                 for line in fh:
                     event = json.loads(line)
@@ -423,7 +423,12 @@ def verify_reads(skill: str, iteration_name: str, transcript_dirs: list[Path]) -
                     if first is None and event.get("type") == "user" and isinstance(content, str):
                         first = content
                     if isinstance(content, list):
-                        tools += [c for c in content if c.get("type") == "tool_use"]
+                        # Transcripts also hold later copies of earlier messages, so count each call once.
+                        for c in content:
+                            if c.get("type") != "tool_use" or (c.get("id") and c["id"] in seen):
+                                continue
+                            seen.add(c.get("id"))
+                            tools.append(c)
             if not first:
                 continue
             match = re.search(r"You are working in the repository at (\S+)", first.replace("\\", "/"))

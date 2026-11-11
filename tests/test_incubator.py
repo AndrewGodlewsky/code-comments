@@ -168,6 +168,22 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result["checked"], 2)
         self.assertEqual(result["skipped_skill"], [entries[1]["id"]])
 
+    def test_verify_reads_counts_copied_calls_once(self):
+        entry = harness.prepare("toy", "it-1", ["with_skill"], 1, None, False)[0]
+        skill_md = entry["prompt"].split("read ")[1].split(" in full")[0]
+        read = {"type": "tool_use", "id": "toolu_1", "name": "Read", "input": {"file_path": skill_md}}
+        edit = {"type": "tool_use", "id": "toolu_2", "name": "Edit", "input": {"file_path": entry["outputs"] + "/app.py"}}
+        events = [{"type": "user", "message": {"content": entry["prompt"]}},
+                  {"type": "assistant", "message": {"content": [read]}},
+                  {"type": "assistant", "message": {"content": [edit]}},
+                  # A later record that repeats both earlier calls, as real transcripts do.
+                  {"type": "assistant", "message": {"content": [read, edit]}}]
+        transcripts = Path(self._tmp.name) / "transcripts"
+        _write(transcripts / "agent-0.jsonl", "\n".join(json.dumps(e) for e in events) + "\n")
+        run = harness.verify_reads("toy", "it-1", [transcripts])["runs"][entry["id"]]
+        self.assertEqual(run["tool_calls"], 2)
+        self.assertTrue(run["read_before_edit"])
+
 
 class GradelibTest(unittest.TestCase):
     def test_hidden_tests_run_on_a_copy(self):
