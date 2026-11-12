@@ -5,6 +5,10 @@ fail at least one, or a case cannot tell a good run from one that did nothing. E
 skill must also pass the repository's skill linter. The harness mechanics are tested on
 a tiny synthetic skill built in a temporary folder.
 
+code-comments-v5, the hill-climb on the shipped skill, copies its cases from other evals.
+Its tests check that the copies still match their sources, that its skill keeps the
+shipped description, and that its score.py groups a synthetic iteration correctly.
+
 This module also loads change-drift-sweep's script tests (test_value_drift.py), so the
 documented suite runs them. That skill's graded variants (eval/test_grade.py) include
 held-out variants and are run separately; see incubator/README.md.
@@ -385,6 +389,171 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result["skipped_skill"], [ids["with_skill"]])
         self.assertEqual(result["partial_reads"], [ids["shipped_skill"]])
         self.assertEqual(result["transcripts_with_unparsable_lines"], {"agent-0.jsonl": 1, "agent-1.jsonl": 1})
+
+
+_V5 = _ROOT / "incubator" / "code-comments-v5"
+_SCORE_SPEC = importlib.util.spec_from_file_location("code_comments_v5_score", _V5 / "eval" / "score.py")
+v5_score = importlib.util.module_from_spec(_SCORE_SPEC)
+sys.modules["code_comments_v5_score"] = v5_score
+_SCORE_SPEC.loader.exec_module(v5_score)
+
+
+def _grading(run: Path, results: list[tuple[str, bool]]) -> None:
+    items = [{"text": f"check {i}", "focus": focus, "passed": passed, "evidence": ""}
+             for i, (focus, passed) in enumerate(results)]
+    _write(run / "grading.json", json.dumps({"expectations": items}))
+
+
+class CodeCommentsV5ScoreTest(unittest.TestCase):
+    """score.py on a synthetic iteration folder."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        base = Path(self._tmp.name)
+        self.cases = base / "cases"
+        _write(self.cases / "toy-held" / "case.yaml", "name: toy-held\nheld_out: true\n")
+        _write(self.cases / "stale-cents-comment" / "case.yaml", "name: stale-cents-comment\nheld_out: false\n")
+        _write(self.cases / "no-invented-reason" / "case.yaml", "name: no-invented-reason\n")
+        self.it = base / "iterations" / "it-1"
+        shipped = "shipped_skill"
+        _grading(self.it / "stale-cents-comment" / shipped / "run-1", [("core", True), ("core", False), ("reply", True)])
+        _grading(self.it / "stale-cents-comment" / shipped / "run-2", [("core", True), ("core", True), ("reply", True)])
+        _grading(self.it / "dispatched-by-name" / shipped / "run-1", [("core", False)])
+        _grading(self.it / "no-invented-reason" / shipped / "run-1", [("core", True)] * 4 + [("core", False)])
+        _grading(self.it / "toy-held" / shipped / "run-1", [("core", True), ("preservation", False)])
+        _grading(self.it / "stale-cents-comment" / "with_skill" / "run-1", [("core", True)] * 3)
+        _write(self.it / "stale-cents-comment" / "with_skill" / "run-2" / "prompt.txt", "not graded yet\n")
+        # Neither an excluded run nor the skill snapshot is scored, nor a folder not named run-K.
+        _grading(self.it / "excluded-runs" / "stale-cents-comment" / shipped / "run-9", [("core", False)] * 3)
+        _write(self.it / "skill-snapshot" / "code-comments" / "SKILL.md", "---\nname: code-comments\n---\n")
+        _grading(self.it / "stale-cents-comment" / shipped / "notes", [("core", False)])
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_groups_pool_checks_and_average_runs(self):
+        result = {r["arm"]: r for r in v5_score.score([self.it], self.cases)}
+        self.assertEqual(list(result), ["with_skill", "shipped_skill"])
+        groups = result["shipped_skill"]["groups"]
+        # Pooled 5/7, but the mean of the run rates (2/3, 3/3, 0/1) is 5/9.
+        self.assertEqual(groups["train"]["all"], {"passed": 5, "total": 7, "runs": 3, "mean_pass_rate": 0.5556})
+        self.assertEqual(groups["train"]["core"], {"passed": 3, "total": 5, "runs": 3, "mean_pass_rate": 0.5})
+        self.assertEqual(groups["screen"]["all"], {"passed": 4, "total": 5, "runs": 1, "mean_pass_rate": 0.8})
+        self.assertEqual(groups["hygiene"], groups["screen"])
+        self.assertEqual(groups["heldout"]["all"], {"passed": 1, "total": 2, "runs": 1, "mean_pass_rate": 0.5})
+        self.assertEqual(groups["heldout"]["core"], {"passed": 1, "total": 1, "runs": 1, "mean_pass_rate": 1.0})
+        self.assertEqual(result["shipped_skill"]["per_case"]["stale-cents-comment"],
+                         {"passed": 5, "total": 6, "core_passed": 3, "core_total": 4, "runs": 2, "full_mark_runs": 1})
+        self.assertEqual(result["shipped_skill"]["ungraded_runs"], 0)
+        self.assertEqual(result["with_skill"]["ungraded_runs"], 1)
+        self.assertEqual(result["with_skill"]["groups"]["heldout"]["all"],
+                         {"passed": 0, "total": 0, "runs": 0, "mean_pass_rate": None})
+
+    def test_per_case_core_shows_a_loss_that_the_pooled_figures_hide(self):
+        # Gate G2 reads per_case core: here a gain on one held-out case offsets a loss on
+        # another, so the pooled core figures tie while one case loses 2 core checks.
+        _write(self.cases / "toy-held-2" / "case.yaml", "name: toy-held-2\nheld_out: true\n")
+        it = self.it.parent / "it-g2"
+        for k in (1, 2):
+            _grading(it / "toy-held" / "shipped_skill" / f"run-{k}", [("core", True), ("reply", False)])
+            _grading(it / "toy-held-2" / "shipped_skill" / f"run-{k}", [("core", False), ("reply", True)])
+            _grading(it / "toy-held" / "with_skill" / f"run-{k}", [("core", False), ("reply", True)])
+            _grading(it / "toy-held-2" / "with_skill" / f"run-{k}", [("core", True), ("reply", True)])
+        result = {r["arm"]: r for r in v5_score.score([it], self.cases)}
+        mine, v4 = result["with_skill"], result["shipped_skill"]
+        self.assertEqual(mine["groups"]["heldout"]["core"]["passed"], v4["groups"]["heldout"]["core"]["passed"])
+        self.assertGreater(mine["groups"]["heldout"]["all"]["passed"], v4["groups"]["heldout"]["all"]["passed"])
+        self.assertEqual((mine["per_case"]["toy-held"]["core_passed"], mine["per_case"]["toy-held"]["core_total"]),
+                         (0, 2))
+        self.assertEqual(v4["per_case"]["toy-held"]["core_passed"] - mine["per_case"]["toy-held"]["core_passed"], 2)
+
+    def test_a_run_with_no_core_check_is_left_out_of_the_core_figures(self):
+        _grading(self.it / "toy-held" / "shipped_skill" / "run-2", [("reply", True)])
+        held = {r["arm"]: r for r in v5_score.score([self.it], self.cases)}["shipped_skill"]["groups"]["heldout"]
+        self.assertEqual(held["core"], {"passed": 1, "total": 1, "runs": 1, "mean_pass_rate": 1.0})
+        self.assertEqual(held["all"], {"passed": 2, "total": 3, "runs": 2, "mean_pass_rate": 0.75})
+
+    def test_arm_filter_pooling_and_main(self):
+        second = self.it.parent / "it-2"
+        _grading(second / "stale-cents-comment" / "shipped_skill" / "run-1", [("core", True)] * 3)
+        pooled = v5_score.score([self.it, second], self.cases, ["shipped_skill"])
+        self.assertEqual([r["arm"] for r in pooled], ["shipped_skill"])
+        self.assertEqual(pooled[0]["iterations"], [self.it.as_posix(), second.as_posix()])
+        self.assertEqual(pooled[0]["per_case"]["stale-cents-comment"],
+                         {"passed": 8, "total": 9, "core_passed": 6, "core_total": 7, "runs": 3, "full_mark_runs": 2})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = v5_score.main([str(self.it), "--arm", "without_skill", "shipped_skill", "--cases", str(self.cases)])
+        self.assertEqual(code, 0)
+        lines = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual([r["arm"] for r in lines], ["without_skill", "shipped_skill"])
+        self.assertEqual(lines[0]["groups"]["train"]["all"]["runs"], 0)
+        with self.assertRaises(SystemExit):
+            v5_score.main([str(self.it.parent / "no-such-iteration")])
+
+    def test_a_held_out_typo_stops(self):
+        _write(self.cases / "toy-held" / "case.yaml", "name: toy-held\nheld_out: maybe\n")
+        with self.assertRaises(SystemExit):
+            v5_score.score([self.it], self.cases)
+
+
+class CodeCommentsV5SetupTest(unittest.TestCase):
+    """The hill-climb entry: its copied cases, its adapter and its skill copy."""
+
+    def test_copies_match_their_sources(self):
+        harness.load_checks("code-comments-v5")
+        grade = sys.modules["incubator_code_comments_v5_grade"]
+        self.assertEqual(grade.drift(), [])
+        cases = harness.case_names("code-comments-v5")
+        for case in v5_score.TRAIN:
+            self.assertIn(grade.SOURCE_OF.get(case), ("verify-before-relying", "constraint-sweep"), case)
+            self.assertFalse(harness.is_held_out("code-comments-v5", case), case)
+        for case in v5_score.HYGIENE:
+            self.assertEqual(grade.SOURCE_OF.get(case), "hygiene", case)
+            self.assertFalse(harness.is_held_out("code-comments-v5", case), case)
+        self.assertLessEqual(set(v5_score.SCREEN), set(v5_score.HYGIENE))
+        self.assertEqual((len(v5_score.TRAIN), len(v5_score.SCREEN), len(v5_score.HYGIENE)), (10, 5, 11))
+        copied_held = [c for c in cases if c in grade.SOURCE_OF and harness.is_held_out("code-comments-v5", c)]
+        self.assertEqual(len(copied_held), 4)
+        self.assertEqual(len(grade.SOURCE_OF), 25)
+        # The cases built for this climb are all held out, and the modules that grade them
+        # are pinned, so drift() above fails if one changes after the runs.
+        built = sorted(set(grade.CHECKS) - set(grade.SOURCE_OF))
+        self.assertEqual(len(built), 4)
+        self.assertTrue(all(harness.is_held_out("code-comments-v5", c) for c in built), built)
+        self.assertEqual(sorted(cases), sorted(grade.CHECKS))
+        self.assertEqual(len([c for c in cases if harness.is_held_out("code-comments-v5", c)]), 8)
+        for name in grade.LOCAL:
+            self.assertIn(f"incubator/code-comments-v5/eval/{name}.py", grade.PINNED)
+
+    def test_skill_keeps_the_shipped_description(self):
+        # Gate G4: the description governs activation, which this climb must not change.
+        sys.path.insert(0, str(_ROOT / "scripts"))
+        import lint_skills
+
+        shipped, _, _ = lint_skills.frontmatter((harness.SHIPPED / "SKILL.md").read_text(encoding="utf-8"))
+        mine, _, _ = lint_skills.frontmatter(
+            (_V5 / "skill" / "code-comments-v5" / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertEqual(mine["name"], "code-comments-v5")
+        self.assertEqual(mine["description"], shipped["description"])
+
+    def test_reminder_is_hygiene_iteration_5s_sentence(self):
+        reminder = json.loads((_V5 / "eval" / "arms.json").read_text(encoding="utf-8"))["reminder"]
+        readme = " ".join((_ROOT / "evaluation" / "hygiene" / "README.md").read_text(encoding="utf-8").split())
+        self.assertIn(f'"{reminder}"', readme)
+
+    def test_an_ask_first_counter_guard_run_is_named_in_its_evidence(self):
+        # The counter-guard's first check accepts asking first. The selection rule rejects a
+        # candidate that asks first there more often than v4, and finds those runs by this text.
+        case = "change-contradicts-comment"
+        checks = harness.load_checks("code-comments-v5")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            shutil.copytree(harness.eval_dir("code-comments-v5") / "cases" / case / "files", out)
+            (out / "RESPONSE.md").write_text("Should I raise it anyway?\n", encoding="utf-8")
+            first = harness.grade("code-comments-v5", out, case, checks)["expectations"][0]
+        self.assertTrue(first["passed"], first["evidence"])
+        self.assertTrue(first["evidence"].endswith("and the reply asks first"), first["evidence"])
 
 
 class GradelibTest(unittest.TestCase):

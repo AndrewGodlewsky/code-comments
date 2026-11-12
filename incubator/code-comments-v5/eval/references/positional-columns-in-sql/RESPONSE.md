@@ -1,0 +1,5 @@
+I added `currency` to the CSV export, right after `amount`, and changed the warehouse load in step so it still works.
+
+The column order is not entirely up to us. Finance and `reports/monthly.py` do find columns by header name, but `deploy/warehouse/load_ledger.sql`, which cron runs after the export, reads the file by position. `warehouse-load` stages each file as numbered fields (c1, c2, ...), skips the header row, and the SQL loaded c1 to c4 into entry_id, account_code, amount and posted_at. Its comment said a column inserted anywhere but the end would shift every later field, so with currency in fourth place and nothing else changed the currency code would have landed in `posted_at`. The load now selects `c1, c2, c3, c5`, so every existing field still lands in its own column, and I updated that comment to say the SELECT must be renumbered whenever COLUMNS changes. The warehouse does not store the currency yet; `ledger_raw` has no column for it. Say if you want one added.
+
+I added a one-line comment above `COLUMNS` pointing at the load. The tests pass.
