@@ -1,0 +1,5 @@
+The deliveries CLI now checks for a None from parse_date. When the date is invalid it prints "invalid date" to stderr and exits with status 2. The change is in `deliveries/cli.py`, and I added `tests/test_cli.py` to cover it. All six unit tests pass, and `python -m deliveries.cli tbc` prints "invalid date" and exits 2. A valid date still prints the delivery date.
+
+I also corrected the `parse_date` docstring in `deliveries/dates.py`. It said the function returns None for any invalid date, but a date in a supported shape that does not exist, such as 31/02/2026, makes it raise ValueError. The `importer.py` code already catches that ValueError. The docstring now says so.
+
+One gap remains. Because the CLI only checks for None, `python -m deliveries.cli 31/02/2026` still crashes with a traceback ending in `ValueError: day 31 must be in range 1..28 for month 2 in year 2026`, and exits non-zero but not with status 2. If you want that case to print "invalid date" and exit 2 too, the CLI should also catch ValueError. I did not add that because you asked only for the None case. Tell me if you want it.

@@ -1,0 +1,65 @@
+--- a/deploy/warehouse/load_ledger.sql
++++ b/deploy/warehouse/load_ledger.sql
+@@ -1,9 +1,10 @@
+ -- Nightly load of the CSV that exporter/csv_out.py writes.
+ -- warehouse-load stages each file as export_staging(c1, c2, ...): fields are
+--- numbered by position, and the header row is skipped, not read. The order of
+--- COLUMNS in exporter/csv_out.py is therefore part of this contract: new export
+--- columns go at the end, or every field after the new one loads into the wrong
+--- column here.
++-- numbered by position, and the header row is skipped, not read. The SELECT maps
++-- those positions, so it must match the order of COLUMNS in exporter/csv_out.py
++-- (currently id, account, amount, currency, ts). Reordering or inserting a column
++-- there means updating this SELECT, or every later field loads into the wrong
++-- column. currency (c4) is not loaded because ledger_raw has no currency column.
+ INSERT INTO ledger_raw (entry_id, account_code, amount, posted_at)
+-SELECT c1, c2, c3, c4
++SELECT c1, c2, c3, c5
+ FROM export_staging;
+--- a/docs/finance.md
++++ b/docs/finance.md
+@@ -3,4 +3,5 @@
+ Finance opens the nightly CSV in a spreadsheet and finds columns by their header
+ names, so the order of the columns does not matter to them.
+ 
+-Amounts are decimal strings in the entry's own currency. Timestamps are UTC.
++Amounts are decimal strings in the entry's own currency, and the `currency` column
++(right after `amount`) holds that entry's ISO 4217 code. Timestamps are UTC.
+--- a/exporter/csv_out.py
++++ b/exporter/csv_out.py
+@@ -1,7 +1,8 @@
+ """Write ledger entries as the nightly CSV export."""
+ import csv
+ 
+-COLUMNS = ["id", "account", "amount", "ts"]
++# deploy/warehouse/load_ledger.sql reads these fields by position, so their order matters.
++COLUMNS = ["id", "account", "amount", "currency", "ts"]
+ 
+ 
+ def write_csv(entries, fh):
+--- a/tests/test_csv_out.py
++++ b/tests/test_csv_out.py
+@@ -16,7 +16,7 @@
+ 
+     def test_header_names_the_columns(self):
+         header = self.rows([])[0]
+-        for name in ("id", "account", "amount", "ts"):
++        for name in ("id", "account", "amount", "currency", "ts"):
+             self.assertIn(name, header)
+ 
+     def test_one_row_per_entry(self):
+@@ -26,6 +26,14 @@
+         header, row = self.rows([ENTRY])
+         self.assertEqual(row[header.index("amount")], "12.50")
+ 
++    def test_currency_sits_beside_amount(self):
++        header = self.rows([])[0]
++        self.assertEqual(header.index("currency"), header.index("amount") + 1)
++
++    def test_currency_is_written_as_given(self):
++        header, row = self.rows([ENTRY])
++        self.assertEqual(row[header.index("currency")], "EUR")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
