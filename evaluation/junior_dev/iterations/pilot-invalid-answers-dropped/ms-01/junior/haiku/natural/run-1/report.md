@@ -1,0 +1,73 @@
+## Review of ms-01 (junior, author haiku, natural)
+
+Rounds: 6. Ended: cap.
+
+### What changed
+- Added a 'How the services talk' section and a broker node (BR). Arrows that were direct calls to Order or Inventory for payment outcomes now go through the broker, with labelled events, so a reader can see who subscribes.
+- Fixed the release path. Release is now an HTTP call from Order to Inventory, and Cart learns of the failure from OrderFailed. The old O7 to I8 to C4 route wrongly made Inventory notify Cart. Answers Q8.
+- Added a checkout attempt id, so a lost reply and a repeated Place order press return the same order. This replaces the old rule that Cart reuses the order id it holds, which fails when the reply is lost. Answers Q1 and the duplicate-press question.
+- Stated that the claim is idempotent for an order already CLAIMED, and that a timeout is retried rather than treated as a refusal. This keeps Order from refunding a claim that actually succeeded. Answers Q6.
+- Made reserve and release idempotent by order id, and added CHECKOUT_FAILED's release call. Answers Q5.
+- Added a transactional outbox to Payment and Inventory, so a crash after commit still publishes the event. Answers Q4.
+- Connected the 30-minute reconciliation (P9) to the provider outcome node (P6). The old diagram drew P9 as a dead end, which left the failure table's 'handled as above' claim unsupported. Answers Q5 of the open questions.
+- Made the refund request an explicit HTTP call from Order to Payment, keyed by refund plus order id, and made RefundSucceeded a broker event. Previously the refund request was implicit.
+- Reworded I6 so the claim refusal depends on the reservation having expired, which the stock-sold wording did not say. Answers Q7.
+- Named Inventory's 10-minute sweeper and Payment's 30-minute timer as the owners of those timers. Answers Q5.
+- Added the 'Refusal versus silence' rule and the 'Time limits' owners to the notes.
+- Added failure-table rows for an unreachable Inventory, a lost claim reply and an Order crash after claim, since the junior's questions exposed these paths.
+- Replaced the old open question about repeated presses with the attempt-id decision, so it is no longer open.
+- Added open questions for card entry, timeouts and retry limits, broker guarantees, the customer's update channel, and re-reserving instead of refunding. These are holes the design does not close from the brief.
+- Removed the Inventory outbox from the storage notes and stated that Inventory publishes no broker events, so the outbox is Payment-only (Q9).
+- Corrected I6: a claim is refused because the hold has expired, not because stock was sold while the reservation was HELD. Stated that a late success is refunded, never re-reserved (Q7).
+- Added the Order status table with allowed moves, and the rule for no-op versus error messages, so duplicate and redelivered events are handled explicitly (Q12, Q15).
+- Order returns AWAITING_PAYMENT only after Payment acknowledges the charge as PENDING, and the flowchart shows that reply edge (Q1, Q10).
+- Order retries reserve, charge, claim, refund and release with the same key, and the failure table states what each failure does (Q5, Q6, Q10, Q13).
+- Replaced the Order-side refund wait with Payment-owned refund retries and an ops alert; Payment replies REFUND_PENDING and Order waits for RefundSucceeded (Q11).
+- Specified how Cart matches OrderFailed to its cart (order id, then attempt id), and that the decline message is generic (Q14).
+- Stated that Cart starts a new attempt only after a final status, and that Cart reuses the open attempt id otherwise (Q1, Q15).
+- Added a failure row for payment being unreachable during charge, which the earlier version did not cover.
+- Added open questions 5 (repeat query cadence), 7 (provider honours the idempotency key) and 10 (provider's immediate reply) for the points the brief does not settle.
+- Added the Event fields paragraph to the broker section: OrderConfirmed and OrderFailed carry order_id, attempt_id, cart_id, outcome and a reason code (Q14, Q16).
+- Added the Order outbox to the storage notes and the Outbox rule, and stated that Inventory has no outbox. Only Payment and Order publish events (Q9, Q18).
+- Added the Cart status lifecycle: AWAITING_PAYMENT on Place order, OPEN on any final outcome, read-only while pending, attempt id kept until replaced (Q1, Q16, Q17). The read-only rule is a new decision, added so OrderConfirmed cannot empty lines added after Place order.
+- Added the Cart rule that OrderConfirmed or OrderFailed is applied only if the status is AWAITING_PAYMENT and the attempt id matches, so duplicates and stale events are ignored (Q16).
+- Replaced the statement 'Order requests a refund only once' with a stored-state rule: Order records CANCELLED_OUT_OF_STOCK and refund REQUESTED in one transaction, and a retry loop resends with the same key (Q19, Q15).
+- Clarified that Payment never reports refund failures to Order over HTTP, and that Order learns only through RefundSucceeded (Q11).
+- Changed the release rule: a release with no reservation row writes a RELEASED row, so a late reserve cannot create a hold (Q20). Added the matching I1 and I8 labels.
+- Changed the release rule so Order keeps pending releases and retries them with the same key until acknowledged (Q8, Q13).
+- Replaced the status paragraph with a table of allowed moves and an explicit no-op rule for redelivered events (Q12, Q15).
+- Added the rule that a final charge does not change and a conflicting outcome is recorded and alerted, with a new flowchart node P15 and a new open question 11 (Q22).
+- Changed the flowchart: the Payment state check at P6 now routes to P7, P8 or P15, and Cart nodes now set their statuses. Added the Order outbox and refund-state wording to O6, O8, O9 and O10. Added P15 to the failure class.
+- Added the Claim rule that RELEASED or EXPIRED reservations are refused, and the timeout note on Cart's wait for Place order (Q1, Q6).
+- Added failure-table rows for a crash after CANCELLED_OUT_OF_STOCK, a lost release reply, a late reserve after CHECKOUT_FAILED, and a conflicting charge outcome (Q5, Q13, Q19, Q20, Q22).
+- Order now commits AWAITING_PAYMENT when Inventory reports the reserve succeeded, before it sends the charge request, so a payment webhook can no longer arrive before Order's status change (Q23). Status table, Order rules and diagram nodes O3/O4 updated.
+- Order no longer acknowledges a PaymentSucceeded or PaymentDeclined for an order still in PENDING_STOCK; the broker redelivers it and operations are alerted, so the result is never dropped (Q23).
+- Reserve now has a bounded attempt limit before CHECKOUT_FAILED, matching the diagram and failure table. Open question 6 was corrected, since it wrongly said there was no give-up rule for reserve (Q24).
+- Added an Order recovery worker (node O12) that resumes unfinished reserves and unacknowledged charges with their stored keys. A retried Place order resumes instead of restarting (Q25).
+- Added IN_PROGRESS as a fourth Place order reply, so Cart has an answer while Order is still working; Cart stays read-only on it (Q25).
+- Order stores the reserve attempt count and whether the charge is acknowledged; Inventory writes a SHORT row and Order stores the short items, so a repeated reserve or Place order retry returns the same short items (Q25, Q26).
+- Failure table: updated Short stock, Inventory gives no reply and Payment unreachable rows; added rows for a crash before the charge is acknowledged, a Place order retry while steps are running, and a payment result arriving during PENDING_STOCK.
+- Open question 6 now lists the reserve attempt limit and the IN_PROGRESS request time among the unset values.
+- Place order now has five replies, not four: added FINAL, so a retry after the charge finished (CONFIRMED, PAYMENT_DECLINED, CANCELLED_REFUNDED) returns the outcome instead of having no answer (Q27).
+- Added a reply table by order state, so a retry knows what to return for every state, including AWAITING_PAYMENT while a refund is owed (Q27, Q25, Q26).
+- AWAITING_PAYMENT reply now requires the charge to be acknowledged; an unacknowledged charge at request time-out returns IN_PROGRESS, in the reply definition and in diagram node O4 (Q28, Q10).
+- Stated that a retry of Place order resumes the unfinished steps with their keys and then returns the current answer (Q25).
+- Stated that stored short items are returned on every retry of a REJECTED_OUT_OF_STOCK order, and that Order stores them on that status (Q26).
+- Stated that Order has its own outbox, written in the same transaction as CONFIRMED or FAILED, and added a failure row for a crash after CONFIRMED (Q18).
+- Stated that Inventory has no outbox and no consumers; Order is its only caller over HTTP (Q9).
+- Stated that Payment records a charge only after receiving it, which is after Order commits AWAITING_PAYMENT, so a PENDING_STOCK payment result is a fault case only (Q23).
+- Stated that reserve and release on the same order id are serialized by a unique key, so a late reserve cannot race a release (Q20).
+- Reworded the refund resume rule: the command may be sent more than once, and Payment makes the refund once because the key is fixed. The earlier wording said Order requests a refund only once, which was inaccurate (Q19).
+- Made the Cart rules explicit: cart id and attempt id must match, status returns to OPEN on a final outcome, and the attempt id is kept (Q14, Q16, Q17).
+- Cart applies FINAL replies the same way as OrderConfirmed and OrderFailed, including emptying the cart on CONFIRMED (Q27).
+- Recorded that a late-success refund uses reason OUT_OF_STOCK, so the customer sees the out-of-stock message (Q14).
+- Cart retry worker added (Cart storage note, Idempotency rules, flowchart node C7, failure table row for a lost event and for a Cart crash). While AWAITING_PAYMENT, Cart resends Place order with the stored attempt id on a timer and after restart, so a lost OrderConfirmed or OrderFailed cannot leave the cart read-only forever. Why: Q29 showed there was no path out of AWAITING_PAYMENT when the event was lost.
+- Charge reply changed from PENDING to CHARGE_RECORDED, which carries no outcome. Order records charge acknowledged = yes and does not act on the state. Payment finds an existing charge row instead of creating one. Flowchart nodes P1 and O4 updated to match. Why: Q30 asked what a repeated charge returns; one path for outcomes avoids a second transition route.
+- The steps are stated as running independently of the HTTP request. The Place order handler replies IN_PROGRESS when the request time runs out, and the steps keep running. Recovery worker now means an order whose unfinished step no worker is driving (flowchart O12 and the failure table updated). Why: Q31 asked who decides IN_PROGRESS and whether the steps continue.
+- Stock model added to the Inventory storage note: stock on hand goes down only at claim, available stock is stock on hand minus HELD quantities, and each reservation leaves HELD once by a conditional update. Release and sweeper now only act on HELD rows, and a failure-table row shows that a late release after expiry does nothing. Claim and sweeper rules and flowchart nodes I3, I5, I7 and I8 updated to match. Why: Q32 asked how the sweeper, SHORT and RELEASED rows and release interact without double counting stock.
+- Open question 15 now records the decision (the Cart retry worker covers restart and resend). Open question 12 now includes the Cart retry worker interval, and open question 6 now covers the Cart retry worker timer and its lack of an upper bound. Why: the new worker needs a stated owner and an open interval.
+- New open question 19 added for retention and archiving of SHORT, RELEASED and EXPIRED rows, which the stock model now relies on being kept.
+- Note: earlier-round questions Q1 to Q28 are marked (no answer) in the round record. This round answers Q29 to Q32 only, which are the questions the junior asked this round.
+
+### Holes
+- None.

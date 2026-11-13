@@ -181,31 +181,47 @@ def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir
         text = (run_json.parent / "artifact-final.md").read_text(encoding="utf-8")
         if text.strip():
             finals[(run["case"], run["arm"], run["author"], run["mode"], run["rep"])] = text
+    words = lambda s: len(_re.findall(r"\w+", s))
+    doc_id = lambda key: "__".join(map(str, key))
     items = []
     for arm_a, arm_b in pairs:
-        for (case, arm, author, mode, rep), doc_a in sorted(finals.items()):
-            if arm != arm_a or (case, arm_b, author, mode, rep) not in finals:
+        for key_a in sorted(finals):
+            case, arm, author, mode, rep = key_a
+            key_b = (case, arm_b, author, mode, rep)
+            if arm != arm_a or key_b not in finals:
                 continue
-            doc_b = finals[(case, arm_b, author, mode, rep)]
-            words = lambda s: len(_re.findall(r"\w+", s))
+            a, b = doc_id(key_a), doc_id(key_b)
+            wa, wb = words(finals[key_a]), words(finals[key_b])
             pair_id = f"{case}__{arm_a}__vs__{arm_b}__{author}__{mode}__r{rep}"
             base = {"pair_id": pair_id, "case": case, "author": author, "mode": mode, "rep": rep, "arm_a": arm_a, "arm_b": arm_b}
-            items.append(dict(base, order="ab", doc_a=doc_a, doc_b=doc_b, words_a=words(doc_a), words_b=words(doc_b)))
-            items.append(dict(base, order="ba", doc_a=doc_b, doc_b=doc_a, words_a=words(doc_b), words_b=words(doc_a)))
+            items.append(dict(base, order="ab", doc_a=a, doc_b=b, words_a=wa, words_b=wb))
+            items.append(dict(base, order="ba", doc_a=b, doc_b=a, words_a=wb, words_b=wa))
     meta = ("export const meta = {\n  name: 'junior-dev-judge',\n"
             "  description: 'Junior-dev blind pairwise clarity judge: which of two documents a newcomer understands faster',\n"
             "  phases: [{ title: 'Judge' }],\n}\n")
     prompt = load_prompts()["judge"]
+    template = (TEMPLATES / "judge.js").read_text(encoding="utf-8")
+    by_id = {doc_id(k): v for k, v in finals.items()}
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     files = []
-    for k in range(0, len(items), 2 * MAX_RUNS):
-        chunk = items[k:k + 2 * MAX_RUNS]
-        data = {"label": f"{label}-{k // (2 * MAX_RUNS) + 1:02d}", "prompt": prompt, "judge_model": judge_model, "pairs": chunk}
-        path = out_dir / f"{data['label']}.js"
-        path.write_text(meta + "const DATA = " + json.dumps(data, ensure_ascii=False) + "\n\n"
-                        + (TEMPLATES / "judge.js").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+
+    def emit(chunk: list[dict], name: str) -> None:
+        # Each document is embedded once per file; pairs refer to it by id.
+        docs = {i: by_id[i] for p in chunk for i in (p["doc_a"], p["doc_b"])}
+        data = {"label": name, "prompt": prompt, "judge_model": judge_model, "docs": docs, "pairs": chunk}
+        text = meta + "const DATA = " + json.dumps(data, ensure_ascii=False) + "\n\n" + template
+        if len(text.encode("utf-8")) >= MAX_BYTES and len(chunk) > 2:
+            half = (len(chunk) // 4) * 2 or 2   # keep both orders of a pair together
+            emit(chunk[:half], name + "a")
+            emit(chunk[half:], name + "b")
+            return
+        path = out_dir / f"{name}.js"
+        path.write_text(text, encoding="utf-8", newline="\n")
         files.append(path)
+
+    for k in range(0, len(items), 2 * MAX_RUNS):
+        emit(items[k:k + 2 * MAX_RUNS], f"{label}-{k // (2 * MAX_RUNS) + 1:02d}")
     return files
 
 

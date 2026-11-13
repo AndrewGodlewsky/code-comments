@@ -1,0 +1,40 @@
+## Review of auth-01 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a Summary and a Terms section that define session, session ID, failure row, lock row, advisory lock, bcrypt verify and conditional UPDATE before they are used.
+- Expanded the Decisions table's Reason column so each reason states the problem it solves in plain words, for example why Postgres replaces Redis and why exact timestamps are needed.
+- Clarified the Concurrency row: the advisory lock is taken right after BEGIN, and a hash collision only makes two emails wait for each other.
+- Clarified the Cleanup rows to say exactly which rows are deleted and why it is safe for both instances to run the job.
+- Replaced the 'Storage failure on logout' reason with a plainer statement of why the cookie must stay.
+- Added a worked example of the sliding 10-minute window, showing when a lock starts.
+- Stated that the lock-in-effect check uses the database clock, as the Decisions table requires for all time checks.
+- Explained in plain words why the storage-error paths are not drawn in the diagram and where they are described.
+- Rewrote the CSRF risk to say what SameSite=Lax does and does not stop, including login CSRF.
+- Explained what Secure requires of the load balancer.
+- Kept the Mermaid sequenceDiagram unchanged, along with the decisions, the tables, and all six open items.
+- Added a plain-language opening to the Summary that lists the four choices the brief left open (storage, expiry checks, cleanup, storage-failure behavior) and points to where each is decided.
+- Expanded Terms: defined instance, cookie, transaction, dummy hash, SHA-256, and the status codes used (302, 401, 429, 503). Explained why a load balancer without sticky sessions means state must be shared.
+- Explained Redis's role in the 'Why not Redis' row (Lua scripts) and the cookie attributes row (what HttpOnly, Secure and SameSite each do, and why there is no Max-Age).
+- Clarified the session ID row: 'cannot be guessed' is now a reason tied to the 256 random bits, and the hash row says why the hash is safe to store.
+- Clarified the cleanup row: deleting a row twice has the same effect as deleting it once, so both instances can run the job.
+- Defined CSRF and gave the 'learning whether an account exists' heading a plain label. Defined TLS termination in open item 4 and the proxy configuration in open item 1.
+- Clarified the lockout example and the rule that a successful login clears only that email's rows.
+- Diagram: kept the same flow and steps. Reworded labels for plain reading, and changed 'Set-Cookie new session ID' to 'Set-Cookie with new session ID'. No semicolons or hash symbols were added to message text.
+- No design decisions were changed. Figures (5 failures, 10-minute window, 15-minute lock, 30-minute idle, 12-hour absolute, 10-minute cleanup, Retry-After values) match the original.
+- Added plain-language definitions for stack terms the reader may not know: transaction, advisory lock, bcrypt, cost factor, conditional UPDATE, RETURNING, upsert, timestamptz, load balancer, Retry-After, and the status codes.
+- Corrected the Decisions note on where sessions live: login both reads and writes the users, failure, lock and session rows in one transaction, not only reads them.
+- Clarified the idle-timeout row: an expired session is not refreshed, so the refresh only applies to live sessions.
+- Clarified the advisory lock row: the lock is held until commit or rollback, not only until commit.
+- Expanded the cookie row to explain why no Max-Age or Expires means a browser-session cookie, and that the server, not the browser, enforces the lifetime.
+- Stated explicitly that the unknown-email and wrong-password responses are identical (same 401 page and message), not just the same status code.
+- Reworded the sliding-window example to name the exact 10-minute range (minutes 1 to 11) and the four failures inside it.
+- Explained that a locked email never reaches the password check, so a successful login can only happen before 5 failures or after the lock ends.
+- Explained that failure rows are already cleared when the lock starts, so no reset is needed when it ends, and that no new failures are recorded while locked.
+- Added reading notes for the diagram: what the opt block means, that the diagram shows only normal paths, and that an expired lock row does not block login.
+- Reworded the Mermaid message labels for plainer wording without changing any step, branch, status code or cookie attribute.
+- Left all design decisions, status codes, table names, limits and open items unchanged in substance.
+
+### Holes
+- None.

@@ -1,0 +1,33 @@
+## Review of auth-01 (junior, author haiku, natural)
+
+Rounds: 2. Ended: cap.
+
+### What changed
+- Decision 5 and the schema: absolute_expires_at is set by the INSERT as now() + interval '12 hours', the column is NOT NULL with no default, and expiry is described as derived from timestamps (Q7, Q3).
+- Decisions 3, 4 and the protected-request and logout branches: the sid must be exactly 43 base64url characters, a malformed value is handled as missing with no database call, and the hash is of the UTF-8 string as received (Q6, Q9).
+- Decision 6: the cleanup job also deletes login_locks rows past locked_until, so expired lock rows do not accumulate (Q3).
+- Decision 10: specified the lock key (hashtextextended of the normalized email) and how a waiting request behaves under the 2-second statement timeout (Q2).
+- Decision 18 (new): idle_in_transaction_session_timeout of 5 seconds, because bcrypt runs inside the lock-holding transaction and is outside the statement timeout (Q2, Q8).
+- Decision 7 and the sequence diagram: the failure row is inserted first and the count is taken afterward in the same transaction, so the count includes the current attempt (Q4).
+- Decision 13: the incoming session is deleted whichever user owns it, and the browser replaces its single sid cookie with the new Set-Cookie (Q1).
+- Decision 14: any database error or timeout inside a login rolls back the transaction, the attempt is not counted, and the response is 503 (Q8).
+- Decision 12: a missing or empty email or password returns 400, is not counted, and makes no database call. The sequence diagram has the matching branch.
+- Decision 17 (new, moved from open item 5): a failed login leaves any existing session unchanged. Decision 19 (new): GET /login ignores the session cookie and POST /login with a valid session follows the normal login path (Q9).
+- State and rules: session and lock states are stated as derived from timestamps, and a lock row past locked_until is treated as clear until cleanup (Q3).
+- Sequence diagram: added the 400 branch, the lock-check and count order, the upsert of the lock row, the explicit absolute_expires_at on insert, the malformed-sid branches with no database call, and the transaction note.
+- Open items: old item 5 moved into decision 17, a new item 7 added for disabled accounts and password changes (Q6), and the remaining items renumbered.
+- Decision 3: stated that the hash input is the UTF-8 bytes of the 43 characters as received (Q6).
+- Decision 4: stated the cookie has no Domain attribute, so it is host-only, which the browser-replacement argument in decision 13 relies on (Q1).
+- Decision 7 and the failure states: the count window and failure timestamp now use clock_timestamp(), because the login clock must reflect the real time after the lock wait and bcrypt. Changed because now() is fixed at BEGIN and would shorten the 15-minute lock and 10-minute window by up to about 7 seconds (Q10).
+- Decision 5 and schema: the absolute expiry is set from clock_timestamp() at login, not now(), for the same reason as the failure window (Q7, Q10).
+- Decision 9: the lock is written as clock_timestamp() plus 15 minutes; expired lock rows are explicitly ignored and cleaned up later; Retry-After is computed in the lock-check SELECT so the app does not compare times; a correct password during a lock gets 429 by design (Q3, Q4, Q5, Q10).
+- Decision 10: the lock key derivation, the 2-second wait behavior including that statement_timeout covers lock waits, the 503 path for a waiter that times out, the READ COMMITTED isolation level stated explicitly, and the accepted cost when the holder's bcrypt is slow (Q2, Q11).
+- Decision 13: the successful-login writes use clock_timestamp(); the rule that a session belonging to another user is deleted is stated explicitly; the browser replacement of the single sid cookie is explained (Q1, Q10).
+- Decision 14: listed every login step that can fail, including the idle-in-transaction kill and bcrypt errors, so the rollback and 503 path is unambiguous (Q8).
+- Decision 18: defined exactly what idle_in_transaction_session_timeout measures (time between statements), so bcrypt is counted and the advisory lock wait is not (Q12).
+- Decision 29 added: no return-to page; a successful login always goes to /dashboard. Recorded as an explicit decision rather than left implicit (Q13).
+- Clock section rewritten: separates the database now() used by protected requests, logout and cleanup from clock_timestamp() used by the login transaction, and states why (Q10).
+- Sequence diagram was left unchanged: its wording (now, now plus 15 min) is read as the login clock described in the Clock section, and changing the diagram did not change any step.
+
+### Holes
+- None.

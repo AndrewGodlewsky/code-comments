@@ -1,0 +1,36 @@
+## Review of feat-01 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a plain-language glossary of terms (primary database, replica, keyset paging, job queue, attempt, at-least-once delivery, multipart upload, signed URL, lifecycle rule, partial unique index, send_email) at the top, so a reader unfamiliar with the stack can follow the steps.
+- Explained the CSV escaping rule in place, noting that it also turns negative numbers into text, and moved it out of the middle of Step 4 into its own labelled paragraph.
+- Step 5: rewrote the stale-row check as a clear sequence. Stale rows are marked failed, then the insert proceeds. Non-stale active rows are returned. Stated that updated_at is set only at attempt start, and that 2 hours is safe because an attempt is killed after 1,800 s.
+- Corrected the worst-case three-attempt duration from 'about 1.7 hours' to 5,760 s (about 1.6 hours), which is 3 x 1,800 s plus the 60 s and 300 s waits.
+- Step 5: stated that a click after a done or failed export starts a new export, and that the response for an active export has the active export's filters.
+- Step 5: noted the gap where a queued row with a job_id whose job never runs stays queued indefinitely. Added this as Decision 10 rather than inventing a fix.
+- Step 6: spelled out the three row states on load (done, failed, queued or running) so the branch for queued and running is explicit.
+- Step 7: stated that the 0.5 MB/s rate is 900 MB over 1,800 s, and labelled the memory, part-count and time figures as estimates until Step 12 measures them.
+- Step 8: explained why the abort in Step 6 is harmless after a completed upload.
+- Step 10: added the missing cases. If the row cannot be loaded, log and stop. If the row is done and already emailed, do nothing.
+- Step 3 and Step 11: explained why report metadata is read from the replica and why a fresh download link is needed after 24 hours.
+- Decision 5: tied the stale threshold to the actual longest run (5,760 s). Decision 10 added. Decisions 1 to 9 otherwise unchanged in intent.
+- Added a 'Key terms' section that defines report rows, primary database, read replica, keyset paging, job queue, attempt, at-least-once delivery, multipart upload, signed URL, lifecycle rule, partial unique index, send_email and report.view in plain language before the steps use them.
+- Renamed the table's 'enqueue' wording to 'queue the job' and explained that 'enqueue' means adding the job to the queue.
+- Explained why the 5,760 s figure is the longest possible run (three 1,800 s attempts plus the 60 s and 300 s waits) where it first appears in Step 5.
+- Explained that a 'stale' row is one that the system probably abandoned, and why the two stale rules use different thresholds.
+- Clarified in Step 11 and Decision 6 that the 7-day expiry counts from when the file is completed, which is almost the same time as finished_at, so the two dates are not confused.
+- Clarified in Step 2 that the job_id is set after the job is queued, and in Step 4 that the header row comes from cols.
+- Split several long sentences into shorter ones, and merged the 'If it fails' bullets into single lines where they had no sub-steps, without changing any behaviour, numbers, or the decisions list.
+- Reworded 'Note that this also affects negative numbers' to 'This also affects negative numbers' and reworded the testing and estimate notes so they are easier to follow, keeping their meaning.
+- Added a short plain-language intro to the Overview and the 'Key terms' list, so a reader who does not know the project or the stack understands the terms before the steps use them.
+- Defined terms that were used without explanation: primary database, read replica, keyset paging, job queue, attempt, at-least-once delivery, multipart upload, signed URL, lifecycle rule, partial unique index, and the existing helpers and permission.
+- Renamed the per-step labels to 'What starts it', 'Data moved', 'State' and 'If it fails', and wrote them consistently in each step, so the four questions the brief asks are easy to find.
+- Replaced dense sentences and parenthetical asides with shorter ones, for example in Steps 3, 5, 7, 8 and 11, without changing any rule, number or behaviour.
+- Explained the reason behind key choices in plain words: why the payload holds only the ID, why the key contains export_id, why the page must use fetch, and why the 2-hour stale threshold is longer than the 5,760 s worst case.
+- Spelled out the worst-case 5,760 s figure (1,800 + 60 + 1,800 + 300 + 1,800) so the stale-threshold arithmetic can be checked.
+- Changed 'Step 1 ... before any new endpoint' and similar phrasing to direct sentences, and stated the 'Data moved' answer for Step 1 as 'none at runtime' to make clear that it is a code refactor.
+- Kept the headings, step numbers, decision list, and format (numbered Markdown steps with the four answers per step). No facts, limits, thresholds or decisions were changed.
+
+### Holes
+- None.

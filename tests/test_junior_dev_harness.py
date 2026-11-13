@@ -71,6 +71,18 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertTrue(all(r and r["artifact_final"] for r in runs))
         self.assertTrue(all(not r["errors"] for r in runs), [r["errors"] for r in runs if r["errors"]])
 
+    def test_author_answers_are_recorded(self):
+        # Real authors label answers "Q1"; the pilot lost every answer when the harness expected "1".
+        juniors = [r for r in self.dry["result"]["runs"] if r["arm"] in ("junior", "junior-full", "junior-same")]
+        self.assertTrue(juniors)
+        for run in juniors:
+            answers = [a for rnd in run["transcript"] for a in rnd["answers"]]
+            self.assertEqual([a["id"] for a in answers], ["1", "2"], run["run_id"])
+            self.assertEqual(len(run["holes"]), 1)
+        second = [p for p in self.dry["prompts"] if p["role"] == "junior" and p["arm"] == "junior"][1]["prompt"]
+        self.assertIn("A1 [checked]: ans one", second)
+        self.assertNotIn("(no answer)", second)
+
     def test_embedded_prompts_match_plugin(self):
         data = build.embedded_data(self.files[0])
         refs = PLUGIN / "skills" / "junior-dev" / "references"

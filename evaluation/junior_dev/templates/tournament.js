@@ -113,8 +113,10 @@ async function juniorLoop(run, c, arm, art) {
       const a = await call(run, 'author', authorPrompt(c, art, run.transcript, numbered), { model: run.author, schema: AUTHOR_SCHEMA })
       if (!a) { run.end_reason = 'error'; break }
       const ids = new Set(numbered.map(q => q.id))
-      const answers = (a.answers || []).filter(x => ids.has(String(x.id))).map(x => ({
-        id: String(x.id), tag: TAGS.has(String(x.tag).toLowerCase()) ? String(x.tag).toLowerCase() : 'decided', text: String(x.text || '').trim(),
+      // Authors label answers "Q7" as the skill shows; junior.py's parser accepts the prefix, so this must too.
+      const normId = x => String(x.id).trim().replace(/^Q/i, '')
+      const answers = (a.answers || []).filter(x => ids.has(normId(x))).map(x => ({
+        id: normId(x), tag: TAGS.has(String(x.tag).toLowerCase()) ? String(x.tag).toLowerCase() : 'decided', text: String(x.text || '').trim(),
       }))
       run.transcript.push({ round, questions: numbered, answers })
       for (const x of answers) if (x.tag === 'unknown') run.holes.push(`Q${x.id}: ${numbered.find(q => q.id === x.id).text} (author: ${x.text})`)

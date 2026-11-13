@@ -10,7 +10,7 @@ const JUDGE_SCHEMA = {
 
 async function judgeOne(p) {
   const prompt = 'SYSTEM INSTRUCTIONS FOR YOUR ROLE:\n\n' + DATA.prompt.trim() + '\n\n---\n\n# Document A\n\n' +
-    p.doc_a.trim() + '\n\n# Document B\n\n' + p.doc_b.trim() + '\n'
+    DATA.docs[p.doc_a].trim() + '\n\n# Document B\n\n' + DATA.docs[p.doc_b].trim() + '\n'
   const out = await agent(prompt, { label: `judge|${p.pair_id}|${p.order}`, phase: 'Judge', model: DATA.judge_model, schema: JUDGE_SCHEMA })
   const winner = out ? out.winner : null
   const arm = winner === 'tie' ? 'tie' : winner === 'A' ? (p.order === 'ab' ? p.arm_a : p.arm_b)
