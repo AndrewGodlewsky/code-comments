@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL forward-queue row in users_sync_queue is written in the same MySQL transaction as the user write, so it survives an app crash right after commit, and it is kept in MySQL. The workers' sweeper (1.2) applies the row to Postgres under the copy rule and compare-and-deletes it on success, so a Postgres failure or timeout leaves the row queued for the sweeper to repair automatically.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Each removal writes a tombstone in user_tombstones in the same transaction, and every copy (dual write, backfill, sweeper repair, comparison repair) checks the tombstone under the per-id lock and does nothing if one exists. Because the delete's Postgres apply and the backfill's copy both take that lock, whichever runs second either sees the tombstone or deletes the row it just inserted. Tombstones are kept until the MySQL table is dropped.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept in migration_state in Postgres as backfill_last_id, and it is updated in the same Postgres transaction as the batch's copies, so the cursor and the copied rows cannot disagree. The worker holds a 60 s lease, resumes after the saved cursor after a crash, and stops when a batch returns no rows, setting backfill_status = done.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The comparison job (3.1 forward, 3.2 reverse), which the operator starts by hand, hashes both tables in id ranges of 2,000 and re-reads mismatched ids, waiting 2 s on any row that changed in between. Each confirmed mismatch goes into the forward queue, where the sweeper copies a MySQL row to Postgres or, for a Postgres-only id, writes a Postgres tombstone and deletes the row. A pass only counts when it finds zero confirmed mismatches, so the next clean pass is required.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each instance decides writes only from users_source as cached, and no instance can write Postgres-first until it shows pg, because the flag moves only paused to pg and every instance must show paused at the 5.2 gate (in-flight writes at 0) before the switch. If not every instance shows paused within 30 s, the switch aborts to mysql, which is safe because nothing has been written as the Postgres source; after 5.4 starts the switch cannot be aborted, and stragglers are restarted and any pause over 90 s is recorded as a violation. The 90 s limit is a budget the design monitors, not a hard guarantee it enforces.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns new ids from its users sequence once it is the source, set in 5.3 to max(id) across both databases plus 1,000,000; on rollback, 6.2 sets MySQL AUTO_INCREMENT to max(id) across both databases plus 1,000,000 after the reverse queue drains, so the id generator is never shared. The 1,000,000 headroom is a chosen margin, not derived from a bound. Two gaps remain: max(id) ignores tombstoned ids, so a high id deleted from both databases could be reused and then blocked by its tombstone, and 0.1 does not create the sequence that 5.3 sets.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "During pg, every Postgres write also writes a reverse-queue row, and the reverse sweeper and the reverse comparison (3.2) keep MySQL complete, including MySQL tombstones for deletes. A rollback is 6.1 (pause), 6.2 (drain the reverse queue and set AUTO_INCREMENT), then 6.3 (set mysql and resume forward dual writes), and it stays available from 5.4 until 7.2 (pg_only). After 7.2, rollback needs a full clean 3.2 pass before it is safe, and the MySQL table can be dropped in 8.1 after a further hold (30 days suggested).",
+  "decided": true
+ }
+}

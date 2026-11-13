@@ -1,0 +1,27 @@
+## Review of feat-02 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short summary and one-line definitions of Redis, Lua script and window for readers new to the stack
+- Resolved the Retry-After inconsistency: the diagram said max(1, ...) while the notes said ceil(60 - (now mod 60)); now the script returns 60 - (now mod 60), always 1 to 60, sent unchanged
+- Made the 429 headers definite (Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining: 0) instead of 'may also carry', and showed them in the diagram
+- Clarified EXPIRE happens when the count becomes 1 (first request in the window) and that windowId uses seconds from Redis TIME
+- Removed requirement-number references that the reader cannot see
+- Explained why a Lua script prevents overshoot in plain terms
+- Clarified that the 5 minute cache is in memory and that the headers also appear on backend error responses
+- Reworded the alert line and the Enterprise open item for clarity
+- Fixed an inconsistency: the diagram passed a key containing windowId to the script, but windowId is computed inside the script. The script now receives customerId and limit and builds the key; the Store note says so.
+- Removed autonumber and renamed 'Step 1/Step 2' to 'Part 1/Part 2' so they are not confused with message numbers.
+- Split the long 429 note into separate lines in the diagram and clarified 'no budget used'.
+- Defined Lua script as indivisible with no other command running in between; added example for Window.
+- Added a one-line note that a primary failover may lose some recent counts.
+- Clarified Retry-After 'now' is whole seconds from Redis TIME, and minor wording tweaks.
+- Added 'Fail open' to the terms list, since the summary uses the phrase.
+- Added a short 'How to read the diagram' paragraph describing Part 1, Part 2 and the three outcomes.
+- Rewrote the dense Redis script note in the diagram as numbered steps 1-6, and spelled out 'increment' instead of INCR/EXPIRE shorthand.
+- Clarified in Store that the script, not the gateway, computes the window ID and builds the key.
+- Made the Enterprise open item concrete: config holds Standard = 100 with no Enterprise entry, and config validation should refuse to start while any plan has no limit, so the missing value cannot silently become 100 or unlimited.
+
+### Holes
+- None.

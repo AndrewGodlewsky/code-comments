@@ -1,0 +1,110 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The chart shows 'emit OrderPlaced' from Order to Inventory, but the rules say 'Order first, then reserve, then pay'. If Cart is unreachable or returns an error during 'get cart lines and prices', what happens to the order and what does the customer see?",
+     "about": "O1 Create order / HTTP: get cart lines and prices"
+    },
+    {
+     "id": "2",
+     "text": "The customer pressed Place order over HTTP. How do they learn the result later (short stock, declined, confirmed, cancelled)? Does the page wait, poll, or only get an email?",
+     "about": "Customer presses Place order / Tell the customer"
+    },
+    {
+     "id": "3",
+     "text": "The chart has Order emitting ReleaseStock on decline, and a 10-minute expiry job. What happens to the order status and stock if payment is declined, but also what if PaymentSucceeded arrives after the hold was RELEASED (not just lapsed)? Does the claim check treat RELEASED the same as EXPIRED?",
+     "about": "D2 Hold still HELD, or lapsed but every line still free right now?"
+    },
+    {
+     "id": "4",
+     "text": "Rule 7 says PaymentSucceeded for an order not AWAITING_PAYMENT triggers a refund, but no node shows this. Which statuses does it apply to, and does Order emit RefundRequested directly? What if the order is CONFIRMED already (e.g. a duplicate success)?",
+     "about": "Rules 7: Payment success for an order that is no longer waiting"
+    },
+    {
+     "id": "5",
+     "text": "After a late claim succeeds on a lapsed hold, the stock was put back on sale at EXPIRED. Is the stock level decremented again at claim time, and how does it avoid another order reserving the same units in between?",
+     "about": "I4 Expiry job / I6 Reservation becomes CLAIMED"
+    },
+    {
+     "id": "6",
+     "text": "What does the retry worker do in the refund loop: D6 points back to P7 'Create or load refund record'. Where is the attempt count incremented and when is the next retry time set? Also, what does the customer see while the refund is FAILED but not yet STUCK?",
+     "about": "P9 Refund state FAILED / D6 More than the retry limit?"
+    },
+    {
+     "id": "7",
+     "text": "What does Payment do when the provider webhook says the payment is still pending, or when the charge call itself fails outright (not a decline) after retries? Which event goes to Order?",
+     "about": "P1 Create payment record PENDING / D4 Provider outcome?"
+    },
+    {
+     "id": "8",
+     "text": "What do the inbox and outbox mean for Order when an event arrives for an order in an unexpected state, such as StockShort arriving after the order is already something else? Is there a rule that Order checks the current status before applying each event?",
+     "about": "ORDER service outbox, inbox / status transitions"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Order is saved only after Cart answers. If Cart is unreachable or errors, no order is created, nothing is reserved, and the customer is told to try again; the cart is untouched. Added an edge in the chart, a row in the failure table and wording in O1. Simplest handling, no retry queue."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Place order returns the order id immediately; the page polls Order for the status and shows the outcome; emails go out for confirmed, cancelled and refund-complete. Chosen because the payment can take up to 30 minutes, so the HTTP call cannot wait. Added a bullet in How to read this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Declined: Order sets PAYMENT_DECLINED and Inventory sets the hold to RELEASED. RELEASED is not treated like EXPIRED: it can never be claimed, so a claim on it fails. A late PaymentSucceeded for a declined order does not reach the claim step, since Order only accepts it in AWAITING_PAYMENT; it takes the refund exception instead. Clarified in D2 and rules 3, 7 and 8."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Rule 7 (now 8) applies to any status other than AWAITING_PAYMENT, so PAYMENT_DECLINED, CANCELLED_OUT_OF_STOCK and others. Order emits RefundRequested directly. If CONFIRMED, it is a duplicate and ignored. Payment has one refund record per order, so a repeat does not refund twice. Rule rewritten to say this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes. Available stock is the stock level minus quantities in HELD reservations. EXPIRED puts units back on sale. A claim on an EXPIRED hold re-checks availability and decrements the stock level in one Inventory transaction, so no one else can take the units in between. A claim on a HELD hold decrements the stock level too. Added to rule 3 and the I6 node."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Each failed provider attempt adds 1 to the attempt count and sets the next retry time with backoff (P9). A worker retries when the time is due, using the same key. The chart loop now says 'retry when due'. While FAILED but not STUCK the customer sees the refund as pending; the out-of-stock email already said a refund is on its way. Added to P9 and the failure table. Exact retry limit and backoff values are not specified."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Only final outcomes (succeeded, declined) go to Order. A non-final provider status is ignored. If the charge call fails outright after retries, no event goes to Order; the payment stays PENDING and Payment asks the provider for status (same step as the 35-minute no-webhook check) and follows the normal outcome path. I did not send PaymentDeclined, because a timed-out charge may still have gone through. Folded into Choices to confirm."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes, now an explicit rule 7. The inbox drops repeated event ids. Separately, Order applies an event only if the current status allows it, otherwise it ignores it; the allowed statuses are listed. The one exception is PaymentSucceeded (rule 8), which triggers a refund. Claim results apply in AWAITING_PAYMENT because there is no separate claiming status."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer presses Place order. The page sends an HTTP \"create order for cart\" request to Order. Order is the coordinator and owns the order status. The page gets the order id back at once and then polls Order for status.\n\n2. Order makes an HTTP call to Cart for the cart's current lines and prices. This is an HTTP call because Order needs the answer immediately. Cart only reads and does not change the cart. If Cart is unreachable or errors, no order is created, the customer is told to retry, and the cart is untouched.\n\n3. When Cart answers, Order creates the order with a new id and status PLACED. It saves the lines and prices as a frozen snapshot in its own tables. Later cart edits or price changes do not affect the order. A double click returns the existing open order instead of creating a second one.\n\n4. In the same database transaction, Order writes an OrderPlaced event (carrying the snapshot lines) to its outbox. A relay then publishes it to the broker. Delivery is at least once, and each consumer has an inbox of handled event ids and ignores repeats.\n\n5. Inventory receives OrderPlaced. In one transaction it tries to reserve every line.\n\n6. Short stock branch. If any line is short, Inventory reserves nothing and emits StockShort with the short items. Order applies it only in PLACED. Order sets REJECTED_SHORT_STOCK, saves the short list and shows it to the customer. No payment is requested and the cart is untouched.\n\n7. Enough stock branch. If every line is in stock, Inventory creates a HELD reservation on all lines with expires_at = now + 10 minutes and emits StockReserved. If 10 minutes pass with no claim, a job that runs every minute marks the hold EXPIRED and puts its stock back on sale. This does not cancel the order.\n\n8. Order receives StockReserved (applied only in PLACED). It sets AWAITING_PAYMENT and emits PaymentRequested with the order id and total.\n\n9. Payment receives PaymentRequested. It creates a PENDING payment record. It then sends an HTTP charge to the provider with the order id as idempotency key, and retries on timeout with the same key. The provider's final result comes later by webhook, usually in seconds and up to 30 minutes.\n\n10. Payment receives the webhook and verifies the signature. It checks whether the provider event id is already in webhook_events, which has a unique constraint. If it is a duplicate, Payment replies 200 OK and does nothing more. If it is new, Payment stores the event, updates the payment and replies 200 OK. It then branches on the provider outcome.\n\n11. Declined branch. Payment emits PaymentDeclined. Order applies it only in AWAITING_PAYMENT. Order sets PAYMENT_DECLINED, tells the customer and emits ReleaseStock. Inventory sets the reservation to RELEASED and puts the stock back on sale. The cart is untouched.\n\n12. Succeeded branch. Payment emits PaymentSucceeded. Order applies it in AWAITING_PAYMENT and emits ClaimStock. If the order is not AWAITING_PAYMENT, Order emits RefundRequested directly, except in CONFIRMED, where the event is a duplicate and is ignored.\n\n13. Inventory handles ClaimStock in one transaction. The claim succeeds if the hold is HELD, or if it is EXPIRED and every line is still free right now. A RELEASED hold always fails. Available stock is the stock level minus quantities in HELD reservations.\n\n14. Claim succeeds. The reservation becomes CLAIMED, the stock level goes down, and Inventory emits StockClaimed. Order sets CONFIRMED, emits OrderConfirmed and sends the confirmation email. Cart receives OrderConfirmed and removes only the lines in the order's snapshot. Clearing is safe to repeat.\n\n15. Claim fails (stock sold to someone else, or the hold was released). Inventory takes nothing and emits StockClaimFailed. Order sets CANCELLED_OUT_OF_STOCK with refund status PENDING. It emails the customer that a full refund is coming and emits RefundRequested for the full amount. The cart is untouched, and the claim covers all lines or none.\n\n16. Payment receives RefundRequested. It creates or loads the single refund record for the order (full amount, PENDING). It sends the refund to the provider with idempotency key refund-<order id>.\n\n17. Refund success. If the provider accepts and completes the refund, the state becomes REFUNDED and Payment emits RefundSucceeded. Order sets refund status REFUNDED and sends a refund-complete email.\n\n18. Refund failure. If the refund returns an error or times out, the state is FAILED. The record is kept, attempts goes up by 1, and a next retry time is set with backoff. A worker retries when due with the same key, so it cannot refund twice. Past the retry limit the state becomes STUCK, and Payment emits RefundStuck and raises an ops alert. The record stays open for manual action. Order sets the refund status STUCK, the order stays cancelled and ops is alerted. Until REFUNDED or STUCK, the customer sees the refund as pending.\n\n19. Throughout, Order ignores any event the current status does not allow. StockShort and StockReserved apply only in PLACED. PaymentDeclined, PaymentSucceeded, StockClaimed and StockClaimFailed apply only in AWAITING_PAYMENT. This handles out-of-order events.\n\n20. If no webhook arrives after about 35 minutes, or the charge call cannot be delivered after retries, the payment stays PENDING. Payment then asks the provider for its status by order id, and the answer follows the same \"Provider outcome?\" path.",
+   "gaps": [
+    "The document does not say what the polling endpoint returns, or how the page maps statuses to what the customer sees. 'Tell the customer' is only defined as the status becoming visible.",
+    "The document does not say how Order's HTTP create-order response relates to the later events, for example whether Order returns the id before or after OrderPlaced is published.",
+    "The document does not say how Order produces the total for PaymentRequested. It only says the snapshot holds lines and prices.",
+    "The document does not say how Order's CONFIRMED status relates to the cart being emptied. Cart is emptied on OrderConfirmed, but how Cart consumes the event, and what happens if Cart is down, is not stated.",
+    "The retry limit and backoff schedule for refunds are not given, nor is how long a charge is retried before Payment gives up and falls back to asking the provider for status.",
+    "The document does not say what Payment does on the first charge attempt if the provider answers synchronously with an error, as opposed to a timeout.",
+    "The document does not say what happens to a PAYMENT_DECLINED or REJECTED_SHORT_STOCK order afterwards, for example whether the customer retries with a new order. Only 'Customer can retry' is implied for the cart.",
+    "It is unclear how Order's refund status behaves when RefundRequested comes from the 'money for an order that is not waiting' exception. The status list only shows refund status under CANCELLED_OUT_OF_STOCK."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

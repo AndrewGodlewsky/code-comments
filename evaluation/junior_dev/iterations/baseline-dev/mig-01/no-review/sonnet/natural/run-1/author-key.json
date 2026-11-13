@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Every write inserts a row into a users_sync_outbox table in the same transaction as the write, in the source-of-truth database (MySQL before the switch). If the inline Postgres copy fails or the app dies after commit, the outbox row survives. A long-running sweeper process picks rows older than 5 seconds, reads the current row from the source primary and calls apply_copy (or the delete with tombstone if the row is gone), retrying forever with backoff and deleting the outbox row on success. I chose this over the Redis job queue because enqueue can raise and jobs:dead is never processed.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Deletes write a tombstone (id, deleted_at) into users_tombstones, even if the row is absent, and ids are never reused. Every copy goes through apply_copy, which runs in one target transaction under an advisory lock on the id and does nothing if a tombstone exists, otherwise applies the version-guarded upsert. So a stale in-flight copy cannot re-create a deleted user. The sweeper also treats a row absent on the source as deleted.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is a one-row Postgres table, migration_backfill(last_id), updated in the same transaction that apply_copy-es each batch, so progress and copied rows commit atomically. A crash resumes after last_id, and retries of a batch are idempotent. Rows with an email conflict are skipped and handed to the MySQL outbox for the sweeper. The backfill stops when a batch from the replica comes back empty, and then records backfill_done_at. It also stops or pauses if G1 stops holding or replica lag is above 5 seconds.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The compare tool does a full walk of both tables in primary-key chunks, in both directions, finding missing rows, extra rows and differing columns, with replica reads gated by lag. Each candidate mismatch is rechecked against the MySQL primary and Postgres after 60 seconds, and ids with a pending outbox row are retried until they clear. Confirmed mismatches are enqueued to the outbox for repair, and the run is recorded in migration_compare_runs as failed, so a new full run is started until one is clean (G2). It also runs daily during the hold and the rollback window.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A database-side fence, not the flag. Each database has a one-row users_write_state(owner, epoch), and every client write transaction does SELECT owner FOR SHARE and returns a retryable 503 if the owner is not that database. The switch takes an exclusive lock on the row, waits for in-flight writers and blocks new ones. So an instance with a stale flag cache gets 503s rather than writing to the wrong database. If the switch runs long, switchctl aborts before the commit point if the drain isn't done 40 seconds after T0 and resets the MySQL fence to mysql, so writes resume immediately. After the commit point the worst case is about 40 s plus the 30 s flag refresh, under 90 s, and otherwise the rollback is used.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns new ids after the switch. At the switch its sequence is set to max(MySQL AUTO_INCREMENT counter, max PG id) + 100000, and mirrored copies keep their explicit ids. On rollback, MySQL's AUTO_INCREMENT is checked against the maximum id and raised with ALTER if needed before MySQL becomes the owner again. I did not explicitly address ids that Postgres assigned and MySQL mirrored beyond that check.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Every write commits to Postgres first and is mirrored to MySQL through the same outbox, sweeper and apply_copy machinery, with the outbox in Postgres and tombstones written to MySQL. Compare runs daily, with an alert if the oldest outbox row is over 5 minutes old. Rollback is switchctl --to mysql: fence Postgres, drain the Postgres outbox into MySQL, check and raise MySQL AUTO_INCREMENT, set MySQL owner to mysql, then flip the flag, under the same 90-second budget and abort-before-commit rule. The option ends at step 10, which is at least 14 days after source_pg_since, with a clean compare and an empty outbox, when users_mirror is set to false and the MySQL write grants are revoked. After that, rolling back needs a restore, and the MySQL table is dropped only later in step 12.",
+  "decided": true
+ }
+}

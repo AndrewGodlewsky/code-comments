@@ -1,0 +1,196 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In 1.1, is the post-commit apply to Postgres done inside the user's request, so the user waits up to 500 ms for it? Or is it handed off to something else?",
+     "about": "1.1 Turn on dual write on every instance, Changes, per write"
+    },
+    {
+     "id": "2",
+     "text": "What is `app.flags`, and how do instances read it and cache it for 30 s? How does an instance report `app_flag_value`, and where is that metric checked?",
+     "about": "Source flag `users_source`, read by every instance from `app.flags`"
+    },
+    {
+     "id": "3",
+     "text": "Where does `version` come from while MySQL is the source? The 0.1 MySQL-side writes are not described as bumping it, but the copy rule compares it. Who increments it on each insert, update and delete?",
+     "about": "Copy rule: replaces it only when the stored `version` is lower than the incoming one"
+    },
+    {
+     "id": "4",
+     "text": "What are `pg-core`, `core`, `mysql-core-primary`, the MySQL replica and the worker process? Which are separate servers, and which does `UserRepository` talk to?",
+     "about": "0.1 Create the Postgres schema; State: `pg-core`"
+    },
+    {
+     "id": "5",
+     "text": "What is the erasure job, and why does it delete users? How does it reach the database (through `UserRepository`)? What happens to its deletes during each phase?",
+     "about": "5.2 Pause user writes, erasure job's deletes receive the same retryable error"
+    },
+    {
+     "id": "6",
+     "text": "In 5.4, who changes the flag from `paused` to `pg`, and how is it done: by hand, or by a script? Why can't 5.4 be aborted once it starts, when 5.2 and 5.3 can?",
+     "about": "5.4 Make Postgres the source, On failure: this step cannot be aborted"
+    },
+    {
+     "id": "7",
+     "text": "In 4.1, a missing row in Postgres falls back to the replica. If a user was just created in MySQL and not yet copied, is that fallback result correct? And how does 4.1 differ from the read lag listed under Known trade-offs?",
+     "about": "4.1 Ramp reads, falls back to the MySQL replica on a missing row"
+    },
+    {
+     "id": "8",
+     "text": "In 3.1, how does a confirmed mismatch get repaired? The document says it goes through the forward queue. Who picks it up, and how does it handle a Postgres-only id, which has no MySQL row?",
+     "about": "3.1 Run a full comparison pass, Confirmed mismatches are sent through the forward queue"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The apply is inline in the user's request. The request waits at most 500 ms for it and then returns its normal response whatever the apply did. Reason: applying right after commit keeps Postgres as fresh as possible, so the sweeper is only a backstop. The cost is bounded latency of up to 500 ms on a write. The document now says this in 1.1."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "app.flags (existing/flags_and_jobs.md): flags.get(name) returns a boolean, string or percentage. Each instance caches all flags and refreshes them every 30 s, so instances can disagree for up to 30 s. Each instance exports the values it uses as app_flag_value{flag=...}. Decided: the operator checks that metric on the dashboard at each gate, and 1.1 now says so. Not known: whether a string flag such as users_source shows a usable value in that metric. This is in Open questions because the 5.2 and 5.4 gates depend on it."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The existing UserRepository already maintains version: create inserts version 1, and update runs version = version + 1 with an optimistic check on expected_version. Delete removes the row and writes a tombstone. No new MySQL logic is needed for the copy rule. The Names section now says this."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "pg-core is the Postgres 16 cluster, provisioned and empty (users_table.md). core is the MySQL database name on mysql-core-primary, the write server. mysql-core-replica is the read replica, shared with reporting jobs. Workers are separate processes from the web instances that run app.jobs, the sweeper, the backfill and the comparison (flags_and_jobs.md). UserRepository writes to the MySQL primary, reads from the MySQL replica, and uses the Postgres pool (app.db.postgres) from Phase 0 on. The Systems and names section now defines these."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The erasure job is the GDPR job that hard-deletes users, about 2,000 a day. It runs as a worker job and reaches the database only through UserRepository.delete. Per phase: in Phases 1 to 4 the delete is a MySQL delete with a MySQL tombstone and a forward copy. In 5.2 and 6.1 it gets a 503 and retries through app.jobs. In pg it runs on Postgres with a reverse copy. In pg_only the MySQL row is not removed until the table is dropped, which is an open legal question. I also found that 1.1 did not say the MySQL delete writes the MySQL tombstone. It now does."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The operator sets users_source = pg by hand, after the 5.3 checks pass. Flag changes are manual, watched steps in this plan, and the document now says so. 5.4 cannot be aborted because once Postgres has assigned ids, switching back to mysql would let MySQL's AUTO_INCREMENT hand out the same ids, and rows still in the reverse queue would never reach MySQL. The recovery path is Phase 6, and 5.4 now says that. 5.2 and 5.3 can be aborted because nothing has been committed as the Postgres source yet."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Yes, the fallback result is correct for a user created in MySQL but not yet copied, as long as the replica already has the row, which it normally does within 1 s. If neither side has the row, the answer is correctly missing. The read lag under Known trade-offs is a different case. A row that is present in Postgres but older is returned as it is, and the fallback does not catch it. The fallback covers misses and errors only, and 4.1 now says so. The trade-offs also now note that a fallback can return a user deleted within the replica lag window."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The confirmed mismatch is inserted into the MySQL forward queue, and the sweeper in 1.2 picks it up. If the id has a MySQL row, the sweeper copies it to Postgres. A Postgres-only id has no MySQL row, so the sweeper takes the absent branch: it writes a Postgres tombstone and deletes the Postgres row under the lock. MySQL stays the source, so that is the correct repair. 3.1 now says this in full."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Who starts the comparison job in 3.1 and the later passes (after 2.2, after a ramp change, during the 4.2 hold)? Is it a flag the operator sets, a schedule, or does it start by itself?",
+     "about": "3.1 Run a full comparison pass, Starts"
+    },
+    {
+     "id": "10",
+     "text": "What does `users_dual_write` do once `users_source` is `pg`, `paused` or `pg_only`? How do the two flags work together in each state?",
+     "about": "Source flag `users_source` and 0.3 flags (`users_dual_write`)"
+    },
+    {
+     "id": "11",
+     "text": "In 5.4 and while Postgres is the source, where do reads go? Are they still Postgres with a fallback to the MySQL replica, and what does the replica hold then?",
+     "about": "5.4 Make Postgres the source / 6.3 Reads stay on Postgres"
+    },
+    {
+     "id": "12",
+     "text": "What is the 'reverse comparison' in 5.5 and 7.1? Is it the same job as 3.1 with the direction swapped, and who runs it?",
+     "about": "5.5 Hold in `pg` for at least 14 days"
+    },
+    {
+     "id": "13",
+     "text": "When is a unique-email conflict likely to happen, and what does an operator do about the id that stays queued while it persists?",
+     "about": "Copy rule: A unique-email conflict rolls the copy back and leaves the id queued"
+    },
+    {
+     "id": "14",
+     "text": "In 1.1, if the 500 ms apply times out, does the apply keep running in the background? What stops it and the sweeper from applying the same row at once or out of order?",
+     "about": "1.1 Turn on dual write on every instance, Changes, per write"
+    },
+    {
+     "id": "15",
+     "text": "In `pg_only`, what happens to writes and to the reverse queue? Are queue rows still written, and what happens to ones left over?",
+     "about": "7.2 Stop reverse copies"
+    },
+    {
+     "id": "16",
+     "text": "How does an instance count 'in-flight writes' so the operator knows they have drained within the 5 s cap in 5.2? Is that the new in-flight writes metric from 0.3?",
+     "about": "5.2 Pause user writes, Gate"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Nothing in the flags doc or the brief schedules the comparison, so the operator starts each pass by hand on a worker. Passes start after 2.2 reports done, after any change to the source, read ramp or repair, and during the 4.2 hold. The job reports its result in migration_state. 3.1 Starts now says this."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "users_dual_write is the on switch for the copy code on each instance. It is on from 1.1 and stays on for the rest of the migration. users_source sets the direction: mysql means forward copies, pg means reverse copies, paused means no copies but 503 for user writes, and pg_only means no copies at all. The Systems and names section now has this table."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes. In pg, reads stay on Postgres with a fallback to the MySQL replica on a miss or error. The replica holds the reverse copies, because the reverse copy writes to the primary and the replica follows it, normally within 1 s. The fallback stays in 6.3, where reads remain on Postgres, which is current by then."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. It is 3.1 with the roles swapped. Postgres is the source, confirmed mismatches go into the reverse queue, and a MySQL-only id gets a MySQL tombstone and a delete. The operator starts it by hand, once at the start of 5.5, then at least daily during 5.5, and before 7.1. This is now section 3.2, and 5.5 and 7.1 refer to it."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "A conflict happens when two ids hold one email in the two databases, for example when an email changes in MySQL and a Postgres row still holds the new email under another id. The design leaves such an id queued and alerts, but it does not say which id is right, and the brief does not allow a manual step. How often this happens is not known. It is listed in Open questions, and 1.2 now alerts on it. The 3.1 results should show whether it occurs."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No. The apply has a 500 ms statement timeout, so the statement is cancelled. Only the wait stops. The queue row stays and the sweeper repairs it later. Concurrent or out-of-order applies cannot leave an older row: the per-id lock serializes them, the version rule only replaces a lower version, and a tombstone stops a late insert after a delete. 1.1 now says the statement is cancelled and the queue row stays."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "In pg_only, writes commit to Postgres and write no reverse-queue row. The 7.1 gate makes the queue empty before 7.2. A row that a lagging instance writes after the switch stays in the queue. The sweeper has stopped, so the row is not applied. 7.2 now checks the queue 30 s after the change, and any row found is an open item to resolve before 8.1."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes, it is the in-flight writes gauge from 0.3. Each instance adds 1 when a user write enters UserRepository and subtracts 1 when it returns. The operator adds the gauge up across instances. 5.2 now says the gauge must reach 0 within the 5 s cap. If it does not, the flow waits, then sets mysql at 10 s. The 5.3 drain starts only at 0."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one request through the migration: a user changes their profile (an UPDATE on `users`) while the system moves from MySQL to Postgres. I cover four stages in order: dual-write with MySQL as source, the backfill and verify path, the read move, and the source switch to Postgres.\n\nVocabulary I picked up first. The MySQL primary takes writes, the MySQL replica takes reads, and Postgres (`pg-core`) starts empty. `UserRepository` is the only code that touches `users`. The flag `users_source` says which database is the source (`mysql`, `paused`, `pg`, `pg_only`). The flag `users_dual_write` turns the copy code on.\n\n1. **Preparation (Phase 0).** Before any user is affected, someone runs a reviewed migration by hand that creates `users`, `user_tombstones`, `users_sync_queue` and `migration_state` in Postgres (0.1). A schema migration creates `users_sync_queue` and `user_tombstones` in MySQL `core` (0.2). Then the normal deploy ships new `UserRepository` code and the workers' sweeper, backfill and comparison jobs, with every flag off (0.3). With the flags off the new paths do nothing. If a step fails, you fix it and rerun it (0.1 and 0.2 use `IF NOT EXISTS`) or you roll back the deploy.\n\n2. **Dual write turns on (1.1).**\n   - The operator sets `users_dual_write = on`. They watch `app_flag_value{flag=\"users_dual_write\"}` until every instance reports `on`, then wait 60 s. An instance that does not report the metric counts as not converged.\n   - From then on, the user's update request reaches `UserRepository`, which writes to the MySQL primary. In the same MySQL transaction it upserts a row in the forward queue (`users_sync_queue`, keyed by `user_id`, with `queued_at`). That queue is the durable record of pending work.\n   - A delete also writes a MySQL tombstone in that transaction.\n   - The `version` is already maintained by the repository. An update adds 1.\n\n3. **Inline copy to Postgres (after commit).**\n   - The same request applies the row to Postgres under the copy rule, with a 500 ms statement timeout. The request waits at most 500 ms and then returns its normal response whatever happened.\n   - The copy rule takes a per-id lock (`pg_advisory_xact_lock(id)`), checks the tombstone, and inserts the row if it is missing. Otherwise it replaces the row only if the stored `version` is lower than the incoming one. So repeated or out-of-order copies never make a row older.\n   - On success the instance compare-and-deletes its queue row (`WHERE user_id = ? AND queued_at = ?`). A newer write that re-queued the same id is therefore not erased.\n   - Failure handling: a Postgres error or timeout never changes the user's response. The statement is cancelled and the queue row stays. A MySQL error on the queue insert fails the write, as today.\n\n4. **Repair sweeper (1.2).**\n   - A worker holds a lease in `migration_state` in Postgres, so only one sweeper runs.\n   - It reads queue rows from the MySQL primary, ordered by `queued_at`, 500 at a time. For each id it reads the current MySQL row. If the row exists it applies the copy rule. If the row is gone it writes a Postgres tombstone and deletes the Postgres row.\n   - Then it compare-and-deletes the queue row. Retries back off exponentially with no cap.\n   - It alerts when the oldest queued row is older than 5 min, or when an id stays queued because of a unique-email conflict. A restarted sweeper resumes from the queue in MySQL. `app.jobs` is deliberately not used for repair.\n\n5. **Backfill of old rows (Phase 2).**\n   - After the 1.1 gate has held for 60 s, the operator sets `users_backfill = on`. A worker takes a lease in `migration_state` and reads `backfill_last_id` (0 if absent).\n   - Per batch it waits while `mysql_replica_lag_seconds > 5`, polling once per second. Then it reads 2000 rows with `id > cursor` from the replica. In one Postgres transaction it copies them in ascending id order under the copy rule and sets `backfill_last_id`, so the cursor and the copies cannot disagree. This repeats until a batch is empty, then `backfill_status = done`.\n   - Failure handling: a crash expires the lease after 60 s, and another worker resumes from the cursor. Redoing a batch is safe. An email-conflict batch rolls back and is retried after a sleep, never skipped. A persistent conflict alerts and stops the backfill.\n\n6. **Verification (3.1).**\n   - The operator starts a comparison pass by hand after the backfill is done. It walks both tables in id ranges of 2,000 and compares the row count and a hash of `(id, version, email, name, plan, updated_at)`.\n   - For a mismatched range it re-reads each mismatched id from the MySQL primary and from Postgres. If a row changed between the two reads, it waits 2 s and re-checks. Confirmed mismatches go into the forward queue, and the sweeper repairs them.\n   - A pass counts only if it ends with zero confirmed mismatches. A pass that found mismatches does not count, and the next one must be clean. The job reports in `migration_state` and resumes from its cursor if interrupted.\n\n7. **Reads move to Postgres (Phase 4).**\n   - The gate before the first step is a clean 3.1 pass within 24 h and no forward-queue row older than 5 min.\n   - The operator ramps `users_read_source` through 1%, 10%, 50% and 100%, bucketed by user id. Each step holds at least 1 h while the error rate and fallback rate are checked.\n   - `UserRepository.get` tries Postgres with a 200 ms timeout. On an error, a timeout or a missing row it falls back to the MySQL replica, so reads never fail. A row present in Postgres but with an older version is returned as is, and the document lists this as a trade-off.\n   - A fallback rate above 0.1% stops the ramp and triggers a 3.1 pass. To roll back, lower the percentage and reads return to MySQL at once.\n   - At 100% the operator holds for 72 h and runs 3.1 once more during the hold. Any drop below 100 or any mismatch restarts the clock.\n\n8. **Switching the source of truth (Phase 5).**\n   - The gates (5.1) are: 4.2 complete, the latest comparison clean, the forward queue empty, replica lag under 5 s, and every instance on `users_dual_write=on`.\n   - 5.2: the operator sets `users_source = paused`. User writes get a 503 with `Retry-After: 2`, and reads continue. The erasure job's deletes get the same error and retry through `app.jobs`. Every instance must show `paused` within 30 s. Then the in-flight writes gauge, summed across instances, must reach 0, with a 5 s cap. If an instance has not shown `paused` after 30 s, the operator sets the flag back to `mysql`. If the gauge is still above 0 at 10 s, the operator also sets it back to `mysql`, and the forward sweeper finishes those writes.\n   - 5.3: the sweeper drains the forward queue to zero within 10 s. Then the operator sets the Postgres id sequence to `max(id)` across both databases plus 1,000,000. If either step fails, the operator sets the flag back to `mysql` and aborts.\n   - 5.4: the operator sets `users_source = pg`. The pause ends once every instance reports `pg`. The budget is 30 + 5 + 10 + 30 = 75 s, inside the 90 s limit.\n\n9. **A write after the switch.**\n   - One Postgres transaction assigns the id from the sequence (or bumps `version` by 1 on an update), writes the row, and writes a reverse-queue row.\n   - After commit it applies the row to MySQL under the copy rule with a 500 ms timeout and removes the reverse-queue row on success.\n   - A reverse sweeper, mirroring 1.2, repairs the failures.\n   - This step cannot be aborted. The document says to restart instances stuck on `paused`, record any pause over 90 s as a violation, and never set the flag back to `mysql`. Rollback goes through Phase 6 instead.\n\n10. **Hold, rollback and finish.**\n   - The operator holds in `pg` for at least 14 days, running the reverse comparison (3.2) at the start and at least daily.\n   - Rollback (Phase 6) pauses writes, drains the reverse queue within 10 s, sets MySQL `AUTO_INCREMENT` to `max(id)` plus 1,000,000, and sets `users_source = mysql`.\n   - To finish, 7.1 checks the 14-day hold, an empty reverse queue and a clean reverse comparison. 7.2 sets `pg_only`, which stops reverse copies, and rollback is no longer possible after it. 7.3 removes the dual-write code. 8.1 takes a logical dump and then drops `core.users`.",
+   "gaps": [
+    "How the sweeper, the backfill worker and the comparison job get CPU or start times is not covered, and neither is who runs the operator's manual steps. This matters little, since the document says what each does.",
+    "Which id wins a unique-email conflict (one email held by two ids) is not decided. The document says the id stays queued and that the design does not say which id wins. This stops me from explaining how such a copy ever completes, in the sweeper (1.2), the backfill (2.2), and the 3.1 and 3.2 repairs.",
+    "Whether `app_flag_value` can show string values such as `paused` and `pg` is unknown. The gates in 5.2 and 5.4 rely on seeing them, so I cannot explain how the operator confirms convergence.",
+    "How an instance that is still on the old flag value behaves during the 30 s cache window is not stated. One example is a write arriving at an instance that has not yet seen `paused`. Only the in-flight gauge covers this indirectly.",
+    "How the reverse queue row in the Postgres transaction is keyed when the id comes from the sequence is not stated. It is the same shape as the forward queue, so I assume nothing more.",
+    "What exactly the 'read-fallback' does for the erasure of a user whose Postgres row exists but whose MySQL row was deleted is not stated. The document lists the replica-lag case only as a trade-off.",
+    "The mechanism by which the in-flight gauge and the flag values are read by the operator (dashboard, query or script) is not described, nor is how 'restart any instance' is done."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

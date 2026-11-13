@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL `user_sync_outbox` row, written in the same MySQL transaction as the `users` write, records that Postgres is behind; it stays in MySQL, so a crash after the commit leaves it in place. The relay worker (1.2) reads the outbox, applies the current row from the MySQL primary to Postgres, and retries with exponential backoff from 1 s to 5 min. Rows are never dead-lettered, and the oldest-row age alerts at 60 s and 5 min.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Every copy into Postgres (relay, backfill, repair and comparator-driven repair) takes a per-id lock, checks the `user_tombstones` table, and only then applies the version rule. An erasure delete writes a permanent Postgres tombstone under the same lock, so a copy that commits after the delete is skipped, and a copy that committed before it is removed by the delete path.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress (`last_id`, plus the lease and `completed_at`) is kept in the Postgres table `user_backfill_state`, and it is committed in the same Postgres transaction as each batch's upserts, so the cursor and the copied rows always agree. A crash before commit redoes the batch harmlessly under the version rule, and a crash after commit resumes after it. The backfill stops when a batch returns no rows (setting `completed_at`), or when its lease is lost. For a row that stays blocked by an email conflict, I set an alert after 10 minutes and let the comparator track it, but I did not fully specify how the cursor steps past such a row.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The comparator (3.1) is what finds differences: it runs continuous passes over 2,000-id ranges comparing counts and a normalised hash, skips ids with pending outbox rows, and re-reads any mismatched range from the MySQL primary before confirming. A confirmed mismatch gets an outbox upsert in MySQL so the relay repairs it automatically and it is counted and alerted (any non-zero count alerts). A Postgres-only row with no MySQL row and no tombstone is turned into a delete plus tombstone by the relay and raises a high-severity alert.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each write reads the MySQL control row `user_store_control` with `FOR SHARE` inside its transaction, so the source it sees is fixed for that write. The switch takes the same row `FOR UPDATE`, which waits for in-flight writes and blocks new ones, so no instance can be mid-write under the old source when the source changes. The switch is bounded: the pause takes a 5 s lock-wait timeout, and if the outbox is not empty by t0+60 s the switch sets `paused=0` and epoch+1 and aborts, with each switch held to a 90 s total pause budget.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "MySQL assigns ids until the switch. At the switch, while writes are paused, the Postgres identity sequence is set to the greater of Postgres max id and the MySQL AUTO_INCREMENT counter, so Postgres assigns new ids from there. During the reverse-mirror window, Postgres-created rows are written to MySQL with their explicit ids, which keeps the MySQL counter above every id Postgres has issued. A rollback therefore needs no sequence change, and no collisions arise.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, the reverse mirror (6.1) copies every Postgres change into MySQL through a reverse outbox, using the version guard, explicit ids and tombstones for deletes, and the reverse comparator (6.2) checks the copy. A rollback (6.3) uses the same pause, drain and flip procedure with `source = mysql`, aborting and staying on Postgres if the reverse outbox does not drain within 60 s. The option ends at the S2 step (7.2, `mode = pg_only`), which requires at least 14 days after S1 and, by my addition, zero reverse mismatches over that period; the reverse mirror then stops and the MySQL app user loses write rights.",
+  "decided": true
+ }
+}

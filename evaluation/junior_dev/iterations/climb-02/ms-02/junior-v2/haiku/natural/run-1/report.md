@@ -1,0 +1,43 @@
+## Review of ms-02 (junior-v2, author haiku, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Step 2: added a short Flags note saying where flags live and how fast a change propagates, so the reader knows what flags.get reads.
+- Step 4 Sender: replaced the one-line description with a poll loop every 5 s, the claim, in-doubt, send and outcome steps, so the trigger, the claim-before-send order and the attempt counting are explicit.
+- Step 4 Sender: send_started_at is now set only on the first claim and never reset, so the 20-hour clock runs from the first attempt; this is also stated in I4 and the schema.
+- Step 4: the failure outcome now writes the terminal outbox row in the same transaction as the state change, and states the retry timing (next_attempt_at from the backoff list).
+- Step 4 Status outbox: added the service-side page for an outbox row unpublished for more than 5 minutes.
+- I4 and the schema: defined in-doubt as an expired claimed_until with no recorded outcome, and tied the 20-hour margin to MailRelay's window.
+- Schema: added claimed_until and clarified send_started_at in the inbox.
+- Step 5 Publisher: each row's lock is held only for one broker confirm with a bounded timeout; a timeout or error rolls back and leaves the row pending.
+- Step 5 Status consumer: stated that the monolith stores only status and attempts, not accepted_at or last_error.
+- Step 5 failures: added the confirm-timeout case and the lost-event case, with the sweep as the backstop.
+- Step 7 Data that moves: stated that the service renders, and what the monolith row holds for sent and failed.
+- Open decisions: item 4 now covers the broker confirm timeout too; added item 8 for flag tooling and ownership.
+- Trimmed repeated wording in steps 1, 3, 8, 9 and 10 without changing any rule or threshold.
+- Sender claim now selects only rows with no live lease (claimed_until IS NULL OR claimed_until < now()), so two Senders cannot claim the same row (Q9).
+- Moved the in-doubt check into the claim transaction, so it runs before a new lease is set, and stated that a recorded outcome always clears claimed_until (Q5, Q9).
+- Render errors are now failed attempts handled in the same outcome transaction as MailRelay errors, with the same backoff and page. Open decision 2 is reworded as a choice to confirm (Q10).
+- notification.shadow gains render_sha256; the monolith's shadow publisher renders and hashes; the service's shadow table records both hashes and match, and the step 6 gate counts mismatches (Q11). This adds one field to the brief's same-fields shadow rule.
+- Stated that reclaims are not capped, and added open decision 9 for that hole (Q12).
+- Message contracts now state where id, user_id, email and payload come from at enqueue time, and that the publisher copies them from the same row (Q13).
+- Removed the cross-plan failure table, which repeated the per-step failure notes, and shortened several step descriptions.
+- Added v to the notification.requested fields, as the contract already required versioning with v but did not list it.
+- Step 4 Sender, Accepted outcome: added that MailRelay returns success when it drops a repeat under the same key, so the Sender treats it as accepted (Q14).
+- Step 5 Publisher: added the 5 s poll cadence, the batch of up to 50 candidates handled one row at a time, and the rule that the lock query repeats the route and status checks (Q15).
+- Step 5 Status consumer: changed the match to status IN ('pending', 'handed_off') so a status event after a publisher rollback is not stranded on a pending row, and added a failure bullet for the status-before-commit case (Q16).
+- Step 5 Shadow publisher: scoped it to rows created after a fixed start time, across all routes and types, including monolith-sent rows, with the reason in the step text (Q17).
+- Open decisions: added item 10, the shadow start time, as a config value to set at deploy (Q17).
+- Dropped the 'Starting point' restatement of the existing files and kept four facts the plan relies on (24 h key window, 15 min retry span, at-least-once broker with 30 s redelivery, 10 s flags). Cut the volume figures, which no step uses.
+- Dropped the 'Broker: not involved' line in step 1, since the broker plays no part in that step.
+- Merged the 'Where the fields come from' paragraph into the notification.requested contract, so the field sources are stated once.
+- Merged the rollback limit and manual-recovery note into a single paragraph in step 10, and removed the repeated 'Changed rollback' text in step 11 by stating it once.
+- Shortened the step 10 rollback list to four numbered items plus one timing line, and removed repeated wording about flag timing that the facts section already gives.
+- Moved open decision 10 (shadow start time) out of the open questions and into step 5 as a config value. It is a setting, not a question.
+- Shortened each open question to one or two sentences, kept them together at the end, and kept their numbering so that the references in steps 4, 5, 7, 9 and 11 still resolve.
+- Tightened invariants I1 to I5 and the sender phases in step 4 by removing repeated explanations. The claim, send and outcome rules, the 20-hour in-doubt rule and the retry schedule are unchanged.
+- No change in behavior or intent: the steps, invariants, retry policy, cutover order, dwell times, gates and failure handling are the same as in the first draft.
+
+### Holes
+- None.

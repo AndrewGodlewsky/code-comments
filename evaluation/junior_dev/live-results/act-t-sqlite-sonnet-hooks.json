@@ -1,0 +1,78 @@
+{
+ "label": "act-t-sqlite-sonnet-hooks",
+ "model": "sonnet",
+ "hooks": true,
+ "wall_s": 58.2,
+ "cost_usd": 0.1349666,
+ "junior_cost_usd": 0.0,
+ "num_turns": 13,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-jp08odqf\\project\\docs\\plans\\sqlite-migration.md",
+  "artifact_hash": "82f768da616389ef6862f9f11f70c5d4d1466e8a628bc1cca7a8f8349a594090",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The plan is written to `docs/plans/sqlite-migration.md`. The junior-dev check didn't give a real result, though. I changed no code.\n\n**The check.** The reviewer asked no questions, and the teach-back came back as \"(activation run: the junior is stubbed)\" with no explanation to compare against the plan. I didn't record a verdict, because \"correct\" would claim a check that never ran. The plan hasn't been through a real junior review. The check also left a `.junior-dev/` folder in the project root, which you can delete.\n\n**What the plan says.** I read `src/app.py`, `src/payments.py` and `data/orders.json`. The checked-in `orders.json` is just `[]`, so nothing needs migrating in this checkout. I don't know about production.\n- **Where orders can be lost today:**\n  - The file is rewritten non-atomically, so a crash can wipe it.\n  - Two concurrent orders can overwrite each other.\n  - Order ids come from `len + 1`.\n  - The card is charged before the order is saved.\n- **Target:** an `orders` table plus an `order_items` table. Legacy ids are kept, and `payment_id` is unique.\n- **Steps:**\n  1. Back up and hash the JSON, then validate it.\n  2. Write an idempotent import script.\n  3. Rehearse the import on a copy.\n  4. Cut over with a short write freeze, leaving `orders.json` untouched.\n  5. Narrow the charge-then-save gap.\n  6. Keep the JSON for a retention period before retiring it.\n- **Verification:** compare counts, ids, payment ids and the full items for each order, run SQLite's integrity checks, and confirm a second import adds nothing. If any check fails, don't cut over.\n- **Rollback:** before any new order, switch the code back. After new orders exist, export them to the JSON first.\n\n**Open questions** (also at the end of the plan):\n- Is the production `orders.json` actually empty?\n- Can the service stop briefly during cutover?\n- Does more than one process or host write the file?\n- Where should the database file live?\n- How long should the JSON backups be kept?",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/sqlite-migration.md": "# Plan: migrate orders from `data/orders.json` to SQLite\n\nGoal: store orders in SQLite with **no lost orders**, including orders placed while we migrate. This plan changes no code; it describes the work to do.\n\n## 1. Current state (from `src/app.py`)\n\n- `place_order` reads the whole `data/orders.json` list, appends one order, and rewrites the whole file with `write_text`.\n- An order is `{id, customer, items: {name: qty}, payment}`. `payment` is the provider id (`pay_...`) from `charge()`.\n- `id = len(orders) + 1`.\n- The card is charged **before** the order is written.\n- `STOCK` is an in-memory dict. It is out of scope here and resets on restart.\n- Right now `data/orders.json` is `[]`, so there is nothing to migrate in this checkout. Production may differ. Step 0 must check.\n\n## 2. Where orders can be lost today (and during a naive migration)\n\n| Risk | Why it matters |\n|---|---|\n| Non-atomic `write_text` | A crash mid-write truncates the file and loses every order. |\n| Read-modify-write with no lock | Two concurrent requests both read N orders and both write N+1. One order is lost. Both customers were charged. |\n| `id = len + 1` | Ids repeat if the file is ever edited or trimmed. Migrated ids must be preserved, because the `payment` ids and receipts refer to them. |\n| Charge happens before the write | If the DB write fails after a successful charge, the customer is charged and no order exists. The migration must not make this worse. See step 5. |\n| Cutover while the service runs | An order written to the JSON file after the copy would not reach SQLite. |\n\n## 3. Target schema\n\n```sql\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,          -- keep legacy ids\n  customer    TEXT NOT NULL,\n  payment_id  TEXT NOT NULL UNIQUE,         -- also blocks double-recording one charge\n  created_at  TEXT                          -- NULL for legacy rows (not in JSON)\n);\nCREATE TABLE order_items (\n  order_id INTEGER NOT NULL REFERENCES orders(id),\n  name     TEXT NOT NULL,\n  qty      INTEGER NOT NULL CHECK (qty > 0),\n  PRIMARY KEY (order_id, name)\n);\n```\n\nSettings: `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;`. New ids come from SQLite (`INTEGER PRIMARY KEY`), not from `len + 1`.\n\nKeep the `items` shape as `{name: qty}` at the app boundary, so callers see the same order dict.\n\n## 4. Steps\n\n**Step 0: Inspect and back up (no code change)**\n1. Stop nothing yet. Copy `data/orders.json` to `data/backups/orders.<timestamp>.json` and record its SHA-256.\n2. Write down the order count and the highest id.\n3. Validate the data: valid JSON, unique ids, every order has `customer`, a non-empty `items` dict with positive integer quantities, and a `payment` value. Check that no `payment` value repeats. Fix or list the bad rows now. Do not drop them silently.\n\n**Step 1: Add the SQLite store (code, later)**\n- Add a small storage module with `init_db()`, `insert_order()`, `all_orders()`.\n- `insert_order` writes the order and its items in **one transaction**.\n- Do not switch `place_order` yet.\n\n**Step 2: Write the import script (idempotent)**\n- Read the JSON and insert the orders with their **original ids** inside a single transaction.\n- Use `INSERT ... ON CONFLICT(id) DO NOTHING` so it can be re-run safely.\n- Abort and roll back on any validation error.\n- Print counts: read, inserted, skipped.\n\n**Step 3: Rehearse on a copy**\n- Run the import against the backup copy into a scratch DB.\n- Run the verification checks (section 5) and keep the output.\n- Test with a malformed row, an empty file, and a file with 10k generated orders.\n\n**Step 4: Cutover with a short write freeze**\n1. Stop the service, or put it in maintenance mode, so no one writes to the JSON file.\n2. Take a fresh backup and hash it (as in step 0).\n3. Run the import, then the verification.\n4. Deploy the code that reads and writes SQLite.\n5. Start the service and place one test order. Confirm it gets id max + 1.\n6. Leave `orders.json` in place, read-only and untouched. **Do not delete it.**\n\nThe freeze is short, since the import is a single local transaction. An order in flight at the freeze must finish first. Drain requests before stopping.\n\n**Step 5: Reduce the charge-then-record gap (recommended with the cutover)**\nThe charge-before-write gap already exists. Moving to a database makes it easy to narrow it:\n- On DB write failure after a successful charge, log the `payment_id` and customer details at error level, and return an error, so the charge can be reconciled by hand or refunded. Never swallow it.\n- Optional follow-up: record a `pending` order row before charging, then mark it `paid`. That removes the gap but changes the flow, so keep it a separate change.\n\n**Step 6: Observe, then retire the JSON**\n- Keep `orders.json` and the backups for at least 30 days (adjust to your policy).\n- After that, archive the file. Remove the JSON code path in a separate commit.\n\n## 5. Verification (run after every import, and at cutover)\n\n1. `SELECT COUNT(*) FROM orders` equals the number of orders in the JSON.\n2. The set of ids is identical, and `MAX(id)` matches.\n3. Set of `payment_id` values is identical, and none is NULL.\n4. For every order, the `{name: qty}` rebuilt from `order_items` equals the JSON `items`. Compare the full structures, not just the counts.\n5. `PRAGMA integrity_check` returns `ok` and `PRAGMA foreign_key_check` returns nothing.\n6. Re-running the import inserts 0 rows.\n\nIf any check fails, **do not cut over**. Fix the cause and repeat from the backup.\n\n## 6. Rollback\n\n- Before the first post-cutover order: restart on the old code. `orders.json` is unchanged, so nothing is lost.\n- After new orders exist in SQLite: first export the orders newer than the last JSON id from SQLite and append them to the JSON (the reverse of step 2). Only then switch the code back. Rolling back without this export loses those orders.\n- Keep the SQLite file in the rollback too. Do not delete it.\n\n## 7. Open questions\n\n- Is the production `orders.json` actually empty, or does it have orders? The checked-in file is `[]`.\n- Can the service be stopped briefly, or must it stay up? If it must stay up, use maintenance mode that rejects new orders, or run dual writes. Dual writes add more risk than a short freeze.\n- Is there more than one process or host writing the file? SQLite on a network share is unsafe. If so, a client/server database is a better fit.\n- Where should the DB file live (outside the repo, and covered by backups)? Today the data sits in the repo's `data/` directory.\n- How long is the retention for the JSON backups?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-sqlite",
+ "kind": "trigger",
+ "prompt": "We want to move orders from data/orders.json to SQLite without losing orders. Write the migration plan to docs/plans/sqlite-migration.md. Do not change any code."
+}

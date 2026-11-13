@@ -1,0 +1,31 @@
+## Review of ms-02 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Replaced the opening summary with a 'How the design works' section that first defines the components (old worker, relay, service, result consumer, routing flags) so a reader new to the project knows the terms before they are used.
+- Grouped the safety rules and kept the ownership diagram; reworded the render-bug note and labelled it as a bug in today's worker.
+- Noted that steps are in shipping order and step 3 can be built in parallel.
+- Restructured step 3 into 'What moves', 'State lives in' and 'Parts', and turned the sender's behavior into a numbered sequence.
+- Renamed the `page_pending` description to a column so it is not confused with feature flags, and added it to the inbox schema.
+- Labelled relay Phases A, B and C with short names (claim, publish, record) and the individual drills and failure cases with clearer wording.
+- Split step 13's flag-less removal and the overlap safety note more plainly, and made the phrasing of 'What moves' consistently say 'nothing' where no data moves.
+- Replaced 'NTP skew' with plain 'clock skew' and made other small wording fixes for plain language; no design, number, or ordering changes.
+- Added a Summary section explaining the before/after in plain terms and defining broker, flag and idempotency key for readers new to the stack
+- Rewrote the ownership diagram as two labeled groups (monolith-owned and service-owned) instead of mixed one-line transitions
+- Explained 'lease' inline in step 4 and clarified that the relay also claims rows waiting out a retry delay
+- Removed the odd 'page_pending is a column, not a feature flag' remark and replaced it with a plain description
+- Replaced jargon like 'mid-backoff' with 'waiting out a retry delay' and 'clock skew does not matter' with a plain explanation
+- Kept all steps, ordering, numbers, gates and failure cases unchanged
+- Defined SKIP LOCKED once in the terms list and used the short form afterward, so readers unfamiliar with it are not stranded.
+- Explained what the publishing and published statuses mean in plain words under the state diagram.
+- Moved the 'service never touches the monolith DB, and vice versa' statement into the Notification Service component description, where a reader first needs it, and removed it from step 3.
+- Fixed a contradiction in the 'bug in today's worker' note: it said step 1 does not change the worker, but step 1 adds the idempotency key; now says step 1 adds only the key.
+- Clarified 'The flag routes new work only' to 'routes pending rows only', which is what the mechanism actually does.
+- Clarified that retry_after_seconds is the remaining delay as a relative number.
+- Clarified that page_pending is a flag on a failed row, and fixed wording on the residual-risk mitigation.
+- Reordered step 5 to 'all three types, including password_reset, at 5x production rate' for smoother reading, and clarified the clock-skew sentence in step 6.
+- Made small wording tightenings throughout; structure, step order and all requirements are unchanged.
+
+### Holes
+- None.

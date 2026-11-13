@@ -1,0 +1,34 @@
+## Review of ms-02 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short "Terms used below" section defining ack, ledger, lease, SKIP LOCKED, outbox, and terminal status, so a reader unfamiliar with the stack can follow the plan.
+- Invariant 1: stated plainly that the only owner change is handoff to service, and that monolith rows never change owner.
+- Invariant 4: made the ack timing explicit (after commit, before any send), and said redelivery is caught by the ledger.
+- Invariant 6: corrected an inaccuracy. The original said attempts are persisted before each send on both sides, but the old worker commits once per batch. The text now states the real behavior on each side.
+- Step 3: separated the ledger database from the monolith's explicitly, explained what LEASE must exceed, and explained the ambiguity rule (what 'attempts already at 5' means, and why the 20-hour margin sits inside MailRelay's 24-hour window).
+- Step 3: stated that the send happens outside any transaction, after the claim has committed.
+- Step 6: explained why ack-before-send keeps the 30 s redelivery timeout from firing during a normal send, and why clock skew matters for the latency number.
+- Decisions: item 4 now notes that the 20-hour margin also depends on MailRelay's timeout and window. Added item 12 for the stuck threshold, which the brief and the draft used without defining.
+- Kept the steps, their order, the gates, the rollback procedure, and the decision list. No technical content was removed.
+- Starting point: explained the monolith, p99, idempotency key, and runtime flags in plain words, and noted that the worker runs in the same process as checkout.
+- Added a Terms section entries for enqueue, monolith, Notification Service, handoff relay, backoff, page on-call, stuck threshold, and fake MailRelay, and explained the existing terms more plainly.
+- Restated invariants 1 to 7 in plainer sentences with the same rules. Added what ON CONFLICT DO NOTHING and the owner values mean in practice.
+- Step 2: explained the backstop in plain terms and why it is safe, and explained the relay alert.
+- Step 3: rewrote the ambiguity rule to say why a row is not sent (an earlier send may have reached MailRelay with an unknown result), and clarified the claim and retry steps. Clarified the components list and what a crash loop is.
+- Step 3 and decision 5: ledger retention now refers to the stuck threshold, matching the step 2 backstop, instead of the undefined reconciliation threshold.
+- Step 5: explained that the status column is a mirror copied back from the service.
+- Step 1: clarified that the gate to step 2 is a staging test plus a production check, and that the duplicate count is evidence that the key works.
+- Rewrote sentences in shorter, plainer form and spelled out units (seconds, minutes) and terms (p99, ack, ledger, backoff).
+- Added a short definition of ack, ledger, lease, outbox, and fake MailRelay to the terms list, and tied each term to the step that uses it.
+- Step 2: added the old worker's `owner = 'monolith'` select filter as an explicit item. Invariant 1 requires it, but no step previously assigned it.
+- Step 2: changed 'creates the flags' to 'sets up the flags', since runtime flags are not created by a database migration.
+- Step 3 (worker claim): listed the three claimable row states explicitly, including `sending` rows with an expired lease. The earlier wording omitted them, yet crash recovery depends on reclaiming those rows.
+- Step 3 (send): stated that a render error and a MailRelay error follow the same retry path, which the earlier text only implied.
+- Step 8: changed 'no rows are owned by monolith' to 'no monolith-owned rows are still non-terminal'. The migration defaults all existing rows to `monolith`, so the literal gate could never be met.
+- Decision 5: removed 'and the reconciliation window' from ledger retention, since that window is not defined anywhere in the plan.
+- Decision 7: reworded to say template changes for a moved type ship with the service.
+
+### Holes
+- None.

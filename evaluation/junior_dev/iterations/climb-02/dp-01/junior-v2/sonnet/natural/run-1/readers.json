@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The scheduler starts it daily at 02:00 UTC. It extracts replica rows with updated_at after the HWM minus 2 hours, with no upper bound, including soft deletes.",
+  "q2": "A bulk-import row can become visible on the replica up to 90 minutes after its updated_at, so the 2-hour lookback reaches back past the HWM.",
+  "q3": "The edit bumps updated_at, so a later nightly extract whose window covers it picks it up, and the guarded merge replaces the older warehouse row.",
+  "q4": "The soft delete bumps updated_at, so it is extracted like any change. The row stays in dw.orders with is_deleted set to true.",
+  "q5": "The attempt rolls back, the HWM is untouched, and the run_log row is marked failed. The scheduler retries 15 minutes later, up to three attempts total, then pages on-call.",
+  "q6": "Dashboards show the previous night's committed data, never a partial night. The 06:00 UTC watchdog posts a staleness alert to #data-alerts.",
+  "q7": "Sunday reconciliation. It compares per-creation-day counts and checksums over the last 30 days and reloads mismatched days through the guarded merge.",
+  "q8": "Staging is deduplicated to one row per order_id, keeping the highest updated_at. The MERGE updates a matched row only when the staged updated_at is at least the target's.",
+  "q9": "Stored in etl.pipeline_state as hwm_updated_at. It is set to GREATEST(hwm, max updated_at of the batch) inside the same transaction as the merge, at commit; unchanged if the batch is empty.",
+  "q10": "The data merge, HWM advance and succeeded status commit in one warehouse transaction, so everything becomes visible at once or not at all. Dashboards read only dw.orders.",
+  "q11": "The next attempt's start step deletes staging rows of all earlier run_ids. The retry re-reads the HWM and extracts the same window, HWM minus 2 hours onward.",
+  "q12": "It re-reads all replica rows with that created_at date from the same repeatable-read snapshot, loads them to staging, and applies the same guarded merge in one transaction. It does not move the HWM."
+ },
+ "sonnet": {
+  "q1": "The scheduler starts it at 02:00 UTC daily. It extracts replica rows with updated_at > window_lo (HWM minus 2 hours), no upper bound, in one repeatable-read read-only snapshot; soft deletes included. With no HWM it uses the epoch (full backfill).",
+  "q2": "The document says a bulk-import row can become visible up to 90 minutes after its updated_at. It does not state why.",
+  "q3": "The edit bumps updated_at, so the next nightly extract (window reaching back 2h before the HWM) picks it up; staging is deduped and merged into dw.orders, updating the row if stg.updated_at >= tgt.updated_at.",
+  "q4": "It is a soft delete that bumps updated_at, so it is extracted like any change. The load sets is_deleted = (deleted_at IS NOT NULL) and the row is updated in dw.orders (not removed).",
+  "q5": "The open transaction rolls back (HWM untouched), and failed is written to run_log in a separate transaction (or by the next attempt's start step if the worker was killed). The scheduler re-runs the job 15 minutes later, up to two more times (three attempts). After the third failure it pages on-call and stops; the HWM stays put and the next night's window widens. Timeouts count as failures.",
+  "q6": "Dashboards show last night's data (no partial night). The 06:00 watchdog posts a staleness alert to #data-alerts, which is where people are told; the job is not stopped.",
+  "q7": "The Sunday reconciliation: it compares per-created_at-day count and checksum on replica vs dw.orders for the last 30 days, and reloads mismatched days with the guarded merge.",
+  "q8": "Staging is deduped to one row per order_id (highest updated_at; ties by later deleted_at, then highest staging row id). The MERGE only updates a matched row WHEN stg.updated_at >= tgt.updated_at, so an older version cannot overwrite a newer one.",
+  "q9": "In the warehouse table etl.pipeline_state (hwm_updated_at). It is set to GREATEST(current hwm, MAX(updated_at) of the batch) (unchanged if batch empty), inside the same transaction as the merge and marking run_log succeeded, committed together.",
+  "q10": "Data merge, HWM advance and succeeded status happen in a single warehouse transaction/commit, so everything becomes visible at once or none of it. Dashboards read only dw.orders (committed data), and staging is never visible to them.",
+  "q11": "The next attempt's start step deletes staging rows of all earlier run_ids, so the retry starts clean. The retry re-reads the HWM and so uses the same window (hwm - 2 hours, updated_at > window_lo).",
+  "q12": "It re-reads all replica rows whose created_at date matches each mismatched day, from the same repeatable-read snapshot, into staging. They are applied with the same guarded merge into dw.orders in one transaction. It does not touch the HWM."
+ }
+}

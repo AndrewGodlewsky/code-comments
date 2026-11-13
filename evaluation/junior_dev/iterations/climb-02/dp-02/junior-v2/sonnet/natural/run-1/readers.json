@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "It acknowledges valid events with 202, only after the log write is acknowledged. Rejected events are listed by batch position with a reason and are not stored.",
+  "q2": "It treats the batch as not stored, backs off (1 s, doubling, up to 5 minutes), and resends the same batch with the same event_ids.",
+  "q3": "The first copy, meaning the lowest offset in its log partition, wins. Later copies are dropped while the 8-day dedup key lasts.",
+  "q4": "Tuesday. The day comes from the collector's received_at (00:10 UTC Tuesday), so it belongs to Tuesday's partition and replay. The client timestamp is never used.",
+  "q5": "In the live key-value store. Each event_id maps to its partition and offset via set-if-absent with an 8-day TTL, not refreshed by duplicates. The TTL expires entries.",
+  "q6": "The live processor fails closed: it stops consuming and lag builds in the log, up to 14 days. It never writes without a dedup check. If state is lost, it rebuilds from the archive.",
+  "q7": "Each batch loads rows, writes the live watermark, then commits offsets. On restart, rows at or after the committed offset are deleted and reprocessed; same-offset records stay winners, so each event appears once.",
+  "q8": "Input is the raw archive in object storage for received_day D-8 through D. Rebuilt rows go to events_clean_stage under the run id, then atomically swap into day D of events_clean.",
+  "q9": "It drops overlapping records, finds each event_id's first copy (lowest offset across D-8 to D), and keeps a record for D only if that first copy's received_at is in day D.",
+  "q10": "events_clean is unchanged and D stays started, so live keeps dropping its rows. The operator fixes the cause and reruns. A bad swapped replay is redone from the archive with corrected code.",
+  "q11": "Days that are closed (after 02:00 UTC on D+1) and whose gate passes: both watermarks have passed D and the archive still holds D and the 8 days before, about 82 days after the day ends.",
+  "q12": "Not decided here. It is an open Product decision. Dedup runs first, and a single marked stage is reserved for the choice; until then no event is dropped or flagged as a bot."
+ },
+ "sonnet": {
+  "q1": "Only after the valid events are written to the log (events_raw) and the write is acknowledged (acks=all) does it return 202. Malformed events (missing event_id/device_id, over 32 KB, or not parseable as an object) are listed in the response by batch position with a reason; they are not stored and not retried, while the valid events continue.",
+  "q2": "It treats it as 'not stored', backs off (1 s, doubling up to 5 minutes) and resends the same batch with the same event_ids. The mobile SDK drops an event after 7 days in its buffer.",
+  "q3": "The first copy: the one with the lowest offset in its log partition (all copies of an event share a partition). The later copy is dropped by the key-value check (within the 8-day window).",
+  "q4": "Tuesday. Day is the UTC day of the collector's received_at (00:10 Tuesday); the client timestamp is never used. So it belongs to Tuesday's partition and Tuesday's replay (assuming it is the winning copy).",
+  "q5": "In the key-value store (set-if-absent). For each event_id it stores {partition, offset} of the first copy. Entries are removed by a per-key TTL of 8 days, which is not refreshed when duplicates arrive.",
+  "q6": "The live processor fails closed: it stops consuming and lets lag build, never writing events through without a dedup check. Clients' events are still accepted by the collector into the log (which holds 14 days) and the archiver keeps running. If the KV state is lost, it is rebuilt from the archive for the last 8 days before resuming.",
+  "q7": "Each batch is loaded, then the live watermark is written, then log offsets are committed. After a crash between load and commit, the restarting worker deletes rows of its partitions with log_offset at or after the committed offset, then reprocesses from the committed offset. Because a key present with the same {partition, offset} is treated as the winner again, those records are re-written once. Nothing is lost and nothing is doubled (relies on the warehouse supporting delete by condition, an assumption to confirm).",
+  "q8": "Replay reads only the raw archive in object storage (received_day D-8 through D), not the log or live KV store. Rebuilt events are written to the staging table events_clean_stage under the run id, which dashboards cannot see (they read events_clean only).",
+  "q9": "It first drops overlapping archive records (same partition and offset). Then for each event_id it finds the first copy, the lowest offset in its partition across the whole D-8 to D window, and keeps a record for day D only if that first copy's received_at is in day D. Copies of events first seen on earlier days are therefore dropped; D's first copies are kept even if later copies arrive on D+1 to D+7.",
+  "q10": "events_clean is unchanged, since the swap never happened (only the staging table was touched). The day stays 'started', so live keeps dropping its rows for D. The operator fixes the cause and reruns the replay, which is safe to rerun; the rerun covers D from the archive.",
+  "q11": "A day D that is closed (at or after 02:00 UTC on D+1), where both live and archiver watermarks have passed D for every partition, no other replay of D is running, and the archive still holds D and the 8 days before it within the 90-day expiry, i.e. until about 82 days after D ends.",
+  "q12": "It is an open decision for Product (drop vs keep with a flag), not chosen. Until decided, no event is dropped or flagged as a bot; there is a single marked stage after dedup and enrichment (same stage in replay) where the choice will go. Once decided it can be applied to closed days by replay within 90 days. Keeping with a flag would require a new column in events_clean."
+ }
+}

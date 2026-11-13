@@ -1,0 +1,32 @@
+## Review of auth-04 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short background paragraph and a plain-language explanation of PKCE, state and nonce, plus a terms list (origin, ticket, GETDEL, chart colors) so a reader new to the stack can follow.
+- Renamed the confirmation cookie from glink to gticket, because it shared a name with the Redis key glink:{ticket} and was confusing; updated the table, cookie notes and flowchart nodes.
+- Added a reading guide above the flowchart.
+- Marked Account Settings as signed-in only in the chart, and removed the redundant 'Signed in' from the decision node.
+- Said that a NULL password_hash also counts as a wrong password on the confirmation form.
+- Made the refused re-check node also clear the cookie.
+- Renamed 'Confirmation loop' notes to 'Password confirmation' and stated when it applies.
+- Explained login CSRF in one phrase and why SameSite=Lax is needed.
+- Added an 'In short' five-step overview so a reader new to the stack sees the whole flow before the details.
+- Defined PKCE, state and nonce as a bulleted list, and defined 'next' and 'origin page' (where failures return) as terms.
+- Moved the uniqueness rule (one Google account per user and vice versa) into the ground rules.
+- Fixed the vague flowchart reading guide ('both paths from the login branch end in SESS'), which was wrong; it now says which login outcomes reach SESS and which are refusals.
+- Explained why SameSite=Lax is needed (top-level GET return from Google).
+- Clarified GETDEL as the first Redis step, and added the Redis-down case to the callback box in the flowchart so the diagram matches the outcomes table.
+- Clarified the unique-violation retry on user creation (another signup took the email, so re-run the match check).
+- Added the settings-user-mismatch outcome to the callback outcomes table, since it is in the flowchart but was missing from the table.
+- Clarified in the ticket table that the re-check refusal removes the ticket, and removed the redundant 'already checked' wording from the gauth row (now defined under 'next').
+- Minor wording tightening throughout; flowchart structure, colors and decisions list are otherwise unchanged.
+- Inverted the Settings start check to 'Does this user already have a Google account?' with yes leading to the refusal, so the yes/no labels read naturally.
+- Rewrote the flowchart reading note to say plainly that only the login path starts a session and settings never does, and listed the three ways login reaches SESS.
+- Replaced 'go back to the match check above' with a pointer to the named node (LM).
+- Reworded a few phrases for plainness: 'response time' instead of 'timing', step 4 of the summary now says exactly one outcome happens, and the next definition leads with when it is checked.
+- Moved the scopes sentence into the 'What this change does' paragraph so protocol facts sit together.
+- Left content, structure, flowchart logic and decisions unchanged.
+
+### Holes
+- None.

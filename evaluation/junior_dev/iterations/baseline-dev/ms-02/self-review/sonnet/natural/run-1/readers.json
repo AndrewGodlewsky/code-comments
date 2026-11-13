@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Monolith writes each notification as a pending row in its notifications table via enqueue_notification; exact durability moment not stated.",
+  "q2": "Redelivered after 30 s without ack, possibly to a different consumer; delivery is at least once.",
+  "q3": "Five attempts total, retries spaced 1, 2, 4, then 8 minutes; after the fifth failure the row is marked failed and on-call is paged.",
+  "q4": "Order: shipping_update (D), order_confirmed (D+3), password_reset (D+6), each after a soak. Before password_reset: order_confirmed soak criteria met, with p99 under 60 s.",
+  "q5": "Notification id (row id), set as send()'s idempotency_key; MailRelay drops a repeat with the same key within 24 h and returns success.",
+  "q6": "A monolith relay claims pending rows and publishes them to topic notifications.send; the monolith's part is done once the broker confirms storage and the row is marked published.",
+  "q7": "The routing flag notifications.route.<type>, read each poll, decides; whichever claims a still-pending row (relay if service, old worker if monolith) takes it.",
+  "q8": "The service's primary-key insert on notification id (ON CONFLICT DO NOTHING) makes the duplicate a no-op; MailRelay also dedups via the idempotency key.",
+  "q9": "Acks after storing, in the same transaction as the insert and before sending. A crash before ack means redelivery hits the primary-key conflict: a no-op.",
+  "q10": "In the service's own inbox_notifications table (attempts, next_attempt_at); the service's sender acts on it, selecting due pending rows with SKIP LOCKED.",
+  "q11": "Rows already publishing or published stay with the service and finish there; only still-pending rows return to the old worker. Nothing lost or re-sent.",
+  "q12": "Message carries id, type, user_id, email, payload, created_at, attempts, retry_after_seconds. Email content is rendered in the Notification Service, not the monolith."
+ },
+ "sonnet": {
+  "q1": "A notification becomes durable when `enqueue_notification` records it as a row in the monolith `notifications` table (status `pending`). The document does not say what decides whether the row exists at all (it only says callers/enqueue_notification are unchanged). The document does not say.",
+  "q2": "If not acked within 30 s, the broker redelivers it, possibly to a different consumer (at-least-once delivery).",
+  "q3": "Up to 5 attempts (MAX_ATTEMPTS=5), with backoff of 1, 2, 4, 8 minutes between attempts. After the fifth failure the row is marked `failed` and on-call is paged.",
+  "q4": "Order: shipping_update (about 40,000/day), then order_confirmed (about 12,000/day) at least 3 days later (earliest D+3), then password_reset (about 1,500/day) at earliest D+6, one type at a time with soaks between. Before password_reset moves: order_confirmed soak of at least 3 days with all exit criteria met, including p99 enqueue-to-MailRelay latency under 60 s over the full window (measured on every row, including retried rows, recorded with and without retries).",
+  "q5": "The `idempotency_key` parameter on `mailrelay.send()`, set to the notification id (row.id, the primary key). If MailRelay already accepted a send with that key in the last 24 h, it drops the new one and returns success.",
+  "q6": "The monolith records the row in its `notifications` table; the relay job (every 1 s) claims `pending` rows of service-routed types (status `publishing`, 30 s lease), publishes them to broker topic `notifications.send`, waits for broker confirmation, then sets status `published`. At that point the service owns the work and the monolith's part is done (its copy is later updated only informationally by the result consumer).",
+  "q7": "The routing flag `notifications.route.<type>` (`monolith` or `service`) decides which side may claim a `pending` row, but ownership is actually decided by whichever of the old worker or relay atomically claims the row first (SKIP LOCKED plus status check, status change to `publishing`). So it is decided at claim time, not by the flag change itself.",
+  "q8": "The service's inbox insert is `INSERT ... ON CONFLICT (id) DO NOTHING` on primary key id, so the duplicate is a no-op; additionally sends use `idempotency_key = id`, so MailRelay drops a repeat within 24 h.",
+  "q9": "The consumer inserts the row and then acks in one step, and never calls MailRelay, so it acks well within 30 s, before sending. If it dies after the insert but before the ack, the broker redelivers (possibly to another consumer) and the primary-key conflict makes it a no-op; the stored row is still sent by the sender.",
+  "q10": "In the service's own database, in the `inbox_notifications` table (`attempts`, `next_attempt_at`, status). The service's sender acts on it, selecting rows with `status='pending' AND next_attempt_at <= now()` using FOR UPDATE SKIP LOCKED.",
+  "q11": "They stay with the service and finish there. Rows in `publishing` or `published` are never touched by the old worker; only rows still `pending` go back to the old worker. Nothing is lost or re-sent, and the service keeps running until its pending count is 0.",
+  "q12": "For each notification: id, type, user_id, email, payload, created_at, attempts, retry_after_seconds (sent over the broker topic `notifications.send`). The email content (subject and body) is rendered in the service, which owns the templates, via its sender's render step before calling MailRelay."
+ }
+}

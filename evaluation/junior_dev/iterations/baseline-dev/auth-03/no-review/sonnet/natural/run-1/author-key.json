@@ -1,0 +1,26 @@
+{
+ "q7": {
+  "answer": "The raw token is generated in the API during the request, hashed for storage, and the raw value is put into the queue job payload as part of the link. The worker builds the email from that job, so the raw token reaches the user only via the queue and mail provider. The notes say the payload should be redacted once the job finishes or is dropped.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The API computes sha256 of the raw token from the URL and looks up reset_tokens by token_hash (UNIQUE). The link is good if the row exists, consumed_at IS NULL and expires_at > now(). That load-time check is read-only. The same check runs again, atomically, on submit.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "There is no separate counter. The count is a query over reset_tokens rows for that user with created_at within the last hour, so each issued link is one row. Old requests drop out because the created_at window moves. Rows are not deleted at consume time, and any cleanup job must keep them for at least an hour. Rate-limited and unknown-email requests create no row.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Inside the request transaction, after the user row is locked and the count is under 3, an UPDATE sets consumed_at = now() on all of that user's reset_tokens where consumed_at IS NULL. The new row is inserted in the same transaction, before COMMIT. So older links die at the moment the new one is issued, not when it is used.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "In one transaction: mark the token consumed (UPDATE ... RETURNING), update users.password_hash, and delete all of the user's sessions rows. The 'password changed' email is enqueued after COMMIT, then the API returns a 302 to /login. If the enqueue or send fails, the reset still stands.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The consume step is a single conditional UPDATE reset_tokens SET consumed_at = now() WHERE token_hash = ... AND consumed_at IS NULL AND expires_at > now() RETURNING user_id. Postgres row locking lets only one concurrent transaction get a row. The other gets 0 rows, rolls back and sees the 'link has expired' page, and never changes the password.",
+  "decided": true
+ }
+}

@@ -1,0 +1,139 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is the 'collector'? Is it a service we run, and does it hold any state between requests?",
+     "about": "2. Collector receives the batch"
+    },
+    {
+     "id": "2",
+     "text": "If the collector returns 5xx after some events in the batch were already published to the log, do those events get a new envelope_id on the resend? How does dedup then see them as the same event?",
+     "about": "5. Failure during the write"
+    },
+    {
+     "id": "3",
+     "text": "Dedup says 'Key exists with a different envelope_id' means duplicate. If the first copy was a winner, what happens to its row if the loader or enrichment fails afterward? Who retries it?",
+     "about": "7. Dedup against the global key-value store"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'decision ledger' used for in the live path, versus just in replay? Why is it written as a separate object-storage dataset rather than relying on the KV store?",
+     "about": "8. Decision ledger"
+    },
+    {
+     "id": "5",
+     "text": "How does the loader know which winners to load? Does it read from the dedup stage output, a topic, or the ledger? Where does enrichment output go between steps 9 and 10?",
+     "about": "10. Warehouse load"
+    },
+    {
+     "id": "6",
+     "text": "What does 'the live pipeline has passed the close time' mean concretely, and what does the watchdog do if one of the three consumers is lagging at 02:00 plus T_w?",
+     "about": "14. Close watchdog"
+    },
+    {
+     "id": "7",
+     "text": "A duplicate that arrives on a later day than the winner: which day's partition and ledger does it belong to, and how does replay of that later day treat it?",
+     "about": "20. Build the replay input"
+    },
+    {
+     "id": "8",
+     "text": "After a replay swaps partition D, how do winners arriving later (stragglers) or live loader MERGEs for D interact with the swap? Can the live loader still be writing to D at swap time?",
+     "about": "23. Atomic swap"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The collector is the new HTTPS service the brief calls for, which we run. It holds no state between requests: each request is stamped, validated and published, and then forgotten. Any instance can take any batch, and the replicated log is the only durable store. Step 2 now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. A resend gets new envelope_ids, because each publish attempt makes a new envelope. Dedup keys on event_id alone, not envelope_id. Whichever copy reaches the log first and is decided first is the winner, and the others are duplicates, including copies from the resend. The earlier envelopes stay in the archive, because the archive keeps everything that reached the log. Step 4 now says this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The consumer group retries it. Group B commits its offset only after its ledger rows and enriched publishes are acknowledged. If the consumer crashes or enrichment fails, the envelope is redelivered. The key-value check then sees its own envelope_id and treats it as the winner again, so enrichment runs again. Group C does the same for enriched rows: its offset commits only after the MERGE. If the warehouse is down, the loader stalls and lag builds. Steps 6 and 7 now say this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "In the live path, the ledger feeds the hourly reconciliation counts (step 9). For replay, it is the only durable record of each decision for 90 days. It is not the key-value store because KV entries expire after 8 days, while a replay can run up to 90 days after the day it rebuilds. KV also holds no day and no event content, and replay must never read it. Step 6 now describes the ledger."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Group B writes enriched winners to a new log topic named enriched, keyed by event_id. The loader reads that topic. The ledger is not an input to the loader. The earlier version had no hand-off between enrichment and the loader, which was a real gap. Steps 6c and 7 now say this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Passing the close time now means a concrete check. At 02:00 plus T_w, the watchdog records the end offset of each raw log partition. Every envelope stamped before 02:00 is at or before those offsets, because of the T_w bound. After a lag margin, it checks that groups A and B have committed past those offsets, and then that group C has committed through the current end of enriched. If either check fails, it writes no close record and alerts. D stays open, and live processing keeps running. The value of the lag margin is open question 3. Step 11 now says this."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A duplicate that arrives on day E is ledgered on day E with decision duplicate, and its winner_envelope_id points to the winner on the earlier day. Replay of E takes only winner rows, so it does not include the duplicate. Replay of D takes only the winner row on D. So a later-day duplicate never affects either replay. Step 18 now says this."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "Whether the warehouse orders a MERGE and a partition replace is not known (open question 5). The plan does not rely on it for correctness. Step 21 now adds a guard that compares the distinct event_id count in D with the manifest's winner count before the swap, and aborts on any difference. A MERGE that lands between the check and the swap would be deleted by the swap. Reconciliation (step 9) catches that missing winner, and a replay fixes it. A MERGE after the swap is an ordinary straggler, corrected by the next replay."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What is the 'watchdog'? What runs it, how often does it run, and where does it read offsets and counts from?",
+     "about": "11. Close check"
+    },
+    {
+     "id": "10",
+     "text": "If the close check keeps failing (for example group A or C is stuck), how long does it retry before a human is involved, and who is alerted?",
+     "about": "11. Close check"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The watchdog is a scheduled job, separate from groups A, B and C, so a stuck group cannot stop its own check. It starts at 02:00 plus T_w on D+1 and runs every 10 minutes until both checks pass. The 10-minute interval is my choice, not a brief requirement: close is not a freshness target, and the replay deadline is D+90, so a few minutes of polling costs nothing. On its first run it records the end offset of each raw log partition. Each run reads committed offsets for groups A, B and C from the log, the enriched topic's end offset, and archive flush state. It does not read counts here. Counts for the close record are written in step 12, after both checks pass. Step 11 now says all of this."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The brief does not say how long the close check may retry, who is alerted, or when a human is paged. The plan does not set these. The file now says the watchdog keeps retrying, D stays open, and no replay of D can start. The limit and the recipients are added as open question 8 for product or operations to decide. I did not invent a timeout."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Client batching. A mobile or web SDK collects up to 100 events, each with a UUID event_id, a device_id and a client timestamp. It sends them over HTTPS. If it gets no acknowledgement it retries with the same event_ids, backing off from 1 s to 5 min. The device buffer is the state here, and it holds unacknowledged events for up to 7 days.\n\n2. Collector receives the batch. A stateless HTTPS service takes the request. Any instance can take any batch. When the request arrives it stamps received_at from server UTC time. The received_at UTC date is the \"received day\", and it picks the warehouse partition.\n\n3. Validation. Each event is checked on its own: event_id present, device_id present, raw size 32 KB or less. Rejected events are listed in the response body with batch index and reason. The rest of the batch carries on. Clients never retry rejected events. Rejected events are not stored, and only rejection counts are logged.\n\n4. Publish. For each accepted event the collector builds an envelope. It holds the exact bytes plus envelope_id, received_at, batch_id and collector_id, and every publish attempt gets a new envelope_id. The collector publishes it to the replicated log, keyed by event_id, with acks from all in-sync replicas. Keying by event_id puts every copy of an event in the same partition, so order is consistent. The log is the only durable store at this point. When every publish is acknowledged the collector returns 202.\n\n5. Failed write. If any publish fails, or stamping plus publishing exceeds T_w (proposed 30 s), the collector returns 5xx for the whole batch, valid events included. Envelopes that were already published stay in the log and the archive. The client retries with the same event_ids, and new envelopes are created. Dedup in step 7 handles the copies.\n\n6. Raw archive (group A). One consumer group reads the log and writes envelopes byte-for-byte to object storage. Files are split by received_at day and hour and flushed about every 60 s. The group commits its offset only after a file is complete. Every envelope that reached the log is kept for 90 days, duplicates and failed-batch envelopes included. This is the system of record. The log itself keeps only 14 days.\n\n7. Decide (group B). A second consumer group reads the log in order, one envelope at a time. For each envelope it runs an atomic set-if-not-exists on the key-value store. The key is event_id, the value is the winner's envelope_id, and the TTL is 8 days, set only on the first insert. If the set succeeds, the envelope is the winner. If the key exists with a different envelope_id, it is a duplicate. If the key exists with the same envelope_id, it is a redelivery of the winner and is treated as the winner again. If the store is down, the group stalls and alerts. It never guesses.\n\n8. Ledger. Group B writes one ledger row per envelope to append-only object storage, partitioned by received_day, kept 90 days. The row holds envelope_id, event_id, received_at, received_day, decision and winner_envelope_id.\n\n9. Enrich. Only winners are enriched, with geo-IP lookup and user-agent parsing. The row records enrichment_version and the geo and user-agent parser versions. The bot check is a placeholder that passes everything. The enriched row is published to the `enriched` log topic, keyed by event_id. Group B commits its offset only after the ledger file and the enriched publishes are acknowledged. An enrichment error stalls the group and alerts. After a crash, uncommitted envelopes are redelivered and go through the decide step again. Repeated ledger rows and enriched rows are harmless.\n\n10. Load (group C). Every 1 to 2 minutes a micro-batch loader reads `enriched`. For each received_day in the batch it MERGEs the winners into that day's partition of events_clean, matching on event_id. It commits its offset only after the MERGEs commit, so a replayed batch does not insert twice. If the warehouse is down, group C stalls and lag builds in the log.\n\n11. Freshness and reconciliation. The target is a queryable row within 5 min of receipt, with an alert at 3 min and a page at 5 min. Hourly, per received_day, the archived envelope count must equal the ledger row count. The ledger winner count must also equal the distinct event_id count in events_clean. Nightly, a scan looks for event_ids that appear in more than one partition, and the expected count is zero. A non-zero count means the TTL expired too early or the decide logic is wrong, and the day needs a replay.\n\n12. Day close. A separate watchdog job starts at 02:00 UTC on D+1 plus T_w, then repeats every 10 min. On its first run it records the end offset of each raw log partition. Each run checks two things in order. First, groups A and B have committed past those offsets and the archive files are flushed. Second, group C has committed through the end of `enriched`. If both pass, it writes the close record: counts per received_day, watermarks, and the manifest of raw and ledger objects. D is then closed and eligible for replay. If a check fails, it writes nothing, alerts and retries. D stays open and live processing continues. An envelope archived after close is still ledgered and loaded by the live path, and a later replay corrects it.\n\n13. Replay request. An operator requests a replay of day D with a reason and a target enrichment version. It runs as a separate job with its own compute and quotas. It is refused unless D has a close record and the time is before the replay deadline (D+90 minus a margin).\n\n14. Freeze and check. The job lists the raw and ledger objects for D and records them as an immutable manifest with a hash. It then verifies that every ledger winner has a raw envelope with the same envelope_id, that no event_id has two winners, and that each raw envelope matches its stored checksum. Any failure aborts the replay, and nothing becomes visible.\n\n15. Rebuild. The job joins the manifest's raw envelopes to the winner rows. It does not re-run dedup and does not read the key-value store or the log. Duplicates are ignored. A duplicate arriving on a later day is ledgered on its own day as a duplicate, so it is in neither day's replay input. Each event is re-parsed and re-enriched with the pinned target versions. The output goes to a staging partition keyed by run ID, rate-limited so it does not compete with the live loader.\n\n16. Validate staging. Row count equals the winner count. The schema matches events_clean. enrichment_version equals the target on every row. Null rates and distributions are within agreed bounds, and an operator reviews differences. A random sample is spot-checked.\n\n17. Swap. The swap guard checks that partition D of events_clean holds the same number of distinct event_ids as the manifest has winners. If it does not, the job aborts and restarts from the freeze. If it does, the validated staging partition replaces partition D in one warehouse operation, so dashboards never see a partial rebuild. The old partition is kept for rollback. The live loader is not paused. A MERGE landing between the check and the swap could be lost, and reconciliation would catch that.\n\n18. Audit and cleanup. The job records the run ID, D, target version, manifest hash, counts, operator and timestamps. It drops staging once the swap is verified.\n\nFailure summary. If the collector or log is down, the collector returns 5xx and clients back off. If the key-value store, enrichment or warehouse is down, the affected group stalls, alerts and lag builds. The log keeps 14 days, and if the archive falls behind that, log data is lost.",
+   "gaps": [
+    "The document does not say what is done when reconciliation finds a mismatch beyond 'the day needs a replay'. It does not say who triggers it or how a mismatch is traced to a cause.",
+    "It does not say how a replay corrects a day that has not closed, or how an event whose winner was missed is repaired. A day that never closes (open question 8) cannot be replayed, and no other recovery path is described.",
+    "It does not say what the live path does with a copy arriving after the 8-day key expiry beyond saying it may become a new winner. It also does not say how the resulting double winners across days are resolved, other than 'reconciliation must catch that'.",
+    "The close watchdog's alert recipients and retry limits are undecided (open question 8), so who responds to a stuck day is unknown.",
+    "The numeric values of the close-check lag margin and the replay deadline safety margin are not given (open questions 3 and 6).",
+    "It does not describe how group B's single key-value write is made atomic with its ledger and enriched writes. It only says redelivery is tolerated, so an event whose store write succeeded but whose ledger write failed is handled only by the redelivery rule.",
+    "It does not say what the 202 or 5xx response body contains for a fully rejected batch, or how the client knows which events to resend after a 5xx beyond 'resend with the same event_ids'.",
+    "The bot-traffic rule is deliberately undecided (open question 1), so the real enrichment outcome for suspected bots is unknown.",
+    "It does not say what the replay does when staging validation fails beyond the operator reviewing differences, so the abort or approval path is unclear.",
+    "Whether a MERGE and a partition replace are serialized in the warehouse is unknown (open question 5), so the swap race outcome is unspecified."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

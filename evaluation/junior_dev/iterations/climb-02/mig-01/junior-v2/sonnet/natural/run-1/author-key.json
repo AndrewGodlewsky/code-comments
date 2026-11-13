@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL outbox row `users_pg_outbox(seq, user_id, created_at)` is inserted in the same MySQL transaction as the user write, so it is durable and atomic with the commit, even if the app dies right after. The inline apply deletes it on success. The `users-sync-worker` (polls every 2 s, takes rows older than 10 s) re-reads the user from the MySQL primary and applies it with `pg_copy`, or deletes in Postgres and tombstones if the row is gone. Backoff on failure and an alert at 5 minutes.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Two mechanisms. `pg_copy` skips ids in Postgres `users_tombstones` and takes `LOCK TABLE users_tombstones IN SHARE MODE` first. A delete's tombstone insert conflicts with that lock, so a copy and a delete cannot interleave. A copy that started earlier finishes before the tombstone is written, and the delete then removes the row. A stale backfill row read earlier is blocked by the tombstone check. Deletes ignore the version rule, and tombstones are kept permanently.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is in Postgres table `migration_progress(name, last_id, rows_copied, updated_at)`. It is updated in the same Postgres transaction as each batch's `pg_copy` upserts, so it is exact. Redis is not durable and MySQL could not make it atomic. The backfill stops when the replica read `id > last_id` returns zero rows and the outbox is empty. A crash resumes from `last_id`, and re-copying is idempotent under the version rule.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The step 5 compare job walks 5,000-id windows in both tables comparing `(id, email, name, plan, version)`. It also finds Postgres-only ids and tombstoned ids still in MySQL. A differing window is re-read from the MySQL primary and Postgres after 60 s, and only persistent differences count. Each one becomes an outbox row and is repaired automatically by the worker. An equal-version mismatch with different content cannot be repaired under the version rule, so it pages a human and blocks the gate. A nightly compare also runs during the read ramp.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A database fence. Each database has a `migration_state` row (`active`/`paused`/`standby`), and every request write reads its fence row `FOR SHARE` in its own transaction. The mode flag picks which database's row: MySQL for `mysql`/`mysql_dual`, Postgres for `pg_dual`/`pg_only`. Only one database is `active` at a time, so stale-flag instances get a non-active row and a 503. The coordinator's UPDATE waits for in-flight writers. If the drain is not empty at t=45 s before sub-step 4, the script aborts by setting MySQL back to `active` and the flag to `mysql_dual`, for a total pause of 75 s or less. After sub-step 4 it must go forward or use the step 9 rollback.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids from `users_id_seq`, created in step 1. During the switch pause, the coordinator runs `setval(GREATEST(current, mysql_auto_increment_counter + 1,000,000))`. The MySQL counter is at or above every id ever issued, including deleted ones, so new ids cannot collide with existing rows or tombstones. On rollback, if the MySQL `AUTO_INCREMENT` counter is not above the highest Postgres id, the rollback runs `ALTER TABLE users AUTO_INCREMENT=...` before MySQL becomes active. The 1M margin is a judgment call, not measured.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, writes use the same pattern with databases swapped: the Postgres transaction holds the fence read, the write and a `pg_outbox` row, then an inline mirrored copy to MySQL. `users-sync-worker` reverse-drains `pg_outbox` into MySQL as backup, and reverse compare passes check it. Rollback takes 90 s or less. Set the flag to `mysql_dual` and Postgres to `paused`, drain `pg_outbox`, fix the MySQL AUTO_INCREMENT if needed, then set MySQL `active` and Postgres `standby`. It can abort before sub-step 4. The option ends in step 10 (`pg_only`), allowed at least 14 days after `source_since` with a clean compare and empty `pg_outbox`. After that the reverse drain stops, and MySQL `users` is dropped in step 11, at least 7 days later.",
+  "decided": true
+ }
+}

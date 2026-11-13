@@ -1,0 +1,96 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What happens on GET /dashboard when there is no sid cookie at all, or the sid is malformed? What gets hashed and queried?",
+     "about": "PROTECTED PAGE / Route guard"
+    },
+    {
+     "id": "2",
+     "text": "After a lockout expires after 15 minutes, the old failure rows may still be inside the 10-minute window. Does the next wrong password lock the account again straight away?",
+     "about": "Brute-force limiting / Count is 5 or more"
+    },
+    {
+     "id": "3",
+     "text": "Where do the user's email and bcrypt password hash live, and which column does 'SELECT user WHERE email' use? Is the users table existing or new?",
+     "about": "SELECT user WHERE email"
+    },
+    {
+     "id": "4",
+     "text": "What does the 429 response body show the user, and how is the Retry-After value worked out?",
+     "about": "Lockout active / 429 + Retry-After"
+    },
+    {
+     "id": "5",
+     "text": "What does GET /login do if the browser already has a valid session? And what does POST /logout show when no sid cookie is sent?",
+     "about": "Route guard / LOGOUT"
+    },
+    {
+     "id": "6",
+     "text": "On a successful login, what is /dashboard and does the new session start with idle and absolute clocks both at now()?",
+     "about": "Password correct / 302 /dashboard"
+    },
+    {
+     "id": "7",
+     "text": "What happens if the 10-minute cleanup job fails or an instance is down? Does anything alert or retry?",
+     "about": "Cleanup of abandoned sessions"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "No cookie or a malformed sid is treated as no session: nothing is hashed or queried, and the app clears the cookie and redirects to /login. A well-formed unknown sid is hashed, finds zero rows, and gets the same redirect. Added to decision 2, decision 4 and the diagram."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Without a change, yes: stale rows would re-lock at once. Fix: writing the lockout also deletes that email's login_failures, so the count restarts at zero when the lock ends. This is the simplest handling and does not break the 5-in-10-minutes rule for new failures."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The users table already exists (id, email lowercase unique, password_hash bcrypt) per the brief and is unchanged. The lookup selects id and password_hash WHERE email = the trimmed, lowercased email. Added to decision 3 and the diagram."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The 429 body is the login page with 'Too many attempts. Please try again later.' Retry-After is the whole seconds from now() to locked_until, computed in the database. Added to decision 5. The password is never checked."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "GET /login ignores any session and always shows the form, which is the simplest option and the brief does not ask for more. POST /logout with no sid cookie skips the delete and returns 302 /login with the cookie cleared, the same as success. Both added to the notes and the diagram."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "/dashboard is the protected landing page the brief names. Its content is out of scope here and I assume it exists or is built separately, listed under open questions. Yes, the new session row gets created_at and last_seen_at both defaulting to now(), so both clocks start together. Added to decision 3."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Correctness does not depend on cleanup, because expiry is enforced on every read. If a run fails, the instance logs it and the next run or the other instance catches up. There is no alert or retry mechanism. Whether to alert is listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup: there are two app instances sharing one Postgres database. They keep no session state; every step can be served by either instance. Postgres holds `users`, `sessions`, `login_failures` and `login_lockouts`. All time checks use the database clock `now()`.\n\nLOGIN (a user who already has an account, typing the right password)\n\n2. The browser sends POST /login with email and password. It may also send an old `sid` cookie. The app trims and lowercases the email and uses that form from here on.\n\n3. The app opens a transaction (BEGIN) and takes a Postgres advisory lock on `hashtext(email)`. This makes parallel attempts for the same email run one at a time, even across the two instances, because the lock lives in Postgres.\n\n4. The app looks for a row in `login_lockouts` for that email with `locked_until > now()`.\n   - If one exists, it rolls back and returns 429. The body is the login page with \"Too many attempts. Please try again later.\" `Retry-After` is the seconds until `locked_until`, computed by the database. bcrypt is never run, and failures during the lock are not recorded.\n   - If none exists, it carries on.\n\n5. The app selects `id` and `password_hash` from `users` where `email` matches. It runs a bcrypt compare. If there is no such user, it compares against a fixed dummy hash, so timing doesn't reveal whether the account exists.\n\n6. Wrong password or unknown email (the failure branch):\n   - The app inserts a row into `login_failures`.\n   - It counts that email's failures in the last 10 minutes.\n   - If the count is 5 or more, it upserts `login_lockouts` with `locked_until = now() + 15 min` and deletes that email's `login_failures` rows. The count therefore restarts from zero after the lock.\n   - It commits and returns 401 with the login page and \"Invalid email or password\".\n   - The fifth failure itself gets 401. The lock applies from the next attempt.\n   - Unknown email and wrong password give identical responses.\n\n7. Correct password:\n   - The app deletes that email's `login_failures` rows.\n   - If the request carried a `sid`, it deletes the matching session row, found by `sha256(old sid)`.\n   - It generates a new random session ID (32 CSPRNG bytes, base64url). It never reuses the incoming one.\n   - It inserts `sessions(sha256(new id), user_id)`. `created_at` and `last_seen_at` both default to `now()`.\n   - It commits.\n   - It replies 302 to /dashboard with `Set-Cookie: sid=<new>; Path=/; HttpOnly; Secure; SameSite=Lax`. There is no Max-Age, so it is a browser-session cookie. The database holds only the hash of the ID.\n\n8. Login storage failure: if the lockout check, the user lookup or any write fails, the transaction rolls back. The user gets 503 with the login page and \"Something went wrong. Please try again.\" The cookie is unchanged, no session is issued, and the page doesn't say whether the credentials were right.\n\nPROTECTED PAGE\n\n9. The browser follows the redirect and sends GET /dashboard with the `sid` cookie. Every route except GET /login, POST /login and POST /logout needs a valid session.\n\n10. If the cookie is absent or malformed, the app does no hashing or SQL. It replies 302 to /login and clears the cookie (same name, path and flags, `Max-Age=0`).\n\n11. Otherwise the app hashes the cookie value and runs one atomic UPDATE. It sets `last_seen_at = now()` where `id_hash` matches, `last_seen_at` is within 30 minutes and `created_at` is within 12 hours. It returns `user_id`.\n   - One row back means the session is valid and the idle timer has restarted. The app returns 200 with the page and `Cache-Control: no-store`. `created_at` is never changed, so the 12-hour limit can't be extended.\n   - Zero rows means the session is unknown or expired. The app runs DELETE on that `id_hash`, clears the cookie and redirects 302 to /login.\n   - A storage error gives a 503 error page. No content is served, the user is not redirected to /login (the session may still be valid), and the cookie is untouched.\n\nLOGOUT\n\n12. The browser sends POST /logout. If there is a `sid`, the app deletes the session row by hash. Zero rows deleted is fine. On success, or with no cookie, it replies 302 to /login with the cookie cleared. If storage fails, it returns 503 \"We couldn't sign you out. Please try again.\" and keeps the cookie so the user can retry.\n\nBACKGROUND CLEANUP\n\n13. Each instance runs a job every 10 minutes. It deletes sessions past the idle or absolute limit, `login_failures` older than 10 minutes, and `login_lockouts` whose `locked_until` has passed. If a run fails, it logs the error and the next run, or the other instance, catches up. Cleanup is not needed for correctness, because expiry is enforced on every read.\n\nOTHER RULES\n\n- `GET /login` doesn't check the session and always shows the form.\n- CSRF protection relies on `SameSite=Lax` only.\n- Anyone can lock a known email out for 15 minutes. This is an accepted trade-off.",
+   "gaps": [
+    "The document doesn't say how the app finds the new session's owner or what `user_id` is used for after the UPDATE returns it (for example, whether it is attached to the request or used to render the dashboard).",
+    "It doesn't say what happens if a login succeeds for an email whose old `sid` belongs to a different user. This is only a detail, since the old session is deleted either way.",
+    "It doesn't say how the app decides a cookie is 'malformed', for example what length or character set it checks.",
+    "It doesn't say what the 503 error page for protected requests contains or how the browser shows it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

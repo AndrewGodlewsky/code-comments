@@ -1,0 +1,96 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "If the handler is called and the row is already `running` (for example a duplicate delivery while another attempt is still working), what happens? Step 6 only says what to do for `done`, and then 'otherwise stop'. Does 'stop' mean stop in every other case?",
+     "about": "Step 6. A worker starts an attempt"
+    },
+    {
+     "id": "2",
+     "text": "If the stale check in Step 4 marked a row `failed` but its job is still alive and retrying, what does the handler do when it loads a `failed` row? Does it set it back to `running` and carry on?",
+     "about": "Step 6. A worker starts an attempt / Step 4 stale check"
+    },
+    {
+     "id": "3",
+     "text": "What starts Step 9 on the first, normal run? Does the same handler call it straight after Step 8 marks the row `done`, or is it a separate trigger?",
+     "about": "Step 8. Publish the file / Step 9. Email the download link"
+    },
+    {
+     "id": "4",
+     "text": "When a worker is killed or times out, nothing runs to set the row back to `queued`. So the row can read `running` during the 60 s or 300 s wait. Is that expected, and how does the page tell that case from a job that is really running?",
+     "about": "Step 10. An attempt fails and the queue retries"
+    },
+    {
+     "id": "5",
+     "text": "The page shows `queued` or `running` rows past the stale rule as `failed`. How does `download_available` get computed, and what does the page do with it for a `done` export that is over 24 hours old?",
+     "about": "Step 12. The page shows the export's state"
+    },
+    {
+     "id": "6",
+     "text": "What is `report.view` on the report's workspace, and how does the system look up whether a user has it? Is it the same check the page and the rows API already use?",
+     "about": "Step 2. The user clicks Download CSV"
+    },
+    {
+     "id": "7",
+     "text": "The small path is chosen from the unfiltered `row_count`. How do the filters change what the small path returns, and is the 10,000-row limit checked against the rows actually read, or only against `row_count`?",
+     "about": "Step 3. Small path: the response is the CSV"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "No, stop does not apply to every other case. Only `done` (finish the email, then stop) and `failed` (stop) end early. For `queued` or `running` the handler continues and sets `running`. A duplicate concurrent run writes the same content to the same object key, and complete_multipart replaces the object, so the outcome is still correct. I chose this over a lock or lease, which the brief does not require. Step 6 now spells this out."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "No. A `failed` row is never revived: the handler returns normally and does nothing. Reviving it would clash with the unique index if the user already started a new export, and the user was already told it failed. In practice a live job cannot be stale-marked, since the 2 hour rule exceeds the roughly 96 minute maximum job life. The only realistic case is a slow enqueue past the 1 minute no-job_id rule, and stopping is correct there too. Added to Step 6 and Step 14."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The same handler call runs Step 9 straight after Step 8 marks the row `done`. There is no separate trigger. Step 6 also routes a rerun that finds `done` to Step 9. Step 8 and Step 9 now say this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, expected. After a timeout or a dead worker nothing runs, so the row reads `running` during the backoff. The page does not tell the cases apart, because the export is still in progress in both. Calling it running is true enough, and distinguishing them would need a heartbeat, which the brief does not require. Step 10 now says this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "`download_available` is true only when status is `done` and `completed_at` is under 24 hours ago, matching the check in Step 13. For a `done` export older than 24 hours the page shows the done label but replaces the button with 'Link expired, export again'. Added to Step 12."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Per existing/reports_page.md, the rows API first checks that the caller has the `report.view` permission on the report's workspace and returns 403 otherwise, and the brief says export uses the same check as the page. So yes, it is the same check. The files do not show how the lookup is implemented or the function name, so the plan says to reuse the rows API's check and lists the name under Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Filters only remove rows, so the small path with filters returns at most `row_count` rows, which is at most 10,000. The limit is therefore checked against `row_count` only, not against rows read. A filtered view of a big report still takes the large path by design, which the brief's rule (decide by `reports.row_count`) requires. A rebuild changing the count mid-request is a negligible edge case. Added to Step 3."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup (one-off). A migration creates a `report_exports` table on the primary database. Each row is one export: export_id, user_id, report_id, filters, cols, status (queued/running/done/failed), attempt, job_id, object_key, rows_written and timestamps. A partial unique index on (user_id, report_id) where status is queued or running means the database allows only one active export per user and report. The object key is `reports/{report_id}/{export_id}.csv`.\n\n2. The user clicks Download CSV. The page calls `POST /api/reports/{report_id}/exports` with the current filters and cols. The API checks `report.view` (403 if it fails). It then validates filters and cols with the rows API's parser (400 if invalid). Then it reads `reports.row_count`. At 10,000 or less it takes the small path. Above 10,000 it takes the large path. Nothing is stored yet. An unexpected error returns 500.\n\n3. Small path. The API reads rows from the replica in pages of 500, using `row_id > after ORDER BY row_id` with the filters applied. It builds the whole CSV in memory, then replies 200 with `text/csv` and `Content-Disposition: attachment`. The page's JavaScript saves it as a file. No export row and no job exist. A failure returns 500 and the user clicks again. Because the file is fully built before sending, a truncated download can't happen.\n\n4. Large path, create or reuse. In one primary-database transaction:\n   - Look for this user's queued or running export of this report.\n   - Mark it failed if it is older than 2 hours, or if it has no job_id and is older than 1 minute.\n   - Insert a new row with status queued.\n   - If the unique index rejects the insert, an export is already active. Return it with 200 and `already_active: true`. This applies even if the new click had different filters.\n   - On failure the transaction rolls back and the API returns 500.\n\n5. Enqueue. After a successful insert, the API calls `enqueue(\"report_export\", {\"export_id\": ...})`. It saves the returned job_id on the row and replies 202 `{export_id, status: \"queued\"}`. If enqueue raises, the row is set to failed and the API returns 503. If the process dies before the job_id is saved, the row stays queued with no job_id, and the stale check on the next click clears it.\n\n6. A worker attempt starts. The queue calls `handler(ctx, payload)`, up to 3 attempts, and possibly again after a success. The handler loads the row and then branches:\n   - Row is `failed`: return normally and do nothing.\n   - Row is `done`: skip to step 9 to send any unsent email.\n   - Otherwise: re-check `report.view` for the row's user. If access was lost, set failed, send no email and return normally.\n   - Otherwise: set status to running and attempt to `ctx.attempt`, then continue.\n\n7. Stream rows to storage.\n   - Start a multipart upload with `start_multipart(\"exports\", object_key)`.\n   - Write the header to a buffer.\n   - Loop: read 5,000 rows from the replica using keyset paging on the stored filters, append their CSV text to the buffer, then free the page and remember the last row_id.\n   - When the buffer reaches 8 MiB, call `upload_part` and keep the etag, then empty the buffer.\n   - Stop on an empty page and upload the remainder as the last part.\n   - Upload ID, etags and last row_id live only in the attempt's memory. A retry starts over.\n   - On a raised error the handler calls `abort_multipart` as best effort and re-raises. If the worker is killed, nothing runs. The unfinished upload is invisible and the bucket discards it within 24 hours.\n\n8. Publish. `complete_multipart(upload_id, etags)` makes the object appear at its key, complete. The row is then updated to done, with completed_at and rows_written. The handler continues straight to step 9. If `complete_multipart` raises, go to step 10. If the worker dies after the object appears but before the row is marked done, the retry overwrites the same key with the same content.\n\n9. Email. This runs only if `email_sent_at` is empty. The handler creates a 24-hour signed URL (86,400 s). It calls `send_email(user_id, \"report_export_ready\", {report name, url, row count})`. Then it sets `email_sent_at`. If the email raises, the retry sees done with no email_sent_at and resends only the email. A duplicate email is possible if the worker dies between sending and saving.\n\n10. Attempt fails with attempts remaining. If the handler raised, it sets the row back to queued as best effort. After a timeout or a dead worker, the row stays running. The queue calls the handler again after 60 s or 300 s, and it starts again at step 6. The row stays active the whole time, so the user can't start a second export.\n\n11. Last attempt fails. The queue calls `on_final_failure(ctx, payload, error)` once.\n   - If the row is already done, leave it done and log an error. Only the email failed.\n   - Otherwise set status failed and keep the error text in an engineer-only column. This frees the slot.\n   - Then send the `report_export_failed` email inside try/except.\n   - If the failed update can't be saved, the stale rule clears the row 2 hours after creation. The status endpoint already reports it as failed.\n\n12. The page shows state. On load, and every 5 seconds while the state is queued or running, the page calls `GET /api/reports/{report_id}/exports/latest`. That call checks `report.view` (403 otherwise) and reads from the primary. It returns `{export_id, status, filters, created_at, completed_at, download_available}`. `download_available` is true only if the status is done and completed_at is under 24 hours ago. A queued or running row past the stale rule is shown as failed. In the failed state the Download CSV button works again. A failed poll keeps the last state and retries on the next tick.\n\n13. Download when done. If `download_available` is true, the Download button calls `GET .../exports/{export_id}/download`. That call checks `report.view`, checks that the export belongs to the caller, and checks that it is done and under 24 hours old. It then redirects to a fresh 300-second signed URL. After 24 hours the page shows \"Link expired, export again\", and a new click starts a new export. A 403 or 404 shows a message. If the file is gone (the bucket deletes after 7 days), the user starts a new export.",
+   "gaps": [
+    "Step 6 says the handler 'loads the export row' and loads filters and cols from it, but the document does not say how the worker gets or uses the replica and primary connections beyond saying rows come from the replica.",
+    "Step 10 says a handler that raised 'first sets the row back to queued', but the document does not say what then moves it to running again other than the retry in Step 6. This is minor and I can follow it.",
+    "Step 12 says a queued or running row past the stale rule is 'reported as failed', but it does not say whether the status endpoint also writes failed to the row. Step 4 does the writing only on the next click. I can't tell whether the displayed failed state and the stored state can differ.",
+    "The document does not say how the page's JavaScript decides, from the click response, whether it got a CSV (200 text/csv), a 202 for a new job, or a 200 JSON with already_active. It also doesn't say what the page shows for already_active, other than 'shows its filters'."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

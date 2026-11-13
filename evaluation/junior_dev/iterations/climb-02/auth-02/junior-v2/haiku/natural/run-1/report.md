@@ -1,0 +1,37 @@
+## Review of auth-02 (junior-v2, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- R1: each successful secret load logs a `secret loaded` line with name, version and pod, so A6 has a log line to check (Q1).
+- R2: the `secret rotated` line now includes the pod name (Q1).
+- A4: any later write during the rollout is recorded in the migration log (Q4).
+- A6: compares each pod's latest logged version with the latest store version at check time, not with the A4 ids. The refresh-interval wait is explained as covering pods that loaded an older version before the last write (Q2, Q4).
+- R3: a 401 or 403 fails the request with the provider's error, is not retried with another key, and is treated as an incident because A6 and A7 prevent it (Q6).
+- R4: readiness is defined as a `ready` flag that is set after R1 or in offline mode, and A5's 'passes readiness' is tied to that flag (Q8).
+- R6: `make run --offline` skips R1 entirely, uses a flag to select the stub server and a fixed dummy key, and sets `ready` at once. Dev access comes from the A1 policy (Q7).
+- R1: the store call authenticates with a platform-provided service identity, with no environment credential. The product and mechanism are unknown and moved to Open question 11 (Q3).
+- Part A: owners for each step are not assigned, and this is listed as Open question 10 (Q5).
+- Open questions: added 10 (owners) and 11 (store product and pod identity). Open question 6 now refers to the R1 and R2 log lines.
+- A0: defined an unknown consumer, how consumers are found, when A0 is finished, and that non-pod consumers get no prod read and must be handled before A7.
+- A2: replaced the claim that no live key is on any developer machine with an accurate statement: make run stops using live keys, and older clones are covered by A3 and A7.
+- A4: added a read-only provider check before each write where the provider offers one.
+- A5: added a gate on the 401/403 rate of new pods versus old pods, and stated what can fail before the gate halts.
+- A6: the check runs as a saved log query plus a store lookup script, the security on-call performs the store-side comparison, and the pass condition now covers every consumer on the A0 list.
+- A8: stated the rule, the need for a build commit per image, that the deploy is refused, and that the plan defines no override.
+- R2: stated the refresher's role (later rotations and the A6 margin, not the A5 cutover).
+- R3: noted that a refresh triggered by a 401 does not help the failed request, and that 401s during A5 are handled by the A5 gate.
+- R1, R4, R5, R6: merged repeated wording and removed duplicated phrasing without changing the behavior.
+- Open questions: added 12 (non-pod consumers and observation window), extended 3 (deploy tool and build commit), 5 (pre-write check is the only earlier guard), and 11 (version id visibility). Kept them together at the end.
+- Cut the duplicated scope bullets and the repeated 'if it fails' explanations, so the file stays near its original length.
+- Merged the scope bullets and the fixed constraints into one short constraints list, dropping the repeated wording of the brief.
+- Folded the CI guard (old A9) into A5, since it lands in the same change and must be verified before that change merges. The cleanup step (old A10) is now A9. No step refers to the old A9 or A10.
+- Corrected A2: the old text said A3 and A7 cover earlier clones that still hold old keys. A3 only issues new keys and does not cover that. Revocation in A7 is what makes those old keys useless, so A2 now says so.
+- Merged old open questions 3 and 4 (rollback after revocation, and old images) into one question, now Open question 3. Renumbered the rest, so the old 5 to 12 are now 4 to 11, and updated every reference in the steps.
+- Shortened the wording in each rollout step's Moves, State and If it fails, and in the R1 to R6 runtime sections, removing repeated phrasing such as 'this plan' and the duplicated explanations. Kept every gate, retry count, timing and log format.
+- Trimmed R3's failure handling and R5's redaction rules to the same facts without dropping any rule. Kept all open questions, each cut to the decision it needs, and kept them together at the end.
+
+### Holes
+- Q3: What is the managed secret store here (which product), and what is the pod's 'workload identity'? How does a pod get it without a credential in an env var? (author: The brief does not name the secret store product, and it does not say how a pod gets its workload or service identity without an environment credential. deploy.md says pods run under `orders-api-prod`. The plan now says the platform provides the identity and lists both points as Open question 11. The platform owner must confirm them.)
+- Q5: Who runs each step (A0 to A10)? Who approves the A5 merge and deploys it, given engineers have no prod read access? (author: Known from the brief: the security on-call writes prod secrets and performs the A4 writes, and engineers have no prod read. Not known: who runs A0, A1, A2, A5 (merge and deploy), A6 and A7, and who approves the A5 merge. The brief does not assign these. Added as Open question 10.)
+- Q12: How does the deploy tooling know an image tag was built before the migration commit? What does an engineer see when they try such a rollback during an incident? (author: Not known: which deploy tool is used, and whether image tags record the build commit. The plan states the rule: refuse any image built from a commit before the migration commit, which needs the build commit recorded per image. The plan defines no override path, so an engineer in an incident gets a refusal and no defined next step. The message wording and any exception route are not known (Open question 3 and 7). Changed in A8.)

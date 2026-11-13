@@ -1,0 +1,184 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is `app.flags`, and how does an instance learn the current value of `users_write_mode`? What is the 30 s refresh?",
+     "about": "2. Deploy repository v1 with all flags off / State: flags (`app.flags`)"
+    },
+    {
+     "id": "2",
+     "text": "The copy rule is `users.version < EXCLUDED.version`. Where does `version` come from, and what bumps it on each write?",
+     "about": "One copy function for dual write, backfill and repair"
+    },
+    {
+     "id": "3",
+     "text": "In `mysql_dual` mode, walk me through one user update from request to response: which transaction writes the users row and the outbox row, and where is the fence read?",
+     "about": "3. Turn on dual writes: `users_write_mode=mysql_dual`"
+    },
+    {
+     "id": "4",
+     "text": "How does a user delete reach the two databases in `mysql_dual` mode? Does the erasure job write to the MySQL tombstone table, the Postgres one, or both?",
+     "about": "Deletes use tombstones"
+    },
+    {
+     "id": "5",
+     "text": "When the inline apply to Postgres fails, who notices, and how long until the outbox row is retried? Does the worker use the same `pg_copy`?",
+     "about": "Inline apply / Drain worker"
+    },
+    {
+     "id": "6",
+     "text": "In `pg_dual` mode, how does a request know which database's fence row to read? Does that depend on the mode flag?",
+     "about": "Writers check the fence"
+    },
+    {
+     "id": "7",
+     "text": "What does the 'reverse drain' do after the switch, and which component runs it? Is it `users-sync-worker` reading `pg_outbox`?",
+     "about": "8. From now on: the workers run in the opposite direction"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "`app.flags` is the existing flag service (flags_and_jobs.md). Each instance caches all flags and refreshes them every 30 s, so a new `users_write_mode` value reaches an instance within 30 s. I added this to a new 'How the pieces fit' section."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "`version` is the existing MySQL column. It starts at 1 and `UserRepository.update` sets `version = version + 1` on every successful update (users_table.md, user_repository.py). Copies carry the value unchanged. Added to 'How the pieces fit'."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "One MySQL transaction does all three: the `FOR SHARE` read of the MySQL fence row, the versioned UPDATE on users, and the insert of the outbox row. After commit the request applies the row to Postgres inline via `pg_copy`, deletes its own outbox row on success, and returns. This keeps the durable repair record atomic with the write. Added as 'Request flow in mysql_dual'."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Both. In mysql_dual the delete runs in one MySQL transaction (fence read, MySQL tombstone insert, row delete, outbox row). The Postgres tombstone and delete then run in one Postgres transaction, from the inline apply or the worker. The MySQL tombstone is kept so the mirrored copy path has the same protection after the switch and during rollback. Step 1 already creates both tombstone tables; the Deletes section now says this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Nobody is notified; the outbox row simply stays. The worker polls every 2 s and only takes rows older than 10 s, so it is retried within about 12 s, then with backoff on repeated failure, and an alert fires if the oldest row exceeds 5 minutes. Yes, the worker uses the same `pg_copy`. Clarified in the Drain worker bullet."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It depends on the mode flag: `mysql` and `mysql_dual` read the MySQL fence row; `pg_dual` and `pg_only` read the Postgres fence row. This is why stale-flag instances during the switch see a paused or standby row and get 503. Stated in 'Writers check the fence'."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, it is the same `users-sync-worker`. After the switch it drains `pg_outbox` into MySQL (the mirror of its earlier job) so MySQL stays current for rollback. In step 10, once every instance reports `pg_only`, the worker stops reading `pg_outbox`. Clarified in step 8 and step 10."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "8",
+     "text": "You describe updates and deletes. What happens when a request creates a new user in `mysql_dual`? Where does the id come from, and is there an outbox row?",
+     "about": "Request flow in `mysql_dual` (an update)"
+    },
+    {
+     "id": "9",
+     "text": "What does the circuit breaker do when it is open? Does the request skip the Postgres apply and leave the outbox row for the worker?",
+     "about": "Inline apply"
+    },
+    {
+     "id": "10",
+     "text": "What does \"in the same minute\" mean here? Does `users_switch.py` set the flag and the MySQL state one after the other, and does the order matter?",
+     "about": "8. Switch the source of truth to Postgres, Changes, in order, sub-step 1"
+    },
+    {
+     "id": "11",
+     "text": "Who or what decides that every instance has refreshed its flag before the pause ends? Sub-step 4 seems to wait only for the drain, so what happens to an old-flag instance after sub-step 4?",
+     "about": "8. Pause length"
+    },
+    {
+     "id": "12",
+     "text": "What is the \"gap-locking tombstone check on MySQL\"? What job does it do that `LOCK TABLE ... SHARE MODE` does in Postgres?",
+     "about": "8. From now on: the mirrored copy function"
+    },
+    {
+     "id": "13",
+     "text": "After the switch, does a request-originated write in `pg_dual` also insert into Postgres `pg_outbox` in the same transaction as the fence read, and is the inline apply to MySQL the same pattern as before?",
+     "about": "Switch coordination uses a database fence"
+    },
+    {
+     "id": "14",
+     "text": "Backfill reads the replica but checks pending outbox rows on the primary. If a user is updated between the replica read and the `pg_copy`, what stops the old row from overwriting newer data?",
+     "about": "4. Backfill, Batch handling"
+    },
+    {
+     "id": "15",
+     "text": "What does \"a miss while the percentage is below 100\" mean? Why is a miss at 100% not a fallback?",
+     "about": "6. Ramp reads"
+    }
+   ],
+   "answers": [
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "A create is one MySQL transaction: fence read, INSERT into users (MySQL AUTO_INCREMENT assigns the id, version 1) and an outbox row. After commit the inline apply copies it to Postgres with that explicit id. Added as a 'Create' bullet."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes. With the breaker open the request skips the Postgres call and leaves the outbox row, so the worker repairs it within about 12 s. The request still succeeds. Stated in the Inline apply bullet."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The script runs them one after the other: MySQL active to paused first, then the flag to pg_dual. Order does not matter for safety, because until Postgres is active both old-flag and new-flag instances see a non-active fence and return 503. Sub-step 1 now says this and drops 'in the same minute'."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Nothing decides it centrally. Each instance resumes writing when its own flag refresh brings pg_dual. An old-flag instance after sub-step 4 reads the MySQL row as standby and keeps returning 503, which is safe. Since the flag is set at t=0, all instances have it by t=30 s, so the pause is the longer of 30 s and the drain time. Pause length text rewritten."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "In a MySQL transaction the mirrored copy runs SELECT ... FROM users_tombstones WHERE id=? FOR SHARE. If the id is absent, InnoDB locks the gap, so a concurrent tombstone insert waits until the copy commits. That gives the same no-interleaving guarantee as LOCK TABLE ... SHARE MODE in Postgres. I have not run this against the real MySQL setup, and it relies on the default REPEATABLE READ isolation. Explained in 'From now on'."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. After the switch it is the same pattern with the databases swapped: the Postgres transaction holds the fence read, the write and a pg_outbox row, then an inline apply to MySQL, with the reverse drain as backup. 'From now on' now says 'same pattern as mysql_dual with the databases swapped'."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The version rule. pg_copy replaces a row only when the incoming version is higher, so an old replica row cannot overwrite a newer one. If the old row lands first, the newer write's own inline apply or outbox row delivers the higher version afterwards. A delete is blocked by the tombstone check. The outbox filter is only an optimisation. Stated in Batch handling."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "A miss means Postgres has no row for that id. The wording was confusing and the 100% exception was not well justified: a row that is only waiting for its outbox repair would wrongly look like not found. I removed the exception. A miss or error now falls back to the MySQL replica at every percentage and is counted in the fallback rate. Changed in step 6."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one user update, followed from setup to the end of the migration.\n\n1. Setup (step 1). An engineer runs a DDL migration. It creates the Postgres tables (`users` with `citext` email, `users_tombstones`, `migration_state` = standby, `pg_outbox`, `migration_progress`, `migration_compare`, `users_id_seq`). It also creates the MySQL tables `users_pg_outbox`, `users_tombstones` and `migration_state` = active. The tables hold the state. The DDL is `IF NOT EXISTS`, so a failed run is simply re-run.\n\n2. Code deploy (step 2). A rolling deploy ships `UserRepository` v1 and the idle `users-sync-worker`, backfill job and compare job. The repository reads the mode flag `users_write_mode` (default `mysql`) and the percentage flag `users_read_pg_pct` (default 0). Both come from `app.flags`. Each instance caches the flags and refreshes them every 30 s, so instances can disagree for up to 30 s. With the flags off, the only change is one extra `FOR SHARE` read of the MySQL fence row per write. If the deploy fails, it is rolled back.\n\n3. Dual writes on (step 3). An engineer changes the flag to `mysql_dual`. Each instance picks it up on its next refresh. The engineer waits until `app_flag_value{flag=\"users_write_mode\"}` shows `mysql_dual` on every instance, then waits 5 more minutes. To undo, set the flag back to `mysql`.\n\n4. One update request in `mysql_dual`. A request calls `UserRepository.update`.\n   a. Starts one MySQL transaction.\n   b. Reads the MySQL fence row `FOR SHARE`. If the state is not `active`, it raises `WritesPaused` (503 with Retry-After).\n   c. Runs the versioned `UPDATE` on `users`, which adds 1 to `version`.\n   d. Inserts a row into `users_pg_outbox`.\n   e. Commits. MySQL now holds the state, plus a durable repair record.\n   Create works the same way. MySQL `AUTO_INCREMENT` assigns the id, and the row starts at version 1.\n\n5. Inline apply to Postgres. After the commit, the request calls `pg_copy` with a 250 ms timeout and a circuit breaker.\n   a. `pg_copy` takes `LOCK TABLE users_tombstones IN SHARE MODE`.\n   b. It skips any id that is tombstoned.\n   c. It runs `INSERT ... ON CONFLICT (id) DO UPDATE ... WHERE users.version < EXCLUDED.version`.\n   d. On success it deletes its own outbox row by `seq`.\n   e. On failure or timeout, or if the breaker is open, it does nothing. The request still succeeds and the outbox row stays.\n\n6. Repair by the drain worker. `users-sync-worker` (2 replicas) polls the outbox every 2 s.\n   a. It claims rows older than 10 s with `FOR UPDATE SKIP LOCKED` and coalesces them by `user_id`.\n   b. It re-reads the current row from the MySQL primary and runs `pg_copy`.\n   c. If the row is gone from MySQL, it deletes it in Postgres and writes a tombstone.\n   d. Retries use backoff. An alert fires if the oldest outbox row is older than 5 minutes.\n   An inline failure is therefore repaired in about 12 s.\n\n7. Delete (the erasure job). In `mysql_dual`, one MySQL transaction does the fence read, inserts a MySQL tombstone, deletes the row and inserts an outbox row. After commit, the inline apply or the worker runs one Postgres transaction that inserts a tombstone (id only) and deletes the row. Deletes ignore the version rule. Tombstones are kept permanently. The `SHARE MODE` lock in `pg_copy` stops a copy and a delete from interleaving and resurrecting a row.\n\n8. Backfill (step 4). The backfill job starts itself after the gate has held for 5 minutes. It re-checks the gate before every batch.\n   a. It takes a Postgres advisory lock.\n   b. It reads `mysql_replica_lag_seconds`. If lag is above 5 or the metric is missing or stale, it sleeps 10 s.\n   c. Otherwise it reads 2000 rows with `id > last_id` from the replica.\n   d. It drops ids that have a pending outbox row or a tombstone.\n   e. In one Postgres transaction it runs `pg_copy` and sets `migration_progress.last_id`.\n   f. There is at least 0.5 s between batches.\n   g. On an email unique violation, it retries the batch row by row. Rows that still conflict go to the outbox.\n   After a crash it resumes from `last_id`. Re-copying is safe because of the version rule. The step is done when the read returns zero rows and the outbox is empty.\n\n9. Compare (step 5). The compare job walks 5,000-id windows and compares `(id, email, name, plan, version)`. It also finds Postgres-only ids and ids that are tombstoned but still in MySQL.\n   a. A window with differences is re-read after 60 s. Only differences that persist count.\n   b. Each persistent difference becomes an outbox row, so the worker repairs it.\n   c. Progress is kept in `migration_compare`.\n   d. The gate is one full pass with 0 mismatches.\n   e. An equal-version mismatch with different content cannot be repaired. It pages a human and blocks the gate.\n\n10. Read ramp (step 6). `flags.enabled_for(\"users_read_pg_pct\", user_id)` sends a bucket of users to Postgres. The stages are 1%, 10%, 50% and 100%, held for 1 hour, 4 hours and 1 day at the first three. At each stage the PG read error rate, p99 latency, fallback rate and compare mismatches must hold. A Postgres error or a miss falls back to the MySQL replica. If it fails, set the percentage back. The 3-day clock starts when every instance shows 100.\n\n11. Switch gate (step 7). Requirements: 3 days at 100% reads, a clean compare pass within 24 hours, the outbox under 1 minute old, and a healthy Postgres cluster. The go decision is recorded.\n\n12. The switch (step 8). The engineer runs `users_switch.py`.\n    a. At t=0 it sets the MySQL fence to `paused`. The `UPDATE` waits for in-flight writers. It then sets the flag to `pg_dual`. All writes now get 503.\n    b. It drains the MySQL outbox to empty, ignoring the 10 s age gate, and confirms it twice, 2 s apart.\n    c. It runs `setval` on `users_id_seq` with `GREATEST(current, mysql counter + 1,000,000)`.\n    d. It sets Postgres to `active` and MySQL to `standby`.\n    Each instance resumes when its own flag refresh brings `pg_dual`, so the pause is the longer of 30 s and the drain time.\n    If the drain is not empty at t=45 s, the engineer aborts before sub-step 4 by setting MySQL back to `active` and the flag back to `mysql_dual`.\n    After the switch a write mirrors step 4: Postgres transaction with fence read, write and `pg_outbox` row. After commit, a mirrored copy function applies it to MySQL, with the tombstone check done by a `FOR SHARE` read of `users_tombstones`. A MySQL failure never fails the request. The worker drains `pg_outbox` into MySQL. A reverse compare pass runs afterwards.\n\n13. Rollback window (step 9). Postgres is the source for at least 14 days while MySQL is kept current. To roll back (90 s or less), set the flag to `mysql_dual` and pause Postgres, drain `pg_outbox`, fix the MySQL `AUTO_INCREMENT` if needed, then set MySQL `active` and Postgres `standby`.\n\n14. Postgres-only (step 10). After 14 days, a clean compare and an empty `pg_outbox`, the flag becomes `pg_only` with no pause. When all instances report it, the reverse drain stops. 24 hours later the app's MySQL write grants are revoked. Rolling back to `pg_dual` leaves a gap in MySQL, so a reverse compare must reach 0 mismatches first.\n\n15. Cleanup (step 11). At least 7 days later with no MySQL write attempts, the team takes a final dump and drops the MySQL tables, the migration code, the flags, the replica fallback and `pg_outbox`. `users_tombstones` stays. A failure is handled by restoring from the dump.",
+   "gaps": [
+    "The document does not say what happens when the circuit breaker opens and closes (thresholds, reset), so I cannot say when inline apply resumes.",
+    "The document does not say what the 'read fallback' to the MySQL replica does when Postgres misses on a row the replica also lacks, or how a replica read relates to a just-committed primary write.",
+    "It does not say how users_pg_outbox rows are drained when the switch has happened but the worker's polling loop learns which outbox to read; the mechanism for choosing 'the outbox of the current source database' is not described.",
+    "The document does not say what a request does once it has been told WritesPaused/503 beyond Retry-After (client or caller retry behavior is not specified).",
+    "Reads in mysql mode (before and during the ramp) are only described for the percentage case; which database serves reads after the switch for users in or outside the percentage is not stated."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

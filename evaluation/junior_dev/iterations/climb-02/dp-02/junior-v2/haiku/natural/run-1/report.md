@@ -1,0 +1,37 @@
+## Review of dp-02 (junior-v2, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Merged dedup, ledger and enrichment into one decide-and-enrich consumer group (step 6), with one commit rule. This removes a separate hand-off step and answers Q3 and Q5.
+- Added the enriched log topic as the hand-off from enrichment to the warehouse loader (steps 6c and 7). Answers Q5.
+- Described the collector as a stateless new HTTPS service, and merged the stamp, validate and publish steps into one list (step 2). Answers Q1.
+- Merged the failed-write case into step 4 and said that a resend gets new envelope_ids, deduplicated by event_id alone. Answers Q2.
+- Replaced the vague close condition with a concrete check: recorded boundary offsets, then group A and B commits, then group C commits through the enriched topic end (steps 10 and 11). Answers Q6.
+- Corrected the straggler detection claim. The old text said replay step 19 detects stragglers, but that check does not look for them. Detection now compares the archived count for D with the close record count (step 13).
+- Added a swap guard (step 21) that aborts the swap if a winner was loaded after the freeze, because the swap would otherwise delete it. Answers Q8.
+- Explained a duplicate that arrives on a later day (step 18). Answers Q7.
+- Removed the redundant replay precondition on watermarks, because the close record already implies them (step 15).
+- Removed winner_received_day from the key-value value, because no step reads it. The value is now winner_envelope_id only.
+- Changed ledger and raw retention to 90 days from object creation, which matches the lifecycle rule.
+- Renamed Open decisions to Open questions and kept their numbers, so cross-references still work. Folded the warehouse serialization unknown into open question 5. Shortened the verification and failure sections without dropping a check.
+- Step 11 now names the close watchdog and says what runs it, when it first runs, how often it repeats, what it reads (committed offsets, enriched end offset, archive flush state), and that it keeps retrying until both checks pass. Q9 showed the step did not say what runs the check.
+- Added a failure-handling bullet for a close check that keeps failing, pointing to step 11 and open question 8. Q10 showed the retry behaviour was not stated where a reader would look.
+- Added open question 8 for the close watchdog's retry limit and alert recipients. The brief does not set them, so the plan must not choose them.
+- Summary: cut to two design rules and one sentence on the path.
+- Terms: dropped the separate 'Retry window' term. Its content now sits in live step 1 (the 7-day assumption) and open question 2.
+- Step 1: merged the retry-window assumption into the batching step.
+- Steps 2 and 4: removed repeated wording; the 'Failed write' rule is stated once.
+- Step 6: shortened the decide cases and the ledger note; merged the restart rule into one short paragraph.
+- Step 11: merged the continue/stop rule into one sentence.
+- Steps 17, 18 and 21: shortened the checks, the duplicate-on-later-day rule and the swap explanation without changing the rules.
+- Storage: rewrote the table with one notes column and merged the rejected-event line into it.
+- Failure handling: merged five bullets into four and removed the consumer-crash bullet, which is already covered by the step 6 restart rule and the step 7 MERGE.
+- Verification: merged the two replay bullets into one; kept the other checks.
+- Open questions: kept all eight, with their numbering, since steps and other questions cross-reference them. Shortened the wording of each.
+- Kept the step numbers 1 to 22 so cross-references (steps 3, 6, 9, 11, 12, 16, 17, 21 and open questions) still resolve; no step was merged away.
+- Kept the bot-traffic decision open (step 6c placeholder, open question 1) and did not choose for product.
+
+### Holes
+- Q8: After a replay swaps partition D, how do winners arriving later (stragglers) or live loader MERGEs for D interact with the swap? Can the live loader still be writing to D at swap time? (author: Whether the warehouse orders a MERGE and a partition replace is not known (open question 5). The plan does not rely on it for correctness. Step 21 now adds a guard that compares the distinct event_id count in D with the manifest's winner count before the swap, and aborts on any difference. A MERGE that lands between the check and the swap would be deleted by the swap. Reconciliation (step 9) catches that missing winner, and a replay fixes it. A MERGE after the swap is an ordinary straggler, corrected by the next replay.)
+- Q10: If the close check keeps failing (for example group A or C is stuck), how long does it retry before a human is involved, and who is alerted? (author: The brief does not say how long the close check may retry, who is alerted, or when a human is paged. The plan does not set these. The file now says the watchdog keeps retrying, D stays open, and no replay of D can start. The limit and the recipients are added as open question 8 for product or operations to decide. I did not invent a timeout.)

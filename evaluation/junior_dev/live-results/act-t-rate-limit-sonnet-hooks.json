@@ -1,0 +1,80 @@
+{
+ "label": "act-t-rate-limit-sonnet-hooks",
+ "model": "sonnet",
+ "hooks": true,
+ "wall_s": 43.3,
+ "cost_usd": 0.1370145,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback",
+   "report"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-63de2cxp\\project\\docs\\plans\\rate-limit.md",
+  "artifact_hash": "70a3784ef87b6d9b99d624d248763237778b78fcb383b7ac7b0f584f711e1d48",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "I wrote the plan to `docs/plans/rate-limit.md` and didn't change any code. The junior-dev review didn't actually test it. The helper ran in a stubbed \"activation\" mode, so the junior asked no questions and gave no explanation back. I didn't submit a verdict, because there was nothing to judge. The review made no changes to the plan.\n\nThe plan is based on `place_order` in `src/app.py`, the only order entry point.\n\n- **Where the check goes:** at the top of `place_order`, before the stock check and before `charge()`. Throttled requests never reach the payment provider.\n- **Algorithm:** a sliding-window log per customer, in a new `src/ratelimit.py`. It defaults to 5 attempts per 60 seconds, set by env vars `ORDER_RATE_MAX` and `ORDER_RATE_WINDOW`. Those numbers are my proposal and aren't confirmed.\n- **What counts:** every attempt, including ones rejected for stock or a failed payment. Otherwise someone could keep testing bad cards.\n- **Response:** `{\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": ...}`, which keeps the existing rejection shape.\n- **Customer name:** it's trimmed and lower-cased so `\"Bob\"` and `\"bob \"` share one limit.\n- **Tests:** seven cases, including that a throttled call never reaches `charge()`.\n\nOpen questions and limits to know about:\n- **HTTP layer:** the README mentions `POST /orders`, but there's no HTTP handler in this repo. Turning a rate-limited rejection into a 429 with `Retry-After` depends on where that handler lives.\n- **Per-process counters:** they live in memory, so the limit resets on restart and multiplies if you run several processes.\n- **Customer name:** it's self-reported, so someone could rotate names to get around the limit. Limiting by IP or card token would cover that, and it's out of scope here.\n- **Existing concurrency problem:** `place_order` has a race on stock and on `orders.json`. Rate limiting doesn't fix it.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback",
+  "report"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/rate-limit.md": "# Plan: per-customer rate limiting on order placement\n\nStatus: proposal only. No code has been changed.\n\n## What exists today\n\n- `place_order(customer, items, card_token)` in `src/app.py:17` is the only order entry point.\n  `customer` is a plain string (no auth, no customer record).\n- Order of work today: stock check -> `charge()` -> decrement `STOCK` -> append to `data/orders.json`.\n- State is in-process (`STOCK` dict) plus one JSON file. There is no database, no cache, no config module.\n- The README says orders arrive via `POST /orders` and the app runs with `python -m src.app`, but\n  `src/app.py` has no HTTP layer or `__main__`. The HTTP wrapper is not in this repo, so the\n  HTTP-facing part of this plan (429 + `Retry-After`) depends on where that wrapper lives (open question 1).\n\n## Goal\n\nStop a single customer from placing orders faster than a set rate (abuse, runaway client retry loops,\ncard-testing), without affecting other customers.\n\n## Design\n\n### Where the check goes\nFirst thing in `place_order`, **before** the stock check and, critically, before `charge()`.\nThrottled requests must never touch the payment provider.\n\n### Algorithm\nSliding-window log per customer: keep a deque of recent attempt timestamps, drop those older than\n`WINDOW_SECONDS`, reject if `len >= MAX_ORDERS`. Chosen over a token bucket because it is the\nsimplest to reason about and test (\"at most N attempts in any W seconds\"), and traffic here is low.\n\nDefaults (proposed, to be confirmed): `MAX_ORDERS = 5`, `WINDOW_SECONDS = 60`.\n\n### What counts toward the limit\nCount **every attempt**, including ones rejected for stock or payment failure. Counting only successes\nwould let someone hammer `charge()` with bad cards forever (card testing), which is the main abuse case.\n\n### New module: `src/ratelimit.py`\n- `class RateLimiter(max_events, window_seconds, clock=time.monotonic)`\n  - `check(key) -> (allowed: bool, retry_after_seconds: float)`; records the attempt when allowed.\n  - Internal `dict[str, deque[float]]` guarded by a `threading.Lock`.\n  - Injectable `clock` so tests need no sleeping.\n  - Prunes empty keys to keep memory bounded.\n- Module-level `order_limiter = RateLimiter(MAX_ORDERS, WINDOW_SECONDS)`, with values read from env vars\n  (`ORDER_RATE_MAX`, `ORDER_RATE_WINDOW`) falling back to the defaults.\n\n### Change to `place_order`\n```python\nallowed, retry_after = order_limiter.check(customer)\nif not allowed:\n    return {\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": retry_after}\n```\nKeeps the existing `{\"status\": \"rejected\", \"reason\": ...}` shape. Callers that ignore the extra\n`retry_after` key keep working.\n\n### Customer key\nNormalise before use (`customer.strip().lower()`), otherwise `\"Bob\"` and `\"bob \"` get separate buckets.\nReject empty/non-string customers up front rather than sharing one bucket.\n\n## Known limitations (accepted for v1)\n\n- **In-memory, per-process.** Resets on restart; with N worker processes the effective limit is N times\n  higher. Fine for the single-process app described in the README. If it is deployed multi-process,\n  move the counters to shared storage (Redis `INCR` + `EXPIRE`, or a sorted set for the sliding window).\n- **Self-reported customer identity.** `customer` is whatever the caller sends, so an attacker can rotate\n  names. A per-IP or per-card-token limit would be needed to cover that; out of scope here.\n- Pre-existing and unrelated, but worth knowing: `place_order` is not safe under concurrency\n  (stock check and decrement are not atomic, and `orders.json` read-modify-write can lose orders or\n  duplicate ids). Rate limiting reduces but does not fix this.\n\n## Tests (`tests/test_ratelimit.py`, new; no test setup exists yet)\n\n1. Allows up to N attempts in the window; the N+1th is rejected with `retry_after > 0`.\n2. Window slides: after advancing the fake clock past `WINDOW_SECONDS`, attempts are allowed again.\n3. Customers are independent: one customer being limited does not affect another.\n4. Key normalisation: `\"Bob\"` and `\" bob \"` share a bucket.\n5. `place_order` integration: a rate-limited call returns `reason == \"rate limited\"`, does **not**\n   call `charge` (patch it and assert not called), and does not change `STOCK` or write `orders.json`.\n6. Failed attempts (out of stock, bad card) still count toward the limit.\n7. Thread-safety smoke test: many threads for one key never admit more than N.\n\nTests must reset limiter state (fresh `RateLimiter` per test or a `reset()` helper) and use a temp\norders file so `data/orders.json` is not touched.\n\n## Rollout steps\n\n1. Add `src/ratelimit.py` and unit tests (tests 1-4, 7).\n2. Wire into `place_order`; add integration tests (5-6).\n3. In the HTTP layer, map `reason == \"rate limited\"` to `429 Too Many Requests` with a\n   `Retry-After` header.\n4. Document `ORDER_RATE_MAX` / `ORDER_RATE_WINDOW` in the README.\n5. Log each rejection (customer, count) so limits can be tuned from real traffic.\n\n## Open questions\n\n1. Where is the `POST /orders` handler? It is not in this repo, so step 3 needs its location.\n2. Are 5 orders / 60 s the right numbers for real customers (for example, bulk buyers)?\n3. Is the service ever run with more than one process? If so, in-memory storage is not enough in v1.\n4. Should limits apply per customer only, or also per IP / per card token?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-rate-limit",
+ "kind": "trigger",
+ "prompt": "Plan how to add per-customer rate limiting to placing orders. Save it to docs/plans/rate-limit.md. Do not change any code."
+}

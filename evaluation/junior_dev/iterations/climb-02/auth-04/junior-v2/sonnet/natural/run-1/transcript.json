@@ -1,0 +1,87 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "On GET /auth/google/start, where does the `next` value come from (a query parameter?), and what happens if it is not a valid relative path?",
+     "about": "Notes: `next`; Create attempt at S1"
+    },
+    {
+     "id": "2",
+     "text": "The confirm page POST is made by someone who may not have a session. What protects it against forged posts, and how does the page know which attempt it belongs to besides the g_pending cookie?",
+     "about": "GET and POST /auth/google/confirm; Confirm page"
+    },
+    {
+     "id": "3",
+     "text": "When a Google sign-in creates a new user, what are the other columns of that user (name, other required fields), and does `users.email` get Google's email? The text says it never writes Google's email into users.email, but the create step needs an email.",
+     "about": "CRE: One transaction: insert user with NULL password_hash and email_verified_at now"
+    },
+    {
+     "id": "4",
+     "text": "If Redis fails while the user is on the confirm page, or after they submit the password, what does the user see and what happens to the pending link?",
+     "about": "Redis unavailable; PX: g:pending still exists?"
+    },
+    {
+     "id": "5",
+     "text": "After a successful unlink, where does the user land and what do they see? Does unlink need CSRF protection like the link action?",
+     "about": "POST /settings/google/unlink; UD"
+    },
+    {
+     "id": "6",
+     "text": "If a user already has a valid `sid` session and clicks Sign in with Google on the login page, what happens to the existing session and which user ends up signed in?",
+     "about": "L: Login page: click Sign in with Google; SS start_session"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "`next` is an optional query parameter on GET /auth/google/start. It is validated as a relative path on our site; if invalid or missing it is dropped and sign-in ends at /home. Added to the Endpoints list."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The confirm page has no session, so the g_pending cookie is the only link to the attempt. It holds a random secret token, and SameSite=Lax means browsers do not send it on a cross-site POST, so a forged post finds no pending record. Wrong-password guesses are still limited by the existing lockout. I did not verify that the app's CSRF layer supports anonymous forms, so that is listed under Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The new user gets Google's lowercased email (it is verified and matched no user), NULL password_hash and email_verified_at = now. The other columns take their defaults (id, failed_logins 0, locked_until NULL, created_at). The schema has no name column. The earlier wording was misleading; the note now says Google's email is written once into a brand-new user and never changes an existing user's email."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Fail closed: the user sees the error page, nothing changes in PostgreSQL, no session is created. The pending record, if it is still in Redis, is left to expire after 10 minutes, and the user starts again. Added to the Redis unavailable bullet."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "After unlink (or the refusal for a user with no password) the user goes back to Account Settings with a message: 'Google unlinked', or the set-a-password instruction. Unlink is a POST that needs a session and the same CSRF protection as link. Added to Endpoints and the flowchart."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It is allowed. The login-origin flow ends in start_session, which deletes the old sessions row from the incoming sid and creates a new one. The user signed in afterwards is whoever the Google account resolves to, which may differ from the old session's user. Added a note."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow the main flow: a user who clicks \"Sign in with Google\" on the login page, and whose Google email matches an existing password account. This is the longest path. I note the branches along the way.\n\n1. **The click.** The user clicks \"Sign in with Google\" on the login page. The browser calls `GET /auth/google/start`, with an optional `next` query parameter. If `next` is not a relative path on our site, it is dropped, and the user will land on `/home` later. A valid `next` is saved so it can be used at the end.\n\n2. **Creating the attempt.** The server generates three things: a `state`, a `nonce` and a PKCE `code_verifier`. It writes `g:state:<state>` to Redis with a 600 s TTL. That record holds the verifier, the nonce, `origin` = `login`, the validated `next`, and a random browser token. It also sets the `g_flow` cookie (HttpOnly, Secure, SameSite=Lax), whose value must equal that browser token. Redis holds this state because it is short-lived. If the Redis write fails, the user goes back to the login page with \"Could not start Google sign-in\", and nothing is stored.\n\n3. **Off to Google.** The server redirects the browser to Google. This is the authorization code flow, with scope `openid email profile`, an S256 PKCE challenge, the `state` and the `nonce`.\n\n4. **Google returns.** Google redirects the browser to `GET /auth/google/callback`. This is the single callback for both login and settings. The `origin` comes from Redis, never from the URL.\n\n5. **Validating `state`.** The callback does an atomic `GETDEL` on `g:state:<state>`. It continues only if a record was found and the `g_flow` cookie matches the stored browser token. For a settings attempt, the current session user must also equal the recorded user. If any check fails (unknown, expired, reused or mismatched), it shows an error page and nothing changes. If the check passes, the record is already deleted, so the attempt can be used only once. The `g_flow` cookie is cleared. If Redis is down here, it shows the error page.\n\n6. **Google error.** If Google sent `error=` (for example, the user clicked Cancel) or sent no `code`, the user is redirected to the login page with \"Google sign-in was not completed.\" Google's error code is not echoed. The `state` is spent, so the user must start again.\n\n7. **Code exchange.** The server sends the code and the `code_verifier` to Google's token endpoint, with a timeout of about 5 s. If this fails (network error, timeout, non-200, `invalid_grant`), the user is redirected to the login page with \"We couldn't complete sign-in with Google. Please try again.\" Nothing is stored and there is no retry.\n\n8. **ID token check.** The server checks the signature, `iss`, `aud`, expiry, the `nonce` against the stored one, and that `sub` is present. If any check fails, it is handled exactly like a failed exchange. If it is valid, the server reads `sub`, `email` and `email_verified` and discards all tokens. No Google tokens are kept.\n\n9. **Branch on origin.** The stored `origin` is `login`, so the server takes the login branch. (The settings branch is covered in step 17.)\n\n10. **Is `sub` already linked?** The server looks up `sub` in `user_google_accounts` (PostgreSQL). If it is linked to a user, that user is signed in. The email and `email_verified` are ignored, so a changed Google email does not matter. The flow then goes to step 16. The document does not say whether a linked user's session is checked in any other way, and a locked account can still sign in this way, by assumption.\n\n11. **Is the email verified?** If `sub` is not linked, `email_verified` must be true. If it is false, the user goes back to login with \"Google email not verified, use email and password\", and nothing is created.\n\n12. **Does the email match a user?** The server lowercases the email and looks for an existing user.\n    - **No match:** one transaction inserts a new user (Google's lowercased email, NULL `password_hash`, `email_verified_at` = now) and inserts the link row. Then it goes to step 16. If this hits a unique violation on email or `sub`, the decision is re-run once. If it conflicts again, the generic failure message is shown.\n    - **Match (this flow):** continue to step 13.\n\n13. **Account takeover guard.** If the matched user already has a Google account linked, or has no password, the user goes back to login with \"this account is linked to a different Google account\", and nothing changes. Otherwise the server saves `g:pending:<token>` in Redis (`target_user_id`, `sub`, `next`; no email, no tokens) with a 600 s TTL. It sets the `g_pending` cookie (HttpOnly, Secure, SameSite=Lax, path `/auth/google`) and redirects to the confirm page. A verified email alone never signs anyone in. The password must be proven first.\n\n14. **Confirm page.** `GET /auth/google/confirm` shows \"enter the password for that account, or Cancel\". The user has no session here. The `g_pending` cookie is the only link to the attempt. If the user clicks Cancel, the pending record is deleted, the cookie is cleared and the user goes back to login.\n\n15. **Submitting the password.** The `POST /auth/google/confirm` handler runs these checks in order.\n    1. If `g:pending` no longer exists, the user goes back to login with \"confirmation expired, start again\", and nothing changes.\n    2. If `locked_until` is in the future, the password is not checked. The pending record is deleted, the cookie is cleared, and the login page shows \"Account temporarily locked\".\n    3. If bcrypt does not match, `failed_logins` goes up by 1. At 5, `locked_until` is set to now + 15 min and `failed_logins` resets to 0. If the account is now locked, the pending record is discarded and the user goes to the login page. If not, the confirm form is shown again. The pending TTL is not extended, so 10 minutes is a hard limit.\n    4. If bcrypt matches, `failed_logins` resets to 0. The server then inserts the link row in a transaction that re-checks that both `sub` and the user are unlinked. If there is a unique violation, the pending record is deleted and the user goes back to login with \"could not link, use email and password\". On success, the pending record is deleted and `g_pending` is cleared.\n    If Redis is down on the confirm page (view or submit), the error page is shown.\n\n16. **Starting the session.** `start_session(user_id)` deletes the old `sessions` row if a `sid` cookie came in, inserts a new `sessions` row, and sets the `sid` cookie. It redirects to `next` (a relative path only, re-checked here) or `/home`. This is the same as password login. If the user was already signed in, the old session is replaced, and the resulting user is whoever the Google account resolved to.\n\n17. **Settings link (the other origin).** The user clicks \"Link Google\" in Account Settings, which sends `POST /settings/google/link`. This needs a session and CSRF protection. If the user already has a Google account linked, they are sent back to settings with \"already linked\". Otherwise steps 2 to 8 run with `origin` = `settings` and the signed-in `user_id` recorded. At the callback:\n    - If `sub` is linked to another user, the user goes back to settings with \"linked to someone else\".\n    - If `sub` is linked to this user, the message is \"already linked\".\n    - If this user has a different Google account linked, the message is \"unlink the current one first\".\n    - Otherwise a row is inserted. No password is asked and the emails need not match. A unique violation from a race is treated as \"linked to someone else\". On success the user goes back to settings with \"Google linked\", and no new session is created.\n\n18. **Unlink.** `POST /settings/google/unlink` needs a session and CSRF protection. If the user has no `password_hash`, they go back to settings with \"set a password first using the existing reset email, POST /forgot\", and the link stays. Otherwise the `user_google_accounts` row is deleted and the user goes back to settings with \"Google unlinked\". Sessions are untouched. A password reset does not remove the link. A password reset also fills in `password_hash` for Google-created users.\n\n19. **Related password login change.** A NULL `password_hash` on `/login` counts as a wrong password. A dummy bcrypt compare is run for timing, the generic message is shown, and it counts as a failed login.",
+   "gaps": [
+    "How the callback finds the `g_flow` cookie's counterpart: the document says the stored browser token must equal the cookie, but not what the cookie's lifetime or path is, so I cannot say whether it survives the trip to Google and back.",
+    "How the server tells which pending attempt a confirm POST belongs to is only the `g_pending` cookie. The document does not say what the confirm page shows if `g_pending` is missing from the request on a GET (as opposed to expired in Redis).",
+    "What exact page the user sees on 'error page' and which status code it returns is not described, so I cannot say what the user does next beyond starting again.",
+    "For the linked-`sub` sign-in, the document does not say what happens if the linked user row's data is otherwise unusable, or how `next` is carried to `start_session` in the settings-less login path other than from the `g:state` record (I inferred it from the stored `next`).",
+    "Whether the existing CSRF protection works on the confirm form is explicitly an open question, so I cannot say whether the POST to `/auth/google/confirm` has CSRF protection beyond the cookie."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

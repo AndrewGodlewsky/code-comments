@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "row_count of 10,000 or less: the click response is the CSV file (200, attachment). Above 10,000: a background job builds it; the user gets 202 with export_id and queued status.",
+  "q2": "The click returns the active export (HTTP 200, already_active: true) without starting another, even if the new click has different filters.",
+  "q3": "The emailed link works for 24 hours. The bucket deletes the stored file after 7 days. Page download links are minted per click for 300 seconds.",
+  "q4": "Up to 3 attempts. After the last failure the row is marked failed with error_text, a failure email is sent, and the user can click Download CSV again.",
+  "q5": "Report rows are read only from the read replica. Export state lives on the primary database.",
+  "q6": "In the report_exports table on the primary. The page polls the latest-export endpoint every 5 seconds while queued or running, reading database state, so reopening shows it.",
+  "q7": "It streams 5,000-row keyset pages into an 8 MiB buffer and uploads each as a multipart part (about 115 parts), so memory stays at tens of MB.",
+  "q8": "Nothing becomes visible until complete_multipart, so partial data is invisible. Failed attempts abort best-effort; the next attempt restarts from the beginning with a new upload.",
+  "q9": "Filters and columns are copied into the report_exports row at the click. The job payload carries only export_id, and the job loads filters and columns from the row.",
+  "q10": "A partial unique index in the primary database on (user_id, report_id) where status is queued or running; a simultaneous second insert fails.",
+  "q11": "The file must be completed and the row marked done. A rerun then only sends the email if email_sent_at is empty, without rebuilding. A failed row makes the handler do nothing.",
+  "q12": "Nothing is stored. The CSV is fully built in memory before sending, so a failure returns 500 with no truncated download, and the user clicks again."
+ },
+ "sonnet": {
+  "q1": "Step 2 reads reports.row_count: 10,000 or less is the small path, above 10,000 is the large path. Small: the HTTP response is the CSV (200, text/csv, attachment) and the page saves it as a file. Large: a background job builds the file; the click returns 202 {export_id, status: queued} (or 200 with the existing active export), and the user later gets an emailed download link and can download from the page.",
+  "q2": "The new click does not start another export. Step 4 returns the existing active export (HTTP 200, {export_id, status, filters, cols, already_active: true}), even if the new click had different filters. Exception: if the active one is stale (older than 2 hours, or no job_id and older than 1 minute) it is marked failed and a new one is created.",
+  "q3": "The emailed signed URL is valid for 24 hours (86,400 s, the maximum) from the email. The bucket deletes objects after 7 days. No cleanup job is built. The page also offers download only within 24 hours of completion.",
+  "q4": "3 attempts (waits of 60 s and 300 s before attempts 2 and 3). After the last failure, on_final_failure sets the row to failed (unless already done), stores error_text, releases the unique slot, and sends the report_export_failed email (in try/except). The page shows failed, and the Download CSV button works again so the user can start a new export. If the row was already done (only the email failed), it stays done with its download button.",
+  "q5": "The read replica, for both the small path and the job. Never the primary. (Export row state is on the primary.)",
+  "q6": "In the report_exports table on the primary database (status queued/running/done/failed). The page polls GET /api/reports/{report_id}/exports/latest on load and every 5 seconds while queued or running; it reads from the primary. A returning user gets the state from the database, not the browser.",
+  "q7": "It streams: multipart upload to storage, reading 5,000 rows at a time from the replica by keyset paging, appending CSV text to an in-memory buffer, freeing each page, and uploading a part whenever the buffer reaches 8 MiB. Memory is about 8 MiB buffer plus one page plus the etag list (tens of MB), well below 512 MB. About 115 parts for 900 MB. Time is to be measured in staging (target 15 minutes or less versus the 30-minute timeout).",
+  "q8": "The partial data is invisible: the multipart upload does not appear at the key until complete_multipart. On a raised error the job calls abort_multipart as best effort; if the worker dies or times out nothing aborts, and the bucket discards unfinished uploads within 24 hours. The next attempt restarts from scratch (from the beginning, new multipart upload, nothing resumed) with the same payload and the same object key, overwriting if needed.",
+  "q9": "They are copied from the click into the report_exports row (filters JSON and ordered cols). The job payload carries only {export_id}; the job loads filters and columns from the export row.",
+  "q10": "The database: a partial unique index on report_exports (user_id, report_id) WHERE status IN ('queued','running'). The loser of the insert hits the unique index and returns the existing active export, so both clicks get the same export_id.",
+  "q11": "The file must be complete: complete_multipart has succeeded (object exists at the key) and the row is marked done with completed_at and rows_written; the email is sent only if email_sent_at is empty, and then email_sent_at is set. If the queue reruns: a done row goes straight to Step 9 and only sends the email if email_sent_at is empty (no rebuild, no second file); a failed row makes the handler return normally and do nothing.",
+  "q12": "The user gets a 500 and clicks again. The CSV is fully built in memory before sending, so there is never a truncated download. Nothing is stored (no job, no export row)."
+ }
+}
