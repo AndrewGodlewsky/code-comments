@@ -26,6 +26,7 @@ CASES = (
     ROOT / "evaluation/skill_eval/cases",
     ROOT / "evaluation/hygiene/cases",
     ROOT / "evaluation/hygiene/references",
+    ROOT / "evaluation/junior_dev/cases",
 )
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 ALLOWED_KEYS = {"name", "description", "license", "compatibility", "metadata"}
@@ -62,7 +63,9 @@ def frontmatter(text: str) -> tuple[dict[str, str], str, list[str]]:
     return fields, match[2], problems
 
 
-def lint_skill(directory: Path) -> list[str]:
+def lint_skill(directory: Path, portable: bool = True) -> list[str]:
+    """Format and link rules for one skill; portable=False drops the host-specific rules,
+    for a skill that ships inside a Claude Code plugin and may name ${CLAUDE_PLUGIN_ROOT}."""
     problems: list[str] = []
     skill = directory / "SKILL.md"
     if not skill.is_file():
@@ -84,7 +87,7 @@ def lint_skill(directory: Path) -> list[str]:
         problems.append(f"body has {len(body.splitlines())} lines (max 500)")
     for path in sorted(p for p in directory.rglob("*") if p.is_file() and p.suffix == ".md"):
         content = path.read_text(encoding="utf-8")
-        for pattern, label in NON_PORTABLE:
+        for pattern, label in NON_PORTABLE if portable else ():
             if pattern.search(content):
                 problems.append(f"{path.relative_to(directory).as_posix()}: {label}")
         for target in re.findall(r"\]\(([^)\s]+)\)", content):
@@ -94,6 +97,11 @@ def lint_skill(directory: Path) -> list[str]:
             if not resolved.is_file() or directory.resolve() not in resolved.parents:
                 problems.append(f"{path.relative_to(directory).as_posix()}: link {target} must resolve inside the skill")
     return [f"{directory.parent.name}/{directory.name}: {p}" for p in problems]
+
+
+def lint_skill_dir(directory: Path, portable: bool = True) -> list[str]:
+    """lint_skill plus the eval-leakage check, for one skill directory."""
+    return lint_skill(directory, portable) + leaked(directory, case_shingles())
 
 
 def _words(text: str) -> list[str]:
