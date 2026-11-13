@@ -107,9 +107,19 @@ final report must be able to show any of them.
      options. One is a plugin subagent. The other is a helper script that runs the junior
      with `claude -p` from an empty temporary directory, with project and user settings
      excluded. The strictest option that works on the user's subscription ships. Whatever
-     context still leaks is recorded in the README. The eval's junior gets exactly the same
-     isolation as the shipped one, so the Junior-against-JuniorFull comparison stays valid.
-     **our call**
+     context still leaks is recorded in the README. **our call**
+   - **Decided by the [spike](spike-2026-11-12.md):** the helper script ships. Each junior
+     turn is `claude -p --safe-mode --tools "" --system-prompt-file <junior prompt>
+     --json-schema ...`, run from an empty temporary directory with the prompt on stdin.
+     - It saw no tools, MCP servers, plugin skills or `CLAUDE.md` (a canary in the working
+       directory never appeared).
+     - What still reaches it is Claude Code's generic environment block: the temporary
+       working directory, platform, date and budget, plus an account-context note. None of
+       it says anything about the project.
+     - A plugin subagent received the project's `CLAUDE.md`, so it is not used.
+     - **Deviation in the tournament:** junior turns there are workflow agents, which
+       receive this repository's `CLAUDE.md` (unrelated to every case). The deviation is
+       identical across arms, and the headless plugin runs test the shipped isolation.
 3. **Questions.** The junior asks batches of questions, in rounds, about what it does not
    understand, as a junior developer would. Each question points to the step, node or
    edge it is about. **user** (the pointing is **our call**). The junior's exact procedure
