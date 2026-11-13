@@ -114,6 +114,56 @@ def decide(summary: dict, junior_arm: str = "junior", self_arm: str = "self-revi
     return out
 
 
+def grader_agreement(by_models: list[dict], a: str = "sonnet", b: str = "opus") -> tuple[int, int]:
+    """(items where graders a and b agree, items both graded), over runs graded by both."""
+    agree = total = 0
+    for by_model in by_models:
+        if a not in by_model or b not in by_model:
+            continue
+        for reader, items in by_model[a].items():
+            other = {g["id"]: g["correct"] for g in by_model[b].get(reader, [])}
+            for g in items:
+                if g["id"] in other:
+                    total += 1
+                    agree += g["correct"] == other[g["id"]]
+    return agree, total
+
+
+def iteration_agreement(iteration_dir: Path) -> tuple[int, int]:
+    return grader_agreement([_load(p).get("by_model", {}) for p in Path(iteration_dir).rglob("grades.json")])
+
+
+def validation_gates(summary: dict, agreement: float) -> dict:
+    """The grader checks of plan Task 7, on NoReview runs over the reference and its variants."""
+    def by_case(mode, reader=None):
+        vals = defaultdict(list)
+        for r in summary["runs"]:
+            if r["mode"] == mode:
+                v = r["per_reader"].get(reader) if reader else r["comprehension"]
+                if v is not None:
+                    vals[r["case"]].append(v)
+        return {c: statistics.fmean(v) for c, v in vals.items()}
+
+    ref, implicit, padded = by_case("null"), by_case("seeded-implicit"), by_case("padded")
+    low_ref, low_pres = by_case("null", "haiku-low"), by_case("seeded-presentation", "haiku-low")
+    mean = lambda d: statistics.fmean(d.values()) if d else float("nan")
+    lower = [c for c in implicit if c in ref and implicit[c] <= ref[c] - 0.15 + EPS]
+    share_lower = len(lower) / len(implicit) if implicit else 0.0
+    common = sorted(set(low_ref) & set(low_pres))
+    separation = statistics.fmean(low_ref[c] - low_pres[c] for c in common) if common else float("nan")
+    gates = {
+        "reference_high": {"value": mean(ref), "threshold": ">= 0.85", "passed": mean(ref) >= 0.85 - EPS},
+        "implicit_lower": {"value": share_lower, "threshold": ">= 0.70 of cases at least 0.15 below the reference",
+                           "passed": share_lower >= 0.70 - EPS},
+        "padding_neutral": {"value": mean(padded) - mean(ref), "threshold": "within +-0.05",
+                            "passed": abs(mean(padded) - mean(ref)) <= 0.05 + EPS},
+        "grader_agreement": {"value": agreement, "threshold": ">= 0.90", "passed": agreement >= 0.90 - EPS},
+        "hurried_reader_separates": {"value": separation, "threshold": ">= 0.10 (reported, not blocking)",
+                                     "passed": separation >= 0.10 - EPS},
+    }
+    return gates
+
+
 def score(iteration_dir: Path) -> dict:
     rows = load_runs(iteration_dir)
     groups = defaultdict(list)

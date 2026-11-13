@@ -6,7 +6,7 @@ plugin itself (SKILL.md, junior-prompt.md, teachback-prompt.md) and from prompts
 tournament therefore always runs the text that ships. Run a batch with
 Workflow({scriptPath: <file>}), then collect.py its output file.
 
-    python -m evaluation.junior_dev.build pilot   # see main() for the named batches
+    python -m evaluation.junior_dev.build validation   # or: pilot (see named_batch)
 """
 
 from __future__ import annotations
@@ -200,9 +200,33 @@ def js_render(kind: str, artifact: str, transcript: list[dict]) -> str:
     return json.loads(done.stdout)["text"]
 
 
+PILOT_CASES = ["auth-01", "ms-01", "mig-02", "feat-01"]   # one simple, one complex, one diagram-state, one with files
+
+
+def named_batch(name: str) -> list[Path]:
+    """The batches the plan runs by name; each writes its files under built/<name>/."""
+    out = BUILT / name
+    if name == "validation":
+        ids = [c.id for c in load() if c.split in ("dev", "heldout")]
+        none = [arms_mod.CONTROLS[0]]
+        files = []
+        for mode, graders in (("null", ("sonnet", "opus")), ("seeded-implicit", ("sonnet", "opus")),
+                              ("seeded-presentation", ("sonnet",)), ("padded", ("sonnet",))):
+            files += build_batch(ids, none, ["none"], 1, mode, out, f"validation-{mode}", grader_models=graders)
+        return files
+    if name == "pilot":
+        pilot_arms = [arms_mod.CONTROLS[0], arms_mod.CONTROLS[1], arms_mod.CONTROLS[3], arms_mod.DEFAULT_JUNIOR]
+        return build_batch(PILOT_CASES, pilot_arms, ["haiku", "sonnet"], 1, "natural", out, "pilot")
+    raise ValueError(f"unknown batch {name!r}")
+
+
 def main(argv: list[str]) -> int:
-    print(__doc__)
-    return 2
+    if len(argv) != 1:
+        print(__doc__)
+        return 2
+    for path in named_batch(argv[0]):
+        print(path)
+    return 0
 
 
 if __name__ == "__main__":

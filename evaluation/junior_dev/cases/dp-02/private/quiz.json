@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "A batch arrives at the collector and some of its events are malformed. What does the collector acknowledge, and at what point may it do so?",
+  "key": "It returns 202 only once the batch is durably stored. Malformed events are rejected one at a time and listed in the response; the rest of the batch is accepted.",
+  "why": "The acknowledgement point decides where durability begins and why retries, and so duplicates, happen."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "What does a client do when sending a batch times out or gets a 429 or 5xx?",
+  "key": "It keeps the events (mobile: in the on-device buffer for up to 7 days) and resends the same batch with the same event_ids, backing off exponentially from 1 s up to 5 minutes.",
+  "why": "Client retries are the source of duplicates, and their timing sets how long dedup has to remember."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "When two copies of the same event arrive some days apart, which copy ends up in the warehouse?",
+  "key": "The first copy received. Later copies with the same event_id, up to 7 days later, are dropped.",
+  "why": "This is the core dedup rule that both the live path and replay must apply."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "An event has a client timestamp of 23:50 UTC Monday but reaches the collector at 00:10 UTC Tuesday. Which day's partition and replay does it belong to?",
+  "key": "Tuesday: the UTC day of the server-stamped received_at, never the client timestamp.",
+  "why": "The day rule decides partitioning, archive layout and what a replay of a day contains."
+ },
+ {
+  "id": "q5",
+  "kind": "design",
+  "question": "Where is the live deduplication state held, what is recorded for each event, and what removes old entries?",
+  "key": "A key-value dedup store (the KV store's dedup namespace). A set-if-absent records event_id -> the raw-log position (partition + offset) of the first copy. An 8-day TTL (7-day retry window plus a 1-day margin) removes entries.",
+  "why": "A reader has to know who owns dedup state and how long it lasts to trust the 7-day duplicate guarantee."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "If the deduplication state store becomes unreachable, what happens to events that clients keep sending?",
+  "key": "The collector keeps accepting and acknowledging them, and they wait in the raw log (14-day retention). The live processor pauses and retries the micro-batch with backoff, never letting events through unchecked. An alert fires at 5 minutes of lag.",
+  "why": "This shows whether a dependency failure causes data loss, duplicates or only delay."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "If the live processing stage crashes after writing a batch to the warehouse but before recording its progress, how does the design avoid both losing and double-counting those events?",
+  "key": "It rereads the batch from the last committed raw-log position. The dedup store holds that same position for those events, so they are kept rather than treated as duplicates. The warehouse load merges on event_id, so the rows are overwritten, not added.",
+  "why": "Crash recovery between the write and the commit is where exactly-once claims usually break."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "What does a replay read as its input, and where are rebuilt events written before dashboards can see them?",
+  "key": "Its event input is only the day's raw archive files in object storage (archive/date=D/), plus read-only event_id lookups against events_clean for days D-7 to D-1. It never reads the raw log or touches the dedup store. It writes to a staging table, events_clean_staging_D, and the rows become visible when partition D of events_clean is atomically replaced with staging.",
+  "why": "This shows how replay stays isolated from live processing and how the no-half-rebuilt-day rule is met."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Without the live deduplication state, how does a replay of day D decide which copies of each event to keep, including events whose first copy was received on an earlier day?",
+  "key": "Within D, for each event_id it keeps the copy with the earliest received_at (tie: lowest raw-log position). It also drops any event_id already present in events_clean for days D-7 to D-1, because that event's first copy arrived on an earlier day.",
+  "why": "Replay must reproduce the live dedup result without the live dedup state, which it may not touch."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "If a replay fails partway through, what state is the warehouse left in, and how does the operator recover?",
+  "key": "events_clean is untouched and the old partition D is still served. The staging table is dropped and the replay is rerun from the start. If the swap itself fails, the old partition stays and the swap is retried.",
+  "why": "Failure behaviour of the rebuild shows whether replay is safe to run and to rerun."
+ },
+ {
+  "id": "q11",
+  "kind": "brief",
+  "question": "Which days can an operator replay?",
+  "key": "Only closed days: day D can be replayed from 02:00 UTC on the following day.",
+  "why": "This sets when replay is allowed."
+ },
+ {
+  "id": "q12",
+  "kind": "brief",
+  "question": "How is suspected bot traffic handled?",
+  "key": "Not decided. Product has not chosen between dropping it and keeping it with a flag, and the plan leaves it as an open question.",
+  "why": "The reader has to know this behaviour is still open, not settled."
+ }
+]

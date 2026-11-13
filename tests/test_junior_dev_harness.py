@@ -209,6 +209,34 @@ class ScoreTest(unittest.TestCase):
         self.assertAlmostEqual(score.run_cost(usage), 1000 * 0.10 / 1e6 + 1000 * 0.50 / 1e6)
 
 
+class ValidationGateTest(unittest.TestCase):
+    def _rows(self, ref=0.9, implicit=0.6, padded=0.9, presentation_low=0.75):
+        rows = []
+        for i in range(10):
+            for mode, value, low in (("null", ref, ref), ("seeded-implicit", implicit, implicit),
+                                     ("padded", padded, padded), ("seeded-presentation", 0.85, presentation_low)):
+                rows.append({"case": f"c{i}", "arm": "no-review", "author": "none", "mode": mode, "rep": 1,
+                             "comprehension": value, "per_reader": {"haiku-low": low, "sonnet": value}})
+        return rows
+
+    def test_gates_pass_on_a_good_grader(self):
+        gates = score.validation_gates({"runs": self._rows()}, agreement=0.95)
+        self.assertTrue(all(g["passed"] for g in gates.values()), gates)
+
+    def test_gates_catch_each_failure(self):
+        self.assertFalse(score.validation_gates({"runs": self._rows(ref=0.8)}, 0.95)["reference_high"]["passed"])
+        self.assertFalse(score.validation_gates({"runs": self._rows(implicit=0.8)}, 0.95)["implicit_lower"]["passed"])
+        self.assertFalse(score.validation_gates({"runs": self._rows(padded=0.97)}, 0.95)["padding_neutral"]["passed"])
+        self.assertFalse(score.validation_gates({"runs": self._rows()}, 0.85)["grader_agreement"]["passed"])
+        self.assertFalse(score.validation_gates({"runs": self._rows(presentation_low=0.85)}, 0.95)
+                         ["hurried_reader_separates"]["passed"])
+
+    def test_grader_agreement_counts_items(self):
+        by_model = {"sonnet": {"r": [{"id": "q1", "correct": True}, {"id": "q2", "correct": False}]},
+                    "opus": {"r": [{"id": "q1", "correct": True}, {"id": "q2", "correct": True}]}}
+        self.assertEqual(score.grader_agreement([by_model]), (1, 2))
+
+
 class MermaidTest(unittest.TestCase):
     GOOD = "```mermaid\nflowchart TD\n  A[User] -->|login| B(API)\n  B --> C{Valid?}\n```\n"
     BAD = "```mermaid\nflowchart TD\n  A[User] -->|login B(API\n  B --> \n```\n"

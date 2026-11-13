@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "At what point in the deploy are schema migrations applied, and which release must still work against the migrated schema?",
+  "key": "Once per deploy, before any instance of the new release starts (so before the switch). The release that is serving traffic must keep working on it, because migrations are additive only.",
+  "why": "When both colours share one database, the order of migrations relative to the new code and the switch is the main safety property."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "When may a column or table be dropped or renamed?",
+  "key": "Never in the same release. Only in a later release, after the release that still uses it has been retired (its colour shut down).",
+  "why": "Shows how the plan keeps the old colour working on a shared schema."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What must the new release achieve before it receives user traffic, and what happens if it does not achieve this in time?",
+  "key": "Every instance passes /healthz 3 times in a row (checks 10 s apart) and the smoke suite passes, within 10 minutes of the instances starting. Otherwise the deploy aborts, the public listener is never changed and the live colour keeps serving.",
+  "why": "Defines the gate between deploying and serving, and the failure path that runs before any user is affected."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "How does user traffic move from the old release to the new one?",
+  "key": "All at once: the public listener is repointed from the old colour's target group to the new one in a single change. There is no gradual shift.",
+  "why": "A reader needs to know whether users ever see both versions at once."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What triggers an automatic rollback, and what does a rollback change and leave alone?",
+  "key": "A 5xx rate above 1% over any 5-minute window during the 15 minutes after the switch. The public listener is pointed back at the old colour. Migrations are not reversed, so the schema stays as it is.",
+  "why": "This is the failure path after users have reached the new release, and it shows that the database only moves forward."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "For how long after the switch can traffic be pointed back at the old colour, and how is a problem found after that handled?",
+  "key": "Until the old colour is shut down, 30 minutes after the switch: automatically during the first 15 minutes, or at any point up to 30 minutes by an engineer starting the pipeline's rollback job. After that, the fix is a normal deploy of the previous release.",
+  "why": "Sets how long a fast rollback is possible and what replaces it afterwards."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "If a migration fails partway through, what state is the shared database left in, and what happens to the rest of the deploy?",
+  "key": "Table and column migrations run in one transaction, so a failure there rolls back and leaves the schema unchanged. Index builds run afterwards, CONCURRENTLY and outside the transaction so they do not block the live colour's writes. If one fails, the invalid index is dropped, the committed additive changes stay (harmless), and the unrecorded index migration runs again in the next deploy. Either way the deploy stops, the new colour is never started and the live colour keeps serving.",
+  "why": "A reader must know whether a failed migration can leave the shared database half-changed or locked under the live release."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "How does a deploy determine which colour is live and which one receives the new release, and where is that recorded?",
+  "key": "It reads which target group the load balancer's public listener forwards to. That colour is live and the other one gets the release. The listener is the only lasting record (there is no state file). The run keeps a copy in its own run variables, which are discarded when the run ends.",
+  "why": "The colours swap roles on every deploy, so the source of truth for which one is live drives every later step."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "What prevents two deploys from overlapping, and how long does a deploy keep that protection?",
+  "key": "A CI concurrency group (its name, e.g. deploy-catalog-web, is incidental and not scored). One run holds it and later runs queue. It is held until the run ends: after the old colour is retired at T+30 min, or earlier on an abort or rollback. This stops a new deploy from overwriting the colour that is still the rollback target.",
+  "why": "Overlapping deploys would destroy the rollback target or race on the listener."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "How do smoke tests reach the new release while users are still being served by the old one?",
+  "key": "Through an internal test listener that only CI can reach and that points at the new colour's target group (its port, e.g. 8443, is incidental and not scored). The public listener still forwards to the live colour.",
+  "why": "Explains how the new release is checked with real requests before any user reaches it."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "What runs the migrations, and what ensures they run only once per deploy?",
+  "key": "The pipeline runs a single migrate task from the new release's image, before any instance starts. Instances never migrate on startup, so nothing else runs migrations. The migration history table records what has already been applied.",
+  "why": "With 4 instances starting at the same time, a reader needs to know who owns schema changes."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "What happens to the new colour's instances after an abort or a rollback, and what does that mean for the next deploy?",
+  "key": "They are scaled to 0, so that colour is idle and empty again, and the next deploy deploys into it. If the scale-down fails, the team is alerted and the next deploy scales the colour to 0 before using it.",
+  "why": "Shows the state each failure path leaves behind for the next run."
+ }
+]

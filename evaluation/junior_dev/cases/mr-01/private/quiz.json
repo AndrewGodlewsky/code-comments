@@ -1,0 +1,79 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What starts a failover, and what does detecting that Region A is down do on its own?",
+  "key": "Detection (2 of 3 probe locations seeing 3 consecutive /healthz failures, probed every 10 s) only pages on-call. A failover starts only when an on-call person runs the failover command. Nothing promotes automatically.",
+  "why": "A reader has to know whether the system can fail over by itself or needs a person to decide."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "What does the failover do if B's replica had fallen too far behind A?",
+  "key": "If B's last recorded replay lag (the value from when B last received WAL from A) is over 30 s, the command stops before promotion. It continues only with an explicit accept-data-loss override.",
+  "why": "This is the guard that enforces the RPO, and the only point where loss beyond it can be accepted."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What must already have happened before B's database is promoted, before B's workers start, and before DNS points at B?",
+  "key": "Before promotion, A must be fenced. Before B's workers start, B's database must be writable (promoted). Before DNS moves to B, B's app must be scaled up and passing its health check.",
+  "why": "These constraints are what prevent two writable databases and keep workers and traffic off an unready region."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "What happens to a signed-in user's session when traffic moves to B?",
+  "key": "It is lost. Sessions sit in per-region Redis that is not replicated, so users have to sign in again on B. This is accepted.",
+  "why": "It is the user-visible effect of a failover, and it shows which state does not cross regions."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What becomes of Region A's old database once A recovers?",
+  "key": "It is never used as primary again; it is rebuilt as a replica of B. Moving back to A is a separate planned switchover, not an automatic failback.",
+  "why": "Failback is where a recovered old primary could cause split brain or bring back divergent data."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "If the failover command cannot reach Region A at all, what stops a partitioned A that is still running from accepting writes once B is promoted?",
+  "key": "Self-fencing. Every app instance and worker reads active_region from the control store every 5 s and may start a write only if a successful read within the last 15 s named its own region (write transactions are capped at 5 s); otherwise it goes read-only. An A cut off from the store stops writing on its own, and an A that can still read it sees active_region = B. The command sets active_region = B and waits 20 s before promoting, so A has stopped committing by then.",
+  "why": "A fence that only works when A is reachable is no protection against split brain, and the brief requires one that works without A."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "Which component holds the authoritative record of which region is active, and which parts of the system write and read it?",
+  "key": "A strongly consistent 3-node key-value control store with one node each in A, B and a third region C; every read and write needs a majority. It holds active_region, the failover lock (a lease) and the failover log. Only the failover command (including its abort) writes it. Every app instance and worker in both regions reads active_region every 5 s.",
+  "why": "Every fencing, resume and abort decision depends on where this state lives and who can change it."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "What happens to background jobs that Region A's workers had started but not finished when A was lost?",
+  "key": "After promotion and before any B worker starts, the command sets every job marked running in B's database (all claimed by A's workers) back to queued, and B's workers rerun them. Jobs A finished in its last unreplicated seconds also rerun. Jobs must be idempotent (keyed by job id), so a rerun is safe.",
+  "why": "The jobs table moves with the database, so without a rule like this claimed jobs would be stuck or rerun unsafely."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "If the failover run fails partway through, how is it resumed, and under what conditions can the team still go back to A instead?",
+  "key": "Each step logs 'started' and 'done' in the failover log in the control store. The lock is a lease (30 s TTL, renewed every 10 s), so a crashed run's lock expires; rerunning the command takes it and resumes at the first step not logged done, repeating a half-done step (every step is safe to repeat). Until promotion is logged as started, on-call can abort: active_region goes back to A and any revoked write privileges on A's database are restored, so A resumes writes. Once promotion is logged as started, abort is refused and the run only goes forward. If B fails its health check, DNS stays on A while on-call fixes B and reruns.",
+  "why": "Partial failure during a failover is likely, and the reader needs to know which states are recoverable and which are one-way."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "What does a client whose cached DNS still points at Region A experience during and after the failover?",
+  "key": "From the fence until its cached DNS expires (up to 60 s after the DNS switch), it still reaches A. If A is up, A's instances (left running by the fence) are self-fenced: reads come from A's stale database and writes get a 503 read-only response. If A is down, requests fail. Once the TTL expires, it reaches B.",
+  "why": "It describes the client-visible window between the fence and DNS taking effect."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "How much recently committed data can a failover lose, and what limits it?",
+  "key": "What A committed that B never received (replication is asynchronous; B replays everything it did receive before promotion). If A failed outright, that is at most B's recorded lag, held to 30 s by the pre-promotion check unless on-call overrides. If A kept running after B lost its WAL stream (a partition), A's commits from then until it stopped writing, at the latest 20 s after the fence was set, are lost too; the check cannot see them, and they survive only in the snapshot of A's old database.",
+  "why": "It sets the real data-loss expectation, including the case the lag check cannot measure."
+ }
+]

@@ -44,8 +44,8 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
 3. **Revise the file first.** Go through each question and ask yourself:
    - Is the answer already in the file? If not, the file is missing it. Put it in.
    - Could this part be simpler: fewer steps, fewer parts, plainer names?
-   - Does the file say what starts each step, what information moves, where the state
-     lives and what happens when a step fails?
+   - Does the file say what starts each step, what information moves, which part holds
+     the state, and what happens when a step fails?
    - Would another structure show it better? For example a sequence diagram instead of a
      flowchart, a table, numbered steps, or splitting one diagram in two.
 

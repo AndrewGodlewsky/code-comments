@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What starts a nightly run, and which source rows does it extract?",
+  "key": "The scheduler starts it at 02:00 UTC. It reads orders from the read replica whose updated_at is later than the last successful high-water mark minus 2 hours.",
+  "why": "The trigger and the extract window decide what each night can and cannot pick up."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "Why can a bulk-imported order become visible on the replica after its updated_at, and by up to how much?",
+  "key": "Bulk-import transactions stay open for up to 90 minutes, and updated_at is stamped at write time, not at commit time. So the row can appear up to 90 minutes after its updated_at.",
+  "why": "This is why each night's extract window overlaps the previous one."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "If an order is edited after it has already been loaded into the warehouse, how does the edit reach the warehouse?",
+  "key": "The edit bumps updated_at. A later nightly extract picks the row up again, and the load replaces the stored row with the newer version.",
+  "why": "Handling updates made after export is one of the pipeline's two core jobs."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "What happens in the warehouse when an order is deleted in the app?",
+  "key": "The app only soft-deletes: it sets deleted_at, which bumps updated_at. The row flows through like any other change and stays in the warehouse flagged is_deleted. It is never removed.",
+  "why": "Without this, a reader can't tell whether deletes remove warehouse rows."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What happens when a nightly attempt fails?",
+  "key": "The high-water mark does not advance. The run is retried up to two more times, 15 minutes apart. After the third failed attempt, on-call is paged.",
+  "why": "Failure and retry behaviour decides whether data can be lost or duplicated."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "What do dashboards show at 06:00 UTC if the night's load has not committed, and who is told?",
+  "key": "They show the last fully committed warehouse data, never a partial night. A staleness alert is posted to #data-alerts.",
+  "why": "It defines what analysts see when the pipeline runs late."
+ },
+ {
+  "id": "q7",
+  "kind": "brief",
+  "question": "Take an order created in the last 30 days. A write to it becomes visible on the replica too late for the nightly extract whose window covers its updated_at, and also too late for the next night's 2-hour lookback, so no nightly extract picks it up. What eventually gets that version into the warehouse?",
+  "key": "The next Sunday reconciliation, which runs after that Sunday's nightly load. That order's creation day no longer matches, so the reconciliation reloads that day.",
+  "why": "The lookback alone does not catch every late row. This is the safety net."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "How does the load make sure an older or duplicate copy of an order (from the lookback overlap or a re-run) never replaces a newer one?",
+  "key": "Rows land in stg_orders and are then MERGEd into fact_orders on order_id. A missing order is inserted. An existing row is updated only if the staged updated_at is newer than the stored one. Otherwise the staged row is skipped.",
+  "why": "This is what makes the overlap and the retries safe."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Where is the high-water mark stored, what value is written to it, and at what moment?",
+  "key": "In a one-row etl_watermark table in the warehouse. It is set to the attempt's extract upper bound (the replica clock when the snapshot opens). It is written in the same transaction as the merge, so only when the attempt succeeds.",
+  "why": "The watermark is the pipeline's main state. Its value and timing decide what the next run reads."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "What guarantees dashboards never read a partially loaded night?",
+  "key": "Dashboards read only fact_orders. The merge from staging, the watermark update and the success status commit in one warehouse transaction, so the whole night appears at once or not at all.",
+  "why": "Explains how the 'no half-loaded night' rule is actually enforced."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "When a failed attempt is retried, what happens to the data the failed attempt had already staged, and what window does the retry extract?",
+  "key": "Every attempt starts by truncating stg_orders. Because the failed attempt committed nothing, the retry reads the same watermark, so it uses the same lower bound (W minus 2 h) with a fresh upper bound.",
+  "why": "A reader needs this to trust that retries neither lose rows nor load stale staged data."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "When reconciliation reloads a mismatched day, which rows does it re-read, how are they applied, and does it move the nightly high-water mark?",
+  "key": "It re-extracts every order created on that day into stg_orders and applies them with the same conditional MERGE, in its own transaction. The watermark is not changed.",
+  "why": "Shows how the safety net interacts with the nightly state."
+ }
+]

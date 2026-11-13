@@ -6,8 +6,8 @@ Explain how the thing in the document works, in your own words, as if you were w
 colleague through it.
 
 - Follow one concrete request, event or user action from the first step to the last.
-- At each step, say what starts it, what information moves, where the state lives and what
-  happens next.
+- At each step, say what starts it, what information moves, which part holds the state, and
+  what happens next.
 - Say what happens when something fails, wherever the document tells you.
 - Use only the document. Do not fill gaps from your general knowledge of how such systems
   are usually built.

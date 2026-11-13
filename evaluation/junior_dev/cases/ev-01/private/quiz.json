@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What does Order Service persist when a customer places an order, how are those writes grouped, and what does the customer get back before any other service has acted?",
+  "key": "The order row with status PENDING and an OrderPlaced outbox row, written in one database transaction; then 202 Accepted with the order ID. The request handler sends nothing to the broker.",
+  "why": "This is the outbox guarantee: the order and its first event commit or fail together, and the customer is answered before fulfilment runs."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "When does the relay treat an outbox row as delivered, and what happens if the relay crashes just after the broker acknowledges a publish?",
+  "key": "It marks the row sent only after the broker ack. A crash between ack and mark leaves the row unsent, so it is published again on the next 500 ms poll and consumers can receive the event twice (at-least-once).",
+  "why": "This is where duplicate events come from, and every consumer has to handle them."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What ensures that a consumer sees one order's events in the order they were published?",
+  "key": "All events go on the single topic order-events, keyed by order ID, so each consumer group receives one order's events in publish order. The relay also publishes outbox rows oldest first.",
+  "why": "Readers need to know whether a later event for an order can overtake an earlier one."
+ },
+ {
+  "id": "q4",
+  "kind": "design",
+  "question": "What triggers the Payment Service to charge a card, and how does the flow guarantee that no card is charged without reserved stock?",
+  "key": "Payment acts only on StockReserved, which Inventory publishes only after its reservation commits (same transaction as its outbox row). Payment ignores OrderPlaced and StockUnavailable, so a short-stock order never reaches a charge.",
+  "why": "It shows the stock-before-charge rule is enforced by the chain of events, not by a separate check."
+ },
+ {
+  "id": "q5",
+  "kind": "design",
+  "question": "How do Inventory and Payment publish their result events, and what happens if one crashes between committing its state change and publishing?",
+  "key": "Each writes its state change (reservation or payment record) and the result event to an outbox table in its own DB in one transaction; its own relay (500 ms poll, oldest first, mark after ack) publishes to order-events. After such a crash the committed outbox row is still unsent, so the relay publishes it on its first poll after restart: the event is not lost. A rolled-back transaction leaves no outbox row, so no event goes out.",
+  "why": "Without this a reader cannot tell whether downstream results can be lost, or published for work that was rolled back."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "How does each consumer stay safe when the same event is delivered a second time?",
+  "key": "Each consumer keeps a processed_events table keyed by eventId in its own DB. It looks the eventId up first and, if it is already there, acks and does nothing; otherwise it records the eventId in the same transaction as its state change and outbox row (the primary key also stops two copies racing). Order Service additionally changes an order only while it is PENDING. Notification records after sending, so a crash in between can send a second email, which is accepted as best-effort.",
+  "why": "At-least-once delivery is only safe if the reader can see where duplicates are caught."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "If Payment crashes after the card provider has charged the card but before Payment has saved the result, what stops the redelivered message from charging the customer a second time?",
+  "key": "Payment always calls the card API with idempotency key = orderId. The unacked StockReserved is redelivered, its eventId is not yet recorded, so Payment calls the card API again with the same key; the provider returns the original capture without charging again, and Payment commits its payment record, PaymentCaptured outbox row and eventId.",
+  "why": "The external charge sits outside every database transaction, so this is the riskiest failure in the flow."
+ },
+ {
+  "id": "q8",
+  "kind": "brief",
+  "question": "How does the system respond to a card decline compared with a card-provider timeout?",
+  "key": "A decline is a business result: the stock reservation is released and the order is CANCELLED. A timeout or 5xx is an error: the message is retried (1 s, 10 s, 60 s) and then dead-lettered with on-call paged, and the order keeps its status (PENDING).",
+  "why": "The two look alike but take opposite paths: one cancels the order, the other retries and may page someone."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "When a card is declined after stock has been reserved, what causes the reservation to be released, and which service releases it?",
+  "key": "Inventory consumes the PaymentDeclined event published by Payment, and releases the reservation in the same transaction as recording the eventId.",
+  "why": "This compensating step is easy to miss, and it decides whether declined orders leak stock."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "How does Order Service find out an order's outcome, and what does it write when it does?",
+  "key": "Order Service consumes StockUnavailable, PaymentCaptured and PaymentDeclined from order-events. In one transaction, and only if the order is still PENDING, it sets CONFIRMED or CANCELLED, writes OrderConfirmed or OrderCancelled to its outbox, and records the eventId.",
+  "why": "Order Service owns the status but calls no other service, so the reader must see how outcomes reach it."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "What triggers the customer email, and what happens to the order if the email cannot be sent?",
+  "key": "Notification consumes OrderConfirmed or OrderCancelled, published from Order Service's outbox, and sends the matching email. A failed send is retried and dead-lettered like any other message, and the order status does not change (Notification cannot write it).",
+  "why": "It shows that the email comes after the final status and cannot affect it."
+ },
+ {
+  "id": "q12",
+  "kind": "brief",
+  "question": "A consumer keeps failing on the same message. How many attempts are made, how far apart, and what then happens to the message and to the order?",
+  "key": "4 attempts: the first, then retries after 1 s, 10 s and 60 s. After that the message goes to that consumer group's dead-letter queue, on-call is paged, the consumer moves on, and the order keeps its current status.",
+  "why": "It sets how long a stuck order waits and the state it is left in."
+ }
+]

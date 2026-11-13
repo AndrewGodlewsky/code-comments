@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What causes the webhook service to start work on a new business event, and which existing component produces that trigger?",
+  "key": "A message on the `domain-events` topic, which the existing outbox relay publishes from the `outbox` table. The service's dispatcher consumes it.",
+  "why": "The reader needs the entry point to know where the flow starts and that its input can arrive more than once."
+ },
+ {
+  "id": "q2",
+  "kind": "design",
+  "question": "How does one event become one delivery per endpoint, and what stops a redelivered copy of the same event message from creating a second delivery?",
+  "key": "The dispatcher reads active subscriptions with the same account_id and a matching event type (or '*'). In one transaction it inserts one deliveries row per match, unique on (event_id, subscription_id), with ON CONFLICT DO NOTHING. It commits before acking, so a redelivered message inserts nothing.",
+  "why": "Fan-out and idempotent intake are the first state change in the system, and duplicates start here."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What input does the request signature cover, and is it produced once per delivery or again on each attempt?",
+  "key": "HMAC-SHA256, keyed with the subscription's secret, over `<t>.<raw body>` (t = unix seconds, sent with v1 in X-Webhook-Signature). It is recomputed with a fresh t on every attempt, replays included, because receivers reject a t older than 5 minutes.",
+  "why": "Signing once would make later retries fail verification, so the reader must know signing happens at send time."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "How does the service handle each class of endpoint response: success, a 410, other 4xx codes, and transient failures?",
+  "key": "2xx: delivered. 410: dead-letter at once and disable the subscription (disabled_reason 'gone'). Other 4xx: dead-letter at once, no retry. 408, 429, 5xx, a 10 s timeout or a connection error: retry on the schedule.",
+  "why": "This classification decides every branch after an attempt."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "At most how many times is a delivery attempted, and how long after the second attempt fails is the third made?",
+  "key": "At most 8 attempts. The third comes 2 minutes after the second fails (the waits are 30 s, 2 min, 10 min, 30 min, 1 h, 3 h, 6 h).",
+  "why": "The retry budget and schedule set how long a delivery can stay live before it is dead-lettered."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "Where does a delivery's progress live: its status, how many attempts it has had, when it is next due, and its last result?",
+  "key": "In the `deliveries` table in the service's own Postgres database (status, attempt_count, next_attempt_at, lease_until, last_status_code, last_error). None of it is kept in the queue or the core database.",
+  "why": "Knowing who owns delivery state is what makes the crash, retry and replay behaviour understandable."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "After a failure that can be retried, where does the delivery wait until its next attempt, and what makes that attempt happen, given that the queue cannot delay a message by more than 15 minutes?",
+  "key": "It waits as a `pending` row in `deliveries` with next_attempt_at set. Workers poll the table every 1 s and claim rows whose next_attempt_at has passed. Queue delays are not used.",
+  "why": "Backoff waits of up to 6 hours need a scheduling mechanism the queue cannot provide."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "If a worker process dies after sending the HTTP request but before it saves the result, what happens to that delivery?",
+  "key": "The row stays `sending` with lease_until = claim time + 60 s. Once the lease expires, the next worker poll reclaims it and attempts it again. attempt_count was raised at claim time, so the lost attempt counts toward the 8. The receiver may get a duplicate, which it dedupes by X-Webhook-Id.",
+  "why": "The brief requires that a crash never loses a delivery, and the reader must see how that holds."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Where are dead-lettered deliveries held, and what does a replay change so the delivery is attempted again?",
+  "key": "They are `deliveries` rows with status `dead` (plus dead_reason and dead_at). The admin API lists them per subscription, and a nightly job deletes them 14 days after dead_at. Replay sets status=pending, attempt_count=0 and next_attempt_at=now with the same delivery id, and the workers' next poll picks the row up.",
+  "why": "The dead-letter queue must be queryable and replayable, and the reader needs to know what it physically is and how a row leaves it."
+ },
+ {
+  "id": "q10",
+  "kind": "brief",
+  "question": "What lets a receiving endpoint recognise a request it has already handled, and does that value change between retries or after a replay?",
+  "key": "The X-Webhook-Id header, which carries the delivery id. It is the same on every attempt and on replays.",
+  "why": "At-least-once delivery only works if receivers can dedupe."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "What happens to deliveries still waiting for an attempt when their subscription is disabled?",
+  "key": "At their next claim the worker sees the subscription is not active and marks them dead with reason subscription_disabled, without making an HTTP call. Replaying into a disabled subscription is refused (409).",
+  "why": "Disabling happens in the middle of the flow (on a 410 or by the customer), and pending work must have a defined outcome."
+ },
+ {
+  "id": "q12",
+  "kind": "brief",
+  "question": "Can a subscriber receive a later event before an earlier one?",
+  "key": "Yes. Nothing guarantees order: each delivery retries on its own schedule, and the queue itself is unordered.",
+  "why": "Receivers and readers must not assume events arrive in order."
+ }
+]

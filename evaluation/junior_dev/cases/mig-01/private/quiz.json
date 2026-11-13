@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "While MySQL is still the source of truth, in what order are the two databases written for a single user change, and what does the caller see if the Postgres part fails?",
+  "key": "MySQL is written and committed first, then Postgres. If the Postgres write fails, the request still succeeds and Postgres is repaired later.",
+  "why": "This is the core of the dual-write design. It decides which database can be behind, and whether a Postgres outage affects users."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "When Postgres already holds a row for a user, under what condition may an incoming copy (from any source) overwrite it?",
+  "key": "Only when the incoming version is higher than the stored version. A missing row is simply inserted.",
+  "why": "This rule is what lets dual writes, backfill and repair arrive in any order without an older copy undoing a newer one."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What must be true across the fleet before the backfill begins, and how long can app instances disagree after a flag change?",
+  "key": "Every app instance must be dual-writing, confirmed on every instance. Instances cache flags, so they can disagree for up to 30 seconds after a change.",
+  "why": "If the backfill starts while some instance still writes only to MySQL, rows it has already copied can silently go stale."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "How does the backfill keep its load on the shared MySQL infrastructure in check?",
+  "key": "It reads from the MySQL replica (not the primary), at most 2,000 rows per batch, and pauses whenever replica lag is above 5 seconds.",
+  "why": "The backfill touches 38M rows. A reader needs to know which server it reads from and what throttles it."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What has to be true before reads move to Postgres, and what has to be true before the source of truth moves?",
+  "key": "Reads: a complete comparison of the two tables reports zero mismatches. Source of truth: reads have been at 100% on Postgres for at least 3 days.",
+  "why": "These gates set the order of the whole migration and when each risky step is allowed."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "If the Postgres half of a write fails, or the app dies right after the MySQL commit, what records that Postgres is behind, where is that record kept, and what brings Postgres back in line?",
+  "key": "A users_pg_pending row (user_id, a token and created_at), written in MySQL in the same transaction as the user change. A sweeper runs every 10 s: for pending rows whose created_at is more than 5 s old, it re-reads the user's current row from the MySQL primary, safe-copies it into Postgres (or deletes it there and adds a tombstone if the row is gone), then removes the pending row if the token is unchanged. A failed copy is retried on the next run.",
+  "why": "Without a crash-safe record of missed writes, Postgres can silently lose writes, and the switch would then lose them for good."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "How does the design stop a backfill or repair copy from re-creating a user who was deleted while that copy was in flight?",
+  "key": "A delete removes the row and records the id in a users_tombstones table in the same transaction, in both databases. Every copy into a database skips ids found in that database's tombstones, and a copy and a delete of the same id take a per-id lock first, so they cannot interleave.",
+  "why": "Hard deletes leave nothing to compare versions against, so a reader needs to see how resurrection is blocked."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "Where does the backfill keep its progress, how does that progress stay consistent with the rows actually copied, and where does the backfill stop?",
+  "key": "last_copied_id lives in a Postgres users_backfill_progress row. It is updated in the same Postgres transaction as each batch. The backfill stops at target_max_id, the MySQL max(id) recorded (on the primary) when it started; newer ids are dual-written.",
+  "why": "This explains how a crash resumes without skipping or redoing rows, and why the backfill has a defined end."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Beyond the per-write repair path, what finds rows that differ between the two databases, and what happens to each difference it finds?",
+  "key": "A comparer walks both databases 10,000 ids at a time, comparing id, version and a hash of the other columns. It re-checks each difference on the source-of-truth primary 5 s later and adds the ones that remain to the pending table in the source-of-truth database, where the sweeper repairs them. Each pass reports a mismatch count; it runs until a pass is clean, then nightly.",
+  "why": "It is the only check that catches bugs or losses the write path missed, and it is the gate for moving reads."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "During the source-of-truth switch, how does the design ensure that no instance writes MySQL-first while another writes Postgres-first, and what happens if the switch runs long?",
+  "key": "write_mode is set to frozen, so writes get a retryable 503 and reads continue. The plan waits until every instance shows frozen (up to 30 s) plus the 5 s write deadline, waits until users_pg_pending is empty, restarts the Postgres id sequence, and only then sets dual_pg_primary. If this is not done by T0+60 s, it sets dual_mysql_primary instead.",
+  "why": "Flags propagate unevenly, so the reader must see how two write modes are kept from overlapping inside the 90 s budget."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "Once Postgres is the source of truth, which database assigns new user ids, and how are collisions with existing ids avoided, including after a rollback?",
+  "key": "The Postgres identity column assigns them. During the freeze its sequence is restarted at MySQL's AUTO_INCREMENT counter for users, read on the primary, which is above every id MySQL ever issued, including erased ones. MySQL then receives each id explicitly, and on a rollback its AUTO_INCREMENT is set to the Postgres identity's next value before MySQL takes over again.",
+  "why": "Changing which database assigns ids is a classic source of duplicate-key failures during and after a switch."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "After the switch, how is MySQL kept complete enough for a lossless rollback, how is a rollback done, and when does that option end?",
+  "key": "Writes are mirrored: a Postgres transaction plus a users_mysql_pending row, then a copy to MySQL, with a sweeper repairing MySQL from Postgres. Rollback: freeze writes, wait for users_mysql_pending to empty, set MySQL's AUTO_INCREMENT to the Postgres identity's next value, then set write_mode to dual_mysql_primary and read_from_pg to 0; if that is not done by T0+60 s, set dual_pg_primary again. The option ends when write_mode is set to pg_only, at least 14 days after the switch; MySQL is backed up and dropped after that.",
+  "why": "The rollback guarantee is the reason for keeping MySQL. The reader needs to see what keeps it true and when it stops."
+ }
+]
