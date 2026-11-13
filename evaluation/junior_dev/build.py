@@ -169,7 +169,7 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
 
 
 def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir: Path, label: str,
-                      judge_model: str = "sonnet", baseline_dir: Path | None = None) -> list[Path]:
+                      judge_model: str = "opus", baseline_dir: Path | None = None) -> list[Path]:
     """Blind pairwise clarity judgments for every (case, author, mode, rep) where both arms of a pair ran.
 
     Each pair is judged in both orders; the judge sees only the two final artifacts. `baseline_dir`

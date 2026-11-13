@@ -26,6 +26,7 @@ import sys
 PRICES = {"haiku": (0.10, 0.50), "sonnet": (2.0, 10.0), "opus": (4.0, 20.0)}  # $ per million tokens (in, out)
 PRODUCT_ROLES = {"draft", "junior", "author", "teachback", "verdict", "self", "critic", "critic-revise"}
 JUDGE_WIN, COMP_TOLERANCE, OPUS_WIN, WORTH_IT_GAP, EPS = 0.65, 0.03, 0.45, 0.05, 1e-9
+PRIMARY_JUDGE = "opus"  # chosen on 2026-11-13: decisive across orders where the Sonnet judge followed position
 
 
 def comprehension(grades: dict, excluded: set) -> float | None:
@@ -187,12 +188,15 @@ def validation_gates(summary: dict, agreement: float) -> dict:
     return gates
 
 
-def judge_summary(iteration_dir: Path) -> dict:
+def judge_summary(iteration_dir: Path, judge_model: str | None = None) -> dict:
     """Per (arm_a, arm_b, author, mode): arm_a's preference over arm_b (+1 win, -1 loss, 0 tie, mean over both
-    orders), how often both orders agree, and whether the judge simply preferred the longer document."""
+    orders), how often both orders agree, and whether the judge simply preferred the longer document.
+    `judge_model` keeps one judge's verdicts when an iteration was judged by more than one."""
     rows = []
     for path in sorted(Path(iteration_dir, "judgments").glob("*.json")):
         rows += json.loads(path.read_text(encoding="utf-8"))
+    if judge_model:
+        rows = [j for j in rows if j.get("judge_model") == judge_model]
     groups = defaultdict(lambda: defaultdict(list))
     for j in rows:
         if j.get("winner_arm") is None:
@@ -231,7 +235,7 @@ def score(iteration_dir: Path) -> dict:
                       "rounds": statistics.fmean(r["rounds"] for r in rs), "words": statistics.fmean(r["words"] for r in rs),
                       "cost_usd": statistics.fmean(r["cost_usd"] for r in rs), "errors": sum(bool(r["errors"]) for r in rs)})
     summary = {"runs": rows, "table": table}
-    judges = judge_summary(iteration_dir)
+    judges = judge_summary(iteration_dir, judge_model=PRIMARY_JUDGE)
     summary["judges"] = {" | ".join(k): v for k, v in judges.items()}
     summary["decision"] = decide(summary, judges) if any(r["arm"] == "junior" for r in rows) else {}
     Path(iteration_dir, "summary.json").write_text(json.dumps(summary, indent=1, default=list) + "\n", encoding="utf-8",

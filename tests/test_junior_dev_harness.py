@@ -195,6 +195,20 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertEqual(len(pairs), 4)
         self.assertEqual({p["arm_a"] for p in pairs}, {"junior-v1"})
 
+    def test_judge_summary_filters_by_judge_model(self):
+        it = self.tmp / "iteration-judges"
+        (it / "judgments").mkdir(parents=True)
+        base = {"case": "c", "author": "haiku", "mode": "natural", "rep": 1, "arm_a": "j", "arm_b": "s",
+                "words_a": 1, "words_b": 2}
+        rows = [dict(base, order="ab", winner="A", winner_arm="j", judge_model="opus"),
+                dict(base, order="ba", winner="B", winner_arm="j", judge_model="opus"),
+                dict(base, order="ab", winner="B", winner_arm="s", judge_model="sonnet"),
+                dict(base, order="ba", winner="B", winner_arm="j", judge_model="sonnet")]
+        (it / "judgments" / "x.json").write_text(json.dumps(rows), encoding="utf-8")
+        self.assertEqual(score.judge_summary(it, judge_model="opus")[("j", "s", "haiku", "natural")]["win_rate"], 1.0)
+        self.assertEqual(score.judge_summary(it, judge_model="sonnet")[("j", "s", "haiku", "natural")]["win_rate"], 0.5)
+        self.assertEqual(score.judge_summary(it)[("j", "s", "haiku", "natural")]["judgments"], 4)
+
     def test_collect_writes_tree_and_refuses_overwrite(self):
         out = self.tmp / "wf-output.json"
         out.write_text(json.dumps({"summary": "x", "result": self.dry["result"]}), encoding="utf-8")
