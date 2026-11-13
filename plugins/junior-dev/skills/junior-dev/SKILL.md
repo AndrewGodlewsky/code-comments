@@ -108,7 +108,17 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
    - Cut what a reader does not need to follow the main flow.
    - Merge rules or notes that say the same thing.
    - Replace several mechanisms with one simple one wherever the brief allows.
-   - Keep the open questions together at the end.
+   - Lay it out for a newcomer, in this order:
+     1. Two or three sentences on what this is and how the main flow goes.
+     2. The few terms a newcomer needs, each defined in one line.
+     3. The steps, numbered, in the order they happen.
+     4. What happens when things fail, at each step or in one table.
+     5. The open questions, at the end.
+   - Write each step so it stands alone. Avoid codes such as R3 or Q7 that send the reader
+     elsewhere to look things up.
+
+   A diagram keeps its diagram form. Put the summary and the terms just before it, and the
+   notes just after it.
 
    When you tell the user (step 9), mention what you cut or merged.
 8. **Report.**
