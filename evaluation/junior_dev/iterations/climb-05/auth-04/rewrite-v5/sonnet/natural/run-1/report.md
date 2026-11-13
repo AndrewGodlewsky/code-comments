@@ -1,0 +1,15 @@
+## Review of auth-04 (rewrite-v5, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a one-paragraph summary at the top that says how password sign-in works today, then how the Google flow runs start to finish and why it is shaped this way.
+- Replaced the 'Context for a reader' bullets with a Terms section. It newly defines sub, ID token, state, nonce, PKCE verifier, bind cookie, entry and pending link, and keeps start_session and lockout.
+- Added a short 'Notes on the steps' section after the flowchart. It lists the six steps in order with what starts each, what it does and how it fails, and it folds in the unlink SQL guard.
+- Merged the 'Assumptions to confirm' list into the notes and the changes sections: confirm window and unverified local email into step 5, settings link ignoring email into step 3, CSRF into one line. Only the lockout-versus-Google assumption remains, under Open questions at the end.
+- Made the failure table's 'State changed' column say 'State record consumed' wherever the callback had already burned the state, instead of 'None'.
+- Kept the flowchart nodes unchanged, since the deliverable is the diagram, and shortened the schema comments and the state table text.
+- Merged the repeated bind-cookie, TTL and cleanup explanations into the terms and the state table. Removed the separate 'nothing needs a cleanup job' bullet by stating it once in the summary.
+
+### Holes
+- None.

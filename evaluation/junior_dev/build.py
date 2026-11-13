@@ -182,7 +182,8 @@ def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir
     a check that the rubric does not simply reward the layout skill step 7 asks for)."""
     import re as _re
     finals = {}
-    for source in [d for d in (baseline_dir, iteration_dir) if d]:
+    baselines = list(baseline_dir) if isinstance(baseline_dir, (list, tuple)) else [baseline_dir]
+    for source in [d for d in (*baselines, iteration_dir) if d]:
         for run_json in Path(source).rglob("run.json"):
             run = json.loads(run_json.read_text(encoding="utf-8"))
             text = (run_json.parent / "artifact-final.md").read_text(encoding="utf-8")

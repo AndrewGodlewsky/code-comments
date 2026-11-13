@@ -1,0 +1,109 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the `state` value and the `oidc_state` cookie for, and who generates the state? Why must the cookie match the state in the callback?",
+     "about": "START: Create attempt in Redis"
+    },
+    {
+     "id": "2",
+     "text": "What does a concurrent call to the callback look like in practice, and how does 'did this call delete it' get decided?",
+     "about": "Delete attempt. Did this call delete it? Single use"
+    },
+    {
+     "id": "3",
+     "text": "Where does return_to come from when the user starts from the login page versus settings, and what is the default if none is given?",
+     "about": "Account Settings: Link Google / Valid sid cookie?"
+    },
+    {
+     "id": "4",
+     "text": "What exactly does the server send and receive in the code exchange, and what does PKCE code_verifier do here?",
+     "about": "Server-side code exchange at Google token endpoint"
+    },
+    {
+     "id": "5",
+     "text": "What is `sub`, and why is login keyed on sub and not email? Does a login by sub care whether the account is locked or email_verified?",
+     "about": "sub already in google_identities?"
+    },
+    {
+     "id": "6",
+     "text": "For a brand new Google user, what is the account's email, and how can they ever sign in again, with Google only or by another route?",
+     "about": "One transaction: insert users row with password_hash NULL"
+    },
+    {
+     "id": "7",
+     "text": "Why must an existing password account confirm with its password before linking? What threat does that step block?",
+     "about": "Create pending link in Redis / Show password form"
+    },
+    {
+     "id": "8",
+     "text": "After link-intent success, is a new session started? And on login when a sid already exists for another user, what happens to that session?",
+     "about": "SIGNIN: start_session(user_id)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The server makes the state at start: a random value, the same kind of value as the sid. Google returns it unchanged to the callback. The oidc_state cookie holds the same value in the browser that started the trip. The callback needs both, so a link an attacker sends to a victim's browser has no matching cookie and is refused. This blocks login CSRF, where an attacker tries to make a victim's browser finish the attacker's sign-in."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "A concurrent call happens when two callbacks with the same state arrive, for example a double click, a retry, or an attacker replaying the URL. Both could read the attempt before either deletes it. The fix is one atomic step, Redis GETDEL, which removes the attempt and returns it to only one call. The other call gets nothing and shows the error page. The cookie is checked before this step, so a bad cookie does not use up the attempt."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "From the login page, return_to is the next query parameter, validated at start as a relative path on this site. If there is none or it is not valid, the default is /home. From settings, return_to is the settings page, set by the server and never taken from the user. The attempt stores it, and the callback uses only that stored value, never a callback parameter."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The server posts to Google's token endpoint: the code, the client id and secret, the redirect URI, and the PKCE code_verifier. Google returns an ID token and an access token. We check the ID token's signature, iss, aud (our client id), exp and nonce (equal to the stored nonce), read sub, email and email_verified, and discard the tokens. At start, the server sent code_challenge, the hash of the verifier. PKCE means a stolen code cannot be exchanged, because the verifier never leaves our server and Redis. The Google-side details follow the OpenID Connect and PKCE standards. I did not re-check them against Google's current docs in this round."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "sub is Google's permanent ID for the account. It does not change when the email changes. We key on sub so a changed Google email still reaches the same account, and we never copy Google's email over ours. A linked login now checks locked_until and refuses while locked (open decision 1, adopted), so a lock cannot be bypassed through Google. A linked login does not re-check email_verified. The link was made only after a verified email, and the sub is the anchor. This is an open question in the file."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The new user's email is the Google email, lowercased, and email_verified_at is set to now. They sign in again with Google, because the sub is linked. Another route is Forgot password. auth_flow.md says the reset link sets password_hash and marks the email verified, so a user with no password can set one this way. That is the same route the unlink refusal points to."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The brief does not state the threat, so this is the reason the plan gives. A verified Google email proves control of a Google account. It does not prove the person owns our existing account with that email. Without the password step, anyone who controls a Google account with that email could sign in to an existing password account with Google alone. Requiring the account's password blocks that. Lockout limits guessing through this path."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "No. Linking from settings is not a sign-in. The user keeps their current sid session and goes back to settings, as step 10 and the flowchart show. On login, if the browser sends a sid for another user, start_session deletes that old sessions row first, as it does today. The browser then holds the new session only."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a visitor with no linked account and no existing user clicks \"Sign in with Google\" on the login page. After that I cover the branches.\n\n1. **Start.** The user clicks \"Sign in with Google\" on the login page. `return_to` is the `next` parameter if it is a relative path on this site, otherwise `/home`. The server makes a random `state`, a `nonce` and a PKCE `code_verifier`. It writes an \"attempt\" to Redis at `oidc:attempt:<state>` with a 600 s TTL. The attempt holds the nonce, the verifier, the intent (`login`), `return_to` and, for settings only, `user_id`. It also sets an `oidc_state` cookie (HttpOnly, Secure, SameSite=Lax, 600 s) containing the same `state`. If Redis is down, the flow doesn't start. If the user started from Account Settings (\"Link Google\"), the server first needs a valid `sid` cookie, meaning one that matches a live `sessions` row. Without one, the user goes to the login page and no attempt is made. With one, `return_to` is the settings page and intent is `link`.\n\n2. **Redirect to Google.** The server sends a 302 to Google. The request carries scope `openid email profile`, the code flow, `state`, `nonce` and the hash of the verifier as the PKCE challenge. Google handles consent. Nothing we store changes. Google then sends the browser back to `/auth/google/callback` with a code and the `state`, or with an error.\n\n3. **Callback check.** The server checks that an attempt exists for the `state` and that the `oidc_state` cookie matches. If either fails, it shows an error page and changes nothing. A bad cookie does not use up the attempt. Next it runs a Redis `GETDEL`, which removes the attempt and hands it to only one caller. A duplicate callback gets the error page. The server clears the `oidc_state` cookie. From this point the attempt is used up, whatever happens next.\n\n4. **Google error.** If Google sent an error such as Cancel, the user goes to `return_to` with \"Google sign-in was cancelled. Nothing changed.\" The attempt is already used up.\n\n5. **Code exchange.** The server posts the code, the client id and secret, the redirect URI and the PKCE verifier to Google's token endpoint. It checks the ID token's signature, `iss`, `aud`, `exp` and `nonce`. It reads `sub`, `email` and `email_verified`, then discards Google's tokens. If anything fails, the user sees \"Google sign-in failed, try again.\" Nothing is written, and the user must start again.\n\n6. **Branch on intent.** For `link` go to step 7. For `login` go to step 8.\n\n7. **Link, from settings.** The `sid` must be valid and belong to the attempt's `user_id`. Otherwise the user goes to the login page with a neutral message. The checks then run in this order, and each failure changes nothing:\n   - `email_verified` is not true: refuse.\n   - `sub` is already linked to this user: say \"already linked\".\n   - `sub` is linked to another user: refuse.\n   - This user already has a Google link: refuse and tell them to unlink first.\n   - Otherwise insert a `google_identities` row (`sub`, `user_id`, `linked_at`). No password is asked, the emails need not match, and the Google email is not stored. No new session is started. The user sees \"Google linked\" in Settings.\n\n8. **Login.** There are two sub-cases.\n   - **Linked `sub`.** If `sub` is in `google_identities` and `locked_until` is in the future, show the lock message and change nothing. Otherwise go to step 11. Matching is by `sub`, never by email, so a changed Google email still reaches the same account.\n   - **Unlinked `sub`.** The checks run in order:\n     - `email_verified` is not true: refuse and point to email and password. Nothing is created.\n     - No `users` row has the lowercased email: in one transaction, insert a user with `password_hash` NULL and `email_verified_at` = now, then insert the `google_identities` row. Go to step 11. This is the main-flow case I'm following.\n     - A user exists but has no `password_hash`: refuse and point to Forgot password.\n     - A user exists and already has a Google link: refuse.\n     - Otherwise go to step 9.\n\n9. **Pending link.** An existing password account has the same verified email. A verified Google email proves control of the Google account, not of our account. So the server writes a pending link to Redis at `oidc:pending:<id>`, holding `user_id`, `sub` and `return_to`, with a 600 s TTL. It sets the `gpending` cookie to the id and shows a password form for that one account.\n\n10. **Confirm.** The user submits the password to `POST /auth/google/confirm`. The server finds the pending link from the `gpending` cookie. Every exit from this step clears `gpending`.\n    - **Missing or expired:** the user goes to the login page with \"confirmation expired, start again.\" Nothing changes.\n    - **`locked_until` in the future:** delete the pending link, show the lock message, and don't check the password.\n    - **Wrong password:** a NULL hash counts as wrong. If this is not the fifth failure, save `failed_logins + 1`, show a generic message and keep the pending link so the user can retry. On the fifth failure, set `locked_until` to now + 15 min, set `failed_logins` to 0, delete the pending link and show the lock message.\n    - **Right password:** recheck that the user still has no Google link and the `sub` is still unlinked. If either is untrue, delete the pending link and refuse. Otherwise, in one transaction: set `failed_logins` to 0, set `email_verified_at` to COALESCE(existing, now), insert the `google_identities` row and delete the pending link. Go to step 11.\n    - If Redis is unavailable, the user gets an error page and nothing is written.\n\n11. **Sign in.** `start_session(user_id)` runs for every successful Google sign-in, the same function a password login uses. If the browser sent a `sid`, it deletes that old `sessions` row, even if it belonged to another user. It inserts a new `sessions` row and sets the `sid` cookie. It clears `gpending`, then redirects to `return_to` or `/home`. Sessions last 14 days, slid on each request.\n\n12. **Unlink, from settings.** If `password_hash` is NULL, refuse and tell the user to use Forgot password. Otherwise delete the `google_identities` row. Sessions are not touched.\n\nOther facts the document gives:\n- A unique violation on `users.email` or `google_sub` means refuse, and the user retries with no second row.\n- Google's tokens are never stored.\n- The nonce and verifier live only in the attempt.\n- `POST /login` treats a NULL hash as a wrong password.\n- Deleting a user cascades to their `google_identities` row.",
+   "gaps": [
+    "Where `return_to` goes when the callback is an error before the attempt is read (error page): the document does not say what that page offers or where it links.",
+    "The exact pending-link failure paths that say 'Refuse on login page' (recheck finds an existing link) do not give the message text or whether a retry is possible beyond starting again.",
+    "How the server handles a unique-violation retry on the login-create transaction is only listed as 'Refuse; user retries'. It is not stated whether the user is shown the login page or an error page.",
+    "Whether a linked-sub login to an account that was deleted or has other states (e.g. suspended) is handled: only `locked_until` is mentioned.",
+    "What the user sees in the main flow when a linked login's Google token has `email_verified` false: left as an open question, so the behaviour is undecided.",
+    "The document does not say how the `sid` cookie is checked for validity in the link-intent callback beyond 'matches a live sessions row', e.g. whether the 14-day sliding expiry is also applied at this step.",
+    "Which Redis version is in use, so whether GETDEL or a Lua script is the real mechanism is undecided."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,204 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The upsert depends on a `version` column. Where does `version` come from, and who increments it on each write, MySQL, Postgres or the app?",
+     "about": "Design decisions 1. Write path (version rule)"
+    },
+    {
+     "id": "2",
+     "text": "If the inline copy to the other DB times out at 250 ms but actually succeeded, and the sweeper then retries, what happens? Also, who deletes the outbox row if the request process dies right after the copy?",
+     "about": "Design decisions 1. Write path, after commit the repository tries the other database once"
+    },
+    {
+     "id": "3",
+     "text": "What is the lease here? How many sweeper instances run, how does one take the lease, and what happens to repairs if the lease holder dies?",
+     "about": "Design decisions 2. Repair, outbox sweeper with a lease"
+    },
+    {
+     "id": "4",
+     "text": "Walk me through a user deletion while MySQL is SoT. How does the delete reach Postgres, given the outbox row only holds a user_id and the sweeper finds the row absent?",
+     "about": "Design decisions 3. Deletes, erasure transaction and tombstone"
+    },
+    {
+     "id": "5",
+     "text": "During a write on a SoT-first instance, which DB does the app pick: the flag or the control row? What does an instance with a stale flag do in the gap between step 4 and step 5 of the switch script?",
+     "about": "Design decisions 4. Switch coordination, users_control and the flag"
+    },
+    {
+     "id": "6",
+     "text": "What is `dual_write_all_since` used for, and why does the backfill need it? What goes wrong if backfill starts before every instance is dual-writing?",
+     "about": "Step 3. Turn on dual writes, Barrier"
+    },
+    {
+     "id": "7",
+     "text": "During the fence, new writes get 503 but the outbox must drain. If the Postgres copy of a stuck outbox row keeps failing (e.g. Postgres is slow), what happens at the 40-second mark, and who tells users or clients the 503s are over?",
+     "about": "Step 8, step 2 and Design decisions 4 (Copies do not check the fence)"
+    },
+    {
+     "id": "8",
+     "text": "Step 12 says it starts when Step 10 is complete (14 days after Postgres became SoT) and Step 11 is deployed, but Step 11 needs 7 days after Step 10. How do these timings fit together, and which one is the real gate?",
+     "about": "Step 11 and Step 12, timing of Step 12 start"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The app does it. The existing UserRepository.create inserts version 1 and update does version = version + 1 with a WHERE on the expected version. The databases only store it. Copies carry the version unchanged. When Postgres is SoT the repository does the same bump. Now stated in the terms and in the new-ids section."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The retry is a no-op: the version rule only replaces a row with a lower version, and the sweeper re-reads the current SoT row anyway. If the process dies after the copy, the outbox row survives because it was committed with the write. The sweeper repeats the copy, which changes nothing, then deletes the outbox row. Chosen because idempotent copies need no coordination between the request and the sweeper."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The document said lease but never defined one, and none is needed. Copies are idempotent, so several sweepers can run safely. Each claims rows with SELECT ... FOR UPDATE SKIP LOCKED, and if one dies its claim is released and the others continue. I removed the lease wording from the sweeper and the backfill. How many instances run is left open (one with auto-restart is enough to start)."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The erasure transaction on the SoT (MySQL) deletes the row, inserts a tombstone and an outbox row. The copy, inline or by the sweeper, re-reads the user on MySQL, finds it absent, then in one Postgres transaction writes the tombstone first and deletes the row under the advisory lock. The tombstone-before-delete order is what makes the delete robust against a concurrent stale upsert. The document only said delete and tombstone, so I spelled out the order."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The flag only picks which database the instance tries first. The control row on that database decides whether the write may proceed. An instance with a stale flag between step 4 and step 5 still aims at the old side, sees not_sot, and returns a retryable 503 until its flag refreshes (up to 30 seconds). It never writes to the wrong side. No instance has the new flag value before step 5, since the flag flips last."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "dual_write_all_since records the moment every instance was dual-writing, and backfill refuses to start without it. Without it, an instance that writes only to MySQL could update a row after backfill passed it. The row would never reach Postgres and the comparison would find a permanent gap. Added a one-line reason in Step 3."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Copies ignore the fence, so the sweeper keeps retrying stuck rows during the pause. If the outbox is not empty at 40 seconds, the script aborts: it sets the old side back to sot, a DB write that takes effect immediately, and writes resume. Nobody announces the end of the 503s, because clients retry them automatically. Leftover outbox rows stay for the sweeper, and the operator can retry the switch later. Added to the switch section."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "They were inconsistent. Step 10 already requires 14 days after Postgres became SoT. Step 11 requires 7 more days after Step 10. So the real gate for Step 12 is that Step 11 is deployed, and the 14-day condition is already satisfied by then. I rewrote Step 12 to say so and removed the duplicate 14-day condition."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 1 creates `users_sync_outbox` only on MySQL, but after the switch the outbox lives in Postgres. When and where is the Postgres outbox table created?",
+     "about": "Step 1. Create schema / Step 8 'the outbox now lives in Postgres'"
+    },
+    {
+     "id": "10",
+     "text": "In Step 8 the sweeper must now read from Postgres and copy to MySQL. Is it the same sweeper deployment, and how does it know which side is the SoT and which outbox to poll?",
+     "about": "Step 8, 'copied to MySQL by the same outbox and sweeper in reverse'"
+    },
+    {
+     "id": "11",
+     "text": "When a Postgres-first write does its copy to MySQL, the tombstone check and the version rule are applied on MySQL. Does MySQL `users` already contain the `version` column and the same ids, so a reverse copy of a new Postgres-assigned id just inserts it?",
+     "about": "6. New ids after the switch (reverse copy passes ids to MySQL explicitly)"
+    },
+    {
+     "id": "12",
+     "text": "What does the repository do when `update` finds the expected version no longer matches (its WHERE on version fails)? Does the user get an error, a retry, or something else?",
+     "about": "1. Write path (version rule, `update` adds 1 on every update)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "It was a real hole. Step 1 now creates users_sync_outbox on Postgres as well as MySQL, so the Postgres outbox exists long before Step 8. Only the SoT's outbox receives rows. Chosen because creating both up front is idempotent DDL and avoids a schema change during the switch."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Same sweeper deployment. It polls the outbox on both databases and treats a row as 'copy this user from the database holding this outbox to the other one'. It does not need to know who is SoT, because only the SoT's outbox normally has rows (the old side's is drained before the switch). Now stated in the Sweeper term and section 2."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. users_table.md shows MySQL users already has id, email, name, plan, version and updated_at. A Postgres-assigned id is at least 1,000,000 above MySQL's max, so a reverse copy is a plain insert with that explicit id, still passing the tombstone check and version rule. Added one line in the write path."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Existing UserRepository.update raises StaleWrite when the WHERE on version matches zero rows. The plan keeps that: the caller gets StaleWrite as today, no outbox row is written and no copy happens, because nothing changed. Same when Postgres is SoT. Retrying is the caller's choice, as now. Added to the write path and the failure table."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "13",
+     "text": "A user updates their row, the inline copy to Postgres fails, and the outbox row waits for the sweeper. If their next read goes to Postgres, it finds the old row, not a miss. Does the user see old data until the sweeper catches up, and is that accepted?",
+     "about": "Step 6. Ramp reads to Postgres (Any Postgres error, 300 ms timeout or not-found falls back to the MySQL replica)"
+    },
+    {
+     "id": "14",
+     "text": "Does the erasure transaction on the SoT also check the control row with FOR SHARE and return 503 during a switch pause, like other writes? And what does the erasure job do when it gets that 503?",
+     "about": "3. Deletes (the GDPR erasure job)"
+    },
+    {
+     "id": "15",
+     "text": "In pg_only mode, does a write still insert an outbox row and check the control row? Step 11 says the control-row checks are removed later, so what do writes do between Step 10 and Step 11?",
+     "about": "Step 10. Switch to Postgres-only writes (the flag and pg_only_since)"
+    },
+    {
+     "id": "16",
+     "text": "What does walking the id space in both directions mean, and what does the comparison do with a row that exists on only one side while its outbox row is still pending?",
+     "about": "Step 5. Full comparison (walks the id space in both directions)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. If the inline copy failed, a read routed to Postgres returns the old row (it exists, so there is no fallback) until the sweeper copies the update, normally within seconds. Accepted: today's replica reads can already lag about a second, and the brief does not require read-your-writes. Added as 'Stale reads accepted' in Step 6."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes. The erasure transaction is a normal SoT write, so it reads the control row with FOR SHARE and gets the same retryable 503 during a switch pause. The erasure job treats that as a failed run, and the existing job queue retries with backoff over about 15 minutes, far longer than the 90-second pause. This assumes the erasure job runs on the job queue; its code is not in the files, so that is listed under Open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "This was a real hole. In pg_only, a create or update writes to Postgres, still reads the control row (still sot, so harmless until Step 11), and inserts no outbox row and makes no copy, since an outbox row would never be drained. Erasure deletes still insert a tombstone and an outbox row and are copied to MySQL until Step 12. Step 10 now says this."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Both directions means two keyset walks: one over the SoT's ids checking each exists and matches on the other side, and one over the other side's ids checking each exists on the SoT, which finds extra rows such as erased users. A row on only one side with a pending outbox row on either side is not counted as a mismatch, because the sweeper is still copying it. Only persistent mismatches with no outbox row get a new outbox row and make the pass not clean. Step 5 now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point: the plan covers one table, `users`, which today is read through one class, `UserRepository`. Reads go to the MySQL read replica and writes go to the MySQL primary. I'll follow one write, an `update` to a user, through the whole migration. Then I'll cover the later phases.\n\n2. Prerequisites (Step 1). A person runs a reviewed migration by hand, once. It creates the Postgres `users` table and the helper tables on both databases:\n   - `users_sync_outbox`, `users_tombstone` and `users_control` go on both databases.\n   - `migration_state` goes on Postgres only.\n   - Postgres also gets the trigger and the `users_id_seq` sequence.\n   - The MySQL control row starts as `sot` and the Postgres one as `not_sot`.\n   - If the migration fails, you fix it and rerun it, because every statement is idempotent.\n\n3. Deploy (Step 2). A normal rolling deploy ships the new `UserRepository` and the sweeper with `write_mode=mysql_only` and `read_pg_percent=0`. The new code is dormant, so behaviour is the same as today. The step is done when the build metric shows every instance on the new code. If it fails, you roll back the deploy.\n\n4. Turning on dual writes (Step 3). A human sets `users.write_mode=mysql_dual`. Each instance caches flags and refreshes them every 30 seconds, so instances can disagree for a while. The metric `app_flag_value{flag=\"users.write_mode\"}` shows what each instance is using. Once every expected instance shows `mysql_dual`, you wait 60 more seconds. Then a script writes `dual_write_all_since`. This stops a write from reaching only MySQL after the backfill has passed that row. If the flag later drops below `mysql_dual`, the script deletes the timestamp and resets the checkpoint to 0.\n\n5. A user update, write path (MySQL is the source of truth, SoT). The caller asks to update a user with an expected version.\n   - The flag tells the instance to write to MySQL first. In one MySQL transaction it reads the MySQL control row with `FOR SHARE`. If the state is not `sot`, it returns a retryable 503.\n   - It then performs the write, setting `version` to the old version + 1, and re-selects the full row. If the expected version no longer matches, no row changes and `StaleWrite` goes back to the caller. No outbox row is written and nothing is copied.\n   - Otherwise it inserts a `users_sync_outbox` row on MySQL in the same transaction. The outbox row is the record that this user still needs copying.\n\n6. Inline copy. After commit, the instance tries once, with a 250 ms timeout, to copy the full row to Postgres. The copy is an upsert under the version rule: insert if the row is missing, or replace it only if the stored `version` is lower than the incoming one.\n   - On success, it deletes the outbox row.\n   - On any error, it logs, bumps a metric and still returns success to the caller. A Postgres failure never fails a request.\n   - Copies do not check the control row.\n   - If the instance dies after commit, the outbox row simply stays.\n\n7. Sweeper repair. A separate worker polls the outbox on both databases.\n   - Several sweepers can run. Each claims a batch of due rows, oldest first, with `FOR UPDATE SKIP LOCKED`.\n   - For each row it re-reads the current user from the database that holds the outbox row. If the row exists, it applies it to the other database under the version rule. If the row is absent, it writes the tombstone on the other side and deletes the user there, in one transaction.\n   - Then it deletes the outbox row.\n   - It retries forever, with backoff capped at 60 seconds. An alert fires if the oldest outbox row is over 5 minutes old.\n   - It does not use Redis. Repeated or reordered copies are harmless because copies are idempotent.\n\n8. Create. A create inserts `version` 1, and the SoT assigns the id. While MySQL is the SoT, MySQL assigns it. The copy then passes that id to Postgres explicitly.\n\n9. Delete (GDPR erasure). Only the erasure job deletes. In one transaction on the SoT it deletes the row, inserts a tombstone and inserts an outbox row. The copy writes the tombstone on the other side first, then deletes the row.\n   - On Postgres, a `BEFORE INSERT OR UPDATE` trigger takes an advisory lock and skips any write for a tombstoned id.\n   - On MySQL, a copy first runs `SELECT 1 FROM users_tombstone ... FOR SHARE`, so a concurrent tombstone insert waits.\n   - As a result, no stale dual write, backfill batch or repair can bring an erased user back.\n   - If the job hits the switch pause, it gets the 503 and the job queue retries it.\n\n10. Backfill (Step 4). An operator launches the job. It refuses to run unless `dual_write_all_since` is set and the live flag is still `mysql_dual`. The loop is:\n    - Read `last_completed_id`.\n    - Wait while replica lag is over 5 seconds or the metric is missing, checking every 5 seconds.\n    - Read 2000 rows from the replica in id order, starting after the checkpoint.\n    - In one Postgres transaction, upsert them under the version rule and update `last_completed_id`.\n    - When a batch comes back empty, write `backfill_complete_at`.\n    - Stale replica rows lose to newer dual-written rows because of the version rule.\n    - A crash leaves the checkpoint unchanged, so the job restarts from the last completed batch.\n\n11. Comparison (Step 5). It starts once `backfill_complete_at` is set and the oldest outbox row is under 1 minute old. It makes two walks in keyset pages of 10,000 ids. One goes over the SoT's ids and checks each exists and matches on the other side. The other goes over the other side's ids and checks each exists on the SoT. It compares all columns, normalising `updated_at` precision.\n    - It re-reads candidates 30 seconds later and counts only persistent mismatches.\n    - A candidate with a pending outbox row on either side is not counted.\n    - Each persistent mismatch with no outbox row gets one, and that pass is not clean.\n    - A pass with zero persistent mismatches writes `compare_clean_at`.\n    - If the same mismatch keeps recurring, you stop and diagnose the dual-write code.\n\n12. Read ramp (Step 6). This starts when `compare_clean_at` is under 24 hours old. An operator raises `users.read_pg_percent` through 1, 10, 50 and 100. Each level is held for at least 1 hour with good Postgres error rate and p99.\n    - `flags.enabled_for(..., user_id)` routes that share of reads to Postgres.\n    - A Postgres error, a 300 ms timeout or a not-found falls back to the MySQL replica.\n    - A Postgres read can be briefly stale if an inline copy failed, until the sweeper catches up. The plan accepts this.\n    - When all instances report 100, a script records `reads_100_since`.\n    - Setting the flag to 0 restores MySQL-only reads at once.\n\n13. Soak (Step 7). Nothing moves for at least 3 days while nightly comparisons continue. The exit condition has several parts:\n    - `reads_100_since` is at least 3 days old.\n    - The last comparison is clean and under 24 hours old.\n    - The outbox is empty.\n    - `users_id_seq` exists.\n    - A rollback drill has passed in staging.\n\n14. Switching the SoT (Step 8). An operator runs the switch script, which refuses to run unless the Step 7 exit condition holds. The `FOR SHARE` on the control row is what makes the fence work. The script's `UPDATE` waits for in-flight writes and then blocks new ones on every instance. The sequence is:\n    - Set the MySQL control row to `moving`. The pause starts, and writes get a retryable 503.\n    - Wait for the MySQL outbox to drain, then spot-check the 1,000 most recently updated rows and `MAX(id)`.\n    - Set `users_id_seq` to `GREATEST(current, MAX(id) on the MySQL primary) + 1,000,000`, then set the `users.id` default to `nextval(...)`.\n    - Set Postgres `sot` and MySQL `not_sot`.\n    - Set `write_mode=pg_dual`.\n    - Instances with a stale flag still aim at MySQL, see `moving` or `not_sot`, and get a 503. They never write to the wrong side.\n    - If the drain is not done within 40 seconds, the script sets MySQL back to `sot`. This is allowed only before the fourth action. After that point you rerun the script to finish.\n    - The worst case is about 70 seconds against the 90-second limit.\n    - After the flag, writes go to Postgres first, with the outbox on Postgres, and the same sweeper copies them to MySQL.\n\n15. Reverse dual-write soak (Step 9). For at least 14 days, Postgres is the SoT and MySQL is kept current by the inline copy and the sweeper. Nightly comparisons continue. Rollback is the mirror image of Step 8, and it also sets MySQL `AUTO_INCREMENT` to `MAX(id)+1`. It resets `pg_sot_since`.\n\n16. Postgres-only (Step 10). This needs 14 days since `pg_sot_since`, an empty outbox and a clean comparison. An operator sets `write_mode=pg_only`. After that:\n    - Creates and updates write to Postgres only, with no outbox row and no copy.\n    - They still read the Postgres control row.\n    - The app's MySQL write grants are revoked, except for the erasure copy.\n    - Erasures still go to MySQL through the outbox.\n    - Reverting is possible but needs a Postgres-to-MySQL comparison and repair first.\n\n17. Cleanup (Steps 11 and 12).\n    - Step 11 starts after Step 10 has been stable for 7 days. It removes the MySQL read paths, the control-row checks and the copy of creates and updates. It stops the backfill and comparison jobs. The sweeper and the erasure copy remain.\n    - Step 12 removes the erasure copy and renames `users` to `users_retired`. After 7 more days it drops the table with the outbox and control tables.\n    - The rename can be undone. After the drop, recovery is only from backups.",
+   "gaps": [
+    "The document does not say how a person or script gets the retryable 503 or the abort back to clients beyond 'clients already retry 503s'. It does not say what the caller of an erasure or update sees if retries are exhausted.",
+    "It says a Postgres-SoT `create` gets its id from `users_id_seq`, but it does not say how an `update` on the Postgres side detects a stale expected version, or whether the same version check is applied there.",
+    "It says the sweeper 'does not need to know which side is the SoT' and processes both outboxes, but it does not say how the sweeper learns the connection details or how it is told the other side. It also does not say what happens to outbox rows on the old side after a switch, beyond the abort case.",
+    "Step 8 says 'Prepare the new side' with only the sequence and default described. It does not say whether the 1,000-row spot-check can fail, or what the script does if it does.",
+    "The document does not say who or what sets the barrier timestamps `compare_clean_at` and the nightly comparison's schedule mechanism, or how a drop of the flag 'below mysql_dual' is detected and the script triggered.",
+    "The inline copy's behaviour when the control row on the target is `not_sot` or when the target is in `moving` is stated only as 'copies do not check the control row'. The document does not say how the copy of a tombstoned id into Postgres (trigger skip) is reported back, so whether the outbox row is then deleted is not explicit.",
+    "Step 10 says the Postgres write 'still reads the Postgres control row', but it does not say what happens to Postgres-side outbox rows already pending at the moment the flag flips to `pg_only`.",
+    "The erasure job's real code and queue behaviour are listed by the document itself as unconfirmed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

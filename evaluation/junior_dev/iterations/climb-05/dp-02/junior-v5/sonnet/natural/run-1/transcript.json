@@ -1,0 +1,175 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is 'the log' here, and what are 'in-sync replicas'? Which product is it, and what does 'keyed by event_id' do for the client's batch?",
+     "about": "Step 3. Durable write, then 202"
+    },
+    {
+     "id": "2",
+     "text": "What is the 'KV store' (which product), and where does the consumer run? Does one consumer or several handle a partition?",
+     "about": "Step 5. Live deduplication consumer"
+    },
+    {
+     "id": "3",
+     "text": "If a record is a duplicate, who sees it besides raw? Is anything logged or counted when it is dropped from the clean path?",
+     "about": "Step 5. Live deduplication consumer"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'warehouse' and 'events_clean'? How exactly does the idempotent load keyed by '(partition, offset range)' work, and what happens if the load fails or is slow?",
+     "about": "Step 7. Warehouse append"
+    },
+    {
+     "id": "5",
+     "text": "What does the sealing marker look like and who writes it? What happens to the seal if one partition's archive is stuck?",
+     "about": "Step 4. Raw archive sink"
+    },
+    {
+     "id": "6",
+     "text": "How does the live writer know a day is closed, and what happens to events with received_at on day D that the live path is still processing after 02:00 on D+1?",
+     "about": "Step 9. Closed-day fence"
+    },
+    {
+     "id": "7",
+     "text": "How does the operator request a replay (tool, command, API), and what do they see if the request is rejected?",
+     "about": "Step 10. Trigger and eligibility"
+    },
+    {
+     "id": "8",
+     "text": "What runs this batch job (which engine) and what does it output? Is the seen-ID set kept in memory, a file or a table, and how big is it?",
+     "about": "Step 11. Build the set of already-seen IDs"
+    },
+    {
+     "id": "9",
+     "text": "What triggers the comparison and who or what does it? If the live partition for D got late rows after the replay started, how do the sets still match?",
+     "about": "Step 15. Validate before publish"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The log is the existing replicated append-only Kafka-style log named in the brief (14-day retention). The brief does not name a product. In-sync replicas are the replicas caught up with the leader. Keying by event_id sends every copy of an event to the same partition, which makes 'lowest (partition, offset)' a stable first-copy rule. It does nothing special to the client's batch, whose events are appended individually. I added a Terms section and a clause in step 3."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The brief only says a key-value store with per-key TTL exists. The product is unknown, so I cannot say what its set-if-absent behavior is beyond what the plan assumes. The consumer runs as a consumer group on our own compute. Decided: each partition is read by one consumer at a time within the group, which is how log consumer groups work. I defined the KV store in Terms, stated the one-consumer-per-partition rule in step 5, and listed the product as an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Nobody sees a dropped duplicate except raw, which keeps it. I decided to count dropped duplicates in a metric so the drop rate is visible. Added to step 5. No per-record logging, to avoid noise."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The warehouse is the existing one that can atomically replace a day partition. events_clean is the clean table, one partition per UTC day. Idempotent load: the load records its (partition, offset range) key and a batch with a recorded key is skipped. The exact mechanism (manifest or merge on event_id) is still an assumption to confirm. If the load fails, offsets are not committed and the batch is retried. A slow load appears as consumer lag and trips the 3-minute alert. Added to step 7."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The archive sink writes an empty marker object, raw/received_date=D/_SEALED, once every partition's archive position has passed the end of day D. If a partition is stuck the marker is not written, so replay of D is refused and the sink-lag alert fires. The marker name and empty content are my choice, easy to change. Added to step 4."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The live writer compares the current UTC time with D+1 02:00 before each load. If the day is closed it does not append. Events of day D still in flight are not loaded live. They remain in raw and a replay of D adds them. This is why an alert fires, since the 5-minute target is already broken. Clarified in step 9."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "The brief does not say how the operator makes the request, so I have not chosen a tool, command or API. Decided: a rejected request returns the list of conditions that failed. Added that line to step 10 and an open question."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The engine is not specified in the brief, so I do not know which one is used. Decided: the job runs on separate compute and writes the seen IDs as files in scratch space in object storage, not memory or the live warehouse. Size is unknown because event volume is not given; it is 8 days of event_id values at peak. Added the output to step 11 and listed engine and size as an open question."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The replay job runs the comparison itself, automatically, after staging is written. Your question exposed a real flaw: a day closes and is sealed before replay can start, so the live partition does not change after that. But if live lagged past close it is missing events, and the old 'sets must match' check would have failed exactly when replay is the recovery. Changed the check: every live event_id must be in staging, extras are allowed and reported, and the row count must equal live rows plus extras."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "A micro-batch is keyed by (partition, offset range), but is loaded into the partition for each event's received_at day. If one micro-batch holds events from two UTC days (around midnight), how is it loaded, and how does the idempotency key work then?",
+     "about": "Step 7. Warehouse append"
+    },
+    {
+     "id": "11",
+     "text": "The KV value stores (partition, offset, received_at day). What reads the day part, and what is it used for?",
+     "about": "Step 5. Live deduplication consumer"
+    },
+    {
+     "id": "12",
+     "text": "When the fence refuses to append a batch for a closed day, what happens to that batch and to the consumer offsets? Does the consumer keep going or stall?",
+     "about": "Step 9. Closed-day fence"
+    },
+    {
+     "id": "13",
+     "text": "Who receives the report of extra event_ids, and what happens when a check fails and the job stops? Does anyone get notified, and what does the ledger entry show?",
+     "about": "Step 15. Validate before publish"
+    },
+    {
+     "id": "14",
+     "text": "Live picks the winner by whichever record the KV saw first, while replay picks the lowest (partition, offset). Why are these always the same record, given the KV TTL and consumer restarts?",
+     "about": "Step 12. Deduplicate day D"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Split each micro-batch by the UTC day of received_at and load each part into its own day partition. The idempotency key becomes (partition, offset range, day), so a part is skipped only if that exact day part was already loaded. Offsets commit after all parts are loaded or fenced. The old key could not tell the two parts apart, so this was a real gap. Fixed in step 7."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Nothing reads it. The winner test only compares (partition, offset), and the day is not needed for it. I removed the day from the KV value, which also makes the KV smaller."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The fenced part is not loaded, is counted in a metric, and is treated as handled, so offsets commit and the consumer keeps going. It does not stall, because stalling would build lag for live days too. The events stay in raw and a replay of that day adds them. The lag alert already fires. Clarified in step 9."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The extras list and count are written into the ledger entry and shown in the operator tool's output, so the operator who requested the replay sees them. On a failed check the job stops, marks the ledger entry failed with the list of failed checks, releases the lock and shows the failure in the tool's output. Live is untouched. How the operator is paged beyond that is not chosen, so I added it to the open questions. Added to step 15."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "They are the same record because all copies of an event share a partition and one consumer reads a partition in offset order, so the first copy the KV sees is the lowest offset. Consumer restarts reprocess the same records, and the own-offset check keeps the same winner. The KV TTL is 8 days against a 7-day maximum retry, so the key outlives every possible retry. Caveats: if KV state were lost or a consumer lagged beyond 8 days, live could keep a later copy, and a replay of that day corrects it. I added the reason to the partition-key decision and the KV-loss note to the open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A website or app sends an HTTPS batch (up to 100 events) to the collector. Each event has a client-made event_id, a device_id and a client timestamp.\n\n2. The collector validates each event. It needs event_id and device_id present, and the event must be 32 KB or less. Rejected events are listed in the response (by event_id, or by batch index if the ID is missing) and counted in a metric. They are not stored, and clients never retry them. The rest of the batch carries on. State is held nowhere.\n\n3. The collector stamps each accepted event with an envelope: received_at (server UTC), client IP, user-agent and collector ID. The original body stays byte for byte. received_at fixes the event's \"day\" (UTC) for good.\n\n4. The collector appends each event to the replicated log, keyed by event_id, so every copy of an event goes to the same partition. It waits for all in-sync replicas to acknowledge. It returns 202 only once every accepted event is acknowledged. If the write partly fails it returns 5xx and the client resends the whole batch. Copies already appended become duplicates, and that is accepted. Under overload it returns 429 and the client backs off. The collector does no deduplication. The log is the state here, with 14-day retention.\n\n5. The raw archive sink is a separate consumer group on the log. It writes every record unchanged, with its (partition, offset), to object storage under raw/received_date=YYYY-MM-DD/. Dates come from received_at. Objects expire after 91 days. When every partition's archive position has passed the end of a day, it writes an empty _SEALED marker for that day. If a partition is stuck, no marker is written, replay of that day is refused, and an alert fires when sink lag exceeds a few hours.\n\n6. A second consumer group reads the log in micro-batches of about 1 minute. One consumer reads each partition at a time, in offset order. For each record it does an atomic set-if-absent in the KV store, with key event_id, value (partition, offset) and TTL 8 days. If the key was absent, or already holds this record's own (partition, offset), the record is the winner and moves on. The own-offset check makes a re-read after a crash safe. Otherwise it is a duplicate: it is dropped from the clean path, counted in a metric and left in raw. Copies share a partition and are read in offset order, so the first copy the KV sees has the lowest offset, which is the same winner replay will pick.\n\n7. Step 8 (bot handling) is an empty placeholder between dedup and load. Product has not decided whether to drop or flag suspected bots.\n\n8. Winners get enrichment: geo-IP lookup and user-agent parsing, plus an enrichment_version stamp.\n\n9. The warehouse append splits each micro-batch by the day of received_at, because a batch near midnight can hold two days. Before each load, the closed-day fence compares the current time with that day's close time (02:00 UTC on D+1). If the day is closed, the part is not appended. It is counted in a metric and treated as handled, and the events stay in raw for a later replay. A writer that lags past close also raises an alert. Otherwise each part is loaded into that day's partition of events_clean. The load is idempotent, keyed by (partition, offset range, day). The key is recorded with the load, and a part whose key is already recorded is skipped.\n\n10. Consumer offsets are committed only after all parts are loaded or skipped (fenced). If a load fails or is slow, offsets are not committed and the batch is re-read and loaded again. Lag above 3 minutes alerts. The target is that events reach events_clean within about 5 minutes.\n\n11. Replay, request. After an enrichment bug fix, an operator asks for a replay of closed day D through a tool that has not been chosen. The request is accepted only if all four hold. Now must be at or after D+1 02:00 UTC. D must be sealed. D and its 8-day lookback must still be inside the 91-day retention. No other replay for D may be running. On acceptance it takes a per-day lock and records the run in a replay ledger (operator, code version, enrichment version). A rejected request returns the list of failed conditions.\n\n12. Replay reads only the raw archive. A batch job scans raw for D-8 through D-1 and writes every event_id as files in scratch space in object storage. This is the seen-ID set, which stands in for the KV state.\n\n13. The job reads raw for D and keeps the lowest (partition, offset) record per event_id. It drops any whose event_id is in the seen-ID set, because an earlier day won.\n\n14. It re-runs the fixed enrichment on the survivors, using the stored IP and user-agent, and stamps the new enrichment_version. It writes the result to a staging table or partition, not to events_clean. The bot rule will apply here once decided.\n\n15. The job validates staging against the live partition for D. Every live event_id must be in staging. Extras are allowed, being events live missed by lagging past close. Row count must equal live rows plus extras. Only enrichment columns may differ. There must be no duplicate event_id. Extras count and list go into the ledger and the tool output. If a check fails, the job stops, leaves the live partition alone, marks the ledger entry failed with the failed checks, releases the lock and shows the failure in the tool output.\n\n16. If validation passes, the warehouse's atomic replace swaps day D in events_clean for the staging data. Dashboards see either the old complete day or the new one. The ledger entry is marked done and the lock is released. A failed or cancelled replay leaves events_clean unchanged, and a rerun is safe.",
+   "gaps": [
+    "How the collector's log writes are assigned when a batch is partly acknowledged: the document says the client resends the whole batch but does not say whether the 5xx response says which events succeeded.",
+    "How the clients know to back off on 429 or how long to wait. The document only says they back off and resend.",
+    "How the consumer group tracks which record is 'this record' when it checks its own (partition, offset) in the KV store at the time of a crash. The mechanism that guarantees the own-offset check is atomic with set-if-absent is not described.",
+    "How the 'archive position' per partition is determined to have passed the end of a day, given that records within a partition are ordered by offset and not by received_at. The document does not say how the sink knows a late-stamped record cannot still appear.",
+    "How the live consumer chooses the idempotency key for a load when micro-batches vary in size. The document gives (partition, offset range, day) but not how the ranges are formed or recorded in the warehouse, and it lists this as an assumption to confirm.",
+    "What the warehouse does and what the live path does when the same part has already been loaded by a prior attempt but the offsets were not committed. Only 'skip a part whose key is already recorded' is stated, which is enough, but where the key is stored is unspecified."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

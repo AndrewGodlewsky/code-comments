@@ -68,6 +68,19 @@ def collect(output_file: Path, iteration_dir: Path) -> list[Path]:
     return written
 
 
+def collect_judge_runner(output_file: Path, iteration_dir: Path) -> list[Path]:
+    """Store every batch of a judge-runner workflow (children run under one shared concurrency cap).
+
+    Refuses the whole output, writing nothing, if any judgment has no winner: a failed call (a usage cap,
+    say) is re-run by resuming the runner, never collected as missing."""
+    data = json.loads(Path(output_file).read_text(encoding="utf-8"))
+    batches = data.get("result", data)["batches"]
+    failed = [(b or {}).get("label") for b in batches if not b or any(not j or not j.get("winner") for j in b["judgments"])]
+    if failed:
+        raise ValueError(f"batches with failed calls, resume the runner first: {failed}")
+    return [collect_judgments(output_file, iteration_dir, result=b) for b in batches]
+
+
 def collect_judgments(output_file: Path, iteration_dir: Path, result: dict | None = None) -> Path:
     """Store a judge batch's judgments under <iteration>/judgments/<label>.json (never overwritten)."""
     if result is None:

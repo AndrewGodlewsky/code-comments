@@ -1,0 +1,213 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Place order is pressed and Order asks Cart over HTTP. What does Order do if that call fails, times out, or the cart is empty?",
+     "about": "1. Receive Place order. Ask Cart for the current lines and prices (HTTP)"
+    },
+    {
+     "id": "2",
+     "text": "The document says the first step is a plain HTTP call, but step 2 saves the order and publishes ReserveStock in one transaction. What is the order id's relationship to this: when is it created, and what ties a double press to the existing order?",
+     "about": "2. Save order with the snapshot / Double-press of Place order"
+    },
+    {
+     "id": "3",
+     "text": "What is the 'existing mailer' and how does Order call it? Does it join the outbox transaction, or what happens if the email fails to send after the status changes?",
+     "about": "Order service emails (O7, O8, O9)"
+    },
+    {
+     "id": "4",
+     "text": "After the 10-minute hold EXPIRES and stock goes back on sale, then PaymentDeclined arrives, what does Inventory's 'release the hold' do to an already EXPIRED reservation? And does the order status ever leave AWAITING_PAYMENT if the payment never resolves?",
+     "about": "I5 Release the hold / I9 TIMER every minute"
+    },
+    {
+     "id": "5",
+     "text": "In the claim check, what does 'lapsed but all lines still free' mean exactly? How does Inventory know the stock is still free after the reservation became EXPIRED, and does a claim re-reserve it atomically?",
+     "about": "I6 Claim: is the hold still HELD, or lapsed but all lines still free?"
+    },
+    {
+     "id": "6",
+     "text": "What does Payment do between 'Call provider to charge' and the webhook? Does the charge call itself return a result, or is the webhook always the only source of the outcome? What does 'On timeout retry' mean for the order flow?",
+     "about": "4. Save payment PENDING ... Call provider to charge"
+    },
+    {
+     "id": "7",
+     "text": "The P12 timer 'arms' at the charge. What exactly checks for 35 minutes, and what happens if the provider status query itself says still pending or fails?",
+     "about": "P12 TIMER: no webhook 35 minutes after the charge"
+    },
+    {
+     "id": "8",
+     "text": "After PaymentDeclined the customer 'can try again'. Does a retry create a new order id and a new cart snapshot, and is the old open-checkout block released by PAYMENT_DECLINED?",
+     "about": "5. Status PAYMENT_DECLINED. Tell customer, who can try again"
+    },
+    {
+     "id": "9",
+     "text": "What happens in Order if a late event arrives in an unexpected state, for example PaymentSucceeded after the order is already REJECTED or PAYMENT_DECLINED, or ClaimFailed while handling a repeat?",
+     "about": "Order statuses / ClaimStock and ClaimFailed arrows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "If the Cart call fails, times out or returns an empty cart, Order creates no order, publishes nothing and tells the customer to try again. Nothing has changed yet, so there is nothing to undo. Added to step 1 and the failure table."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Order creates the order id in step 2, in the same transaction that saves the snapshot and the ReserveStock outbox entry. Step 1 is only a read and has no id. A unique constraint allows one open order per cart, so a second press finds that order and returns it."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "I do not know the existing mailer's interface or whether it supports idempotent sends. Decided handling: Order writes the email as an outbox entry in the same transaction as the status change, and a sender delivers it afterwards with retries. A failed email never changes the order status. Mailer interface added to Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Release on an already EXPIRED (or released) reservation does nothing, as the box says, because the stock is already back on sale. The order stays AWAITING_PAYMENT until the payment resolves. The 35 minute timer guarantees a resolution. Clarified in the box and in the statuses section."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Stock is only decremented at claim. Holds are rows, not decrements. A claim on a lapsed reservation checks, in one transaction, that for every line stock on hand minus other live holds still covers the quantity. If so it decrements and marks CLAIMED atomically. If not, it claims nothing and publishes ClaimFailed. Added to decision 1."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The charge call only acknowledges that the provider accepted the request. The outcome always comes by webhook (or the status query). On timeout Payment retries with the same idempotency key, which cannot double charge. The order stays AWAITING_PAYMENT meanwhile. Added to step 4 and the failure table."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A Payment timer job runs every minute and looks for payments still PENDING 35 minutes after the charge. It asks the provider for the status. If the answer is still pending or the query fails, it leaves the payment PENDING and checks again next run. There is no upper limit yet, so I added that to Open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "A retry after a decline creates a new order id and a fresh cart snapshot. Every end state, including PAYMENT_DECLINED, closes the open-checkout block for the cart. Added to decision 5."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Order and Inventory ignore an event that does not fit the current status, log it and raise an alert for a person. Exact repeats are already dropped by the inbox. PaymentSucceeded for a rejected order cannot occur, since no charge was ever requested. PaymentSucceeded after PAYMENT_DECLINED should not happen, because the provider reports one outcome per charge. Automatic refund for that case is left as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "After step 2 saves the order and publishes ReserveStock, what does the customer's Place order request get back, and how does the customer learn the later outcomes (short stock, declined, confirmed) during a wait of up to 30 minutes?",
+     "about": "2. Create the order id. Save order with the snapshot / Tell customer"
+    },
+    {
+     "id": "11",
+     "text": "The charge call only acknowledges and the outcome comes by webhook. For the refund, 'Provider accepted the refund?' decides REFUNDED right away. Does the refund also come back by webhook, or is the refund call's answer the final result? What does 'accepted' mean here?",
+     "about": "P8 / P9 Provider accepted the refund?"
+    },
+    {
+     "id": "12",
+     "text": "If Order publishes ReserveStock and Inventory never answers (the event is lost or the service is down), does the order stay PENDING_STOCK forever? Is there any timeout or retry on this step, as there is for payment?",
+     "about": "PENDING_STOCK / ReserveStock arrow"
+    },
+    {
+     "id": "13",
+     "text": "If Payment is slow or down when ChargeRequested is published, or the provider rejects the charge request outright (not a declined card), what happens to the order and the hold? Is there a path other than the webhook or the 35 minute timer?",
+     "about": "4. Save payment PENDING ... Call provider to charge"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Step 2 replies at once with the order id and status PENDING_STOCK. The page then polls Order's own status (HTTP, reading Order's table) every few seconds until an end state and shows the outcome. This avoids holding a request open for up to 35 minutes. Added to step 2, the reading notes, the owns table and decision 7."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "I do not know whether the provider reports refund results by webhook or whether the refund call's answer is final. Working assumption: 'accepted' means the provider's response says the refund was created, and Payment marks REFUNDED then. A refund that fails at the provider is handled by the retry path. Added to Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The outbox sender retries publishing until the broker accepts, and the broker keeps the event until Inventory takes it, so a lost event or a down service only delays the step. The order stays PENDING_STOCK. Nothing is reserved yet, so nothing needs undoing. I added no timeout because the brief does not require one; it is listed in Open questions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "If Payment is slow or down, ChargeRequested waits in the broker and the order stays AWAITING_PAYMENT. The hold may lapse, which is safe because the later claim re-checks stock. If charge retries on timeout run out, the payment stays PENDING and the 35 minute timer asks the provider by order id. If the provider rejects the request outright, Payment treats it as declined and publishes PaymentDeclined, so the order fails and Inventory releases the hold. Added to P1, a new arrow and failure rows."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "In the webhook step, what does Payment reply and do if the signature check fails, or if no payment is found for the order id in the webhook?",
+     "about": "P2 Webhook arrives. Verify signature. Find the payment by the order id in the webhook"
+    },
+    {
+     "id": "15",
+     "text": "Payment saves PENDING and then calls the provider. If Payment crashes between the two, or ChargeRequested is delivered twice, how does the charge still get made once and only once? Does Payment have an inbox for events, or does the unique order id do that job?",
+     "about": "4. Save payment PENDING for the order id ... Call provider to charge"
+    },
+    {
+     "id": "16",
+     "text": "The webhook is inserted into the inbox in the same transaction as the status change. How does PaymentSucceeded or PaymentDeclined then get published reliably? Is it written to Payment's outbox in that same transaction?",
+     "about": "P6 Payment DECLINED / P7 Payment SUCCEEDED and the Outbox term"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "If the signature check fails, Payment replies 401, processes nothing and does not touch the inbox. A forged call must have no effect, and a genuine provider call is signed correctly. If the signature is valid but no payment exists for the order id, Payment replies 200 so the provider stops retrying, then logs it and alerts a person. Payment saves the PENDING row before calling the provider, so a genuine webhook for a real charge cannot arrive before the row exists. Added to the P2 box, step 5 and the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The unique order id on the payment row acts as the inbox for ChargeRequested, so Payment needs no separate event inbox. Payment inserts the PENDING row (or reuses the existing one) and acknowledges the event only after the provider call has answered. If Payment crashes between the save and the call, the event is unacknowledged and the broker redelivers it. Payment finds the row and calls the provider again with the same idempotency key (the order id), so the provider sees one charge. A second delivery of the event does the same. If retries never succeed, the 35 minute timer asks the provider about the order id. The same unique-order-id rule applies to the refund row for RefundRequested. Added to the Inbox and Event terms, P1, P8, step 4, step 9 and failure rows."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes. In the same transaction that inserts the webhook event id into the inbox and changes the payment status, Payment writes an outbox entry for PaymentSucceeded or PaymentDeclined. The sender then publishes it and retries until the broker accepts, so the outcome event cannot be lost and cannot exist without the status change. The same pattern applies to every event, which the Outbox term now says. Added to P2, P6, P7 and step 5."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer presses Place order. The Order service receives it. Order makes an HTTP call to Cart for the current lines and prices. Cart returns them and changes nothing. If the call fails, times out or the cart is empty, Order creates no order and publishes nothing, and the customer is told to try again. At this point no order id exists.\n\n2. Order creates the order id and, in one local transaction in its own database, saves the order with the snapshot (lines and prices copied from the cart). Status is PENDING_STOCK. In the same transaction it writes a ReserveStock entry to its outbox. It replies at once to the page with the order id and status. The page then polls Order's status over HTTP every few seconds until the status is an end state. A unique constraint allows one open checkout per cart, so a second press returns the existing order. A sender process publishes the outbox entry to the broker and retries until the broker accepts it. The broker holds the event until Inventory takes it.\n\n3. Inventory receives ReserveStock. In one database transaction it checks every line.\n   a. If any line is short, it reserves nothing and publishes StockShort with the short items. Order sets REJECTED_OUT_OF_STOCK and tells the customer which items are short. No payment was ever requested, and the cart is untouched.\n   b. If every line is in stock, it saves a reservation (the hold) with status HELD and expires_at = now + 10 minutes. It publishes StockReserved. Stock is not decremented yet.\n   Inventory's inbox ignores repeated events. If Inventory is down, ReserveStock waits in the broker and the order stays PENDING_STOCK.\n\n4. Order receives StockReserved, sets AWAITING_PAYMENT and publishes ChargeRequested.\n\n5. In parallel with step 4, an Inventory timer runs every minute. It marks HELD reservations past expires_at as EXPIRED and puts the stock back on sale. It does not tell Order, because payment may still succeed.\n\n6. Payment receives ChargeRequested. It saves a payment as PENDING (order id is unique) and calls the provider to charge, using the order id as the idempotency key. The call only acknowledges the request. The real outcome comes later by webhook. On a timeout it retries with the same key. If retries run out, the payment stays PENDING for the stuck-payment timer. If the provider rejects the request outright (not a card decline), Payment treats it as a decline. If Payment is down, ChargeRequested waits in the broker and the order stays AWAITING_PAYMENT.\n\n7. The provider sends a webhook, anywhere from 2 seconds to 30 minutes later, and possibly more than once. Payment verifies the signature. It inserts the provider event id into its webhook inbox in the same transaction as the status update. If the id is already there, it replies 200 and does nothing.\n   a. If the outcome is declined, Payment sets DECLINED and publishes PaymentDeclined. Order sets PAYMENT_DECLINED and tells the customer, who can try again. Inventory releases the hold. Releasing does nothing if the hold is already released or EXPIRED.\n   b. If the outcome is success, Payment sets SUCCEEDED and publishes PaymentSucceeded.\n\n8. Backstop: a Payment timer runs every minute. Any payment still PENDING 35 minutes after the charge is checked. Payment asks the provider for the charge status by order id and handles the answer as if it were a webhook. If the answer is still pending or the query fails, it checks again next run.\n\n9. On PaymentSucceeded, Order sets PAID and publishes ClaimStock.\n\n10. Inventory handles ClaimStock in one transaction. It checks whether the hold is still HELD. If the hold has lapsed, it checks that for every line the stock on hand minus other live holds still covers the quantity. If so, it decrements stock, marks the reservation CLAIMED and publishes StockClaimed. The timer and the claim change the same row inside a transaction, so exactly one wins.\n\n11. Happy path end. On StockClaimed, Order sets CONFIRMED, emails the customer and publishes OrderConfirmed. Cart empties the cart on that event and at no other time. Emails are written as outbox entries in the same transaction as the status change. A sender delivers them with retries, and a failed email never changes the order status.\n\n12. Late success. If any line is short at claim time, Inventory claims nothing and publishes ClaimFailed. Order sets CANCELLED_OUT_OF_STOCK, emails the customer that a full refund is coming, and publishes RefundRequested for the full amount. Payment saves a refund as REFUND_PENDING and asks the provider to refund the full amount. The idempotency key is refund plus order id.\n   a. If the provider accepts, the refund becomes REFUNDED and Payment publishes Refunded. Order records the refund as done and emails \"refund issued\".\n   b. If it fails, the refund stays REFUND_PENDING and the attempt is recorded. Payment retries with growing delay and the same key, and never gives up. After 5 failures an alert goes to a person, and retries continue.\n\n13. Other failure handling the document states. An event that does not fit the order's current status is ignored by Order and Inventory, logged, and a person is alerted. Every end state closes the checkout, so a retry gets a new order id and a fresh snapshot. In every failure case except the last two (the confirm and late-success paths), the cart stays as it was. Each service owns its database, and no service reads another's tables. The outbox and inbox together give at-least-once delivery without double effects.",
+   "gaps": [
+    "The document does not say how Payment learns the amount to charge. ChargeRequested is only shown as an event, with no stated contents.",
+    "It does not say how Order knows the amount for the full refund, or how Payment knows which provider charge to refund. Payment's refunds table lists status and attempts but not the amount or the charge reference.",
+    "It does not say what the provider does after the first acknowledgement. The webhook is described only as 'succeeded or declined', not how it is matched to an order, though the order id as idempotency key is implied.",
+    "It does not say how the 35 minute timer knows the charge time for a payment, or what happens if the webhook arrives after the timer has already handled the payment. The inbox is keyed on provider event ids, and the timer's query creates no provider event id.",
+    "It does not say what Order does with a PaymentSucceeded or ClaimStock-related event once the order is already declined or rejected, beyond a general 'ignore, log and alert'. The open question about an automatic refund remains unanswered."
+   ],
+   "verdict": "wrong",
+   "notes": "Cart rule misread: the junior took 'except the last two' to mean the cart is emptied on the confirm and late-success paths. In fact the cart is emptied only on OrderConfirmed, so in every failure case, including late success, the cart stays as it was. The sentence was ambiguous and wrong.; Amounts: the document never said what ChargeRequested and RefundRequested carry, so the junior could not say how Payment learns the amount to charge or how the full refund amount and the provider charge to refund are known.; Webhook matching and timing: the junior could not say how a webhook is matched to an order (by the order id sent with the charge, stored with the payment), how the 35 minute timer knows the charge time (stored on the payment), or what happens when a webhook arrives after the timer already handled the payment (the payment is no longer PENDING, so the repeat outcome is ignored).; Unexpected PaymentSucceeded for an already declined or rejected order: the junior found only a generic ignore, log and alert. The document now states this case directly and keeps the automatic refund as an open question."
+  },
+  {
+   "text": "1. Customer presses Place order. The Order service receives it and makes an HTTP call to Cart for the current lines and prices. Cart returns them and changes nothing. If the call fails, times out or the cart is empty, Order creates no order, publishes nothing and tells the customer to try again. No order id exists yet.\n\n2. Order creates the order id. In one local transaction it saves the order with the snapshot (lines and prices), the total and status PENDING_STOCK, and writes a ReserveStock outbox entry. It replies at once with the order id and status. The page then polls Order's status over HTTP every few seconds until an end state. A unique constraint allows one open checkout per cart, so a second press returns the existing order. A sender process publishes the outbox entry to the broker and retries until the broker accepts it.\n\n3. Inventory takes ReserveStock from the broker. In one database transaction it checks every line. It acknowledges the event only after handling it, and an inbox ignores repeats.\n - If any line is short, it reserves nothing and publishes StockShort with the short items. Order sets REJECTED_OUT_OF_STOCK and tells the customer which items are short. No payment was requested.\n - If every line is in stock, it saves a HELD reservation with expires_at = now + 10 minutes and publishes StockReserved. Stock is not decremented yet.\n\n4. Order gets StockReserved, sets AWAITING_PAYMENT and publishes ChargeRequested with the order id and total.\n\n5. Payment gets ChargeRequested. It inserts a PENDING payment row (order id unique) with the amount and charged_at. If the row exists already, it reuses it. It then calls the provider to charge, using the order id as the idempotency key, and stores the charge reference from the reply. The reply only confirms receipt. It acknowledges the event only after the provider answers, so a crash means redelivery and the same key is sent again. On a timeout it retries with the same key. If retries run out, the payment stays PENDING for the timer. If the provider rejects the request outright, it is treated as a decline and PaymentDeclined is published.\n\n6. The provider sends a webhook to Payment, anywhere from 2 seconds to 30 minutes later. It may be repeated. Payment checks the signature. A bad signature gets a 401 and nothing happens. Payment finds the payment by the order id in the webhook. If there is none, it replies 200, logs and alerts a person. Otherwise, in one transaction, it inserts the provider event id in the inbox, updates the payment, and writes the outbox entry. If the event id is already in the inbox, or the payment is no longer PENDING, it replies 200 and does nothing.\n\n7. Backup timer in Payment. Every minute it looks for payments still PENDING 35 minutes after charged_at. It asks the provider for the charge status by order id and handles the answer as if it were a webhook. If the answer is still pending or the query fails, it tries again next minute.\n\n8. Declined path. Payment publishes PaymentDeclined. Order sets PAYMENT_DECLINED and tells the customer, who can try again. Inventory releases the hold, and does nothing if it is already released or expired.\n\n9. Hold expiry. A timer in Inventory runs every minute. It turns HELD reservations past expires_at into EXPIRED and puts the stock back on sale. It does not notify Order, because payment may still succeed.\n\n10. Success path. Payment publishes PaymentSucceeded. Order sets PAID and publishes ClaimStock. In one transaction Inventory checks whether the hold is still HELD. If the hold lapsed, it checks that stock on hand minus other live holds still covers every line. If so, it decrements stock, marks the reservation CLAIMED and publishes StockClaimed. The timer and the claim change the same row inside a transaction, so exactly one wins.\n\n11. Confirmation. Order gets StockClaimed, sets CONFIRMED, emails the customer and publishes OrderConfirmed. Cart empties the cart on that event only. Emails are written as outbox entries in the same transaction as the status change and sent with retries. A failed email never changes the order status.\n\n12. Late success. If the claim finds any line short, Inventory claims nothing and publishes ClaimFailed. Order sets CANCELLED_OUT_OF_STOCK, emails the customer that a full refund is coming and publishes RefundRequested with the order id. Payment saves a REFUND_PENDING refund for the full amount (order id unique) and asks the provider to refund the stored charge reference, using the idempotency key refund + order id. If the provider accepts, the refund becomes REFUNDED and Payment publishes Refunded. Order records the refund as done and emails \"refund issued\". If the refund fails, it stays REFUND_PENDING and is retried with growing delay and the same key, forever. After 5 failures a person is alerted. The cart stays untouched in every failure case.\n\n13. Odd events. If an event does not fit the order's current status, for example PaymentSucceeded for an order already declined, Order and Inventory ignore it, log it and alert a person. There is no automatic refund.\n\n14. If Inventory or Payment is down, the events wait in the broker and the order stays in its current status. The customer sees \"still processing\".",
+   "gaps": [
+    "What happens to the pending order when the customer closes the page or the client stops polling is not stated. The document does not say how the page learns about or renders end states beyond the status values.",
+    "How Inventory's consumer of PaymentDeclined, ClaimStock and similar events finds the reservation is implied by the order id but not stated. Which events get inbox entries in Inventory and Order is only partly described.",
+    "The document does not say how Order knows the refund belongs to the order when it handles Refunded, or what status the order has after the refund is recorded. It is not clear whether CANCELLED_OUT_OF_STOCK stays the final status.",
+    "The mechanism for retrying the refund with growing delay is not described. It does not say what triggers the retry, or how Payment handles RefundRequested events that arrive while a refund is already pending beyond the unique order id.",
+    "What the customer sees when the charge request is retried and runs out of retries is unclear, because the payment just stays PENDING. How the one-open-checkout unique constraint is released at end states is only implied."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

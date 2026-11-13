@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "They see the generic message: \"If an account exists for that address, we've sent a link.\" Nothing is written and no email is sent.",
+  "q2": "The API rolls back: no reset row and no job are created. They get the same generic 200 message, and earlier links stay unchanged.",
+  "q3": "30 minutes from when the worker creates the token. A newer link issued for the account, or a completed reset, burns it sooner.",
+  "q4": "Still usable until it expires. Rejected passwords write nothing, so used_at is not set and the link is not burned.",
+  "q5": "None. The reset deletes all the user's sessions, including the resetting device. The user is not auto-logged in and must log in again.",
+  "q6": "The worker retries 3 times with backoff, then logs reset_id, emits a metric, and drops the job. The user is not told.",
+  "q7": "The worker generates the 32-byte token and emails it in the link. Only its SHA-256 hash is stored in Postgres.",
+  "q8": "The API hashes the token with SHA-256 and selects the row where token_hash matches, used_at is null, and expires_at is in the future. This read is read-only.",
+  "q9": "In the password_resets table. The count covers rows with created_at in the past hour, taken under a FOR UPDATE user-row lock. Older rows fall out of the window.",
+  "q10": "In the same transaction as the new insert, all the account's unused rows are burned by setting used_at, before the new row is written.",
+  "q11": "In one transaction: password hash update, burning other unused rows, deleting sessions, and burning the used link. The confirmation email is enqueued after commit.",
+  "q12": "A single conditional UPDATE ... WHERE used_at IS NULL AND expires_at > now() RETURNING user_id checks and burns together. Only one wins; the other gets zero rows and the expired page."
+ },
+ "sonnet": {
+  "q1": "They see the generic message (\"If an account exists for that address, we've sent a link.\") with a 200. Nothing is sent and no row is created.",
+  "q2": "The request is rolled back: no new row, no job, no mail. The user sees the generic 200 message, and the earlier link is unchanged.",
+  "q3": "30 minutes, counted from when the worker creates the token. It ends sooner if it is used, if a newer link is requested (the old rows are burned), or if a successful reset burns the user's other unused rows. A retry after a failed send makes a new token that overwrites the hash, so only the last token sent works.",
+  "q4": "Unchanged and still usable until it expires. The password check runs before the transaction, so nothing is written or burned. The form is shown again with the reason.",
+  "q5": "None. All the user's sessions are deleted, including the device that did the reset. No session is created and there is no auto-login. The user is redirected (302) to /login and logs in with the new password.",
+  "q6": "The worker retries 3 times with backoff (each retry makes a new token). Then it logs the reset_id, emits a metric and drops the job. The user is not told, because they only saw the generic message. They can only request again, and that counts toward the limit.",
+  "q7": "The email worker creates the token (32 random bytes). It stores only SHA256(token) in the reset row, and puts the raw token in the emailed link /reset?token=<token>. The API never sees the token, and the queue job carries only reset_id.",
+  "q8": "It computes SHA256 of the token from the URL. It selects the reset row WHERE token_hash equals that hash AND used_at IS NULL AND expires_at > now(). This is read only. A match shows the new-password form. No match shows the \"link has expired\" page.",
+  "q9": "It is not stored as a counter. It is computed in Postgres by counting the user's rows in password_resets with created_at > now()-1h (burned and expired rows included). Old requests drop out by age as the rolling hour passes. Rows are kept at least an hour and purged after about 24 hours.",
+  "q10": "In the request transaction (inside the API, not the worker), after the limit check passes and before the new row is inserted, the user's unused rows are burned by setting used_at. This happens at request time, before the email is sent, so it holds even if the queue is backed up. If the send then fails, the user has no working link.",
+  "q11": "In one transaction: the reset row's used_at is set, users.password_hash is updated, the user's other unused reset rows are burned, and all of the user's sessions rows are deleted. The \"your password was changed\" email is enqueued after the COMMIT, outside the transaction.",
+  "q12": "The single conditional statement UPDATE reset row SET used_at=now() WHERE token_hash=SHA256(T) AND used_at IS NULL AND expires_at > now() RETURNING user_id checks and burns in one step. Only one submit gets a row back. The other gets 0 rows, rolls back and sees the expired page."
+ }
+}

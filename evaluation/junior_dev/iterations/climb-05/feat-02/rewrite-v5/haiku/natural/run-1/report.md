@@ -1,0 +1,17 @@
+## Review of feat-02 (rewrite-v5, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short opening paragraph that says what the design is, how a request flows through it, and why it is shaped this way. It also says how the system works today, which the brief did not state before.
+- Added a terms section defining every name a newcomer needs: API key, customer ID, plan, Key Service, key cache, counter store, window, budget, admitted or rejected, atomic script, fail open and Retry-After.
+- Diagram: renamed the two admitted and rejected branch labels, which both said 'Store answered in time'. Added an explicit 401 note for the unknown-key path. Made the fail-open branch say 'not counted by the gateway', which matches the notes.
+- Decision: the Redis script computes the window start from the Redis clock (TIME), and returns seconds until the window ends instead of an end timestamp. This keeps Retry-After on one clock, so the stated 1 to 60 second range holds even if gateway clocks drift. Recorded here because it changes the store's reply.
+- Merged the 'Ordering' and 'Backend failures' notes into the steps and the failure table, so each rule appears once.
+- Cut the 'Known latency' note and folded it into one row of the failure table.
+- Cut the separate 'Limit by plan' section. Standard is stated in the summary, and Enterprise is an open question.
+- Added open question 4: the design does not say what happens when the Key Service is unreachable on a cache miss. This is a gap the reader would hit, not a decision made here.
+- Kept the intent and every fixed requirement: per-customer budget, 401 before any counter, 429 with Retry-After and no budget used, budget kept after backend failure, shared counts across instances, fail open at 50 ms, and Enterprise left open.
+
+### Holes
+- None.

@@ -222,6 +222,99 @@ def judge_summary(iteration_dir: Path, judge_model: str | None = None, judge_pro
     return out
 
 
+def win_rate_ci(iteration_dir: Path, arm_a: str, arm_b: str, author: str, mode: str = "natural",
+                judge_prompt: str = "judge", judge_model: str = PRIMARY_JUDGE, seed: int = 52, n: int = 2000) -> dict:
+    """arm_a's share of judgments won against arm_b, with a 95% interval from a bootstrap over cases
+    (each case keeps both of its orders together)."""
+    rows = []
+    for path in sorted(Path(iteration_dir, "judgments").glob("*.json")):
+        rows += json.loads(path.read_text(encoding="utf-8"))
+    by_case = defaultdict(list)
+    for j in rows:
+        if (j.get("judge_prompt", "judge") == judge_prompt and j.get("judge_model") == judge_model and j["arm_a"] == arm_a
+                and j["arm_b"] == arm_b and j["author"] == author and j["mode"] == mode and j.get("winner_arm")):
+            by_case[j["case"]].append(1 if j["winner_arm"] == arm_a else 0)
+    cases = sorted(by_case)
+    if not cases:
+        return {"win_rate": None, "ci95": (None, None), "judgments": 0, "cases": 0}
+    flat = [v for c in cases for v in by_case[c]]
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(n):
+        sample = [v for _ in cases for v in by_case[rng.choice(cases)]]
+        stats.append(sum(sample) / len(sample))
+    stats.sort()
+    return {"win_rate": sum(flat) / len(flat), "ci95": (stats[int(0.025 * n)], stats[int(0.975 * n) - 1]),
+            "judgments": len(flat), "cases": len(cases)}
+
+
+def _logistic(rows: list[tuple], ridge: float) -> list[float]:
+    """Penalised logistic regression by Newton's method; rows are (y, features...) with an intercept added."""
+    import math
+    k = len(rows[0])          # intercept + (len - 1) features
+    beta = [0.0] * k
+    for _ in range(50):
+        grad = [-ridge * b for b in beta]
+        hess = [[(ridge if i == j else 0.0) for j in range(k)] for i in range(k)]
+        for y, *x in rows:
+            f = [1.0, *x]
+            z = sum(b * v for b, v in zip(beta, f))
+            p = 1.0 / (1.0 + math.exp(-max(min(z, 35.0), -35.0)))
+            for i in range(k):
+                grad[i] += (y - p) * f[i]
+                for j in range(k):
+                    hess[i][j] += p * (1 - p) * f[i] * f[j]
+        # Solve hess * step = grad (Gaussian elimination; k is 3).
+        m = [row[:] + [g] for row, g in zip(hess, grad)]
+        for c in range(k):
+            piv = max(range(c, k), key=lambda r: abs(m[r][c]))
+            m[c], m[piv] = m[piv], m[c]
+            for r in range(k):
+                if r != c and m[c][c]:
+                    fac = m[r][c] / m[c][c]
+                    m[r] = [a - fac * b for a, b in zip(m[r], m[c])]
+        step = [m[i][k] / m[i][i] if m[i][i] else 0.0 for i in range(k)]
+        beta = [b + s for b, s in zip(beta, step)]
+        if max(abs(s) for s in step) < 1e-8:
+            break
+    return beta
+
+
+def length_adjusted(iteration_dirs, arm_a: str, arm_b: str, authors: list[str], mode: str = "natural",
+                    judge_prompt: str = "judge", judge_model: str = PRIMARY_JUDGE, ridge: float = 0.5,
+                    n_boot: int = 500, seed: int = 52) -> dict:
+    """arm_a's chance of winning a judgment against arm_b when both documents have the same length.
+
+    Fits P(arm_a wins) = logistic(b0 + b1 * log2(words_a / words_b) + b2 * position), position +0.5 when
+    arm_a is shown first and -0.5 otherwise, over both orders and the given authors; ties are left out.
+    `equal_length_win` is logistic(b0); `length_slope` is b1 (how strongly the judge prefers the longer
+    document). The interval is a bootstrap over cases. A light ridge keeps the fit finite when one arm
+    wins everything."""
+    import math
+    dirs = iteration_dirs if isinstance(iteration_dirs, (list, tuple)) else [iteration_dirs]
+    by_case = defaultdict(list)
+    for d in dirs:
+        for path in sorted(Path(d, "judgments").glob("*.json")):
+            for j in json.loads(path.read_text(encoding="utf-8")):
+                if (j.get("judge_prompt", "judge") != judge_prompt or j.get("judge_model") != judge_model
+                        or j["arm_a"] != arm_a or j["arm_b"] != arm_b or j["author"] not in authors
+                        or j["mode"] != mode or j.get("winner_arm") not in (arm_a, arm_b)):
+                    continue
+                first = j["order"] == "ab"
+                wa, wb = (j["words_a"], j["words_b"]) if first else (j["words_b"], j["words_a"])
+                by_case[(j["author"], j["case"])].append(
+                    (1 if j["winner_arm"] == arm_a else 0, math.log2(max(wa, 1) / max(wb, 1)), 0.5 if first else -0.5))
+    cases = sorted(by_case)
+    if not cases:
+        return {"equal_length_win": None, "ci95": (None, None), "length_slope": None, "judgments": 0}
+    sig = lambda z: 1.0 / (1.0 + math.exp(-z))
+    beta = _logistic([r for c in cases for r in by_case[c]], ridge)
+    rng = random.Random(seed)
+    boots = sorted(sig(_logistic([r for _ in cases for r in by_case[rng.choice(cases)]], ridge)[0]) for _ in range(n_boot))
+    return {"equal_length_win": sig(beta[0]), "ci95": (boots[int(0.025 * n_boot)], boots[int(0.975 * n_boot) - 1]),
+            "length_slope": beta[1], "position": beta[2], "judgments": sum(len(by_case[c]) for c in cases)}
+
+
 def score(iteration_dir: Path) -> dict:
     rows = load_runs(iteration_dir)
     groups = defaultdict(list)

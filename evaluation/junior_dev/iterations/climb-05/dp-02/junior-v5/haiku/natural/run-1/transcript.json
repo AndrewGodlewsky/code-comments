@@ -1,0 +1,240 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the \"partitions\" in \"minimum processed received_at across partitions\"? If one of them is idle or empty, does the watermark stall and the day stay open?",
+     "about": "Step 8. Close the day, watermark"
+    },
+    {
+     "id": "2",
+     "text": "Several collectors append to the log with their own clocks. How can a watermark based on received_at show that every record for day D has been processed, when records may not arrive in received_at order?",
+     "about": "Step 8. Close the day, watermark"
+    },
+    {
+     "id": "3",
+     "text": "What is the \"durable storage\" for the ledger? If the consumer crashes after writing the ledger row but before the warehouse write, or the reverse, what happens on redelivery? Is the ledger write also idempotent?",
+     "about": "Step 5. Dedup and enrich, 5d first-seen ledger row"
+    },
+    {
+     "id": "4",
+     "text": "What does the live consumer do if the key-value store is down or slow? Does it stop and let lag build, or skip the record?",
+     "about": "Step 5a. Claim the event_id in the key-value store"
+    },
+    {
+     "id": "5",
+     "text": "Where does \"current enrichment version\" come from, and how does it change? Who or what decides it, and how does a consumer pick it up?",
+     "about": "Step 5c. Enrich with the current enrichment version"
+    },
+    {
+     "id": "6",
+     "text": "If the append succeeded but the 202 was lost, the client retries the same batch. Does the retry get new stamps and become a new log record? Which copy wins, and is this the main source of the duplicates in raw?",
+     "about": "Step 3. Make durable, then acknowledge"
+    },
+    {
+     "id": "7",
+     "text": "If the swap aborts because D is no longer closed or a live write is pending, what does the operator see and do next? Can a day be reopened after it is closed, and what would reopen it?",
+     "about": "R7. Swap atomically"
+    },
+    {
+     "id": "8",
+     "text": "What triggers a replay in practice? Is it only a manual operator request, and what does the operator use to submit one (a UI, a CLI or a ticket)?",
+     "about": "R1. Request and check preconditions"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The partitions are the replicated log's partitions. The old wording was wrong. A watermark on received_at cannot prove that every day-D record is processed, and an empty partition would stall it. The close now uses log offsets: the job snapshots each partition's end offset after a fence, then waits until the live consumer and the archiver have committed past those offsets. An idle partition's end offset equals its committed offset, so it does not block the close."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "It cannot, and the old design did not show it. Records do not arrive in received_at order, and collectors use their own clocks. The new design does not use received_at to decide completeness. It uses a fence (collectors report no in-flight batches for D, and clocks are held to NTP) and offset snapshots. Out-of-order arrival does not matter once every partition has committed past its snapshot."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The ledger lives in object storage, which already has the 90-day lifecycle rule the plan uses for it. The key-value store is ruled out because its entries expire after 8 days. The writer writes one object per received day, log partition and offset range, before the warehouse batch for that range commits. If the consumer crashes after the ledger write but before the warehouse commit, the redelivery finds the same claim, so it picks the same winners and rewrites the same object with the same rows. The warehouse upsert is keyed by event_id, so the reverse crash order is also safe. Both writes are idempotent."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The consumer stops and retries, and it does not skip the record. Skipping would either lose the event or let a duplicate through unchecked. The offset is not committed, so lag grows. The lag and freshness alarms fire, and the 14-day log keeps the records. Collectors and raw archiving do not use the key-value store, so they keep running."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Nothing in the brief defines it, so this is my choice. The enrichment version is a label for one build of the code and its reference data. The release process sets it. Each live consumer runs the version it was deployed with, and a change takes effect when consumers restart, which a deploy does. The replay request names a version that must exist in the replay pool. Each row records its own version."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes. The retry gets new stamps, so it becomes a new log record with a later received_at. If the first append succeeded, the log holds both copies. The first copy to claim the event_id wins, and the claim order approximates arrival order. The lost-202 retry is the main source of duplicates in raw, because a lost 202 and a timeout look the same to the client. The plan now says so in step 3."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The replay ends as ABORTED with the reason, staging is dropped, and nothing else changes. The operator fixes the cause and submits a new request. A closed day is not reopened, because the plan has no reopen step and the close fence should make a late write impossible. If a late record does arrive, the live consumer skips the write to the closed partition, raises an alarm, and keeps the record in raw and the ledger. The next replay of D reads the ledger and includes it. R7 now says this."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief says only that an operator must be able to rebuild one day, usually after an enrichment fix. It does not say how the request is submitted (UI, CLI or ticket). Nothing in the plan starts a replay automatically. The plan now says replay is manual, and open item 8 records the open interface question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How does a collector report its in-flight batches for day D to the job? What does the job do if a collector is down or does not answer?",
+     "about": "Step 8. Close the day, Fence"
+    },
+    {
+     "id": "10",
+     "text": "Where is the 'closed' mark for a day stored, and how does the live consumer read it before each write? What if it has not seen the mark yet?",
+     "about": "Step 6. Write to the warehouse, closed day check"
+    },
+    {
+     "id": "11",
+     "text": "How does the swap check that no live write to D is pending? What does it look at?",
+     "about": "R7. Swap atomically, no live write to D is pending"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Each collector serves a status call that returns how many batches it has stamped for day D and not yet acknowledged or definitively failed. The close job calls every collector on each poll. A collector that is down or does not answer blocks the fence, because the job cannot prove it has nothing in flight. The job retries every 5 minutes and alarms after 60, as step 8 says. A restart clears the collector's count, so a poll that spans a restart counts as not answered. A batch sent before a crash can still reach the log after the fence. That record is handled as a late record in R7, so it is kept in raw and the ledger, and the next replay includes it. Step 8 now says all of this."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The closed mark is a row in a small day_status table in the warehouse. Only the close job writes it, and only after all three parts of step 8 pass. The live writer reads the row inside each batch transaction (step 6), not from a cache, so it cannot act on a stale mark. If a writer has not yet seen the mark, the result is still correct. Every day-D record before the snapshot is already committed when the mark is written, so only a record that arrives after the snapshot can meet an open mark, and that is the late-record case. The check and the write must be serialized by the warehouse, which open item 6 now requires."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The swap does not inspect queues or pending writes. It re-reads D's status row in its own transaction, and the row must still say closed. Live batch writes to D read the same row in their own transactions, so the warehouse orders each live write before or after the swap. A live write that comes after the swap finds D closed and is skipped, so there is no pending write to wait for. R7 now says this."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "12",
+     "text": "Step 8 says a collector, once its clock passes 02:00 UTC on D+1 plus a minute, stamps only D+1. What does it stamp between 00:00 and that point? Is a batch received at 00:00:30 stamped D+1 by its own clock, and when exactly is a collector's count for D final?",
+     "about": "Step 8. Close the day, Fence"
+    },
+    {
+     "id": "13",
+     "text": "Step 2 stamps received_at from the collector clock, yet the fence says no new batch gets a stamp for D after 02:00 D+1. Does that mean events received at 00:00 to 02:00 on D+1 get D's date, or D+1's? How does received day (a UTC date) relate to the 02:00 cutoff?",
+     "about": "Definitions: Received day / Stamp (step 2)"
+    },
+    {
+     "id": "14",
+     "text": "In step 8 Wait, the live consumer's committed offset is past the snapshot. But step 6 commits offsets after the warehouse batch, and step 5 may be mid-retry. If a partition is stuck on the key-value store being down, what does the close job do, and what does the operator see?",
+     "about": "Step 8. Close the day, Wait"
+    },
+    {
+     "id": "15",
+     "text": "Step 6 skips records whose partition_day is closed. Which day is a winner's partition_day when the winning copy's received_at is D+1 but an earlier copy of the event was received on D and dropped as a duplicate? How can the first arrival be a later day than a dropped copy?",
+     "about": "Definitions: Winning copy / Step 5b"
+    },
+    {
+     "id": "16",
+     "text": "In R3 and R4, the ledger names the winning raw record, which replay re-enriches. After replay swaps in partition D, a duplicate from an earlier day that was dropped never appears. But do events whose winner is on D but whose duplicate lands on D+1 get affected? What does replay do with raw copies that are not winners?",
+     "about": "R3. Select winners"
+    },
+    {
+     "id": "17",
+     "text": "Step 8 says the job writes the status row 'closed' with snapshot offsets. Who or what reads those stored snapshot offsets later, and for what?",
+     "about": "Day status row"
+    },
+    {
+     "id": "18",
+     "text": "If replay fails in R6 validation (for example the row count differs from the ledger count), what exactly does the operator see and what do they do next? Does the plan treat that as ABORTED like R7?",
+     "about": "R6. Validate before the swap"
+    }
+   ],
+   "answers": [
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The plan was wrong. A collector stamps by its own UTC clock, so a batch received at 00:00:30 UTC on D+1 is stamped D+1. Day D ends at 00:00 on D+1, so the fence must start at midnight, not at 02:00 plus margin. Step 8 Fence now says a collector stops stamping D once its clock passes 00:00 UTC on D+1. The 02:00 start is only the job's start time, and it is well after the one-minute clock margin. Once a collector's clock is past midnight its D count can only fall, so a zero answer stays zero, apart from late records after a crash (R7)."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Events received from 00:00 to 02:00 on D+1 get D+1's date. The received day is the UTC date of received_at, so the day boundary is midnight. The 02:00 time is only when the close job starts. The two-hour gap lets in-flight D batches finish before the job reads the counts. Definitions and the Fence step now say this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The day stays open. Wait needs committed offsets past the snapshot, and an offset commits only after its warehouse batch (step 6). If the key-value store is down, step 5 stops that partition without committing, so the close waits. The job retries every 5 minutes and alarms after 60, and the lag and freshness alarms fire. Step 8 Wait now says the job status shows which partition is short, which consumer it waits on, and the offset it must reach. A consumer mid-retry in step 5 has committed nothing, so the wait keeps waiting."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "The winner is the first copy to claim the event_id (step 5b), and claim order follows processing order, not received_at. Example: copy X is stamped D at 23:59:59.9 but sits in a log partition processed after copy Y, which is stamped D+1 at 00:00:00.1. Y claims first and wins, so the partition is D+1. X is dropped from events_clean and kept in raw/day=D. This is consistent: the partition day is the winner's day, and D's replay does not include the event. It depends on the processing-order behaviour in open item 5. Definitions, step 5b and open item 5 now say so."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "A winner on D whose duplicate lands on D+1 is unaffected. Partition D keeps the winner. The duplicate is dropped from events_clean and kept in raw/day=D+1. Replay of D reads only ledger rows whose received_at is on D, so it re-enriches the winner and never reads the duplicate. Raw copies that are not winners are never read by replay, so they stay in raw for audit. Replay never changes which copy wins. R3 now says replay reads only winners."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Nothing in the live path reads the stored snapshot offsets. The job takes the snapshot once, after the fence passes, and holds it while it waits. The stored offsets are an audit record of what the close covered. An operator uses them to check whether a late record (R7) arrived after the close. Step 8 now says this. If the job restarts, it reruns the fence and the snapshot, and a later snapshot is still safe."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The plan did not define this, so I decided it. Hard checks (row count against the ledger, duplicate event_ids, or any partition_day not equal to D) end the replay as ABORTED. The operator sees the failed check with its expected and actual values, staging is dropped under R9, and live data is untouched. The operator must find the cause and submit a new request (R1). A diff that needs approval (for example, any removed rows) is not a failure. The replay pauses with staging kept. The operator approves, and it goes on to R7, or rejects, and it ends as ABORTED. R6 now separates the two kinds."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Client sends a batch. An app (web, iOS or Android) sends up to 100 events in one HTTPS request to a collector. Each event has an event_id (UUID), a device_id and a client timestamp. The client holds the batch until it gets a 202.\n\n2. Validate. The collector checks each event on its own: event_id present and a UUID, device_id present, serialized size 32 KB or less. Invalid events are left out and listed in the response with batch index and reason. Valid events continue. Clients never retry rejected events.\n\n3. Stamp. Each valid event gets received_at (the collector's UTC clock, in ms), collector_id, batch_id and its position in the batch. The original bytes are kept unchanged beside the stamp. The received day is the UTC date of received_at, and the app's clock plays no part in it.\n\n4. Store, then ack. The collector writes the valid events to the log (replicated, append-only, partitioned, each record has an offset, kept 14 days) and waits for replication to be confirmed. Only then does it return 202 with the reject list. If the write fails or is not confirmed within 30 seconds, it returns 5xx.\n\n5. Client retry and duplicates. After a timeout, 429 or 5xx, the client resends the same batch with the same event_ids, backing off from 1 second to 5 minutes. The resend gets new stamps and becomes a new log record. If the first write worked but the 202 was lost, the log holds two copies. This is the main source of duplicates, and retries can arrive up to 7 days late.\n\n6. Raw archiving (in parallel). The raw archiver reads the log and writes each record, duplicates included, unchanged to object storage under raw/day=YYYY-MM-DD/. It commits its offset only after the object write succeeds. An alarm fires when its lag reaches 1 day, because the log keeps only 14 days.\n\n7. Live consumer, claim. The live consumer reads each record and tries to create a claim in the key-value store, keyed by event_id. The claim's value is the raw reference (collector_id, batch_id, position). It is created only if none exists, and it expires after 8 days. If the key-value store is down or slow, the consumer stops that partition, does not commit, and retries with backoff. No record is skipped.\n\n8. Decide the winner. If the claim was just created, or already holds this same raw reference (a redelivery), this copy wins. If it holds a different reference, the copy is dropped. It stays in raw and is not written to events_clean. The first copy to claim wins, so processing order decides, not timestamps. Partition day is the received day of the winner, so a dropped copy can have an earlier day than the winner.\n\n9. Enrich. The winner is enriched with the enrichment version the consumer was deployed with (geo-IP lookup and user-agent parsing). partition_day is set to the winner's received day, and enrichment_version is recorded on the row.\n\n10. Ledger write. The consumer writes one object per received day, log partition and offset range under ledger/day=YYYY-MM-DD/. Its rows hold event_id, received_at and the raw reference of each winner. This happens before the warehouse batch for that offset range commits. A redelivery rewrites the same object with the same rows.\n\n11. Warehouse write. About every 60 seconds the consumer flushes a micro-batch as one warehouse transaction. Inside it, the writer reads the day_status row for every partition day in the batch and upserts only rows whose day is not closed. The upsert is keyed by event_id within partition_day. A row for a closed day is skipped as a late record, which raises an alarm. After the transaction commits, the consumer commits its log offsets. Records count as processed only then. Crashes before the offset commit lead to redelivery, and the upsert rewrites the same row, so there are no second rows.\n\n12. Freshness. The target is 5 minutes from received_at to queryable. p99 is measured, with an alarm at 3 minutes and a separate alarm on consumer lag.\n\n13. Close day D. A scheduled job starts at 02:00 UTC on D+1 and uses log offsets rather than timestamps. It has three parts.\n (a) Fence. After its clock passes midnight, each collector stamps only D+1. The job polls every collector for the count of D-stamped batches not yet acknowledged or definitively failed. The fence passes only when all collectors answer zero. A down collector or a restart during the poll counts as no answer, so it blocks the fence and the job polls again.\n (b) Snapshot. The job reads the end offset of every log partition, once.\n (c) Wait. The job waits until both the live consumer and the raw archiver have committed offsets at or past the snapshot on every partition. A stuck partition blocks the close, and the job status shows which partition, which consumer and which offset.\n When all three pass, the job writes D's day_status row as closed, with the snapshot offsets stored as an audit record only. Otherwise it retries every 5 minutes and alarms after 60 minutes. The clock alone never closes a day. From then on, step 11 skips records for D.\n\n14. Replay (manual rebuild of closed day D, usually after an enrichment fix). An operator submits the day, target enrichment version and a reason. It is refused unless D is closed, within the 90-day window, and not already being replayed, and the target version must exist in the replay compute pool. Replay never reads the log or key-value store and never touches consumer offsets.\n a. Create an empty staging partition for D. Dashboards never see it.\n b. Read the ledger rows whose received_at falls on D to find the winning raw records.\n c. Read those winners from raw and re-enrich them with the target version on a separate, throttled compute pool.\n d. Upsert them into staging, keyed by event_id.\n e. Hard checks: staging row count equals the ledger row count, no duplicate event_id, and every partition_day equals D. Any failure ends the replay as ABORTED, showing the check name, expected value and actual value.\n f. Diff staging against the current partition (added, removed and changed rows, by field). If the diff is larger than the enrichment change predicts (for example, any removed rows), the replay pauses with staging kept. The operator approves, and it continues, or rejects, and it ends as ABORTED.\n g. Swap. In one warehouse transaction, re-read D's status, which must still be closed, and replace partition D with staging. A live write ordered after the swap finds D closed and is skipped. If the status check fails, the replay ends as ABORTED.\n h. Audit: record the day, old and new versions, row counts, diff summary, operator and timestamps. Then drop staging.\n i. On any failure, drop staging. The operator submits a new request. The live partition and all other stores are untouched.\n\n15. Retention. Raw and ledger are kept 90 days. The log keeps 14 days. The key-value store keeps claims 8 days. events_clean retention is not set by this plan.\n\nFailures, as the document states them. A key-value outage stalls the partition and the close waits. A log write failure gives 5xx and a client resend. A lost 202 leads to a resend and one dropped copy. Consumer crashes after the claim, after the ledger write, or after the warehouse commit are all absorbed by same-reference redelivery or keyed upserts. A late record is skipped, alarmed, and stays in raw and the ledger for the next replay. A collector clock more than a minute off raises an alarm, but nothing stops and stamps may be filed under the wrong day.",
+   "gaps": [
+    "The document does not say how a collector chooses the log partition for a record, or how event_ids map to partitions. It does not say whether two copies of the same event_id land on the same partition, or whether claim order across partitions is coordinated, so I cannot explain how 'first to claim' is ordered between consumers.",
+    "It does not say how a collector learns the stamping rule for a batch that straddles midnight, for example whether the whole batch gets one received_at or each event its own, or which day a batch counts as being for in the fence's in-flight count.",
+    "It does not say how the raw reference (collector_id, batch_id, position) is resolved to an actual object and location in raw storage. The ledger is said to hold 'the location of its raw record', but the mapping from reference to object path is not described.",
+    "It does not say how the ledger is written and kept consistent when one received day spans objects written from different consumers or after redeliveries with different offset ranges, or how replay lists and reads the ledger rows 'whose received_at falls on D' across those objects.",
+    "It does not say how replay's swap handles the winner's day versus the ledger. Replay selects ledger rows by received_at day, but live partition_day is the winner's received day. The document does not say how these are kept identical, or what happens to the rows of a late record that is only in raw and the ledger.",
+    "It does not say what a late record's ledger entry looks like, or whether the ledger is written for it. The failure table says it stays in the ledger, but the live path writes the ledger before the closed-day check in the warehouse step.",
+    "It does not say how the replay request interface works (stated as open), who the operator authenticates as, or how approval or rejection of a paused replay is communicated to the system.",
+    "It does not say how the close job is scheduled or retried across days if day D-1 is not yet closed when D's job starts, or whether days must close in order.",
+    "It does not say what the warehouse upsert does when the same event_id arrives for a different partition_day after a late claim expiry, other than that a second row results and shows up in replay.",
+    "It does not say what the response body or status looks like exactly for the reject list, or what clients do on an all-rejected batch (stated as open).",
+    "It does not say how the live consumer's enrichment version is deployed or how the replay compute pool gets a version, beyond 'the release process sets it'.",
+    "It does not say what the warehouse schema of events_clean is beyond event_id, partition_day and enrichment_version, and bot handling is explicitly undecided."
+   ],
+   "verdict": "wrong",
+   "notes": "Winner ordering across consumers: the document does not say that claim creation is one atomic create-if-absent, so a reader cannot explain how 'first to claim' is ordered when two consumers race for the same event_id.; Batches that straddle midnight: the document says each event gets a stamp but not which day a batch belongs to, so the fence's count of batches stamped for D is undefined for a batch stamped across 00:00 UTC.; Raw reference to object: the claim holds a stamp reference (collector_id, batch_id, position), but no rule maps it to a raw object path, so replay step 4 ('read the winning raw records from object storage') cannot be followed.; Ledger across objects: a redelivery can write the same winner into a second ledger object with a different offset range, and the document does not say how replay lists ledger objects for day D or how it counts rows, so the replay row-count check is undefined.; Late winner and the ledger: the document does not say that a late record which wins its claim gets a ledger row before the closed-day skip, or whether replay of D sees it.; Partition day versus ledger day: replay selects ledger rows by received_at, but the document does not say that a winner's partition_day is always the date of that same received_at, so a reader cannot see that replay selects exactly the rows live writes put in partition D."
+  },
+  {
+   "text": "1. A client (website, iOS or Android app) bundles up to 100 events into one HTTPS batch and sends it to the collector. Each event carries an event_id (UUID), a device_id and a client timestamp. The client holds the events until it gets an answer.\n\n2. The collector checks each event separately. event_id must be present and a UUID, device_id must be present, and the serialized event must be 32 KB or less. Invalid events are left out and reported in the response with their batch index and reason. Valid ones go on. Clients never retry rejected events.\n\n3. The collector reads its own UTC clock once per batch and stamps every valid event with that received_at, plus collector_id, batch_id and the event's position in the batch. The original bytes are kept unchanged next to the stamp. So a batch belongs to one received day, which is the UTC date of received_at. The device clock never decides the day.\n\n4. The collector writes the valid events to the log (a replicated, append-only, partitioned queue) and waits for replication to be confirmed. Only then does it return 202, with the reject list in the body. If the write fails or is not confirmed within 30 seconds, it returns 5xx.\n\n5. If the client times out or gets 429 or 5xx, it resends the same batch with the same event_ids. It backs off exponentially, from 1 second to 5 minutes. The resend gets new stamps and becomes a new log record. If the first write actually succeeded and only the 202 was lost, the log now has two copies of each event. This is the main source of duplicates, and a retry can arrive up to 7 days late.\n\n6. The raw archiver reads the log and writes every record, duplicates included, unchanged, to its own object at raw/day=YYYY-MM-DD/partition=P/offset=O.json. It commits its offset only after the object write succeeds. An alarm fires when it lags by 1 day, because the log keeps records for only 14 days.\n\n7. The live consumer reads the log in order. For each record it tries to create a claim in the key-value store, keyed by event_id. The value is the stamp reference (collector_id, batch_id, position) and the TTL is 8 days. The create is atomic, so when two copies race, exactly one create succeeds.\n\n8. The winner is decided. If the create succeeded, or the existing claim holds this same stamp reference (the same record redelivered), this copy wins. If the claim holds a different reference, this copy is dropped. It stays in raw but is not written to events_clean. The winner is whichever copy claims first, so claim order, not timestamps, decides it. A dropped copy can therefore have an earlier day than the winner. If the key-value store is down or slow, the consumer stops that partition, does not commit, and retries with backoff. Nothing is skipped, and lag alarms fire.\n\n9. The consumer enriches the winner using the enrichment version it was deployed with. It sets partition_day to the winner's received day and records enrichment_version on the row.\n\n10. For the winners in an offset range, the consumer writes one ledger object at ledger/day=YYYY-MM-DD/partition=P/offsets=first-last.json. Each row holds event_id, received_at and log position. This happens before the warehouse batch for that range commits. Rewriting after a redelivery is safe. The same winner can appear in two ledger objects, and readers count each event_id once.\n\n11. About every 60 seconds the consumer flushes a micro-batch as one warehouse transaction. Inside it, the writer reads the day_status row for every partition day in the batch and upserts only rows whose day is not closed. The upsert is keyed by event_id within partition_day, so redelivery makes no second row. A winner for a closed day is skipped. That is a late record: its ledger row stays, its offset is committed, and an alarm fires. After the transaction commits, the consumer commits its offsets. If the transaction fails, nothing is committed and the batch is retried.\n\n12. Freshness target: queryable within 5 minutes of received_at. The p99 is measured, with an alarm at 3 minutes, plus a separate consumer-lag alarm.\n\n13. A scheduled job closes day D, starting at 02:00 UTC on D+1. It works in three parts, in order. If a part does not pass, it retries every 5 minutes and alarms after 60 minutes.\n   a. Fence. After midnight each collector stamps only D+1. The job asks every collector how many batches stamped for D are not yet acknowledged or definitively failed. It passes only when all answer zero. A collector that is down or silent blocks it. A poll that spans a restart counts as no answer.\n   b. Snapshot. The job reads the end offset of every log partition once.\n   c. Wait. The job proceeds only when, for every partition, both the live consumer and the raw archiver have committed offsets at or past the snapshot.\n   When all pass, the job writes D's day_status row as closed, with the snapshot offsets. From then on step 11 skips records for D.\n\n14. Replay (manual, to rebuild a closed day D, usually after an enrichment fix).\n   a. The operator submits the day, target enrichment version and reason. The request is refused unless D is closed, within 90 days, no other replay of D is running, and the version exists in the replay compute pool.\n   b. An empty staging partition is created.\n   c. Winners are selected from the ledger objects under ledger/day=D/, keeping one row per event_id. Each row's log position leads to its raw object.\n   d. Each winner's raw object is read and re-enriched with the target version, on a separate throttled compute pool.\n   e. Rows are upserted into staging, keyed by event_id.\n   f. Hard checks: staging row count equals the distinct winner count, no duplicate event_id, and every partition_day equals D. A failure ends the replay as ABORTED. A diff against the current partition is reported. If it is larger than expected, the replay pauses, with staging kept, until the operator approves or rejects.\n   g. Swap: in one warehouse transaction, re-check that D is still closed, then replace partition D with staging. If the check fails, the replay is ABORTED.\n   h. The audit record is written and staging is dropped. If any step fails, staging is dropped, the live partition is untouched, and the operator starts again from the request.\n\n15. Retention: raw and ledger objects last 90 days, the log 14 days, the key-value claims 8 days. events_clean retention is not set.",
+   "gaps": [
+    "How the live consumer is assigned to log partitions, and how many consumers there are, is not described, so I cannot say how redelivery after a crash is routed.",
+    "How the log partition for a record is chosen by the collector is not stated, for example by event_id or by something else.",
+    "How the close job gets the live consumer's and archiver's committed offsets is not stated, nor how it finds the collectors to poll.",
+    "How an operator submits a replay and how an approval or rejection reaches the system is explicitly open, so the start and the pause-resume step of the replay cannot be explained.",
+    "events_clean has no stated schema beyond partition_day and enrichment_version, and bot handling is undecided, so I cannot say exactly what a row contains or whether some events are dropped or flagged."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

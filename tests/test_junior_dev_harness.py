@@ -238,6 +238,19 @@ class BuildAndDryRunTest(unittest.TestCase):
         pairs = build.embedded_data(files[0])["pairs"]
         self.assertEqual(len(pairs), 4)
         self.assertEqual({p["arm_a"] for p in pairs}, {"junior-v1"})
+        # Baselines can come from several iterations (SelfReview from one, an earlier climb arm from another).
+        other = self.tmp / "iteration-other"
+        for run in (r for r in self.dry["result"]["runs"] if r["arm"] == "junior"):
+            src = base / run["case"] / "junior" / run["author"] / run["mode"] / f"run-{run['rep']}"
+            dst = other / run["case"] / "junior-v0" / run["author"] / run["mode"] / f"run-{run['rep']}"
+            shutil.copytree(src, dst)
+            meta = json.loads((dst / "run.json").read_text(encoding="utf-8"))
+            (dst / "run.json").write_text(json.dumps(dict(meta, arm="junior-v0")), encoding="utf-8")
+        files = build.build_judge_batch(climb, [("junior-v1", "self-review"), ("junior-v1", "junior-v0")],
+                                        self.tmp / "built-judge-c", "cross2", baseline_dir=[base, other])
+        pairs = build.embedded_data(files[0])["pairs"]
+        self.assertEqual({p["arm_b"] for p in pairs}, {"self-review", "junior-v0"})
+        self.assertEqual(len(pairs), 8)
 
     def test_judge_summary_filters_by_judge_model(self):
         it = self.tmp / "iteration-judges"
@@ -427,6 +440,82 @@ class ScoreTest(unittest.TestCase):
         usage = {"roles": {"draft": {"model": "haiku", "in": 4000, "out": 4000, "calls": 1},
                            "reader": {"model": "sonnet", "in": 400000, "out": 4000, "calls": 2}}}
         self.assertAlmostEqual(score.run_cost(usage), 1000 * 0.10 / 1e6 + 1000 * 0.50 / 1e6)
+
+
+class JudgeRunnerTest(unittest.TestCase):
+    """Judge batches run as children of one runner workflow; a batch with any failed call is never collected."""
+
+    def _j(self, case, order, winner_arm, winner="A", prompt="judge"):
+        return {"pair_id": f"{case}__x__vs__y", "case": case, "author": "haiku", "mode": "natural", "rep": 1,
+                "arm_a": "x", "arm_b": "y", "order": order, "winner": winner, "winner_arm": winner_arm,
+                "words_a": 1, "words_b": 2, "judge_model": "opus", "judge_prompt": prompt}
+
+    def test_runner_output_is_collected_batch_by_batch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "runner.json"
+            out.write_text(json.dumps({"result": {"batches": [
+                {"label": "b-1", "judgments": [self._j("c1", "ab", "x"), self._j("c1", "ba", "x")]},
+                {"label": "b-2", "judgments": [self._j("c2", "ab", "y")]}]}}), encoding="utf-8")
+            paths = collect.collect_judge_runner(out, Path(tmp) / "it")
+            self.assertEqual([p.name for p in paths], ["b-1.json", "b-2.json"])
+
+    def test_runner_output_with_a_failed_call_collects_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "runner.json"
+            failed = dict(self._j("c2", "ab", None), winner=None)
+            out.write_text(json.dumps({"result": {"batches": [
+                {"label": "b-1", "judgments": [self._j("c1", "ab", "x")]},
+                {"label": "b-2", "judgments": [failed]}]}}), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                collect.collect_judge_runner(out, Path(tmp) / "it")
+            self.assertFalse((Path(tmp) / "it" / "judgments").exists())
+
+    def test_win_rate_ci_bootstraps_over_cases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            it = Path(tmp)
+            (it / "judgments").mkdir()
+            rows = [self._j(f"c{i}", o, "x" if i < 3 else "y") for i in range(4) for o in ("ab", "ba")]
+            rows += [self._j("c0", "ab", "y", prompt="judge_holistic")]
+            (it / "judgments" / "j.json").write_text(json.dumps(rows), encoding="utf-8")
+            r = score.win_rate_ci(it, "x", "y", "haiku")
+            self.assertEqual((r["win_rate"], r["judgments"], r["cases"]), (0.75, 8, 4))
+            self.assertLessEqual(r["ci95"][0], 0.75)
+            self.assertGreaterEqual(r["ci95"][1], 0.75)
+            self.assertEqual(score.win_rate_ci(it, "x", "y", "haiku", judge_prompt="judge_holistic")["win_rate"], 0.0)
+
+
+class LengthAdjustedTest(unittest.TestCase):
+    """A judge that only prefers the longer document must show no arm effect once length is held equal."""
+
+    def _rows(self, arm_wins):
+        rows = []
+        for i in range(12):
+            for order in ("ab", "ba"):
+                longer_x = i % 2 == 0                       # x is longer in half the cases
+                wx, wy = (2000, 1000) if longer_x else (1000, 2000)
+                x_wins = arm_wins if arm_wins is not None else longer_x
+                words_a, words_b = (wx, wy) if order == "ab" else (wy, wx)
+                winner = ("A" if order == "ab" else "B") if x_wins else ("B" if order == "ab" else "A")
+                rows.append({"case": f"c{i}", "author": "haiku", "mode": "natural", "rep": 1, "arm_a": "x", "arm_b": "y",
+                             "order": order, "winner": winner, "winner_arm": "x" if x_wins else "y",
+                             "words_a": words_a, "words_b": words_b, "judge_model": "opus", "judge_prompt": "judge"})
+        return rows
+
+    def _fit(self, rows):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "judgments").mkdir()
+            (Path(tmp) / "judgments" / "j.json").write_text(json.dumps(rows), encoding="utf-8")
+            return score.length_adjusted(Path(tmp), "x", "y", ["haiku"])
+
+    def test_a_pure_length_preference_shows_no_arm_effect(self):
+        r = self._fit(self._rows(arm_wins=None))
+        self.assertAlmostEqual(r["equal_length_win"], 0.5, delta=0.05)
+        self.assertGreater(r["length_slope"], 1.0)
+
+    def test_an_arm_that_always_wins_keeps_its_effect(self):
+        r = self._fit(self._rows(arm_wins=True))
+        self.assertGreater(r["equal_length_win"], 0.85)
+        self.assertEqual(r["judgments"], 24)
 
 
 class ValidationGateTest(unittest.TestCase):

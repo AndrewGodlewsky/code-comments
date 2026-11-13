@@ -1,0 +1,116 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"managed secret store\" here (which product), and how does a pod authenticate as `orders-api-prod` without credentials in environment variables or on disk?",
+     "about": "Step 12: Startup load of required secrets"
+    },
+    {
+     "id": "2",
+     "text": "In Step 4, the old and new keys are both valid at the same time. How does Step 4's new key get used only by new pods, given that old pods read config/app.yaml and new pods read the store?",
+     "about": "Step 8: Roll the remaining pods"
+    },
+    {
+     "id": "3",
+     "text": "Step 6 says the keys are \"out in this same change\". Does that mean the `api_key` lines are deleted from config/app.yaml on main, and the old keys remain in git history? What stops someone using those leaked keys in the meantime?",
+     "about": "Step 6: Merge the code change and enforce the CI guard"
+    },
+    {
+     "id": "4",
+     "text": "What does \"Starts when: Step 3 is complete and the app-side change in Part B is ready for release\" mean in practice? Who decides it is ready, and how do Part A and Part B relate in order?",
+     "about": "Step 4: Generate new prod keys and write them to the store"
+    },
+    {
+     "id": "5",
+     "text": "In Step 14, what exactly does a client do on each provider call: does it call the store over the network, or read the in-memory copy held by SecretStore?",
+     "about": "Step 14: Clients read through the store on each use"
+    },
+    {
+     "id": "6",
+     "text": "How does the deploy policy in Step 10 identify an image as \"built before Step 6\", and who or what applies it?",
+     "about": "Step 10: Block pre-migration images, then revoke the old keys"
+    },
+    {
+     "id": "7",
+     "text": "In Step 5, how does the one-off check job run as `orders-api-prod`, and who launches it and reads its output?",
+     "about": "Step 5: Verify prod read access with the production identity"
+    },
+    {
+     "id": "8",
+     "text": "The rollback table says Steps 4 to 9 allow the pre-migration image and Steps 6 to 9 allow post-Step-6 images. Are those two rows meant to overlap, and what is the rule for a rollback after Step 10?",
+     "about": "Rollback summary"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief does not name the managed secret store product, and it does not say how a pod proves the orders-api-prod identity. deploy.md confirms that pods run under orders-api-prod. The plan assumes the platform attaches the identity to the pod, so no credential is in env vars or on disk. This is added to Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Old pods never read the store. Each old image has the old keys in its own config/app.yaml, and the old loader copies them at construction. So the image decides which key a pod uses, not the store. Step 8 now says this. Both key sets are valid at the providers, which is why the mixed fleet works."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes. The api_key lines are removed from config/app.yaml on main, and the old values remain in git history because the brief says not to rewrite it. Nothing in the plan stops misuse of those leaked keys before revocation. The plan accepts that window because the brief ties revocation to confirmation that every instance uses the new keys. The window is recorded as an open question for security to accept or shorten."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Ready means the Part B code is finished, reviewed and approved in the change ticket, but not merged or deployed. The change owner records that approval, because the ticket is the one place the gate is recorded. The brief does not name an owner, so this is a choice to confirm. Part A and Part B are ordered this way: Step 4 writes the keys, Step 5 checks them, and Step 6 merges the code that reads them."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The client reads the in-memory copy held by SecretStore on each call. It makes no network call to the store. The plan text was ambiguous about this, so Step 14 now says it explicitly."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The plan did not define how the deny policy identifies a pre-migration image. Step 10 now uses a rule: each image carries its build commit as a label, and the policy allows only images from the Step 6 merge or a later commit on main. How the registry reads that label, and who owns the policy, are not known and are added to Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Security on-call starts the one-off check job, and on-call reads its output and copies the version ids into the ticket. The on-call role already holds the prod write access used in Step 4, so it is the natural owner. How the job gets the orders-api-prod identity is the same mechanism as for pods, which is an open question. The brief does not name a launcher, so this is a choice to confirm."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The overlap is intentional. Before Step 10, both the old and new keys are valid, so either a pre-migration or a post-Step-6 image is a valid rollback target. After Step 10, the old keys are revoked, so only post-Step-6 images are valid. The rollback table now states the rule and explains each row."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough: one key, the payments key, followed from today's state through to the end of the rollout.\n\n0. Starting point. Today `orders-api` has three live provider keys (payments, email, geocoding) in `config/app.yaml`. That file is committed to git and copied into every container image. The app reads it once at start-up, and each provider client copies its key when it is constructed. Changing a key means building a new image and redeploying. The old keys are treated as leaked.\n\n1. Rollout 1: find consumers. Once the change ticket is approved, each team using the same provider accounts lists every place the old keys are used (services, scripts, jobs, dashboards, partner integrations). The list lives in the ticket. A consumer that is missed or can't be moved blocks revocation.\n\n2. Rollout 2: build the store layout. One KMS key is created per environment. The paths `orders-api/{dev,staging,prod}/*` are created. The policies are:\n   - `orders-api-prod` reads prod only.\n   - The security on-call group writes prod.\n   - Engineers read dev only.\n   Test identities check this. If it fails, production is unchanged. Fix the policy and apply it again.\n\n3. Rollout 3: provider sandbox or test keys go into the dev and staging paths. Live keys never go there. If the write fails, only local dev is affected.\n\n4. Rollout 4: new prod keys. This starts once step 3 is done and the runtime code is approved in the ticket (reviewed and ready to merge, not merged). Security on-call creates a new live key at each provider and writes it straight into `orders-api/prod/<name>` as a new version. No engineer sees the value. The version ids go in the ticket, not the values. The old keys stay valid. Nothing reads the new keys yet, because the pods still run old images. If a provider can't issue a second active key, the plan stops here.\n\n5. Rollout 5: check read access. Security on-call runs a one-off job as `orders-api-prod` that reads the three latest versions. It prints only version ids and value lengths. On-call copies the ids into the ticket. If the read fails, fix the policy or identity, and do not continue.\n\n6. Rollout 6: merge the code. The change merges to `main` through normal review.\n   - The `api_key` lines are removed from `config/app.yaml`, but they stay in git history.\n   - The Part 1 runtime code is included.\n   - `/healthz` is changed.\n   - `deploy.md` is updated.\n   - The CI config guard is added.\n   An image is built from this commit. It contains no keys. From now until revocation, the old keys are still valid and visible in git history. This is an accepted interim exposure that security must confirm. If the guard fails, the merge is blocked.\n\n7. Rollout 7: canary. The rolling deploy replaces one pod with the new image. That pod now runs the runtime flow below.\n   1. Runtime 1, start-up load. The process starts and the loader reads `config/app.yaml` for non-secret settings only. `SecretStore` then fetches the latest version of each of the three secret paths, using the pod's `orders-api-prod` identity. That is one attempt plus up to 3 retries, 2 seconds apart. Each value must be non-empty and contain no whitespace. The values are held in memory as (value, version id, time fetched). If any key is still missing after the retries, the process logs the name and error class (never the value) and exits non-zero.\n   2. Runtime 2, readiness. The HTTP server starts, but `GET /healthz` returns 503 until the start-up load sets the ready flag, then 200. A pod gets traffic only while it is ready. Readiness does not depend on later refreshes. Any liveness probe must not depend on the store. If the pod never becomes ready, it gets no traffic. With `maxUnavailable: 0` the rollout halts and the old pods keep serving.\n   3. Runtime 3, a customer request needing a provider. The request reaches the app, and the provider client (`PaymentsClient`, `EmailClient` or `GeocodingClient`) asks `SecretStore` for its current key. This is an in-memory read under a lock, with no network call. The client builds the `Authorization` header and calls the provider. A missing entry at this point is a programming error. The request fails with a logged internal error, and an empty value is never sent.\n   4. Runtime 4, refresh. Once the ready flag is set, a timer thread runs every 5 minutes plus about 30 seconds of jitter. For each name it reads the latest version from the store.\n      - If the version id is unchanged, nothing happens.\n      - If the version id changed and the value is valid, the entry is swapped under the lock and `secret rotated name=... version=...` is logged.\n      - If the read fails, the last good value is kept, a warning is logged, and the next attempt is the next cycle.\n      If no refresh has succeeded for more than 15 minutes, the app logs a warning and increments a metric.\n   5. Runtime 5, logs and metrics. Only names and version ids are emitted. The `secret_version_info{name,version}` metric is exported. HTTP client logging must not record headers. A log filter on key prefixes acts as a safety net.\n   6. Runtime 6, shutdown. Nothing is written to disk. Core dumps are disabled so that memory is not captured. If they can't be disabled, the code merge is blocked.\n   7. Runtime 7, local dev. With `APP_ENV=dev`, the developer's SSO identity `orders-api-dev` reads the dev path. A developer without access gets a start-up error and the process exits. There is no fallback to committed keys, a local file or prod.\n\n8. Rollout 8: roll the remaining pods. The canary must be ready and its logs must show the three version ids from step 4. Then pods are replaced one at a time. During this period the fleet is mixed. Old pods use the key baked into their image and never read the store. New pods use the key they loaded from the store. Both key sets are valid, so no customer request fails. If a pod can't become ready, the rollout halts and the old pods keep serving. Nothing is revoked while the fleet is mixed.\n\n9. Rollout 9: confirm. This waits until all replicas are on the new image and at least 10 minutes have passed since the last replacement. Three checks run:\n   - Each replica reports the new version ids for all three names, from the logs and the metric.\n   - No replica runs an old image.\n   - Provider dashboards show traffic on the new keys and zero on the old keys for an agreed window.\n   A missing metric is not a pass, so use the logs. If a replica isn't on the new version, do not revoke. Find out why, for example a stuck timer thread or a failing store read.\n\n10. Rollout 10: block, then revoke. This waits for the soak period that security and the service owner agree on.\n   1. The registry deny policy goes first. It allows only images built from the rollout step 6 merge commit or a later `main` commit, using the build-commit label. This stops a rollback onto an image with a revoked key.\n   2. Security on-call revokes each old key at its provider, one at a time, watching error rates after each.\n   If errors appear, a consumer was missed. Don't re-enable the old key (revocation is final). Issue a new key and write it to the store as a new version, and pods pick it up within 5 minutes. If the deny policy can't be applied, do not revoke.\n\n11. Rollout 11: clean up. Old images are removed or kept only under the deny policy. The logs (30-day retention) are searched for key prefixes, and any hit is a logging defect and an exposure. `deploy.md` is updated. The revocation and version ids are recorded in the ticket. A failed log search is an observability gap, not an outage.\n\nRollback rule: before the merge, only pre-migration images work. During steps 6 to 9, either kind works. After revocation, only post-migration images work.",
+   "gaps": [
+    "The document never names the managed secret store product or the API a pod uses to fetch a value. It also never says how the store returns a version id, and it doesn't confirm that an exact 'latest' read is supported.",
+    "It does not say how the platform attaches the `orders-api-prod` identity to a pod, or how the one-off check job in rollout step 5 takes on that identity.",
+    "It does not say whether 'retry 3 times' means 3 total attempts or 1 plus 3 retries. The plan assumes 1 plus 3, but this is unconfirmed.",
+    "It does not say how long the soak period before revocation is. Security and the service owner have not agreed it.",
+    "It does not say how the registry deny policy is enforced, who owns it, or how it reads the build-commit label.",
+    "It does not say whether each provider allows two active keys at once. If one doesn't, the plan has no way to overlap the keys.",
+    "It does not say whether each provider shows per-key usage, which rollout step 9 needs for its dashboard check.",
+    "It does not say what the 'agreed window' of zero old-key traffic is.",
+    "It does not say how the new prod key values are carried from the provider into the store, beyond saying security on-call does it 'in one step'.",
+    "It does not say whether a liveness probe exists.",
+    "It does not say whether the rollout is automated, or what runs the pod replacement, apart from mentioning a rolling deploy with `maxUnavailable: 0`.",
+    "It does not say what the internal-error response looks like to the customer when a key is missing at request time.",
+    "It does not say what the metric or log pipeline is, or how the staleness metric is alerted on.",
+    "It does not say what happens to a customer request that is in flight when a pod gets SIGTERM, or how long the shutdown takes."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

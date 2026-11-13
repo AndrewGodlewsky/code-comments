@@ -1,0 +1,185 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "How does the old worker run today: how often does it poll, how does it claim rows, and where do `attempts` and `next_attempt_at` get set on the monolith row when a send fails?",
+     "about": "Design in brief / Step 1: the old worker and `_deliver`"
+    },
+    {
+     "id": "2",
+     "text": "What is `tx` and who calls `enqueue_notification`? Is the notification row written in the same transaction as the caller's own business change, such as an order?",
+     "about": "Design in brief: `enqueue_notification(tx, ...)`"
+    },
+    {
+     "id": "3",
+     "text": "If a handoff arrives for an id whose service row exists but is still `received` (not terminal), what does the consumer do? Does it ack?",
+     "about": "Step 3: Consumer behaviour"
+    },
+    {
+     "id": "4",
+     "text": "How does the outbox publisher work? What does it read, when does it publish to `notification.outcome`, and how does it know an event was published?",
+     "about": "Step 3: Outbox publisher and `outbox` table"
+    },
+    {
+     "id": "5",
+     "text": "What runs the separate pager step? How does it find rows with `failed` and `paged=false`, and how often?",
+     "about": "Step 3: Sender behaviour, pager step"
+    },
+    {
+     "id": "6",
+     "text": "What does the outcome event contain? Does the monolith get the failure reason or only `sent`/`failed`? And what happens if the outcome consumer gets an event for a row that is not `handed_off`?",
+     "about": "Outcome consumer"
+    },
+    {
+     "id": "7",
+     "text": "If the reconciler republishes a `handed_off` row that the service is still legitimately retrying (status `received`, backing off), what happens in the service? Can it cause a second send?",
+     "about": "Reconciler (every 5 min)"
+    },
+    {
+     "id": "8",
+     "text": "What is `flags.get` and where are flag values stored and changed? Who flips a flag during rollback, and how?",
+     "about": "Route flags / `flags.get`"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "From notifications.py: the worker thread runs on every monolith instance, polls every 5 s, claims up to 50 due pending rows with FOR UPDATE SKIP LOCKED, and commits once per batch. In _deliver, a failed send increments attempts and sets next_attempt_at = now() + BACKOFF_MINUTES[attempts-1] (1/2/4/8 min); on the 5th failure it sets status failed and pages on-call. Added as a short paragraph in Design in brief."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "tx is the caller's own DB transaction, passed in by business code (checkout, carrier webhook, password reset). The INSERT runs inside it, so the row exists only if the caller's transaction commits, atomically with the business change. Added one sentence in Design in brief."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The consumer does nothing to the row and acks after its commit. The row is already durable and the sender owns its retries, so acking loses nothing and a redelivery would only repeat the no-op. Added to the consumer behaviour."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "This was missing. Every 1 s the publisher reads outbox rows with empty published_at, publishes each to notification.outcome, waits for the broker's storage confirmation, then sets published_at. A crash in between republishes the event, which is safe because the outcome consumer only moves rows forward. 1 s is my choice, not a stated requirement. Added."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The pager is a loop in the service. Every 10 s it selects status failed and paged false, calls alerts.page_oncall, then sets paged true. A crash between those repeats the page, so paging is at-least-once, which is acceptable for on-call. The 10 s interval is my choice. Added."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The event carries id, final status and attempts, not the failure reason. The reason stays in the service and in the page, because the monolith only needs the terminal status. If the row is not handed_off, the UPDATE changes nothing and the event is acked. One case is the row still being pending because the dispatcher crashed before its commit: the dispatcher republishes, the service re-emits the outcome from the terminal row, and it then applies. Added."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Nothing happens. The service consumer's ON CONFLICT DO NOTHING finds a received row, changes nothing, and acks. The sender alone sends, per next_attempt_at, and every send carries the idempotency key, so no second send is possible. Added to the reconciler and consumer text."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "flags.get(name) is the monolith's runtime flag lookup, and a change reaches every instance within 10 s (from notifications-overview.md). The existing files do not say where flag values are stored, who may change them, or how. I assume the Platform team flips them with the existing flag tooling, but I cannot confirm it. Added to Open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What makes a service row due for the sender to claim? Does it need status 'received', next_attempt_at in the past and lease_until expired? And how often does the sender poll?",
+     "about": "Step 3: Sender behaviour, claim a due row"
+    },
+    {
+     "id": "10",
+     "text": "What is 'the broker' here, and what does 'storage confirmation' mean? Is it one existing system that carries both topics, notification.requested and notification.outcome?",
+     "about": "Design in brief: the broker"
+    },
+    {
+     "id": "11",
+     "text": "If a handoff goes to the dead-letter queue, its monolith row stays handed_off. What happens to that row afterwards? Does the reconciler keep republishing it into the same dead end, and who clears the queue?",
+     "about": "Step 3: Poison message / dead-letter queue"
+    },
+    {
+     "id": "12",
+     "text": "When a send fails and the row is set back with a new next_attempt_at, does it stay 'received' and keep the same lease_until? Is the lease cleared, and how does the sender tell a retry-wait from a crashed in-flight send?",
+     "about": "Step 3: Sender behaviour, On mailrelay.Error"
+    },
+    {
+     "id": "13",
+     "text": "The dispatcher holds row locks while publishing up to 50 messages and waiting for confirmations. How long can that transaction last? Does a slow broker also block the outcome consumer's UPDATE on the same rows?",
+     "about": "Step 4: Dispatcher, step 3 and the Outcome consumer"
+    },
+    {
+     "id": "14",
+     "text": "After the handoff, the service owns attempts. If the reconciler republishes a row, the message carries the monolith's old attempts and next_attempt_at. Does the service ignore those for an existing row? Is that what ON CONFLICT DO NOTHING guarantees?",
+     "about": "Step 3: Consumer behaviour, step 1 (handoff carries attempts)"
+    },
+    {
+     "id": "15",
+     "text": "Which alerts tell on-call that the service is stuck, such as the DB being down or the outbox publisher falling behind? The only alert I see is the 1 h handed_off alert, and it comes from the monolith.",
+     "about": "Failure: Service DB down and Outcome event lost or delayed"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Due means status received, next_attempt_at <= now() and lease_until empty or past. The sender polls every 1 s; the interval is my choice, matching the dispatcher, not a stated requirement. Added to Service row states and Sender behaviour."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The broker is the existing at-least-once broker that billing and search already use (notifications-overview.md). Storage confirmation is the confirmation a publisher gets once the broker has stored the message. One broker carries both topics. Added a short 'The broker' paragraph."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The files do not say who owns or clears a dead-letter queue. The monolith row stays handed_off; the reconciler republishes it after 30 min, which is a fresh try, and the 1 h alert fires if it stays stuck. I assume on-call clears the queue by hand, which I cannot confirm. Added to Failures and Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The row stays received. The retry path (and success) now clears lease_until, which was missing and is fixed. A retry-wait row has a future next_attempt_at; a crashed in-flight send has next_attempt_at already past and an expired lease, so it is due and is re-sent, and the crash does not count as an attempt. Reason: the idempotency key makes the re-send safe."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The transaction could last as long as the broker is slow, so I added a 10 s limit on the publish phase, after which it rolls back and retries next second. The outcome consumer only updates handed_off rows, which the dispatcher no longer locks, so it is not blocked; the rare still-pending case just waits for the dispatcher commit. The 10 s is my choice, not a stated requirement."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes. For an existing row ON CONFLICT DO NOTHING leaves it unchanged, so the republished message's old attempts and next_attempt_at are ignored; the service owns them after the first handoff. Stated in the consumer's step 1."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "This was missing. Added service-side alerts that page on-call: service DB unreachable, oldest unpublished outbox row older than 2 min, oldest due received row due for over 5 min (sender stuck), and a non-empty dead-letter queue. The thresholds are my choices, not stated requirements."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one notification, a `shipping_update` email, after its type's route flag is set to `service`.\n\n1. **Record.** Business code (checkout, carrier webhook or password reset) calls `enqueue_notification(tx, ...)` inside its own database transaction. This inserts a row into the monolith `notifications` table with status `pending`. That table holds the state. If the caller's transaction rolls back, the row never exists and no notification is sent.\n\n2. **Dispatch.** The dispatcher, a monolith component, runs every 1 s.\n   - It only looks at types whose flag `notifications.route.<type>` is `service`.\n   - In a short transaction it selects up to 50 due `pending` rows of those types with `FOR UPDATE SKIP LOCKED`.\n   - It publishes one message per row to the broker topic `notification.requested`. The message carries `id`, `type`, `user_id`, `email`, `payload`, `created_at`, `attempts` and `next_attempt_at`.\n   - It waits for the broker's storage confirmation. The publish phase has a 10 s limit. If the limit is exceeded, it rolls back and retries next second.\n   - It then sets the rows to `handed_off`, sets `handed_off_at`, and commits.\n   - If the broker is down or the dispatcher crashes before the commit, the rows stay `pending` and are published again. This doesn't use up send attempts.\n\n3. **Receive.** The service consumer takes the message from the broker.\n   - It runs `INSERT ... ON CONFLICT (id) DO NOTHING` into the service DB `notifications` table with status `received`.\n   - On first insert it uses the message's `attempts` and `next_attempt_at`, so the retry budget carries over. For an existing row it ignores them.\n   - If the row already exists and is terminal, it writes the outcome event to the outbox again. If the row is `received`, it does nothing.\n   - It commits, then acks. A redelivered handoff is therefore a no-op.\n   - If the service DB is down, the consumer can't commit, so it doesn't ack and the broker redelivers.\n   - A poison message (undecodable, or redelivered over 10 times) goes to a dead-letter queue and pages on-call. The monolith row stays `handed_off`.\n\n4. **Send.** The service sender runs every 1 s.\n   - It claims a due row (`received`, `next_attempt_at <= now()`, lease empty or expired). It sets `lease_until = now() + 2 min` and commits. No transaction stays open during the send.\n   - It renders the template and calls MailRelay with `idempotency_key = id`.\n   - On success, in one commit it sets `sent`, clears the lease and writes an outbox event.\n   - On `mailrelay.Error` (including timeouts and render failures), it adds 1 to `attempts` and clears the lease.\n     - If `attempts < 5`, it sets `next_attempt_at` to now plus 1, 2, 4 or 8 minutes.\n     - If `attempts >= 5`, in one commit it sets `failed` and `paged=false` and writes an outbox event.\n   - If a sender crashes mid-send, the lease expires and the row is sent again. The crash doesn't count as an attempt. If MailRelay had already accepted the first send, the key makes it drop the second.\n\n5. **Page.** The pager runs every 10 s. It selects `failed` rows with `paged=false`, calls `alerts.page_oncall`, then sets `paged=true`. A crash in between repeats the page, which the plan accepts.\n\n6. **Publish outcome.** The outbox publisher runs every 1 s.\n   - It reads outbox rows with empty `published_at` and publishes each to `notification.outcome`.\n   - It waits for the storage confirmation, then sets `published_at`.\n   - The event holds `id`, final status and `attempts`. The failure reason stays in the service and in the page.\n   - A crash in between publishes the event twice, which is safe. If the broker is down at the service, events accumulate in the outbox and drain later.\n\n7. **Apply outcome.** The monolith outcome consumer runs `UPDATE notifications SET status = :s WHERE id = :id AND status = 'handed_off'`, commits, then acks.\n   - If the row isn't `handed_off`, nothing changes and the event is acked, so repeats are harmless.\n   - If the row is still `pending` because the dispatcher hasn't committed yet, step 8 repairs it by republishing the row. The service then re-emits the outcome and it applies.\n\n8. **Reconcile.** The monolith reconciler runs every 5 min.\n   - It republishes any row that has been `handed_off` for over 30 min. The service ignores the republish if the row is `received` and backing off, and re-emits the outcome if the row is terminal.\n   - It alerts if a row is still `handed_off` after 1 h.\n   - This repairs lost or late outcome events.\n\nRollout and rollback:\n- Flipping a type's flag back to `monolith` stops the dispatcher claiming it. The old worker then claims new `pending` rows within about 10 s plus one poll.\n- Rows already `handed_off` stay in the service until they finish and report back.\n- The service keeps running whatever the flag says.\n- The shared `idempotency_key` guards against the case where both sides send the same row.\n\nOther failures the document covers:\n- Broker down at dispatch: an alert fires if the oldest service-routed `pending` row is older than 2 min (30 s for `password_reset`). The first remedy is to flip that type to `monolith`.\n- Monolith DB down: nothing works, as today.",
+   "gaps": [
+    "The document doesn't say how the monolith dispatcher's 'due' rows are defined, since 'due' is only defined for service rows. I assumed it uses `next_attempt_at <= now()`.",
+    "The document doesn't say how the consumer or sender in the service obtains the rendered content or recipient. The payload and templates are mentioned, but how a template is chosen from `type` is not described.",
+    "The document doesn't say what the service does with the lease expiry or `attempts` for a row that was `received` when the sender claims it concurrently across multiple service instances. It says only that the lease prevents two senders sending at once, not how the claim is made atomic.",
+    "The document doesn't say what triggers the sender to stop and the row to become `sent` in the monolith other than the outcome event. It doesn't say what the monolith does if the outcome status is `failed`, for example whether the monolith pages or shows anything.",
+    "The document doesn't say how a dead-lettered message is replayed or who owns the dead-letter queue. It says only that on-call inspects it by hand.",
+    "The document doesn't say where flag values are stored or who flips them with which tool."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

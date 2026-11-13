@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Every write inserts an outbox row in the same SoT transaction as the write, so the record is committed atomically and survives a crash; it lives in users_sync_outbox on the SoT database. After commit the app tries one inline copy (250 ms) and deletes the row on success. Otherwise the sweeper (not the Redis queue) retries forever with capped backoff, re-reads the current row, applies it under the version rule, then deletes the outbox row.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Erasure writes a permanent tombstone (id only) on both databases. In Postgres a BEFORE INSERT/UPDATE trigger takes pg_advisory_xact_lock(id) and skips the write if a tombstone exists, and the delete path takes the same lock before inserting the tombstone. In MySQL a copy first runs SELECT 1 FROM users_tombstone WHERE id=? FOR SHARE, which gap-locks the absent key so a concurrent tombstone insert waits. Backfill, repair, dual-write and comparison fixes all go through these paths.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is last_completed_id in the Postgres migration_state table, updated in the same Postgres transaction as the batch upsert, so a crash leaves both or neither; a repeated batch is harmless under the version rule. The backfill stops when a batch returns zero rows, at which point it writes backfill_complete_at. It also refuses to start without dual_write_all_since and pauses while replica lag is above 5 s or missing.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The full comparison job walks both id spaces with keyset pages of 10,000: SoT ids checked against the other side, and the other side's ids checked against the SoT (this finds extras such as erased users). It re-reads candidates from the MySQL primary and Postgres 30 s later and counts only persistent mismatches. A candidate with a pending outbox row on either side is ignored. Each persistent mismatch with no outbox row gets one, so the sweeper repairs it, and the pass is not clean. A pass with zero persistent mismatches sets compare_clean_at. If the same mismatch keeps recurring, a human diagnoses the dual-write code.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each side has a users_control row (sot, moving, not_sot). Every SoT-first write holds FOR SHARE on its side's control row and returns a retryable 503 unless the state is sot. The switcher's UPDATE waits for in-flight writes and then blocks new ones on all instances at once. The flag only says where an instance aims first, so a stale-flag instance sees moving or not_sot and returns 503, never a wrong-side write. If draining the old outbox is not done within 40 s, and before the new side is set sot, the script sets the old side back to sot and writes resume. After that point there is no abort and the script is re-run to finish. Worst case is about 70 s against the 90 s limit.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids after the switch, using users_id_seq. At the switch it is set to GREATEST(current, MAX(id) on the MySQL primary) + 1,000,000, so there are no collisions. The reverse copy passes ids to MySQL explicitly. On rollback the script sets MySQL AUTO_INCREMENT to MAX(id)+1, and on any later switch the sequence takes the larger of both sides, so it never goes backwards.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "In pg_dual mode (Step 9) writes go to Postgres first with a Postgres outbox row, and the inline copy plus the same sweeper keep MySQL current. Rollback is the mirror of the switch: fence Postgres, drain its outbox, set MySQL AUTO_INCREMENT, set MySQL sot and Postgres not_sot, and set the flag to mysql_dual, with the same 40 s abort rule. The option ends at Step 10, when write_mode=pg_only, which is allowed no sooner than 14 days after pg_sot_since, and the MySQL table is only retired after that in Step 12.",
+  "decided": true
+ }
+}

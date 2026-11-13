@@ -1,0 +1,16 @@
+## Review of dp-01 (rewrite-v5, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Reordered into: summary paragraph, terms, numbered steps, failure table, flowchart, start-trigger table, setup, open questions.
+- Added a Terms section defining replica, warehouse, orders, stg_orders, HWM, run log, lookback, is_deleted, compare-and-set and reconciliation.
+- Replaced the bullet list of mechanisms with numbered steps that say what each does, and merged the separate Retry, Reconciliation failure and Assumptions bullets into one failure table.
+- Merged the old steps 6 and 7 numbering so the commit is step 6 and reconciliation is step 7, matching 'steps 2 to 6' in the failure table. The flowchart still labels the commit as step 7, an inconsistency left in place and noted here.
+- Added the reason for the lookback and for the min(now, replay) cut-off at the point where each appears.
+- Moved the first-run seed and the MERGE fallback into a separate Setup and rollout section, and moved the warehouse transaction assumption into Open questions.
+- Cut the 'Assumptions to confirm' wording about the 30-minute margin into the lookback term, and trimmed repeated statements about the HWM moving only on commit.
+- Kept the Mermaid diagram and the 'What starts each step' table unchanged.
+
+### Holes
+- None.

@@ -1,0 +1,205 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Why does the extract start 2 hours before the watermark (hwm minus 2h) instead of exactly at the watermark? What problem does that overlap solve?",
+     "about": "Read hwm from etl_watermark, set lower = hwm minus 2h"
+    },
+    {
+     "id": "2",
+     "text": "Why is the cutoff fixed at 02:00 UTC for every attempt, even a retry at 02:30? What would go wrong if it moved to the current time?",
+     "about": "New run: run_id, attempt n, cutoff fixed at 02:00 UTC for every attempt"
+    },
+    {
+     "id": "3",
+     "text": "How does the first run know there is no watermark, and what is the 'configured backfill start' and where is it configured?",
+     "about": "first run only: lower = configured backfill start"
+    },
+    {
+     "id": "4",
+     "text": "How is is_deleted computed, and how do deleted orders (deleted_at set) end up in orders? Are they removed or kept as flagged rows?",
+     "about": "Dedupe in stage: one row per order_id, latest updated_at wins, ties broken by row hash. Compute is_deleted"
+    },
+    {
+     "id": "5",
+     "text": "What does the MERGE do exactly: what is the match key, and what happens when the matched row in orders has a newer updated_at than the staged row?",
+     "about": "One warehouse transaction: MERGE into orders, then set etl_watermark to cutoff"
+    },
+    {
+     "id": "6",
+     "text": "The success write to etl_run_log is drawn as part of the commit. Is it inside the same transaction as the MERGE and watermark? What if it fails after commit?",
+     "about": "Write success to etl_run_log"
+    },
+    {
+     "id": "7",
+     "text": "The staleness check asks for a 'committed run with cutoff 02:00 UTC today' in etl_run_log, but the diagram also shows it reading etl_watermark. Which does it use, and how does it tell a committed run from a failed attempt?",
+     "about": "06:00 UTC staleness check, separate job"
+    },
+    {
+     "id": "8",
+     "text": "After the third failure and the page, what happens next? Does anyone or anything rerun that day, and what happens to the next night's run with the old watermark?",
+     "about": "Page on-call with run_id and last error"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The 2-hour overlap covers the 90-minute gap between a row's updated_at and its visibility to readers, plus 30 minutes of margin. Without the overlap, a bulk-imported row that became visible after the previous night's cutoff would be skipped forever, because the hwm has already moved past its updated_at."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Every attempt of a night reads the same window and writes the same cutoff. If the cutoff moved to the current time, a 02:30 retry would read a different window than the 02:00 attempt, the success row would carry a different cutoff, and the 06:00 check would no longer find tonight's run by its cutoff."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The first run is detected by the absence of an hwm row. The brief names no backfill start date and no place where it is configured, so both are unknown. Listed under open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "is_deleted is true when the winning version has deleted_at set. A delete is a write that sets updated_at, so the deleted version is the newest and wins the dedupe. The MERGE then sets is_deleted on the existing row. Deleted orders are kept as flagged rows and are never removed."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The match key is order_id. The plan had no guard for a stored row that was newer than the staged one, and the brief requires the most recent version, so a matched row now updates only when the staged winner beats it by later updated_at, with ties broken by row hash."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The success row is now inside the same transaction as the MERGE and the hwm update. The diagram had it after commit, which would let a crash leave a committed night with no success row. If the success write fails, the whole transaction rolls back and the attempt fails, so nothing is left half-done after commit."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The 06:00 check reads only etl_run_log. A success row exists only if its transaction committed, so its presence is the commit signal. The etl_watermark edge was removed to keep one source of truth."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Nothing reruns automatically after the page. On-call reruns the night by hand with the same 02:00 cutoff. The next night still starts from the old hwm, so its window covers the missed night too. The hwm moves forward only, so a late manual rerun cannot move it back."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "When on-call reruns the night by hand, is it the same run_id or a new one? Attempts are counted from etl_run_log and three are already used, so how does the manual rerun avoid stopping at once?",
+     "about": "Retry or page / On-call reruns the night by hand"
+    },
+    {
+     "id": "10",
+     "text": "What cutoff does a reconciliation reload write on its success row in etl_run_log? How does that not get mistaken by the 06:00 check for a night's 02:00 success row?",
+     "about": "Reload that day under its own run_id"
+    },
+    {
+     "id": "11",
+     "text": "What starts the Sunday reconciliation, and when? Is it a separate scheduled job, or does it run right after Sunday's night commits?",
+     "about": "Sunday, and that night has a success row"
+    },
+    {
+     "id": "12",
+     "text": "A reload uses steps 4 to 6 and so the same MERGE rule. If the replica is the source of truth for the day, how does a reload fix a row where orders is older? Does the reload's stage load interfere with the nightly run's rows in orders_stage?",
+     "about": "Reload that day: full extract for the day, then steps 4 to 6"
+    },
+    {
+     "id": "13",
+     "text": "If the scheduler never starts the run at all, nothing is written to etl_run_log. Is the 06:00 staleness alert the only thing that catches that, and who acts on it?",
+     "about": "Third failure / Scheduler starts run at 02:00 UTC"
+    },
+    {
+     "id": "14",
+     "text": "Deleted orders stay in orders as flagged rows with is_deleted set. Do dashboards filter on is_deleted, or is that left to the analysts?",
+     "about": "Pick winners / Serving table (orders)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "A manual rerun is a new run with a new run_id and the same 02:00 UTC cutoff. Attempts are counted per run_id, so the rerun gets three fresh attempts and is not blocked by the three already used. The old run's rows stay in etl_run_log as history. Reason: a new run_id keeps the old attempt count from blocking the rerun and does not clear the failed run's rows."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The reload writes its success row with run kind 'reload' and the 02:00 UTC cutoff of the Sunday night it follows. The 06:00 check filters on run kind 'nightly', so reload rows never match it. A reload also does not move the hwm, which matches the brief's rule that reconciliation never changes the hwm. The earlier plan had the reload run steps 4 to 6 unchanged, which would have moved the hwm; that conflict is fixed."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "It is a separate weekly scheduled job, not part of the nightly run. It runs after the nightly retries should have finished, and first checks that Sunday's night has a nightly success row. The brief gives no start time, so the exact time is an open question."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The replica is the source of truth for the day. The reload takes a full extract of that creation day from the replica, ignoring the updated_at window. The replica version is newer than a stale stored row, so the existing MERGE rule updates it. Checked in the plan: staged rows are keyed by run_id and the delete in step 4 removes only that run_id's rows, so the reload's stage load cannot touch the nightly run's rows in orders_stage."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "Yes, in this plan the 06:00 staleness check is the only thing that catches a run the scheduler never starts, because no run row exists. The brief names no owner for the staleness alert, so who acts on it is unknown. Added as an open question."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "The plan keeps deleted orders as rows with is_deleted set, and it does not say whether dashboards filter on it. The brief does not decide this. Added as an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "Who runs the retry loop (wait 15 min, start next attempt)? If the attempt process crashes or the machine dies before writing a failed row, what notices that and starts the next attempt?",
+     "about": "Retry or page / Wait 15 min / Crash before an end row is written"
+    },
+    {
+     "id": "16",
+     "text": "How does the job count a crashed attempt that only has a started row? How does it tell that attempt is dead rather than still running, so a retry does not overlap it?",
+     "about": "Start: Write started row to etl_run_log / Attempts used for this run_id under 3?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The controller runs the retries. It is the scheduled job that starts the run, and it stays alive through the 15-minute waits. The brief requires retries 15 minutes apart and a page after the third failure, so something must hold that loop. If the attempt process crashes, the controller sees it exit and writes the failed row if the attempt left none. If the controller's host dies, nothing retries; the 06:00 check is the backstop."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "A crashed attempt counts as used, because attempts are counted from started rows, and a crash leaves a started row. The controller does not decide death from timestamps. It starts the next attempt only after the previous attempt process has exited, so a retry never overlaps a running attempt. A process that never exits is not settled by the brief, so that is listed under open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one nightly run, following a single night (cutoff 02:00 UTC) that fails once and then succeeds, then the side jobs.\n\n1. Trigger. The scheduler starts the controller at 02:00 UTC. The controller makes a new run_id, fixes the cutoff at 02:00 UTC for the whole run, and starts attempt 1. Each attempt is its own process. The controller is the only part that waits and starts later attempts. State kept: nothing yet except what the controller holds (run_id, cutoff, attempt count).\n\n2. Started row. The attempt writes a \"started\" row to etl_run_log (in the warehouse) in its own statement. It is not part of the later transaction, so it survives a rollback. This is the record that the attempt began.\n\n3. Find the window. The attempt reads the hwm from etl_watermark (one row, in the warehouse). The hwm is the cutoff of the last nightly run that committed. Window start = hwm minus 2 hours (the lookback). The overlap exists so rows that became visible late (up to 90 minutes) are not missed. If there is no hwm (first run only), it uses the configured backfill start. If this fails, the attempt fails and nothing has changed.\n\n4. Extract. The attempt reads from the read replica (read only, the only thing the job reads from the app side) every row with updated_at after the window start and at or before the cutoff. Information moves from the replica into the attempt process. On failure, the attempt fails.\n\n5. Stage. It deletes any rows tagged with this run_id in orders_stage, then bulk loads the extract there. Clearing first means a retry with the same run_id cannot double the rows. Other runs' rows are untouched. On failure, the attempt fails.\n\n6. Pick winners. For each order_id the attempt keeps one winner: later updated_at wins, and on a tie the larger row hash wins. If the winner has deleted_at set, is_deleted is set true. Deleted orders stay as flagged rows, never removed. On failure, the attempt fails.\n\n7. Commit. One warehouse transaction does three things: (a) MERGE winners into orders matched on order_id; new ids are inserted, existing ids are updated only if the staged winner beats the stored row by the same rule (later updated_at, tie to larger hash), otherwise left alone; (b) for a nightly run, set etl_watermark to the cutoff only if it is later than the stored value; (c) write a success row, with run kind, to etl_run_log. All three commit together or none do. This is why dashboards never see half a night.\n\n8. Failure path (suppose attempt 1 failed in step 4, 5, 6 or 7). The attempt writes a \"failed\" row with the error to etl_run_log in its own statement, then the process exits. If the process died without writing a success or failed row, the controller waits until it has exited and writes the failed row itself. orders and hwm are unchanged in every case.\n\n9. Retry. The controller counts attempts it has started for this run_id. If fewer than 3, it waits 15 minutes and starts the next attempt with the same run_id and cutoff, which repeats steps 2-7 (the hwm is unchanged, so the same window is read again). Attempts never overlap.\n\n10. Success. When an attempt commits, the success row exists in etl_run_log, orders has the new data, and the hwm is at the cutoff. Dashboards read only orders at 06:00 UTC and see the last committed night.\n\n11. Third failure. If the third attempt fails, the controller pages on-call with the run_id and last error. Nothing reruns automatically. On-call does a manual rerun: a new run_id with the same 02:00 cutoff, three fresh attempts, old log rows kept as history. The hwm is not moved back, so the next night's window also covers the missed night.\n\n12. 06:00 UTC staleness check. A separate job reads only etl_run_log for a success row with run kind nightly and cutoff 02:00 UTC that day. If absent, it posts an alert to the data-alerts channel. This also catches a scheduler that never started, or a lost controller host. Reload rows are ignored.\n\n13. Sunday reconciliation (separate weekly job). It first checks that Sunday's night has a nightly success row, otherwise it skips the week. For each order-creation day in the last 30 days it computes count and checksum of order_id plus updated_at on the replica and in orders. If they match, it records a match in recon_result. If not, it waits briefly and compares again. If they still differ: if only newer rows are in orders, it logs and alerts, with no reload; if any order is missing or older in orders, it reloads that day under a new run_id with run kind reload, a full extract of that creation day, running the stage, pick and commit steps. The MERGE guard still applies, the hwm is not changed, and the success row carries the 02:00 cutoff but kind reload. If the reload fails, the failure is recorded and the day is retried next Sunday. If the check itself errors, the error is recorded in recon_result and the day is checked next Sunday.\n\nOther failure cases the document states: a hung attempt (process never exits) keeps the run open because the controller waits indefinitely; a lost controller host stops retries, with the 06:00 check as the only catch.",
+   "gaps": [
+    "How the scheduler decides the night is a nightly run versus how the reconciliation job knows what 'Sunday night' is relative to its own start time: the Sunday job's start time is not given.",
+    "The backfill start date for the first run and where it is configured are not given.",
+    "How the controller learns that an attempt process has exited, and how it detects or limits a hung attempt: no timeout is given, so a hung attempt blocks the run indefinitely.",
+    "Which host runs the controller is not stated.",
+    "Who receives or acts on the 06:00 staleness alert is not stated.",
+    "Whether dashboards filter out rows with is_deleted true is not stated.",
+    "How the 'started' attempt count is kept: the controller counts attempts it started, but the document does not say where that count is held, so it is unclear what survives if the controller restarts.",
+    "How a 'creation day' is defined for the reload extract (which column or time zone) and how the reload gets its cutoff and its own staging run_id handling are not fully specified.",
+    "How long 'wait briefly' is in the reconciliation re-compare is not given."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

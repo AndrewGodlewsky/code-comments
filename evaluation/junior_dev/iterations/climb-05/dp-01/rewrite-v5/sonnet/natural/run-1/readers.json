@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The 02:00 UTC daily scheduler trigger starts it. It extracts replica rows where lo < updated_at <= hi, with lo = HWM minus 2h, including deleted rows.",
+  "q2": "Bulk imports can keep a transaction open for 90 minutes, and updated_at is stamped at write time, not commit time. So a row can become visible up to 90 minutes after its updated_at.",
+  "q3": "The next night's extract re-reads it if it is visible within the 2-hour lookback overlap. The guarded merge then updates the warehouse row because the staged updated_at is newer.",
+  "q4": "Nothing is removed. The app sets deleted_at, that write is extracted, and the merge keeps the order and sets is_deleted to true.",
+  "q5": "The attempt's transaction rolls back and the HWM is unchanged. The scheduler waits 15 minutes and retries, recomputing lo and hi. After the third failure, the run log is marked failed and on-call is paged.",
+  "q6": "Dashboards show the last committed orders data. The 06:00 watchdog posts a staleness alert to #data-alerts when tonight's run log has no success row.",
+  "q7": "The Sunday reconciliation. Its count and checksum comparison finds the mismatched creation day, and it reloads that whole day from the replica through the guarded merge.",
+  "q8": "orders has a unique key on order_id. The merge updates an existing row only when the staged updated_at is newer, so stale or duplicate copies never overwrite newer data.",
+  "q9": "In etl_control.high_water_mark for pipeline 'orders'. It is set to hi inside the load's commit transaction, using compare-and-set against the value read at the start.",
+  "q10": "The merge, the HWM advance and the run log success mark all happen in one warehouse transaction. Readers see either the old orders data or the whole new night.",
+  "q11": "The next attempt first deletes stg_orders rows for its own run_id, so the failed staging is discarded. The retry recomputes lo from the unchanged HWM minus 2h and a fresh hi.",
+  "q12": "It re-reads every row of each mismatched day from the replica into stg_orders under a recon run id, then applies the same guarded merge in one transaction. It does not move the HWM."
+ },
+ "sonnet": {
+  "q1": "The scheduler's 02:00 UTC trigger starts attempt 1. It extracts replica rows where lo < updated_at <= hi, with lo = HWM - 2h and hi = min(now(), replica's pg_last_xact_replay_timestamp()), including rows with deleted_at set.",
+  "q2": "updated_at is stamped at write time, not commit time, and bulk imports can keep a transaction open for 90 minutes. So a row can become visible up to 90 minutes after its updated_at.",
+  "q3": "The edit raises updated_at, so a later nightly extract picks it up (the window starts at HWM - 2h). The merge updates the existing order only if the staged updated_at is newer than the warehouse's.",
+  "q4": "The app never hard-deletes. It sets deleted_at, which is a write and so is extracted like any other change. The warehouse keeps the order and sets is_deleted = (deleted_at IS NOT NULL).",
+  "q5": "The transaction rolls back and the HWM is unchanged, so orders is untouched. For attempts 1 and 2 the scheduler waits 15 minutes and starts the next attempt, recomputing lo and hi from the unchanged HWM. If attempt 3 fails, the run log status becomes failed and on-call is paged.",
+  "q6": "Dashboards show the last committed orders data. The 06:00 watchdog finds no success row for tonight and posts a staleness alert to #data-alerts. If attempt 3 failed, on-call was also paged.",
+  "q7": "The Sunday reconciliation. It compares count and checksum per creation day for the last 30 days, reloads the days that differ, and merges them with the guarded merge. It can take up to a week.",
+  "q8": "The merge updates a matched order only when the staged updated_at is greater than the warehouse row's updated_at. New orders are inserted. Staging also has one row per order_id per run_id, and orders has a unique key on order_id.",
+  "q9": "It is stored in etl_control in the warehouse (the row with pipeline = 'orders'). The value written is hi, the smaller of now() and the replica's replay timestamp. It is written inside the commit transaction (step 6), after the merge, by a compare-and-set against the HWM read at the start. The update must change exactly 1 row, or the transaction rolls back.",
+  "q10": "The merge, the HWM advance and the run-log success mark happen in one warehouse transaction. Dashboards see either the old orders or the whole new night. The design relies on snapshot-isolated readers, which is an open question. Dashboards read only committed orders data.",
+  "q11": "The retry gets a new run_id. It runs DELETE FROM stg_orders WHERE run_id = :run_id and starts clean. The failed attempt's staging was outside the transaction, so orders was untouched. The retry recomputes lo = HWM - 2h from the unchanged HWM and a fresh hi, so it extracts lo < updated_at <= hi.",
+  "q12": "It re-reads the whole day (by created_at date) from the replica for each mismatched day, into stg_orders under a recon run id. It applies the rows with the same guarded merge into orders in one transaction, so it cannot undo newer data. It does not change the HWM."
+ }
+}

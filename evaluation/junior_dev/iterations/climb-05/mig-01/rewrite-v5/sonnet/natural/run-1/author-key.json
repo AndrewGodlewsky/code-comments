@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Every write transaction on the SoT inserts a row into that store's durable `users_sync_outbox` in the same transaction as the user change, so the record is atomic with the commit. After commit the instance tries an inline copy (250 ms timeout) and deletes the outbox row on success; on failure or a crash the row stays. The `users-sync-worker` polls the outbox every second, reads the current user from the SoT primary, applies it with the version-rule statement, and retries forever with backoff capped at 60 s, alerting if the oldest row is over 5 minutes.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "A `users_tombstone(id, deleted_at)` row is written in the same transaction as the erasure delete, and every copy statement (inline, backfill, repair) only applies if no tombstone exists for that id, so a stale copy cannot recreate the user. The copy applies the same delete-plus-tombstone pair on the other store, and tombstones are kept until the MySQL table is dropped. I did not explicitly decide how the check behaves under a race within a single Postgres statement or transaction (for example locking), only that the copy is conditional on no tombstone.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is the `backfill` row in Postgres `migration_progress` (last_id, status, lease). The cursor update is in the same Postgres transaction as the batch's copy statement, so a crash continues exactly after the last completed batch. A lease keeps a single runner. The backfill stops when the cursor passes the MySQL max(id) and the outbox backlog is empty, after one more pass catches rows created during the run, and then status is set to `done`.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The `users-compare` job walks id ranges of 100,000 and compares (id, version, hash of email/name/plan/updated_at) between the MySQL replica and the Postgres primary, finding missing, extra, differing, and user-plus-tombstone ids. After about 10 s it re-checks each mismatch against the MySQL primary, skipping ids with a pending outbox row; ids still mismatched are confirmed and inserted into the outbox so the worker repairs them automatically. It reruns until a full run has zero confirmed mismatches, and again nightly during the soak.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A write fence row on each store, locked FOR SHARE by every write transaction, means closing the fence waits for in-flight writes and blocks new ones. An instance with a stale flag therefore hits the closed old-SoT fence and gets a retryable 503, so there is no split brain regardless of the 30 s flag refresh. The procedure closes the MySQL fence, drains the outbox, sets the sequence, then flips the flag and opens the Postgres fence. If steps are not finished by T0+40 s, it aborts by reopening the MySQL fence and leaving the flag unchanged. Worst case with flag propagation is about 70 s, under the 90 s limit.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids from a sequence that is set, during the pause, to MySQL's `AUTO_INCREMENT` value (read with stats expiry 0), not max(id)+1, so ids freed by deletes at the top of the range are never reused and tombstones stay valid. On rollback, the procedure checks that MySQL `AUTO_INCREMENT` is above the maximum Postgres id and raises it if not; InnoDB also raises its counter when a larger explicit id is inserted.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, writes commit on Postgres with a Postgres-side outbox row, and the inline copy plus the worker copy every write back to MySQL under the same version and tombstone rules, with an alert if the reverse queue is over 30 s old. Rollback mirrors the switch: close the Postgres fence, drain the Postgres outbox to zero, check and raise MySQL AUTO_INCREMENT, set `dual_mysql_primary` and open the MySQL fence, aborting at T0+40 s. The option ends at step 13, which is allowed no sooner than 14 days after the switch, when `pg_only` stops copying to MySQL. Rollback cannot complete while Postgres is down.",
+  "decided": true
+ }
+}
