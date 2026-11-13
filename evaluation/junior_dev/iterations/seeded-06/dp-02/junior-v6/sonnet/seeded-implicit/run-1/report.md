@@ -1,0 +1,43 @@
+## Review of dp-02 (junior-v6, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Added a goal line stating partition by UTC day of received_at and the 5-minute freshness requirement.
+- Made the raw log an explicit step (existing 14-day log, read independently by archiver and live processor).
+- Stated that the collector returns 202 only after durable write, 5xx if the raw log write fails, and listed validation checks and that the reject bucket is inspection only.
+- Stated SDK retry details (1 s to 5 min backoff, 7-day on-device buffer) and tied them to why dedup exists.
+- Archiver now keeps duplicates exactly as received for 90 days.
+- Specified dedup in the live processor: first copy wins, KV keyed by event_id with 8-day expiry, recorded after load, and failure handling for KV, enrichment and load.
+- Replay step now states operator trigger, closed-day rule (02:00 UTC next day), archive-only input, private dedup state scanning back 7 days, staging table and atomic partition replace, isolation from live.
+- Monitoring step names what is monitored and why.
+- Added Open questions for bot filtering, alert ownership/threshold and reject bucket retention.
+- Rewrote the whole file in the skill layout: summary, terms, live path, replay path, failure table, open questions.
+- Added a terms section defining event, batch, received_at, UTC day, raw log, archive, KV store, duplicate, closed day and staging table.
+- Explained why the day closes at 02:00 (2 hours for the live processor to finish pre-midnight events) in the closed day term.
+- Defined replay's private state as a temporary per-run seen-set, discarded after the run; added its location as an open question.
+- Added replay failure handling: partition untouched before the swap, atomic swap, operator reruns.
+- Stated that the replay result has no duplicates or empty enrichment, and that it matches live dedup except for near-simultaneous copies.
+- Added a note that the archiver resumes where it stopped, and that lag monitoring is the only way to notice a stuck processor.
+- Added open questions on events that can never load (blocking), tie-breaking on identical received_at, and the replay seen-set location.
+- Added a failure table collecting all failure handling in one place; kept every number and rule from the brief and first version.
+- Defined raw log partition and chose partitioning by hashing event_id, so all copies of an event_id share a partition (answers Q14 and Q15).
+- Stated that the live processor runs one worker per partition, handling events one at a time and recording the key before the next event, and added the reason a close second copy is dropped.
+- Added how the archiver assigns events to hourly files (UTC date and hour of received_at, no dedup or reordering) and how replay lists a day plus the 7 earlier days.
+- Noted that received_at comes from the accepting collector instance, that clocks are assumed synced, and that log order can differ slightly from received_at order.
+- Added that the operator checks lag before starting a replay, that the job itself only refuses days that are not closed, and added an open question about the job checking lag itself.
+- Added the Acknowledged term and stated that the 5-minute goal is measured from received_at to queryable in events_clean.
+- Added a paragraph on late retries landing in a later day's partition and how replay of that day cleans them up.
+- Added a failure-table row for archiver lag or failure, and extended the closed-day term and the monitoring step to cover the archiver.
+- Reordered: summary paragraph first (what exists today, main flow, why), then terms, then live path, replay path, failures, open questions.
+- Added to the summary that there is no pipeline today and that replay exists because live processing is fast but not perfect.
+- Merged the repeated 'closed day' explanations (terms, replay step) into one definition; shortened 'Acknowledged' and other term lines.
+- Merged the separate 'KV key expiry' sentence into the record step (step 5.4) and moved the 5-minute measurement into the monitoring step.
+- Merged the replay failure step's reasoning with the safe-rerun reason; folded the 'does not slow live' rationale into the statement that replay reads only the archive.
+- Removed the standalone sentence duplicating 'a day is the 24 hourly groups' and the repeated explanation of duplicates in the SDK step.
+- Kept every brief fact: batch size, 202 durability, 32 KB, per-event rejection, backoff 1 s to 5 min, 7-day buffer, 90-day retention, 14-day log, 5-minute goal, 02:00 UTC close, atomic partition swap, bot filtering open.
+- No new mechanisms added; no build or rollout section because the plan has no rollout content.
+
+### Holes
+- Q2: What are the "consumers" whose lag is monitored, and what happens when lag gets high? Who gets alerted and what do they do? (author: The consumers are the archiver and the live processor. Who is alerted, the lag threshold and the response are not known. Added to Open questions; the plan states only why lag matters (5-minute goal).)
+- Q12: If one event can never be loaded (the load keeps failing for that event), the processor keeps retrying and does not advance. Does that block every later event behind it? How would anyone find out? (author: As written, yes: a permanently failing event blocks the events behind it in that raw log partition. Detection is only the lag alert, whose owner and threshold are not decided. I have no defended rule for skipping such an event (skipping loses it live, though replay could recover it from the archive). Added to open questions rather than inventing a mechanism.)

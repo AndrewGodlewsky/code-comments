@@ -1,0 +1,42 @@
+## Review of auth-02 (junior-v6, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Rewrote the plan into the skill's layout: summary paragraph, terms, runtime flow, rollout steps, failure table, open questions.
+- Reordered rollout so rotation comes only after deploy and verification, and the old key is revoked only after /healthz shows every replica on the new version, so no request fails.
+- Made clients call secrets.get() on every provider call instead of caching, so refresh takes effect.
+- Stated that /healthz returns 200 only after all three keys load, so a pod without keys never becomes ready and the rollout halts.
+- Added that APP_ENV is required with no default, so the app cannot read the wrong environment.
+- Defined secret_versions as secret name to version id with no values.
+- Stated that after old keys are revoked, rollback must target an image from the code-ship step or later.
+- Defined what the CI check does: fail any change where config/app.yaml contains an api_key key.
+- Restored brief requirements: startup retry 3 times 2 seconds apart then exit non-zero, 5-minute refresh keeping the last good value with a warning, memory-only values, 30-day logs, access rules, no history rewrite, local dev with sandbox keys.
+- Added open questions for the store product, the identity mechanism and /healthz exposure, alongside the undecided rotation schedule.
+- Runtime step 1: any fetch failure (unreachable, permission denied, missing secret) gets the same retry then exit, and load() asks for the latest version and gets value plus version id (Q11, Q15).
+- Runtime step 2: stated that readiness is decided at startup only and /healthz stays 200 if the store later fails (Q14).
+- Runtime step 4: timers start at instance start and are not aligned; no alert on stuck refresh, step 5(d) is the safety net (Q12, Q13).
+- Rollout steps 4 and 5(d): check each replica's /healthz directly, not through the load balancer (Q9).
+- Rollout step 5(c) and the failure wait: clarified up to one full tick, and one more refresh means another 5 minutes (Q13).
+- Failure table: widened the startup row and added a row for the store failing after the pod is ready.
+- Open questions: added newest-version default, per-replica /healthz access, and stuck-refresh alerting.
+- Rollout step 5: added step (b) testing the new key at the provider before writing it to the store, so a bad key never reaches instances (fixes the contradiction with the no-failed-request requirement); lettering shifted, so the version check is now (e) and revoke is (f).
+- Runtime step 4 (Refresh): states each secret is swapped independently, so a partial failure keeps the last good value only for the failed one; updated the reference to rotation step 5(e).
+- Failure table: split the rotation row into key fails pre-test, and key passes test but fails in use (up to 5 minutes recovery); refined the refresh row for per-secret handling.
+- Rules: added the stated requirement that no customer request may fail because of a missing or revoked key at any point.
+- Open questions: added which test call per provider, and the residual risk of a key that passes the test but fails in use.
+- Merged the old 'Terms' note on the store and the rules into a tighter summary paragraph; added that the app will not report ready without all three keys.
+- Added a 'service identity' clause to the terms (the app calls the store as this identity) and the rolling-deploy facts (maxUnavailable 0, 4 replicas) to the readiness probe term.
+- Restored two brief requirements the draft had dropped from the rules: local development works without prod secrets, and CI fails any api_key put back in config/app.yaml.
+- Moved 'no version pinned, gets latest' into runtime step 1 and removed duplicate wording in step 4.
+- Moved the 'both keys valid during rotation so in-flight calls are safe' reason into runtime step 3.
+- Broke rotation step 5 into a lettered sub-list (a to f) plus the bad-in-use recovery line; wording otherwise unchanged.
+- Trimmed repeated explanations (why readiness stays 200, why per-secret swap is safe) to one clause each.
+- Removed the repeated 'if it goes wrong' phrasing in rollout step 1 and shortened step 7.
+- Kept all open questions; no cadence for rotation is chosen.
+
+### Holes
+- Q1: What is "the store"? Which product or service is it, and where does it run? (author: The brief says only 'our managed secret store' with per-environment KMS keys and version ids. It does not name the product or where it runs. I added a definition of the store in the terms and put the missing product name under open questions. The flow does not depend on it.)
+- Q2: How does the app prove its identity to the store when it calls load()? What does "access policies for orders-api-prod" grant and to whom? (author: How the pod authenticates (workload identity, token or other) is not stated in the brief, so I do not know it. What is known and now in the plan: the identity orders-api-prod gets read-only access to orders-api/prod/* only, security on-call alone can write prod secrets, and engineers cannot read prod values. Added the unknown mechanism to open questions.)
+- Q9: Rollout step 4 says to check that all 4 replicas report the same secret_versions. How does someone query each individual replica's /healthz, rather than getting whichever pod the load balancer picks? (author: The brief and files do not say how operators reach a single pod (pod address, port-forward, exec). The requirement is stated in the plan: query each replica directly, not via the load balancer. The cluster tooling is added to open questions.)
+- Q10: In step 5(b), security on-call writes a new version of the same secret. Does the store make the newest version the one that reads return by default? Or does something have to mark it current? (author: The brief says only that each write gets a new version id. It does not say whether an unversioned read returns the newest. The plan assumes newest and refresh asks for the latest version. Step 5(d) would expose a wrong assumption, because the old version id would still show before any revoke. Added to open questions.)

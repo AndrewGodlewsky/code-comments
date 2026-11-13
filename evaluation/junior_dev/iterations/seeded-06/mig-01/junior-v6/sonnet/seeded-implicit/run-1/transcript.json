@@ -1,0 +1,264 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does the system do during dual writes: which database gets the write first, and what happens to the request if the second write fails?",
+     "about": "Turn on dual writes via `users.write_mode`"
+    },
+    {
+     "id": "2",
+     "text": "What are tombstones and pending tables for, and which component writes to and reads from each?",
+     "about": "Create the new tables in Postgres and MySQL (users, tombstones, pending, backfill progress)"
+    },
+    {
+     "id": "3",
+     "text": "What do the sweepers do, when do they run, and what triggers them?",
+     "about": "Deploy the updated UserRepository, sweepers and comparer"
+    },
+    {
+     "id": "4",
+     "text": "What does the comparer compare, how does it run, and what counts as clean?",
+     "about": "Run the comparer until it's clean"
+    },
+    {
+     "id": "5",
+     "text": "How does the backfill pick and copy rows from the replica, and how does it deal with replica lag and with rows changed by dual writes at the same time?",
+     "about": "Run the backfill from the replica (2k batches, respect replica lag)"
+    },
+    {
+     "id": "6",
+     "text": "Where do reads go during the ramp, who decides per request, and what do you watch to decide to move to the next step or step back?",
+     "about": "Ramp `users.read_from_pg` 1/10/50/100"
+    },
+    {
+     "id": "7",
+     "text": "What are the values of `users.write_mode` and what does each one do? Where is the flag set and how fast does it take effect?",
+     "about": "switch `write_mode` to Postgres primary"
+    },
+    {
+     "id": "8",
+     "text": "Why must the Postgres id sequence be restarted, to what value, and how are writes frozen and for how long?",
+     "about": "Freeze writes, restart the Postgres id sequence, switch write_mode to Postgres primary"
+    },
+    {
+     "id": "9",
+     "text": "How do you roll back during the 14 days, and how does MySQL stay in sync once Postgres is primary?",
+     "about": "Keep MySQL in sync for 14 days (rollback still possible)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The brief fixes this: MySQL commits first, in a transaction that also adds a pending row. Postgres is then applied with a 1 s timeout. If it fails, the request still succeeds and the sweeper repairs it from the pending row. The document now says this in a 'How it works' section."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Tombstones record erased user ids. They are written with the delete in the same transaction, and every copy checks them, so an erased user cannot come back. Pending holds 'this user may differ in the other database'. It is written by the write path in the primary database and read and cleared by the sweeper. Both tables exist in both databases. Tombstones hold only an id, because I chose not to keep personal data. They are also the reason ids are never reused."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The sweeper is a separate loop process, two copies, running every 10 s on pending rows older than 10 s. It re-reads the user from the primary and copies it to the follower under the version rule (or deletes it if tombstoned), then removes that pending row by seq. I chose it over the Redis jobs because jobs can be lost when Redis is down, and dead jobs are never processed. Two copies are safe because of the version rule."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "It walks both tables in id ranges of 2,000 and compares rows by version and fields. It flags a row missing on either side, or a row in Postgres that is not in MySQL. Each flagged row is re-checked after 60 s against the MySQL primary. Rows still different are mismatches and are also queued as pending, so they are repaired. Clean means one full pass with zero mismatches. It runs as a job started by an operator. Whether it should read the replica or the primary was my call: the replica, to protect the primary."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It reads from the replica where id is above the last completed id, in primary-key order, 2,000 rows at a time. It waits while mysql_replica_lag_seconds is above 5. It copies under the version rule and tombstone check. It records the last id in the same Postgres transaction as the copy. Concurrent dual writes and stale replica rows are handled by the version rule: the higher version wins. Rows created during the backfill are dual-written already."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Per request, flags.enabled_for decides by user_id, so a user is stable. True reads go to Postgres, otherwise to the MySQL replica. Postgres read errors fall back to the replica. Move up on latency, fallback count and mismatch count being no worse than MySQL reads, and move down if they are. The numeric thresholds and hold time per step are not set; they are listed under open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Values: mysql_only, dual_mysql, frozen, dual_pg, pg_only, each explained in the terms. It is set through the existing flag system. Instances cache flags and refresh every 30 s, so it takes up to 30 s for all instances. This is visible through app_flag_value{flag=\"users.write_mode\"}. That is why the switch passes through frozen first."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Postgres rows are inserted with explicit MySQL ids, so the sequence has not moved. Without a restart, Postgres would hand out id 1 and collide. The value is the largest of MySQL's next AUTO_INCREMENT, max Postgres id + 1, and max tombstone id + 1, so an erased user's id is not reused. Writes are frozen by write_mode frozen, which returns a retryable 503. The budget is at most 30 s to propagate, 5 s for in-flight writes, 15 s drain and 30 s to propagate the switch, so at most 90 s. If the drain exceeds 15 s the switch is aborted back to dual_mysql."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "In dual_pg, Postgres is the primary and its pending table drives a sweeper that copies to MySQL, so MySQL stays in sync. To roll back: set read_from_pg to 0, freeze, drain Postgres pending, bump MySQL AUTO_INCREMENT to at least the Postgres next id, then set dual_mysql. The version rule means the sync cannot lose a write. The pause is bounded to 90 s in the same way."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Where is a row's `version` stored, and what increments it on each update? Does the app code set it, or the database?",
+     "about": "Version rule"
+    },
+    {
+     "id": "11",
+     "text": "Which database's `pending` table does the sweeper read at any moment? How does it know which one is primary after a `write_mode` change, and does it pick this up from the same flag with the same 30 s delay?",
+     "about": "Sweeper pass"
+    },
+    {
+     "id": "12",
+     "text": "If the user is gone from the primary but there is no tombstone, what does the sweeper do? Can that happen?",
+     "about": "Sweeper pass, step 3"
+    },
+    {
+     "id": "13",
+     "text": "The step says a \"recent\" clean comparer pass is needed. How recent? Also, the comparer reads the replica and walks the whole table: roughly how long does one pass take, and does it run during the freeze?",
+     "about": "Step 7, Switch the source of truth to Postgres"
+    },
+    {
+     "id": "14",
+     "text": "What does \"the sweeper copies Postgres-bound pending rows again\" mean after the rollback? Which pending table is drained, and what happens to rows left in the other database's pending table from before the switch?",
+     "about": "Step 8, Rollback during these days"
+    },
+    {
+     "id": "15",
+     "text": "What does the request's response contain when it succeeds but Postgres failed? And if the app crashes between the MySQL commit and the Postgres write, what recovers it?",
+     "about": "Write in `dual_mysql`, step 2"
+    },
+    {
+     "id": "16",
+     "text": "While `read_from_pg` is between 1 and 99 and writes go to MySQL first, a user reads from Postgres right after writing. Could they see their old data because Postgres has not received the write yet?",
+     "about": "Read"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "`version` is a column in `users`. The existing repository bumps it in SQL on the MySQL primary (`version = version + 1 ... WHERE version = expected`); the app never sets it by hand. In `dual_pg` the repository must do the same bump in Postgres. Copies carry the incoming version unchanged. Added to the terms."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The sweeper no longer depends on `write_mode` or the 30 s flag delay. It always scans both pending tables. A pending row lives in the database that was primary when it was written, and that database is the primary for that row. The switch steps drain the old primary's pending table to empty before the new mode starts, so no rows are left behind. This is simpler than having the sweeper track the flag."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It should not happen: a delete writes its tombstone in the same transaction, and creates add the pending row in the same transaction as the row. If it does happen, the sweeper deletes the user from the follower anyway, since the primary no longer has it, and copies a tombstone if one exists. I judged that the safe result."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "I set 'recent' to a clean pass that finished within the last 24 hours, a number I chose to make the check meaningful. Pass duration is unknown: it has not been measured (about 19,000 ranges of 2,000 rows). The comparer does not run during the freeze; the clean pass is a precondition before it starts. Duration is added as an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "After rollback MySQL is primary again, so new writes add pending rows in MySQL and the sweeper copies them to Postgres. The Postgres pending table was drained to empty before the switch, and the MySQL one was empty from step 7, so nothing is left over. Because the sweeper scans both tables, there is no special case. Text clarified."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "The response is the normal success; the caller cannot tell that Postgres failed. If the app crashes after the primary commit, the pending row was committed in the same transaction, so the sweeper finds it after 10 s and repairs it, with the next pass about 10 s later. Added to the write flow and the failure table."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes, briefly: if Postgres has not received the write yet (normally milliseconds, or until the sweeper repairs a failed write), the user may see old data. I accept this because reads from the MySQL replica already have the same kind of lag (normally under 1 s). I did not add read-your-writes handling, because the brief does not require it. A line was added to the Read section."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "The sweeper only repairs pending rows older than 10 seconds. When you run it on demand during the freeze, does it skip that age check? Otherwise, how can the drain finish within 15 seconds?",
+     "about": "Step 7, Changes 2: Drain"
+    },
+    {
+     "id": "18",
+     "text": "The comparer re-checks flagged rows against the MySQL primary, and adds still-different rows to `pending`. After step 7, Postgres is the primary. Which database does the comparer re-check against then, and which database's `pending` table does it add rows to?",
+     "about": "Step 5, Compare until clean / Comparer"
+    },
+    {
+     "id": "19",
+     "text": "Step 9 says pending rows left after `pg_only` are discarded. During the 30 s flag delay, some instances may still be in `dual_pg`, and the sweeper does not depend on `write_mode`. Can a write be left in a pending row that is discarded and never reach MySQL? If so, what happens on a rollback to `dual_pg`?",
+     "about": "Step 9, Go Postgres-only, then drop MySQL"
+    },
+    {
+     "id": "20",
+     "text": "Why must `read_from_pg` be set to 0 before the reverse pause? Does it need to be fully in effect on all instances (30 s) before the freeze starts?",
+     "about": "Step 8, Rollback during these days"
+    },
+    {
+     "id": "21",
+     "text": "What does an update do if the row does not exist in Postgres yet (before the backfill reaches it)? Is the whole row copied under the version rule? What if the update's version is lower than a row already in Postgres?",
+     "about": "Write in `dual_mysql`, step 2"
+    },
+    {
+     "id": "22",
+     "text": "Step 4 says one backfill process loops over the table. If it crashes, who notices and restarts it? Also, where do the on-demand sweeper run in step 7 and the operator-started comparer run?",
+     "about": "Open questions / Where the sweeper and backfill processes are deployed"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, the on-demand drain skips the 10-second age check. The age wait only avoids racing the request that just wrote the row, and during the freeze no write is in flight (after the 5 s wait), so every pending row is final. Without the skip the 15 s drain could not work. Added to step 7 and to the sweeper term."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The comparer re-checks against whichever database is the primary at that time: MySQL before step 7, Postgres after it. It adds still-different rows to that primary's pending table, so the sweeper copies primary to follower. Step 5 now says this."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Yes, this was a real hole: discarding pending rows could lose a write that never reached MySQL, and rollback to dual_pg would be unsafe anyway because pg_only writes never reach MySQL. Changed step 9: backup and restore check happen first while still in dual_pg, pg_only is the point of no return, then wait for pg_only on all instances and drain the Postgres pending table to empty before dropping MySQL. Nothing is discarded, and there is no rollback to dual_pg after pg_only."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "After rollback MySQL is primary and Postgres lags by the sweeper delay, and reads from Postgres could return old data, so reads go back to MySQL. It does not need its own 30 s wait: set read_from_pg to 0 before frozen. Instances refresh all flags together, so seeing frozen on every instance implies seeing read_from_pg 0. Added to step 8."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "After the MySQL commit the repository reads the committed row and applies the whole row to Postgres under the version rule. If the row is missing in Postgres, it is inserted. If Postgres has a version that is not lower, the copy is skipped, which counts as success since the follower is already as new or newer, and the pending row is deleted. Made explicit in the write flow and in the version rule term."
+    },
+    {
+     "id": "22",
+     "tag": "unknown",
+     "text": "Not decided. The brief leaves deployment open. Nothing yet names who notices and restarts a crashed backfill, nor where the on-demand sweeper and the operator-started comparer run. Backfill is safe to restart because progress is durable, but it needs a restarting supervisor or an operator. Recorded under open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one user-update request (and then a delete) through the whole migration, from today's setup to dropping MySQL.\n\n**Today's baseline.**\n1. Every read and write of `users` goes through `UserRepository`. Reads go to the MySQL read replica. Writes go to the MySQL primary. Postgres (`pg-core`) is empty and the app already has a connection pool to it. The migration logic is added to `UserRepository` in four phases: dual write, backfill and compare, move reads, swap primaries and then drop MySQL.\n\n**Step 1: Create the tables (operator, before the deploy).**\n2. An operator runs a schema change. It adds `users` and `backfill_progress` to Postgres, and `tombstones` and `pending` to both databases. The Postgres `users` id is a bigint with an identity sequence, but nothing uses the sequence yet because inserts carry explicit ids. State is just the schema. If it fails, fix it and rerun.\n\n**Step 2: Deploy.**\n3. A normal deploy ships the new `UserRepository`, the sweepers and the comparer, with `write_mode=mysql_only` and `read_from_pg=0`. Behaviour is unchanged. If it fails, roll the deploy back.\n\n**Step 3: Dual writes (`dual_mysql`).**\n4. Once the deploy is complete with no old-code instance left, someone sets `write_mode=dual_mysql`. Each instance caches all flags and refreshes every 30 seconds. The operator waits until the `app_flag_value` metric shows `dual_mysql` on every instance. If the code misbehaves, set `mysql_only`.\n5. Follow one update request in `dual_mysql`:\n   - In one MySQL transaction, the repository applies the update (`SET version = version + 1 ... WHERE version = <expected>`) and inserts a `pending` row (`seq`, `user_id`) in MySQL. If no row matches, `StaleWrite` is raised. Then it commits. MySQL is the primary, so this commit decides whether the request succeeded.\n   - The repository reads the committed row back from MySQL and applies the whole row to Postgres with a 1-second timeout. The version rule applies: insert if missing, replace only if the existing version is lower, otherwise skip. A skip counts as success. On a create it uses the MySQL id explicitly. The copy also checks that no tombstone exists for that id.\n   - If Postgres succeeds or skips, it deletes the `pending` row. If Postgres fails or times out, the pending row stays and the request still succeeds. The caller cannot tell.\n   - If the app crashes after the MySQL commit, the pending row is already durable.\n6. A delete works the same way. MySQL deletes the user and inserts a tombstone in one transaction, and Postgres does the same in its own transaction. Tombstones hold only the id and are kept forever.\n7. The sweeper is a separate loop with two copies running. It runs every 10 seconds and is independent of `write_mode`. For each pending row older than 10 seconds, in either database's `pending` table, it repairs it as follows:\n   - The database holding the row is the primary for that row. The sweeper reads the user there, never from the replica.\n   - If the user exists, it copies the user to the follower under the version rule.\n   - If the user is gone, it deletes the user from the follower and copies the tombstone over if the primary has one.\n   - It deletes that pending row by `seq`, so a newer write's row is untouched.\n   - If the follower is down, the row stays and is retried every pass with no limit. An alert fires if the oldest pending row is older than 5 minutes.\n   - A crash after the commit is therefore repaired within about 20 seconds. If a repair keeps failing because of a unique email clash, it retries until the erase reaches the follower.\n\n**Step 4: Backfill.**\n8. Once every instance is dual-writing, one backfill process loops until a batch comes back empty:\n   - Wait while `mysql_replica_lag_seconds` is above 5.\n   - Read up to 2,000 rows from the replica with `id` greater than the last completed id, in primary-key order.\n   - Copy them into Postgres under the version rule and the tombstone check.\n   - In the same Postgres transaction, set `backfill_progress` to the batch's last id.\n   - After a crash, restart and continue from `backfill_progress`.\n   - Stale replica rows are ignored by the version rule, and rows created after the backfill started were already dual-written.\n\n**Step 5: Compare.**\n9. An operator starts the comparer after the backfill finishes. It walks both tables in id ranges of 2,000, reading the replica and Postgres. It flags rows that are missing on either side, differ in `version` or fields, or exist in Postgres but not MySQL. After 60 seconds it re-checks each flagged row against the current primary. Rows that still differ count as mismatches and are added to that primary's `pending` table, so the sweeper repairs them. A clean pass has zero mismatches. The comparer keeps running afterwards, because step 7 needs a clean pass that finished within the last 24 hours. It is not run during the freeze.\n\n**Step 6: Ramp reads.**\n10. Set `read_from_pg` to 1, then 10, then 50, then 100. For each read, `flags.enabled_for(\"users.read_from_pg\", user_id)` decides. True reads Postgres and false reads the replica, and the same user always gets the same answer. If Postgres errors or times out, the read falls back to the replica, so reads never fail. A read right after a write may see old data if Postgres has not received the write yet. That is accepted. Move up when latency, the fallback count and the mismatch count look no worse than MySQL reads, and move down a step if they do. Stay at 100% for at least 3 days with the comparer clean.\n\n**Step 7: Switch the source of truth.**\n11. Preconditions are 3 days at 100% and a clean comparer pass within the last 24 hours. Writes pause for at most 90 seconds:\n    - Set `frozen`. Wait until every instance shows it, then 5 more seconds. Writes get a retryable 503, which clients already retry. Reads continue.\n    - Run the sweeper on demand, skipping the age check, until MySQL's pending table is empty. Abort if this takes more than 15 seconds.\n    - Run `setval` on the Postgres id sequence to the largest of MySQL's next AUTO_INCREMENT, the largest Postgres user id plus 1, and the largest tombstone id plus 1.\n    - Set `dual_pg`.\n    - If any step fails, set `dual_mysql` again.\n12. In `dual_pg` the flow is mirrored. Postgres commits first (with the same version bump), its `pending` table holds the repair note, and MySQL is the follower. The sweeper repairs MySQL from Postgres's pending table.\n13. Flag disagreement during the 30-second delay is safe because `frozen` always comes first, so no two instances write to different primaries.\n\n**Step 8: Keep MySQL in sync for at least 14 days.**\n14. Rollback in this window is the reverse of step 7, also at most 90 seconds. Set `read_from_pg` to 0 first. Then set `frozen`, and because flags refresh together no extra wait is needed. Then drain the Postgres pending table, set MySQL's AUTO_INCREMENT to at least Postgres's next id, and set `dual_mysql`. Nothing is lost, because MySQL has everything and the version rule never replaces a newer row.\n\n**Step 9: Postgres-only, then drop MySQL.**\n15. This is allowed at least 14 days after step 7, with a clean comparer and no pending rows:\n    - Back up the MySQL `users` table and check the backup restores. If the check fails, stay in `dual_pg`.\n    - Set `pg_only`. This needs no pause. It is the point of no return.\n    - Wait until every instance shows `pg_only`. Then run the sweeper on demand until the Postgres pending table is empty.\n    - Drop the MySQL `users` table. Remove the dual-write and sweeper code in a later deploy.\n    - After the point of no return, fix forward on Postgres.",
+   "gaps": [
+    "The read-ramp thresholds for latency and fallback rate, and the hold time per step, are not set, so I cannot say when to move from one percentage to the next.",
+    "Where the sweeper, backfill and comparer processes are deployed is not decided. Who restarts a crashed backfill is not decided either, and neither is where an operator runs the on-demand sweeper for steps 7, 8 and 9.",
+    "The document does not say how the 'drain' knows the pending table is empty or how the 15-second abort is enforced. It also does not say who or what decides to abort and set the previous mode.",
+    "The document does not say how the switch from `mysql_only` to `dual_mysql` handles instances that are mid-request. It also does not say how a write is handled that straddles `frozen` after an instance has already passed the mode check.",
+    "Postgres's backfill-and-dual-write handling of the tombstone check on the follower when the delete has not reached it yet is described only as a brief stale copy. The document does not say how the pending row actually removes that copy for a create-then-delete race.",
+    "How long a comparer pass takes over 38 million rows is not measured, so I cannot confirm that the 24-hour clean-pass window is achievable.",
+    "The document does not say what happens in `dual_pg` or `pg_only` to the `read_from_pg` fallback target, since the fallback is to the MySQL replica, which stops receiving writes at `pg_only`. It also does not say what reads do after step 9 once MySQL is dropped.",
+    "The document does not say how `pending` rows written in `dual_mysql` and `dual_pg` for the same user are ordered across the two databases' tables when both exist during the switch, beyond the statement that both are empty at the switch."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}
