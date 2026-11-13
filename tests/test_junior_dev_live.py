@@ -72,6 +72,22 @@ class CommandTest(unittest.TestCase):
             self.assertTrue((without / "scripts" / "junior.py").is_file())
 
 
+class StubJuniorTest(unittest.TestCase):
+    def test_activation_copy_stubs_the_junior_and_leaves_the_plugin_alone(self):
+        import importlib.util
+        original = (live.PLUGIN / "scripts" / "junior.py").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = live.plugin_copy(Path(tmp), hooks=True, stub_junior=True)
+            spec = importlib.util.spec_from_file_location("jd_stubbed", copy / "scripts" / "junior.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            out = json.loads(mod.run_claude(["claude", "--system-prompt-file", "junior-prompt.md"], "x"))
+            self.assertEqual(out["structured_output"], {"questions": [], "done": True})
+            tb = json.loads(mod.run_claude(["claude", "--system-prompt-file", "teachback-prompt.md"], "x"))
+            self.assertIn("explanation", tb["structured_output"])
+        self.assertEqual((live.PLUGIN / "scripts" / "junior.py").read_text(encoding="utf-8"), original)
+
+
 class FidelityTest(unittest.TestCase):
     def test_full_loop_passes(self):
         parsed = live.parse(_events(*FULL))

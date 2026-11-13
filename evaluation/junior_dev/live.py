@@ -55,12 +55,35 @@ def record(what: str, usd: float, ledger: Path = SPEND) -> None:
     Path(ledger).write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 
-def plugin_copy(dest: Path, hooks: bool) -> Path:
-    """A copy of the plugin, without its hooks for the description-only arm."""
+STUB = '''
+
+# --- added by evaluation/junior_dev/live.py to this throwaway copy, for activation runs only ---
+# Activation asks only whether the skill loads or the helper starts, so the junior is stubbed
+# here to keep a triggered run from spending a real loop's worth of nested junior turns.
+def run_claude(argv, prompt, timeout_s=TIMEOUT_S):
+    if any("teachback-prompt.md" in a for a in argv):
+        out = {"explanation": "(activation run: the junior is stubbed)", "gaps": []}
+    else:
+        out = {"questions": [], "done": True}
+    return json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.0, "structured_output": out})
+
+'''
+
+
+def plugin_copy(dest: Path, hooks: bool, stub_junior: bool = False) -> Path:
+    """A copy of the plugin: without its hooks for the description-only arm, and with a stubbed
+    junior for activation runs. The shipped plugin is never modified."""
     target = Path(dest) / "junior-dev"
     shutil.copytree(PLUGIN, target, ignore=shutil.ignore_patterns("__pycache__", ".junior-dev"))
     if not hooks:
         shutil.rmtree(target / "hooks")
+    if stub_junior:
+        helper = target / "scripts" / "junior.py"
+        text = helper.read_text(encoding="utf-8")
+        marker = '\n\nif __name__ == "__main__":'
+        if marker not in text:
+            raise RuntimeError("junior.py has no __main__ block to insert the stub before")
+        helper.write_text(text.replace(marker, STUB + marker), encoding="utf-8", newline="\n")
     return target
 
 
@@ -149,7 +172,8 @@ def cost_from_stream(stdout: str) -> float | None:
     return cost
 
 
-def run_session(prompt: str, model: str, hooks: bool, max_usd: float, label: str, timeout_s: float = 1200) -> dict:
+def run_session(prompt: str, model: str, hooks: bool, max_usd: float, label: str, timeout_s: float = 1200,
+                stub_junior: bool = False) -> dict:
     """One headless session in a fresh copy of the fixture project. Records its spend, nested juniors included.
 
     The raw stream and the loop's state files are saved, and the spend recorded, before anything is
@@ -160,7 +184,7 @@ def run_session(prompt: str, model: str, hooks: bool, max_usd: float, label: str
     with tempfile.TemporaryDirectory(prefix="jd-live-") as tmp:
         workspace = Path(tmp) / "project"
         shutil.copytree(FIXTURE, workspace)
-        plugin = plugin_copy(Path(tmp) / "plugin", hooks)
+        plugin = plugin_copy(Path(tmp) / "plugin", hooks, stub_junior)
         env = {**os.environ, "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
         env.pop("JUNIOR_DEV_NESTED", None)
         started = time.perf_counter()
@@ -220,6 +244,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--hooks", choices=["yes", "no"], default="yes")
     p.add_argument("--budget", type=float, default=0.40)
     p.add_argument("--tag", default="")
+    p.add_argument("--stub-junior", action="store_true", help="activation runs: stub the nested junior")
     sub.add_parser("spent")
     args = parser.parse_args(argv)
     if args.cmd == "spent":
@@ -227,7 +252,8 @@ def main(argv: list[str]) -> int:
         return 0
     kind, prompt = prompt_by_id(args.prompt_id)
     label = f"{args.tag + '-' if args.tag else ''}{args.prompt_id}-{args.model}-{'hooks' if args.hooks == 'yes' else 'desc'}"
-    result = run_session(prompt, args.model, args.hooks == "yes", args.budget, label)
+    result = run_session(prompt, args.model, args.hooks == "yes", args.budget, label, stub_junior=args.stub_junior)
+    result["stub_junior"] = args.stub_junior
     result.update(prompt_id=args.prompt_id, kind=kind, prompt=prompt)
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{label}.json"
