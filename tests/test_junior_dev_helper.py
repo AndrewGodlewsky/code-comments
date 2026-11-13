@@ -160,7 +160,9 @@ class HelperTest(unittest.TestCase):
             s.teachback()
             s.verdict(False, "still misread")
         self.assertEqual(s.state["phase"], "done")
-        self.assertEqual(s.state["end_reason"], "cap")
+        self.assertEqual(s.state["end_reason"], "teachbacks")
+        self.assertIn("misread", s.report())
+        self.assertNotIn("round cap", s.report())
 
     def test_correct_teachback_finishes(self):
         runner = FakeRunner(questions_output(done=True), teachback_output("Step by step..."))

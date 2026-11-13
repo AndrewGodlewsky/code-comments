@@ -357,13 +357,18 @@ class JuniorSession:
         wrong = sum(t["verdict"] == "wrong" for t in s["teachbacks"])
         if correct:
             s["phase"], s["end_reason"] = "done", "teachback-correct"
-        elif s["round"] >= s["rounds_cap"] or wrong >= MAX_TEACHBACKS:
+        elif wrong >= MAX_TEACHBACKS:
+            s["phase"], s["end_reason"] = "done", "teachbacks"
+        elif s["round"] >= s["rounds_cap"]:
             s["phase"], s["end_reason"] = "done", "cap"
         else:
             s["phase"] = "asking"
         self._save()
         if correct:
             return "Teach-back correct. Run report."
+        if s["end_reason"] == "teachbacks":
+            return (f"Teach-back wrong for the {MAX_TEACHBACKS}rd time, so the loop ends. Fix the artifact where it "
+                    "was misread, then run report, and tell the user which parts are still misread.")
         if s["phase"] == "done":
             return "Teach-back wrong and the round cap is reached. Fix the artifact where it was misread, then run report."
         return "Teach-back wrong. Fix the artifact where it was misread, then run ask."
@@ -374,7 +379,9 @@ class JuniorSession:
         if artifact.is_file():
             mark(self.state_dir.parent, artifact, "done", artifact.read_text(encoding="utf-8"))
         reason = {"teachback-correct": "a fresh junior explained it back correctly",
+                  "teachbacks": f"{MAX_TEACHBACKS} fresh juniors in a row misread it",
                   "cap": "the round cap was reached", None: "the loop has not finished"}[s["end_reason"]]
+        misread = [t["notes"] for t in s["teachbacks"] if t["verdict"] == "wrong" and t["notes"]]
         lines = [f"## Junior-dev review of {Path(s['artifact']).name}", "",
                  f"Rounds used: {s['round']} of {s['rounds_cap']}. Ended because {reason}. "
                  f"Junior cost: ${s.get('cost_usd', 0.0):.4f}.", "",
@@ -382,6 +389,8 @@ class JuniorSession:
         lines += [f"- {c}" for c in s["changes"]] or ["- Nothing was changed."]
         lines += ["", "### Holes (questions the author could not answer, or is unsure about)"]
         lines += [f"- {h}" for h in s["holes"]] or ["- None."]
+        if s["end_reason"] != "teachback-correct" and misread:
+            lines += ["", "### Last teach-back misreadings (parts a newcomer may still misread)", f"- {misread[-1]}"]
         return "\n".join(lines)
 
 

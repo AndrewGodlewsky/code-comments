@@ -1,0 +1,391 @@
+[
+ {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-hci_mjub\\project\\docs\\plans\\refunds.md",
+  "artifact_hash": "c6531e9c141bf3ae31ee6bf05118a2d1a2741219931bba4fa7323445bc2ae584",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 4,
+  "phase": "done",
+  "transcript": [
+   {
+    "round": 1,
+    "questions": [
+     {
+      "id": "1",
+      "text": "How does an operator actually call refund_order today, given there is no HTTP route? Is it a Python shell, a script, or something else, and what do they see returned?",
+      "about": "Goal / Out of scope: A real HTTP route"
+     },
+     {
+      "id": "2",
+      "text": "In step 3.2, how does the code get payment_id for the provider call? place_order's order record lists no payment_id field in the new fields, so is it already stored from charge's `id`?",
+      "about": "Steps, refund_order step 4: payments.refund(payment_id, ...)"
+     },
+     {
+      "id": "3",
+      "text": "When a retry on a refund_pending order reuses the same refund_id, does it create a new entry in `refunds` or update the existing pending one? And how does the code pick which entry to reuse?",
+      "about": "Steps 4: Add a retry/reconcile path"
+     },
+     {
+      "id": "4",
+      "text": "The failure table says a stock-add failure leaves order refunded with a warning, but stock is just an in-memory dict increment. What would make that add fail?",
+      "about": "What happens when the provider fails: stock add fails row"
+     },
+     {
+      "id": "5",
+      "text": "In the 'file write fails after a provider success' row, what exactly does the retry do? The order on disk may still say refund_pending, so does the retry call the provider again and rely on the provider returning the original success?",
+      "about": "What happens when the provider fails: Our file write fails after a provider success"
+     },
+     {
+      "id": "6",
+      "text": "After a declined refund the order returns to placed and a new attempt makes a new refund_id. If the decline was 'already refunded', how does the operator learn the true state, and does the order stay refundable forever?",
+      "about": "What happens when the provider fails: Declines row"
+     },
+     {
+      "id": "7",
+      "text": "What is the lock in step 5 (e.g. threading lock, file lock)? Does it cover only one process, and is it held during the provider call?",
+      "about": "Steps 5: Make writes atomic"
+     },
+     {
+      "id": "8",
+      "text": "The rule says an unknown result never restores stock 'so a stock add can't be undone by a later retry'. Does a later successful retry restore stock then, and is that done in the same code path as step 3.5?",
+      "about": "Rule: stock is restored only after the provider confirms"
+     }
+    ],
+    "answers": [
+     {
+      "id": "1",
+      "tag": "checked",
+      "text": "There is no HTTP route; app.py has only place_order. An operator calls refund_order from Python at the project root (python -c \"from src.app import refund_order; ...\"). It returns a dict with a status key. The file now says this in step 3."
+     },
+     {
+      "id": "2",
+      "tag": "checked",
+      "text": "place_order already stores the charge id in the order's \"payment\" field. The refund uses that field as payment_id. The file now says so in step 3.4."
+     },
+     {
+      "id": "3",
+      "tag": "decided",
+      "text": "A retry reuses the one pending entry in refunds and does not add a new one. Only one refund can be pending at a time, because the status check blocks a second start. The file now says this in step 3 and step 4."
+     },
+     {
+      "id": "4",
+      "tag": "decided",
+      "text": "With the in-memory STOCK dict, the add should not fail except by a code bug such as a missing item name. The row is kept as a note, not a special case, and the rule says so."
+     },
+     {
+      "id": "5",
+      "tag": "checked",
+      "text": "Yes. Step 3 writes the pending entry to disk before the provider call, so a failed success-write leaves refund_pending on disk. The retry calls the provider again with the same refund_id and relies on the provider returning the original result. That reliance is an assumption, listed as Open question 3. The row now says so."
+     },
+     {
+      "id": "6",
+      "tag": "unknown",
+      "text": "The plan does not say how to map a provider \"already refunded\" decline. A decline keeps the order placed and refundable, so a new attempt is possible. I do not know the provider's error codes. Added as Open question 6."
+     },
+     {
+      "id": "7",
+      "tag": "decided",
+      "text": "The lock is a threading.Lock in app.py. It covers one process only. It is held for the status check and the pending write, and released before the provider call. It is not held during the provider call. The file now says this in step 5. Multiple processes are Open question 7."
+     },
+     {
+      "id": "8",
+      "tag": "checked",
+      "text": "Yes. The retry runs steps 4 to 7 again. Step 5 is the only place that restocks, so a later succeeded retry restores stock once, in the same code path. The rule now says so."
+     }
+    ]
+   },
+   {
+    "round": 2,
+    "questions": [
+     {
+      "id": "9",
+      "text": "Stock is added back after the file write marks the refund succeeded. If the process crashes between that write and the stock add, the order is already refunded and a retry returns already_refunded. Is that restock simply lost, and is that intended?",
+      "about": "Steps 3.5: On succeeded, write the file, then add the stock back"
+     },
+     {
+      "id": "10",
+      "text": "Step 5 says the lock is held in steps 2 and 3, but the writes in steps 3.5 to 3.7 (after the provider call) also rewrite orders.json. Are those writes under the lock? If not, how do they avoid overwriting a concurrent place_order write, since the whole file is rewritten?",
+      "about": "Steps 3.2 and 5: lock covers steps 2 and 3 of refund_order"
+     },
+     {
+      "id": "11",
+      "text": "On a retry, step 3.2 returns refund_in_progress for an order in refund_pending, but step 3.3 and step 4 say a retry of a refund_pending order reuses the pending entry and calls the provider. Which one happens when the operator calls refund_order on a refund_pending order?",
+      "about": "Steps 3.2: status check for refund_pending"
+     },
+     {
+      "id": "12",
+      "text": "Does place_order write amount_cents and status 'placed' in the same write as the rest of the order, and what is total(items)? Is it an existing function in app.py, and is it the same value passed to charge()?",
+      "about": "Steps 1: Record the amount at charge time"
+     },
+     {
+      "id": "13",
+      "text": "The existing charge stub never raises and makes no network call. What does the refund stub return by default, and how does the fake provider in tests get switched between succeed, decline and time out?",
+      "about": "Steps 2: refund(payment_id, amount_cents, idempotency_key) and the fake provider"
+     },
+     {
+      "id": "14",
+      "text": "How does an operator find which orders are stuck in refund_pending after a crash or timeout? Is there a list or report, or do they need to already know the order id?",
+      "about": "What happens when the provider fails: Process crashes after step 3 row"
+     }
+    ],
+    "answers": [
+     {
+      "id": "9",
+      "tag": "decided",
+      "text": "Yes, the restock is lost in that crash window. The status is written first, so a crash cannot cause a double restock. STOCK is in memory and resets on every restart anyway, so this adds no new failure mode. The file now states the order of writes and links the risk to Open question 2 (and new Open question 8)."
+     },
+     {
+      "id": "10",
+      "tag": "decided",
+      "text": "Every write of orders.json is under the lock now, including the writes after the provider call. Each locked write re-reads the file, changes only its own order, and writes the list back, so a concurrent place_order append is not overwritten. The provider call itself stays outside the lock."
+     },
+     {
+      "id": "11",
+      "tag": "decided",
+      "text": "A retry happens. Step 2 now separates two cases. If a call for that order is running in this process (the in_flight set), it returns refund_in_progress. If nothing is running, as after a crash or timeout, it is a retry that reuses the pending entry and calls the provider. Step 3 applies only to placed orders."
+     },
+     {
+      "id": "12",
+      "tag": "checked",
+      "text": "total(items) is an existing function in app.py. place_order already passes the same value to charge. amount_cents and status go in the same write that appends the order. The file now says so in step 1."
+     },
+     {
+      "id": "13",
+      "tag": "decided",
+      "text": "The refund stub returns succeeded with a made-up re_ id by default, like the charge stub. Tests switch behavior by replacing payments.refund with a fake (for example with monkeypatch) that returns succeeded, failed, unknown, or counts calls. The file now says this in step 2."
+     },
+     {
+      "id": "14",
+      "tag": "decided",
+      "text": "Nothing lists stuck orders in the plan. Added pending_refunds() to step 4, which returns each refund_pending order with its order id, refund_id and created_at. An operator runs it after a crash or timeout and retries each one."
+     }
+    ]
+   },
+   {
+    "round": 3,
+    "questions": [
+     {
+      "id": "15",
+      "text": "After an `unknown` result, step 7 says to remove the order from in_flight (step 3 says remove in step 5, 6 or 7). Is that right? I want to be sure an immediate retry in the same process is allowed and not answered with refund_in_progress.",
+      "about": "Steps 3.2: in_flight set after a timeout"
+     },
+     {
+      "id": "16",
+      "text": "Is the status check in step 3.2 and the write of refund_pending in step 3 done together inside one lock hold? If the lock is released between them, how is it stopped that two simultaneous calls on a placed order both create a refund entry?",
+      "about": "Steps 3.2 and 5: check-and-set of status"
+     },
+     {
+      "id": "17",
+      "text": "After a declined refund, the order goes back to placed with a failed entry, and a new attempt appends a new entry. Does the refunds list then hold several entries, and does the 'one pending entry' rule for retry find it by status == pending?",
+      "about": "What happens when the provider fails: Declines row"
+     },
+     {
+      "id": "18",
+      "text": "What is order_id in refund_order(1)? Is it a field stored on each order, or the position in the list in orders.json? How does place_order assign it?",
+      "about": "Steps 3.1: Load orders; find the order"
+     },
+     {
+      "id": "19",
+      "text": "Step 5 says writes happen in steps 3, 5, 6 and 7, but step 7 only leaves the state as it was. Is there a file write in step 7, for example to update updated_at? If not, what is being written?",
+      "about": "Steps 3.7: unknown result and writes"
+     },
+     {
+      "id": "20",
+      "text": "For a legacy order with no amount_cents, which amount goes into the refund entry and to payments.refund: the total(items) computed at refund time? Is it also saved on the order?",
+      "about": "Legacy orders / Steps 3.4"
+     }
+    ],
+    "answers": [
+     {
+      "id": "15",
+      "tag": "decided",
+      "text": "Yes. Step 3b now removes the order id from in_flight in a finally block after steps 5, 6 or 7. After unknown, the order is refund_pending and not in in_flight, so an immediate retry in the same process takes the retry branch of step 2."
+     },
+     {
+      "id": "16",
+      "tag": "decided",
+      "text": "Yes, one lock hold. Step 2 now says steps 2 and 3 run inside one hold of the lock, so nothing can run between the check and the pending write. A second call on a placed order then sees refund_pending."
+     },
+     {
+      "id": "17",
+      "tag": "checked",
+      "text": "Yes, the refunds list holds one entry per attempt. At most one can be pending, so the retry finds it by status == \"pending\". Step 3a says so."
+     },
+     {
+      "id": "18",
+      "tag": "checked",
+      "text": "order_id is the \"id\" field, which place_order sets to len(orders) + 1. It is not a list position. Refunded orders are never deleted, so ids are not reused. Step 1 now says so, and the step 1 reference to it is corrected."
+     },
+     {
+      "id": "19",
+      "tag": "decided",
+      "text": "Step 7 does write. It records the provider message in the refund's error field and updates updated_at, so the operator can see what happened. Step 5 and step 6 writes are as before."
+     },
+     {
+      "id": "20",
+      "tag": "decided",
+      "text": "The legacy amount is total(items) computed at the first refund attempt. It goes into the new refund entry and is sent to payments.refund. A retry reuses that stored amount. The order itself is not backfilled, and the file says the amount is an estimate for legacy orders."
+     }
+    ]
+   },
+   {
+    "round": 4,
+    "questions": [
+     {
+      "id": "21",
+      "text": "On a retry (order refund_pending, not in in_flight), step 2 says to skip step 3 and go to step 4. Is the order id added to in_flight on that retry path? If not, can two simultaneous retries both call the provider?",
+      "about": "Steps 3.2: in_flight set and a retry that finds a pending entry"
+     },
+     {
+      "id": "22",
+      "text": "When a retry runs and the provider returns succeeded, does the refund entry keep its original created_at and just get updated_at and provider_refund_id set? And what does the caller get back: refunded with refund_id and provider_refund_id?",
+      "about": "Steps 3.5: On succeeded, set the refund to succeeded and order to refunded"
+     },
+     {
+      "id": "23",
+      "text": "Step 3c ends with a sentence about removing something after unknown and in_flight, which seems to belong to step 3b. What does 'Removing it' refer to, and does the refund_error check happen before or after the in_flight handling?",
+      "about": "Steps 3c: exactly one pending entry check"
+     },
+     {
+      "id": "24",
+      "text": "After a failed result, is the in_flight id removed and is the legacy amount (computed at first attempt) kept on the failed entry? On the next attempt for a legacy order, is total(items) computed again to make a new entry?",
+      "about": "Steps 3.6: On failed, order back to placed"
+     },
+     {
+      "id": "25",
+      "text": "When the step 5 write fails and raises, what does the caller see (an exception, or a dict with refund_error)? Is the in_flight id still removed by the finally block so the operator can retry?",
+      "about": "What happens when the provider fails: The step 5 file write fails after a provider success"
+     },
+     {
+      "id": "26",
+      "text": "If the order exists but its status is something unexpected, or the order has no payment field (e.g. the charge failed or a legacy order), what does refund_order return?",
+      "about": "Steps 3.1: Load orders; find the order"
+     }
+    ],
+    "answers": [
+     {
+      "id": "21",
+      "tag": "decided",
+      "text": "It was a real gap. The retry path did not add the id to in_flight. Step 2 now runs the step 3c check and adds the id to in_flight in the same lock hold on the retry path too. Two simultaneous retries are then stopped by in_flight."
+     },
+     {
+      "id": "22",
+      "tag": "decided",
+      "text": "Yes. On success the refund keeps its original created_at and gets status succeeded, provider_refund_id and updated_at. The caller gets refunded with refund_id and provider_refund_id. Step 5 now says this."
+     },
+     {
+      "id": "23",
+      "tag": "checked",
+      "text": "The stray sentence was a defect from my earlier edit. Its text had been left after step 3c, not in step 3b. It is now in step 3b. The 3c check runs inside the step 2 lock hold, before in_flight is added."
+     },
+     {
+      "id": "24",
+      "tag": "decided",
+      "text": "Yes. The finally block removes the id from in_flight after failed too. The legacy amount stays on the failed entry. A new attempt has no pending entry, so it computes total(items) again. That can differ if prices changed, and the file now says so."
+     },
+     {
+      "id": "25",
+      "tag": "decided",
+      "text": "The exception goes to the caller, not a dict. The finally block still removes the id from in_flight. The file keeps the last successful write. A pending entry from step 3 means the next call is a retry. Nothing is restocked. Step 5 now says this."
+     },
+     {
+      "id": "26",
+      "tag": "decided",
+      "text": "An unexpected status, or a missing payment field, returns refund_error with a reason, and the provider is not called. place_order never saves an order whose charge failed, so every saved order has a payment field. The check is defensive. The file now says so."
+     }
+    ]
+   }
+  ],
+  "teachbacks": [
+   {
+    "text": "This is a plan, not working code. It describes how a full refund will work once built. I follow one case: an operator refunds order id 1, and the provider times out the first time.\n\n0. Background. Today `place_order(customer, items, card_token)` in `src/app.py` checks stock, calls the stub `charge`, decrements the in-memory `STOCK`, and appends the order to `data/orders.json`. That file is the only persisted state. There is no HTTP server, so refunds are also a Python function.\n\n1. Order creation (changed). `place_order` now also stores `amount_cents = total(items)`, which is the same value it passes to `charge`. It also stores `status: \"placed\"`. Both go in the existing write that appends the order. The order `id` is `len(orders)+1`, and the `payment` field already holds the id that `charge` returned. State lives in `orders.json`. Every write to that file takes a `threading.Lock`. Each write re-reads the file, changes only its own order, and writes the whole list back through a temp file and `os.replace`.\n\n2. Trigger. An operator runs something like `python -c \"from src.app import refund_order; print(refund_order(1))\"` from the project root. The input is the order id. The result is a dict with a `status` key.\n\n3. Lookup. `refund_order` loads the orders and finds the one whose `id` field is 1. If none matches, it returns `not_found`.\n\n4. Check and claim, in one lock hold.\n   - If the order is `refunded`, it returns `already_refunded`.\n   - If the order is `refund_pending` and its id is in the in-memory set `in_flight`, it returns `refund_in_progress`. This is how a simultaneous second call is stopped.\n   - If the order is `refund_pending` and its id is not in `in_flight`, this is a retry. It skips step 5.\n   - If the order is `placed`, it goes on to step 5.\n   - A missing `status` counts as `placed`.\n\n5. Record intent first (first attempt only). Still under the lock, it creates a refund entry. The entry has `status: \"pending\"`, a new UUID `refund_id`, `amount_cents` equal to the order's full amount, and timestamps. It appends the entry to the order's `refunds` list, sets the order to `refund_pending`, adds the id to `in_flight`, and writes the file before contacting the provider. If the process dies after this write, the pending entry on disk shows what to retry.\n\n6. Provider call, outside the lock. It calls `payments.refund(payment_id, amount_cents, refund_id)`. `refund_id` is the provider's idempotency key. `refund` never raises. It returns `succeeded` (with a provider id), `failed` (with a message) or `unknown` (timeout, 5xx, dropped connection). In v1 it is a stub that returns `succeeded` with a made-up `re_…` id. Tests replace it with a fake.\n\n7. Outcome. A `finally` block removes the id from `in_flight` after any of these outcomes.\n   - `succeeded`: the refund becomes `succeeded` with its `provider_refund_id`, and the order becomes `refunded`. It writes the file, then adds `STOCK[name] += qty` for each item. The caller gets `refunded`. This is the only place stock is restored. The status is written before the stock, so a crash between the two loses the restock.\n   - `failed`: the refund becomes `failed` with the provider message in `error`, and the order goes back to `placed`. It writes the file. The caller gets `refund_failed` plus the message. Stock is unchanged. A later attempt creates a new entry with a new `refund_id`.\n   - `unknown`: the refund stays `pending` and the order stays `refund_pending`. The message goes in `error`, and `updated_at` is updated. It writes the file. The caller gets `refund_pending`. Stock is not restored.\n\n8. Our example. The provider times out, so the operator gets `refund_pending`. The operator can run `pending_refunds()`, which lists orders in `refund_pending` with their order id, `refund_id` and `created_at`. They then call `refund_order(1)` again. The id is no longer in `in_flight`, so this takes the retry branch. It reuses the one pending entry and the same `refund_id`, and it runs steps 6 and 7 again. The plan expects the provider to return the original result for a repeated key, so the customer is not refunded twice. If it returns `succeeded`, the order is marked `refunded` and the stock is restored once.\n\n9. Crash cases.\n   - A crash before the provider call, or after the provider succeeded but before the success write, leaves the order `refund_pending` on disk. The fix is the same retry.\n   - If the step 5 file write fails after the provider succeeded, the disk still shows `pending`. The fix is again a retry with the same key. The document calls this the main risk.\n\n10. Legacy orders. An order with no `amount_cents` gets `total(items)` computed at the first refund attempt, with a logged warning. That value goes into the refund entry and is reused on retries. It is only an estimate of what was charged. The current file is `[]`, so no such orders exist yet.\n\n11. Remaining work in the plan. Add pytest tests with a fake provider that succeeds, declines or times out, covering every failure-table row and the double-refund case. Update the README to describe refunds and the result codes, and remove or mark as planned the `POST /orders` and email claims. Out of scope: partial refunds, email, authorization, persistent stock, an HTTP route, and a reconciliation job.",
+    "gaps": [
+     "Who is allowed to call refund_order: there is no authorization, and the document leaves this as an open question.",
+     "Whether the real payment provider supports idempotency keys, returns the original result for a repeated key, and offers lookup by key. The whole retry design assumes yes.",
+     "What the provider's 'already refunded' decline means. The plan leaves the order `placed`, so the true state is unknown.",
+     "How `payments.refund` will actually talk to the provider (network, credentials, timeouts). In v1 it is a stub, and the document does not say how a real call would detect timeouts.",
+     "The exact return shape of `refund_order` beyond the `status` key. It does not say which keys carry the message or the refund id, or what `refunded` returns.",
+     "The exact format of `pending_refunds()` output and how it is invoked.",
+     "What happens if two processes share `orders.json`. The lock covers one process only.",
+     "How the step 5 file write could fail and what the caller sees beyond 'Error'.",
+     "How the retry branch behaves if an order is `refund_pending` but has no `pending` entry, or has more than one. The document says only one can exist.",
+     "What `total(items)` does and how prices are held as cents. It says only that `total` exists in `app.py` and equals the value passed to `charge`.",
+     "Whether stock, which is in memory and resets on restart, is persisted. It is flagged as an open question.",
+     "Whether `in_flight` is protected by the same lock for removal. The `finally` removal is described without saying it takes the lock."
+    ],
+    "verdict": "wrong",
+    "notes": "Teach-back round 1 misreadings and gaps, all fixed in the file:\n- Who may call refund_order: stated as open (Open question 1). v1 has no check.\n- Provider behaviour (idempotency key honoured, lookup, timeouts, error mapping): stated as an assumption (Open question 3) and a new open question 9 on the real provider call.\n- Meaning of \"already refunded\": Open question 6.\n- Shape of refund_order's return value: added a Return shape note in step 1 (status, reason, refund_id, provider_refund_id). Matches place_order.\n- Format of pending_refunds() output and how it is called: added in step 1 Return shape note.\n- Two processes sharing orders.json: Open question 7.\n- Step 5 write failure: the exception propagates and the caller gets an error; the next retry resolves it (step 3 and the failure table).\n- Retry with no pending entry, or more than one: new step 3c, returns refund_error and does not call the provider.\n- total(items) and cents: PRICES are integer cents, stated in step 2.\n- Stock persistence: Open question 2.\n- in_flight removal and the lock: step 3b now says the removal takes the same lock."
+   },
+   {
+    "text": "Walkthrough: an operator refunds order id 1 (a full refund). This is a plan, so none of it exists yet except place_order, charge, STOCK, PRICES and data/orders.json.\n\n1. Setup, at order time (plan step 1). `place_order(customer, items, card_token)` checks stock, calls `charge`, and decrements the in-memory `STOCK`. The plan adds two fields to the order record: `amount_cents = total(items)` (the amount passed to `charge`) and `status = \"placed\"`. They are written in the same `orders.json` write that appends the order. That write takes the lock, re-reads the file, appends, and saves through a temp file plus `os.replace`. `orders.json` holds the persisted state. The order already has `id = len(orders)+1` and a `payment` field holding the id from `charge`.\n\n2. Trigger. There is no HTTP route. An operator runs Python at the project root, for example `python -c \"from src.app import refund_order; print(refund_order(1))\"`. The input is the order `id`, not a list position. The function returns a dict with a `status` key.\n\n3. Lookup. `refund_order` loads the orders and finds the one whose `id` matches. If none matches, it returns `not_found`.\n\n4. Decision, under one lock hold. This is the check-and-write that nothing else can interleave with. It branches on the order's `status`:\n   - `refunded` → return `already_refunded`.\n   - `refund_pending` and the id is in the in-memory set `in_flight` → return `refund_in_progress`.\n   - `refund_pending` and the id is not in `in_flight` (after a crash or timeout) → this is a retry. Check that there is exactly one `pending` entry in `refunds`. If there is none or several, or if the order has no `payment` field, return `refund_error` with a `reason` and do not call the provider. Otherwise add the id to `in_flight` and jump to step 6 with that entry.\n   - Any other unexpected status → `refund_error`.\n   - `placed` → continue to step 5.\n   A missing `status` on a legacy order is treated as `placed`.\n\n5. First attempt: record the intent before the provider call. Still under the lock, create a refund entry with a new UUID `refund_id`, `status: \"pending\"` and `amount_cents` equal to the order's `amount_cents`. Append it to `refunds`, set the order to `refund_pending`, add the id to `in_flight`, and write the file. This write comes before the provider call. If the process dies after it, the pending entry on disk is the record of what to retry. The write re-reads the file and changes only this order, so a concurrent `place_order` is not lost.\n   Legacy orders have no `amount_cents`. The plan computes `total(items)` now, logs a warning, and puts that value in the entry. The order is not backfilled, and the amount is only an estimate.\n\n6. Provider call, outside the lock. It is `payments.refund(payment_id, amount_cents, refund_id)`, where `refund_id` is the idempotency key. It returns `succeeded` with a provider id, `failed` with a message, or `unknown`. In v1 it is a stub that makes no network call and returns `succeeded` with a made-up `re_…` id. It must not raise for provider errors. Tests replace it with a fake.\n\n7. Outcomes. Each one does a locked write, which re-reads the file and changes only this order:\n   - `succeeded`: the entry becomes `succeeded`, gets `provider_refund_id`, and `updated_at` is set (`created_at` is kept). The order becomes `refunded`. The file is written, then `STOCK[name] += qty` for each item. The function returns `refunded` with `refund_id` and `provider_refund_id`. This is the only place stock is restored, for first attempts and retries alike.\n   - `failed`: the entry becomes `failed` with `error` set, and the order goes back to `placed`. The function returns `refund_failed` with `reason` and `refund_id`. Stock is unchanged. A new attempt later creates a new `refund_id`.\n   - `unknown`: the entry stays `pending` with `error` set and `updated_at` updated. The order stays `refund_pending`. The function returns `refund_pending` with `reason` and `refund_id`. No restock.\n\n8. Cleanup. A `finally` block removes the id from `in_flight` (it takes the lock). An immediate retry in the same process therefore reaches the retry branch instead of `refund_in_progress`.\n\n9. Failure and recovery.\n   - If a locked write raises (for example the disk is full), the exception goes to the caller as an exception, not a dict. `in_flight` is still cleaned up. The file keeps the last good write, so a pending entry from step 5 makes the next call a retry. Nothing is restocked.\n   - Crash before the provider call, or after the provider succeeded but before the success write: the order is `refund_pending` on disk. The operator runs `pending_refunds()`, which lists `order_id`, `refund_id` and `created_at`. They then call `refund_order` again. It reuses the same `refund_id` and runs steps 6–8. The plan expects the provider to return the original success for a repeated key, and then restocking happens once. This is an assumption (Open question 3) and the plan calls it the main risk.\n   - Two simultaneous calls on one order: the first writes `refund_pending` and sets `in_flight`, so the second gets `refund_in_progress`. This lock covers one process only.\n   - Crash between the status write and the restock: the order is `refunded` but the restock is lost. The plan accepts this because `STOCK` resets on restart anyway.\n\n10. Testing and docs. Add pytest tests with a fake provider (succeed, decline, time out, call counting). They cover every row of the failure table and the double-refund case. The README needs updating to describe refunds and remove or mark as planned the `POST /orders` and email claims.",
+    "gaps": [
+     "Real provider call is not designed: network, credentials, timeout value, and how provider errors map to `failed` vs `unknown` (Open question 9).",
+     "Whether the provider supports idempotency keys and returns the original result for a repeated key, or offers lookup by key, is unknown (Open question 3). The whole retry recovery depends on it.",
+     "What the provider's 'already refunded' decline means, and whether the order should become `refunded`, is undecided (Open question 6).",
+     "Authorization: who may call refund_order is undecided (Open question 1; D4 says any caller in v1).",
+     "Multi-process safety is not solved: the threading.Lock covers one process only (Open question 7).",
+     "Stock is in-memory and not persisted, so restocking is lost on restart. Persistence is a separate, undesigned change (Open question 2).",
+     "The document does not give the exact `place_order` result format or the details of `total(items)`, only that they exist.",
+     "It does not say how the `refund_error` reason text is worded, or what `pending_refunds()` does with an order that has a `refund_pending` status but zero or several pending entries.",
+     "Step numbering in the plan is inconsistent (it refers to 'step 3.2' and to the lock being 'in step 5'), so exactly which subpart the plan means in a few places is ambiguous.",
+     "The document does not say how the operator sees or acts on `refund_error` orders beyond 'inspect'.",
+     "It does not say what the `refund_pending` result's `reason` is for retries that return `unknown` again, or whether there is a limit on retries."
+    ],
+    "verdict": "wrong",
+    "notes": "Teach-back round 2 misreadings and gaps, fixed in the file:\n- Step numbers collided: the top-level steps 1-7 and the refund_order sub-steps 1-7 both used the same numbers, so \"step 5\" could mean either. The refund_order sub-steps are now R1-R7 with R2 (check and claim), R3 (record intent), R3a-R3c, R4 (provider call), R5-R7 (outcomes). All references were updated.\n- Whether the retry adds the id to in_flight: yes, in R2, in the same lock hold.\n- Retry limit: none in v1, stated in Retries.\n- What the operator does with refund_error: the order stays refund_pending, the operator inspects the file by hand, stated in step 4.\n- pending_refunds() with zero or several pending entries: listed as is; R3c flags it on retry. Stated in step 4.\n- Stray text after step 3c: fixed in round 4, confirmed.\n- Real provider call, idempotency, already-refunded mapping, one-process lock, stock persistence: still open, listed in Open questions 3, 6, 7, 2 and 9. These are design questions the plan cannot answer; they are not clarity gaps."
+   },
+   {
+    "text": "This is a plan, not working code. Refunds are a Python function, `refund_order(order_id)`, in `src/app.py`. There is no HTTP route. I'll follow one operator action: refunding order 1, first the happy path and then the failure paths.\n\n1. **Setup at order time (step 1).** The trigger is `place_order(customer, items, card_token)`. It checks stock, calls `charge`, and decrements the in-memory `STOCK`. It also stores two new fields on the order: `amount_cents = total(items)` and `status = \"placed\"`. `amount_cents` is saved so a refund returns what was actually charged, even if `PRICES` change later (D2). The order is appended to `data/orders.json` in the same write. That file is the only persisted state. The order already holds `id` (`len(orders)+1`) and `payment` (the id `charge` returned).\n\n2. **The operator starts a refund.** The operator runs something like `python -c \"from src.app import refund_order; print(refund_order(1))\"` from the project root. The input is the order `id`, not the list position. The result is a dict with a `status` key.\n\n3. **R1, load and find.** `refund_order` loads `orders.json` and looks for the order with that `id`. If it finds none, it returns `not_found`.\n\n4. **R2, check and claim.** This runs under one `threading.Lock` hold together with R3. State is read from the order's `status` (a missing status counts as `placed`) and from the in-memory set `in_flight`.\n   - `refunded` returns `already_refunded`.\n   - `refund_pending` and the id is in `in_flight` returns `refund_in_progress`. This is how a simultaneous second call is stopped.\n   - `refund_pending` and the id is not in `in_flight` is a retry (see step 10).\n   - `refund_pending` with no `payment` field, or any other unexpected status, returns `refund_error` and the provider is not called.\n   - `placed` goes on to R3.\n\n5. **R3, record intent before paying.** This is for the first attempt only, and it is still inside the lock.\n   - Create a refund entry with a new UUID `refund_id`, `status: \"pending\"`, and `amount_cents` taken from the order.\n   - Append the entry to the order's `refunds` list.\n   - Set the order to `refund_pending` and add the id to `in_flight`.\n   - Write `orders.json` before calling the provider. If the process dies after this write, the pending entry on disk is the record of what to retry.\n   - Every write takes the lock and re-reads the file first. It changes only its own order and writes the whole list back, so a concurrent `place_order` append is not lost. Step 5 of the plan also makes the write atomic: write to a temp file, then `os.replace`.\n\n6. **R4, provider call, outside the lock.** `payments.refund(payment_id, amount_cents, refund_id)` is called. `refund_id` is the provider's idempotency key. In v1 this function is a stub with no network call. By default it returns `succeeded` with a made-up `re_…` id. It never raises. It returns `succeeded`, `failed` (definitely refused) or `unknown` (timeout, 5xx, dropped connection). The lock is released here so a slow provider doesn't block other orders.\n\n7. **R5, success.**\n   - The refund entry becomes `succeeded`, with `provider_refund_id` set and `updated_at` updated. `created_at` is untouched.\n   - The order becomes `refunded`.\n   - The file is written.\n   - Only after that is `STOCK[name] += qty` done for each item. Status is written first so a retry can't restock twice. The cost is that a crash between the two writes loses the restock.\n   - The caller gets `refunded` with `refund_id` and `provider_refund_id`.\n\n8. **R6, provider declines.** The entry becomes `failed` with the provider message in `error`. The order goes back to `placed`, and the file is written. Stock is unchanged. The caller gets `refund_failed` with `reason` and `refund_id`. A later attempt creates a new entry with a new `refund_id`.\n\n9. **R7, outcome unknown.** The entry stays `pending` and the order stays `refund_pending`. The provider message is stored in `error` and `updated_at` is updated. The file is written. There is no restock. The caller gets `refund_pending` with `reason` and `refund_id`.\n\n10. **Cleanup and retries.**\n    - In a `finally` block after R5, R6 or R7, the id is removed from `in_flight` (taking the lock), so an exception can't leave it stuck. This also lets an immediate retry in the same process reach the retry branch.\n    - A retry is the same function call. R2 finds `refund_pending` with the id not in `in_flight`. It checks (R3c) that there is exactly one `pending` entry. If there are zero or several, it returns `refund_error`, doesn't call the provider, and leaves the order `refund_pending` for an operator to inspect.\n    - If R3c passes, it adds the id to `in_flight` and skips R3. It reuses the existing entry and `refund_id`, then runs R4–R7. The same key means a provider that honors it won't refund twice.\n    - R5 is the only place stock is restored, for first attempts and retries alike. There is no retry limit.\n\n11. **Finding stuck orders (step 4).** After a crash or timeout, the operator calls `pending_refunds()`. It returns a list of dicts with `order_id`, `refund_id` and `created_at` for every `refund_pending` order. The operator then calls `refund_order` on each. For `refund_error`, the operator inspects the file by hand. There is no tool for that.\n\n12. **Crash and write-failure cases.**\n    - **Crash after R3 and before the provider call:** a pending entry is on disk, so retry.\n    - **Crash after the provider succeeds and before the R5 write:** the entry is still pending on disk, so retry with the same key. The provider is expected to return the original success, and R5 then records it and restocks.\n    - **The R5 write itself raises (for example, disk full):** the exception goes to the caller as an exception, not a dict. The file keeps its last good state, which is pending. `finally` still clears `in_flight`. The fix is the same retry. The document calls this the main risk.\n    - **Legacy orders without `amount_cents`:** the amount is computed from `total(items)` at the first attempt, with a logged warning. It is an estimate. A new attempt after a `failed` result recomputes it and may differ. The current file is `[]`, so nothing needs migrating.\n\n13. **Remaining plan steps.** Step 6 adds pytest tests under `tests/`. They use a fake provider swapped in with `monkeypatch`, and cover each failure-table row and the double refund. Step 7 updates the README, removing or marking as planned the `POST /orders` and email claims, which don't exist in the code.",
+    "gaps": [
+     "The document never says how `refund_order` handles a legacy order that has no `payment` field but is in `placed` status. It only covers a missing `payment` for orders in `refund_pending`.",
+     "The real provider call is not designed (Open question 9). That covers network, credentials, request timeout, and how provider errors map to `failed` or `unknown`.",
+     "It is not known whether the real provider honors idempotency keys or offers a lookup by key (Open question 3). The retry safety rests on this.",
+     "The document doesn't say what the provider's 'already refunded' decline means for us (Open question 6). The order stays `placed` while the true state is unknown.",
+     "The document gives no way to inspect or fix a `refund_error` order other than editing the file by hand. It also gives no rule for when an operator should stop retrying.",
+     "The document doesn't say who is allowed to call `refund_order`. v1 has no authorization at all (D4, Open question 1).",
+     "The document doesn't say whether stock is persisted. It says `STOCK` resets on restart, so restored stock can be lost (Open questions 2 and 8).",
+     "The lock covers one process only. The document doesn't say what happens if two processes share `orders.json` (Open question 7).",
+     "The document doesn't say what `in_flight` contains after a process restart. It is in memory, so presumably it is empty, but this is not stated.",
+     "The document doesn't say how `place_order` and `refund_order` are expected to be called in practice, such as from a REPL, a script, or another program. It gives only the `python -c` example.",
+     "It is not stated exactly what the fake provider's 'decline' mode returns for its message, or how the tests verify the 'refund requested twice at once' case."
+    ],
+    "verdict": "wrong",
+    "notes": "Teach-back round 2 misreadings and gaps, fixed in the file:\n- Step numbers collided: the top-level steps 1-7 and the refund_order sub-steps 1-7 both used the same numbers, so \"step 5\" could mean either. The refund_order sub-steps are now R1-R7 with R2 (check and claim), R3 (record intent), R3a-R3c, R4 (provider call), R5-R7 (outcomes). All references were updated.\n- Whether the retry adds the id to in_flight: yes, in R2, in the same lock hold.\n- Retry limit: none in v1, stated in Retries.\n- What the operator does with refund_error: the order stays refund_pending, the operator inspects the file by hand, stated in step 4.\n- pending_refunds() with zero or several pending entries: listed as is; R3c flags it on retry. Stated in step 4.\n- Stray text after step 3c: fixed in round 4, confirmed.\n- Real provider call, idempotency, already-refunded mapping, one-process lock, stock persistence: still open, listed in Open questions 3, 6, 7, 2 and 9. These are design questions the plan cannot answer; they are not clarity gaps."
+   }
+  ],
+  "changes": [
+   "Step 3 now says how an operator calls refund_order and where payment_id comes from (Q1, Q2).",
+   "Step 3 now says a retry reuses the pending entry and runs steps 4 to 7, and step 4 is the retry path (Q3, Q8).",
+   "Step 5 now defines the lock: one threading.Lock, held for the check and the pending write, released before the provider call, one process only (Q7).",
+   "The failure table row for \"file write fails after provider success\" now says the pending entry is already on disk from step 3 and depends on the provider honoring the key (Q5).",
+   "The \"crash after provider succeeds\" row now says step 5 restocks on retry (Q8).",
+   "The stock-add row was removed as a separate row; the rule below the table now says a stock add fails only by a code bug (Q4).",
+   "The declines row now says the order stays refundable and the true state is unknown for \"already refunded\" (Q6).",
+   "Open questions 6 and 7 added for the \"already refunded\" mapping and the single-process lock (Q6, Q7).",
+   "Step 3.2 separates \"refund_in_progress\" (a call is running in this process) from \"retry\" (refund_pending and nothing running). This removes the contradiction (Q11).",
+   "Step 3.3 applies only to placed orders, and the in_flight set is defined (Q11).",
+   "Step 4 adds pending_refunds() to find stuck orders (Q14).",
+   "Step 5 says every write of orders.json takes the lock, each write re-reads the file, and the provider call is outside the lock (Q10).",
+   "Step 1 says total(items) is the existing function and both fields go in the same write (Q12).",
+   "Step 2 describes the refund stub default and how tests fake it (Q13).",
+   "Added a paragraph on the order of writes in step 5, status first then stock, and the crash trade-off (Q9).",
+   "Open question 8 added for the restock after a crash (Q9).",
+   "Step 1 says order_id is the id field set by place_order, and the note is added in Steps 1 (Q18).",
+   "Step 3.2 puts steps 2 and 3 in one lock hold and defines the retry branch clearly (Q15, Q16).",
+   "Added steps 3a and 3b: multiple refund entries, finding the pending entry, and removing from in_flight in a finally block (Q15, Q17).",
+   "Step 6 and step 7 now record the provider message in error, and step 7 updates updated_at (Q19).",
+   "The legacy-order section now says which amount is stored and sent, and that it is an estimate (Q20).",
+   "Step 2's retry branch adds the id to in_flight and runs the step 3c check inside the same lock hold (Q21, Q23).",
+   "The stray sentence in 3b/3c is moved to 3b, and 3c says it runs before in_flight is added (Q23).",
+   "Step 5's success branch keeps created_at and returns refunded with both ids (Q22).",
+   "A new paragraph after step 7 says what happens to the caller and the file when a write raises (Q25).",
+   "The legacy-order section says a new attempt after failed recomputes the amount (Q24).",
+   "Step 2 says unexpected status or a missing payment field returns refund_error without calling the provider (Q26)."
+  ],
+  "holes": [
+   "Q6: After a declined refund the order returns to placed and a new attempt makes a new refund_id. If the decline was 'already refunded', how does the operator learn the true state, and does the order stay refundable forever? (author: The plan does not say how to map a provider \"already refunded\" decline. A decline keeps the order placed and refundable, so a new attempt is possible. I do not know the provider's error codes. Added as Open question 6.)"
+  ],
+  "end_reason": "cap",
+  "cost_usd": 0.4424145
+ }
+]

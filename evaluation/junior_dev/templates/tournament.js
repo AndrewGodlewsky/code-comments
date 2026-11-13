@@ -133,7 +133,8 @@ async function juniorLoop(run, c, arm, art) {
       if (v.artifact && v.artifact.trim()) art = v.artifact
       if (v.correct) { run.end_reason = 'teachback-correct'; break }
       wrong += 1
-      if (round >= arm.rounds || wrong >= DATA.max_teachbacks) { run.end_reason = 'cap'; break }
+      if (wrong >= DATA.max_teachbacks) { run.end_reason = 'teachbacks'; break }
+      if (round >= arm.rounds) { run.end_reason = 'cap'; break }
       phase = 'asking'
     }
   }
