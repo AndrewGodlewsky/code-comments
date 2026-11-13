@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "MySQL first. One MySQL transaction changes the user and upserts the pending row, then commits. Postgres is then safe-copied with a 500 ms timeout. If Postgres fails, the caller still gets success.",
+  "q2": "Only when the id is not in that database's tombstones and the incoming version is higher than the existing row's version. Absent ids are inserted; tombstoned ids are skipped.",
+  "q3": "Step 3 must be confirmed on every instance, plus at least 1 minute. Instances can disagree for up to 30 s after a flag change.",
+  "q4": "Batches are at most 2,000 rows, read from the MySQL replica. It pauses and rechecks while replica lag is above 5 s.",
+  "q5": "Reads need a clean comparer pass with 0 mismatches from step 5. The source of truth moves only after reads hold at 100% for 3 days with a clean nightly pass.",
+  "q6": "The pending row, upserted in the source-of-truth database in the same transaction as the change. The sweeper repairs the other side within about 15 s, or once it is back. app.jobs is not used.",
+  "q7": "Each copy and delete first takes a per-id lock: pg_advisory_xact_lock in Postgres, a locking read of the tombstones table in MySQL. Deletes add tombstones, and copies skip tombstoned ids.",
+  "q8": "In users_backfill_progress, holding last_copied_id and target_max_id. It is updated in the same Postgres transaction as each batch, and stops when no rows remain at or below target_max_id.",
+  "q9": "The comparer walks both databases 10,000 ids at a time, comparing id, version and hash. It rechecks differences on the source-of-truth primary after 5 s; persisting ones go to the pending table for repair.",
+  "q10": "Frozen instances return 503, and the switch waits for frozen confirmation plus the 5 s deadline. If sub-steps 2 to 5 are not done by T0+60 s, set dual_mysql_primary. Writes resume by T0+90 s.",
+  "q11": "Postgres assigns new ids after dual_pg_primary, restarting its identity at MySQL's AUTO_INCREMENT value. After rollback, MySQL's AUTO_INCREMENT is set to Postgres's next identity value.",
+  "q12": "Dual writes copy every change to MySQL via users_mysql_pending and the sweeper. Rollback freezes writes, empties that table, sets MySQL's AUTO_INCREMENT, then sets dual_mysql_primary and read_from_pg to 0. It ends at step 10's pg_only."
+ },
+ "sonnet": {
+  "q1": "MySQL first: one MySQL transaction changes the user and upserts users_pg_pending, commits (write has succeeded); then the row is safe-copied into Postgres (500 ms timeout). If the Postgres part fails or times out, the caller still sees success.",
+  "q2": "Only when the incoming version is higher than the existing row's version (and the id isn't in that database's users_tombstones; if absent, it's inserted).",
+  "q3": "Step 3 (dual_mysql_primary) must be confirmed on every instance, and at least 1 minute must have passed since; the replica must hold all earlier writes (backfill reads only while lag is 5 s or less). Instances can disagree for up to 30 s after a flag change.",
+  "q4": "NOT STATED (the backfill reads from the MySQL replica rather than the primary, in batches of up to 2,000 rows, and waits while replica lag exceeds 5 s, but the document does not describe load/throttling on shared infrastructure as such).",
+  "q5": "Reads: backfill done and one complete comparer pass with 0 mismatches (step 5). Source of truth: reads at 100% on Postgres for at least 3 days, and the latest nightly comparer pass shows 0 mismatches; also a quiet time.",
+  "q6": "A row in users_pg_pending (user_id, token, created_at), kept in MySQL, upserted in the same transaction as the user change so it survives a crash. The MySQL sweeper (every 10 s, rows older than 5 s) re-reads the user from MySQL and safe-copies it to Postgres, then deletes the pending row if the token is unchanged.",
+  "q7": "Tombstones: every delete removes the row and inserts the id into users_tombstones in the same transaction in both databases. Safe copy skips ids in that database's tombstones, and a per-id lock (pg_advisory_xact_lock in Postgres; locking read of tombstones in MySQL) prevents copy and delete interleaving.",
+  "q8": "In the Postgres table users_backfill_progress (last_copied_id, target_max_id). Each batch's safe-copy and the last_copied_id update happen in one Postgres transaction, so they roll back together. It stops when a read finds no rows left at or below target_max_id (max id on MySQL primary at start).",
+  "q9": "The comparer: it compares id, version and a hash of other columns, re-checks differences on the source-of-truth primary 5 s later; a persisting difference is a mismatch, its id is added to the pending table in the source-of-truth database, and the sweeper repairs it. Each pass reports the mismatch count (runs nightly after step 5).",
+  "q10": "Set write_mode to frozen (instances answer writes with retryable 503), wait for confirmation (up to 30 s) plus 5 s write deadline, so no old-mode write can commit; then drain pending, restart the Postgres identity at n, and set dual_pg_primary. If steps 2-5 are not done by T0 + 60 s, set dual_mysql_primary instead (nothing to undo; retry another day). Last instance resumes writes by T0 + 90 s.",
+  "q11": "Postgres identity assigns new ids. At the switch, Postgres is restarted at n, MySQL's AUTO_INCREMENT counter (above every id MySQL issued, including tombstoned ones). On rollback, MySQL AUTO_INCREMENT is set to the Postgres identity's next value so MySQL can't reissue an id Postgres used.",
+  "q12": "Each Postgres write upserts users_mysql_pending and then safe-copies to MySQL (explicit id, 500 ms); the Postgres sweeper repairs failures and the comparer treats Postgres as truth. Rollback (any time in step 9, needs Postgres reachable): freeze, wait confirmed plus 5 s, wait for users_mysql_pending to empty, set MySQL AUTO_INCREMENT to Postgres identity's next value, then set dual_mysql_primary and read_from_pg=0 (abort back to dual_pg_primary if not done by T0+60 s). The option ends at the first pg_only write in step 10, the point of no return."
+ }
+}

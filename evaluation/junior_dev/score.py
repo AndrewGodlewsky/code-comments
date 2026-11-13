@@ -180,14 +180,15 @@ def score(iteration_dir: Path) -> dict:
                       "cost_usd": statistics.fmean(r["cost_usd"] for r in rs), "errors": sum(bool(r["errors"]) for r in rs)})
     summary = {"runs": rows, "table": table}
     summary["decision"] = decide(summary) if any(r["arm"] == "junior" for r in rows) else {}
-    Path(iteration_dir, "summary.json").write_text(json.dumps(summary, indent=1, default=list) + "\n", encoding="utf-8")
+    Path(iteration_dir, "summary.json").write_text(json.dumps(summary, indent=1, default=list) + "\n", encoding="utf-8",
+                                                   newline="\n")
     lines = ["| arm | author | mode | runs | comprehension | requirements | invented | rounds | words | cost $ | errors |",
              "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for t in table:
         comp = "n/a" if t["comprehension"] is None else f"{t['comprehension']:.3f}"
         lines.append(f"| {t['arm']} | {t['author']} | {t['mode']} | {t['runs']} | {comp} | {t['requirements_rate']:.2f} | "
                      f"{t['invented']} | {t['rounds']:.1f} | {t['words']:.0f} | {t['cost_usd']:.4f} | {t['errors']} |")
-    Path(iteration_dir, "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    Path(iteration_dir, "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return summary
 
 
