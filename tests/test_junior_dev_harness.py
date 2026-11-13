@@ -85,8 +85,19 @@ class BuildAndDryRunTest(unittest.TestCase):
 
     def test_placeholder_artifacts_never_replace_the_document(self):
         # climb-01 lost mig-02's whole plan when a correct verdict returned "Unchanged: ..." as the artifact.
+        # The verdict is the last step that could replace it before the final simplify pass.
         for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("junior", "junior-same")):
-            self.assertTrue(run["artifact_final"].startswith("REVISED for"), run["artifact_final"][:60])
+            self.assertFalse(run["artifact_final"].startswith("Unchanged"), run["artifact_final"][:60])
+
+    def test_final_simplify_runs_once_after_the_loop(self):
+        for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("junior", "junior-full", "junior-same")):
+            roles = [p["role"] for p in self.dry["prompts"] if p["run"] == run["run_id"]]
+            self.assertEqual(roles.count("simplify"), 1, run["run_id"])
+            self.assertLess(roles.index("verdict"), roles.index("simplify"))
+            self.assertLess(roles.index("simplify"), roles.index("key"))
+            self.assertTrue(run["artifact_final"].startswith("SIMPLIFIED for"))
+        for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("no-review", "self-review", "critic")):
+            self.assertNotIn("simplify", [p["role"] for p in self.dry["prompts"] if p["run"] == run["run_id"]])
 
     def test_embedded_prompts_match_plugin(self):
         data = build.embedded_data(self.files[0])

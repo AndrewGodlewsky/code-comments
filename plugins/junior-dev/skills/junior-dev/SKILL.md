@@ -50,6 +50,9 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
    - Is it a detail the plan does not need yet, such as an exact format, a library choice
      or a rare edge case? Then answer it in your answers file only, and leave it out of the
      file.
+   - Is it a "what happens if this fails" question? Give the simplest handling the brief
+     allows. Do not add a new mechanism, such as a lock, lease, retry queue or takeover rule,
+     unless the brief requires it.
    - Could this part be simpler: fewer steps, fewer parts, plainer names? Would another
      structure show it better, such as numbered steps, a table, a sequence diagram instead of
      a flowchart, or one diagram split in two?
@@ -99,13 +102,22 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
      python "${CLAUDE_PLUGIN_ROOT}/scripts/junior.py" verdict "<state>" correct
      ```
 
-7. **Report.** When the loop has finished, or `ask` prints `ROUND CAP REACHED`:
+7. **Simplify once more.** When the loop has finished, or `ask` prints `ROUND CAP REACHED`,
+   read the whole file once, as a newcomer would, and make it simpler. Keep its intent and
+   everything the main flow needs.
+   - Cut what a reader does not need to follow the main flow.
+   - Merge rules or notes that say the same thing.
+   - Replace several mechanisms with one simple one wherever the brief allows.
+   - Keep the open questions together at the end.
+
+   When you tell the user (step 9), mention what you cut or merged.
+8. **Report.**
 
    ```
    python "${CLAUDE_PLUGIN_ROOT}/scripts/junior.py" report "<state>"
    ```
 
-8. **Tell the user.** Give them the report: what changed and why, and the holes, meaning the
+9. **Tell the user.** Give them the report: what changed and why, and the holes, meaning the
    questions you could not answer or are unsure about. Keep it short.
 
 ## Rules

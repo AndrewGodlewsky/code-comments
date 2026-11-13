@@ -187,7 +187,18 @@ async function runOne(spec) {
   let art = run.artifact_initial
   if (arm.review === 'self') art = await selfReview(run, c, arm, art)
   else if (arm.review === 'critic') art = await critic(run, c, arm, art)
-  else if (arm.review === 'junior' || arm.review === 'junior_full') art = await juniorLoop(run, c, arm, art)
+  else if (arm.review === 'junior' || arm.review === 'junior_full') {
+    art = await juniorLoop(run, c, arm, art)
+    if (arm.final_simplify) {
+      // Skill step 7: one simplify pass over the whole file after the loop.
+      const s = await call(run, 'simplify', P.author_simplify + '\n\n# The skill\n\n' + P.skill.trim() + '\n\n' + context(c) +
+        '\n# Your document\n\n' + art.trim() + '\n', { model: run.author, schema: REVISE_SCHEMA })
+      if (s) {
+        art = accept(run, 'simplify', art, s.artifact)
+        run.changes.push(...(s.changes || []).map(String))
+      }
+    }
+  }
   else run.end_reason = 'none'
   run.artifact_final = art
 

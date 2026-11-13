@@ -27,6 +27,7 @@ class Arm:
     teachback_form: str = "scenario"  # scenario (the shipped prompt) | free
     procedure: str = "trace"          # trace (the shipped prompt) | free
     self_passes: int = 3              # SelfReview's revision passes, matched to Junior's mean rounds after the pilot
+    final_simplify: bool = True       # skill step 7 (climb iteration 2): one simplify pass after the loop
 
     def __post_init__(self):
         if self.review not in REVIEWS:

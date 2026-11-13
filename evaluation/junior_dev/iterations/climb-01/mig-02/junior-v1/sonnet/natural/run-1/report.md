@@ -1,0 +1,29 @@
+## Review of mig-02 (junior-v1, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a note that day 35 counts from entering new_only and matches the 35-day usage event log.
+- Added a Usage events note: both engines read the same log read-only with their own read positions.
+- Said that the controller runs the nightly comparison and stores its results in the rollout record.
+- Said that the controller checks the gate and sets the flag when a person advances, instead of the person alone.
+- Made RB_Halt start with the controller setting the rollback marker, and said workers read it before every new-engine charge.
+- Added a 'Who starts it' paragraph: on-call command on the controller, and the controller watches the failure rate for the automatic trigger.
+- Defined what RB_Reconcile does when the ledger and provider disagree.
+- Noted in Nothing dropped that customers are charged late during a rollback, not skipped.
+- Added open points 5 (what resolves a mismatch) and 6 (rollback duration and maximum delay for due charges).
+- Renamed the rollback marker to a charge hold and made it apply to the shadow -> both switch as well, so there is no double charge or gap at that switch (Q9).
+- Added a Switching charger note under Forward moves, saying the other two forward moves need no hold (Q9).
+- Defined what Stopped means for the old engine in new_only, including its read position (Q10).
+- Added a line saying billing workers run the engines and follow the flag, and noted the hold is read at charge time, not cached (Q11).
+- Added the charge queue to the rollout record and said who reads it at handover (Q12).
+- Spelled out what the nightly comparison compares in shadow and in both (Q13).
+- Defined drained as returned or timed out, and sent timed-out calls to RB_Reconcile (Q14).
+- Added open point 7 for the charge-call timeout and worker flag lag, and updated open point 6 to refer to the hold.
+- Removed the redundant mention of RB_Handover from the provider idempotency caveat, and reworded One charger at a time and Nothing dropped to use the hold.
+
+### Holes
+- Q3: Who or what runs the nightly comparison, and where do its results go? How does a mismatch become 'resolved'? (author: The rollout controller runs the nightly comparison and stores daily results in the rollout record; that part is my design. How a mismatch becomes resolved is not defined in the brief and I have no defended rule (fix, or Finance acceptance). Added as open point 5.)
+- Q6: During RB_Halt to RB_Handover nobody is charging. How long can that take, and what happens to customers whose charges are due in that time? (author: The duration is not known and depends on reconcile and reprocess size. Due charges are queued under idempotency keys and charged late by the old engine at handover, never skipped. Added to Nothing dropped and as open point 6 (possible maximum delay).)
+- Q11: What are the 'workers' that read the flag and the rollback marker? Do they run the engines, and how quickly do they notice a flag or marker change? (author: Workers are the billing workers from the brief, which run the engines. Each follows the flag, and the hold is read from the rollout record before every charge. How fast they notice a flag change is not known. Correctness does not depend on it, because the hold is read at charge time, but the length of the pause does. Added a line under modes, the hold description and open point 7.)
+- Q14: What counts as 'in-flight charges drained' for moving from RB_Halt to RB_Reconcile? Is there a time limit for waiting on in-flight charge calls? (author: Drained means every charge call has returned or timed out. A timed-out call has an unknown outcome and goes to RB_Reconcile for a provider lookup. The timeout value is not set and I have no defended number. Added the definition to RB_Halt and open point 7.)

@@ -1,0 +1,80 @@
+{
+ "label": "act-t-refunds-haiku-hooks",
+ "model": "haiku",
+ "hooks": true,
+ "wall_s": 31.8,
+ "cost_usd": 0.01027366,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback",
+   "report"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-3z026l6h\\project\\docs\\plans\\refunds.md",
+  "artifact_hash": "b2934a74e5ff65759674e08309a3a322eb76e77f9f40b30ec69906f5d36523ca",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "I wrote the plan to `docs/plans/refunds.md`. No code was changed.\n\nThe junior-dev review did not really run. The helper reported \"activation run: the junior is stubbed\", so it asked no questions and its teach-back was not a real test. I did not record a `verdict correct`, because that would claim a check that never happened. The report shows 0 rounds used, and I did not revise the file after it. To get a real check, the junior-dev harness needs its junior model enabled, then the loop can be run again.\n\nWhat the plan covers, from reading the code:\n\n- **Where things stand:** `place_order()` decrements stock and stores orders as `{id, customer, items, payment}`. `charge()` ignores the amount and has no refund counterpart. Nothing restores stock. `README.md` describes an HTTP `POST /orders` endpoint, but `src/app.py` has no HTTP layer.\n- **Steps:** store amount and status on orders; add `refund()` to the payment module, returning a result rather than raising; add `refund_order()` with full and partial refunds; mark `refund_pending` before calling the provider, and change stock only after the provider confirms; make the JSON write atomic; add tests and docs.\n- **Data that changes:** new order fields (`amount_cents`, `status`, `refund_key`, `refunds`), in-memory `STOCK`, and the migration of existing orders.\n- **Provider failures:** a table for a declined refund, a timeout with unknown outcome, a crash after provider success, a local save failure after provider success, and a partial refund followed by a failure. The rules are that stock is never restored before confirmation, and the provider is never called twice without the same idempotency key.\n- **Open questions:** who can call refunds and through what interface, whether refunds are whole-order or line-item, whether the provider supports idempotency keys and status queries, whether refunds send email, and whether there is a refund time limit.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback",
+  "report"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/refunds.md": "# Plan: refunds for shopfront orders\n\nStatus: proposal. No code has been changed yet.\n\n## Where things stand today\n\n- `src/app.py` `place_order()` checks stock, calls `charge()`, decrements `STOCK`, and appends the order to `data/orders.json`. An order is `{id, customer, items, payment}`. It has no status, timestamp, amount, or card token.\n- `src/payments.py` `charge()` returns `{ok, id}` and never raises. It ignores `amount_cents`. There is no refund function.\n- There is no HTTP layer in `src/app.py`, even though `README.md` describes `POST /orders` and `python -m src.app`. This plan does not depend on that gap, but the refund entry point (step 4) needs an answer to \"how is it called?\" (see Open questions).\n- Stock is only ever decremented. Nothing restores it.\n- Order IDs are `len(orders) + 1`. Once an order can be removed or marked in a way that changes the list length, IDs can collide. Refunds must not delete orders.\n- Read-modify-write on `orders.json` is not safe under concurrent requests.\n\n## Goal\n\nLet staff or the customer refund all or part of a placed order. The refund charges nothing new, returns money through the provider, restores stock for returned items, and leaves an auditable record on the order. A refund must never be recorded as successful unless the provider confirmed it.\n\n## Steps\n\n1. **Record the payment amount.** Change `place_order()` to store `amount_cents` (from `total(items)`) and the provider payment id on the order. Add `status: \"paid\"` and `created_at`. Existing rows in `orders.json` (currently none) get a one-off migration that sets `status` to `\"paid\"` and fills `amount_cents` from `total(items)`.\n2. **Add a refund call to the provider.** In `src/payments.py`, add `refund(payment_id, amount_cents, idempotency_key)` returning `{ok, refund_id, error}`. It must not raise, to match `charge()`. Use the idempotency key so retries do not refund twice.\n3. **Add `refund_order(order_id, items=None)` to `src/app.py`.**\n   - `items=None` means a full refund. A dict means a partial refund of those items and quantities.\n   - Validate: the order exists, its status allows a refund, and every requested quantity is no more than what is still unrefunded.\n   - Compute the refund amount from `PRICES`, not from anything the caller sends.\n4. **Refund flow (order of operations):**\n   1. Under a lock, mark the order `refund_pending` and store the refund key and amount. This blocks a second refund from starting.\n   2. Call `refund()` with the provider. This is the only external side effect, so it happens once, before any local stock change.\n   3. On success: under the same lock, set status to `refunded` or `partially_refunded`, store `refund_id`, add the returned quantities back to `STOCK`, and append to the order's `refunds` list.\n   4. On failure: revert to the previous status and record the error. Do not touch stock.\n5. **Persist safely.** Replace the bare `write_text` with a write to a temp file followed by `os.replace`, under a process lock. A multi-process deployment would need a real database; this plan keeps the JSON file as the README says.\n6. **Tests.** Cover: full refund, partial refund, refund of an unpaid or already refunded order, over-refund, provider success, provider failure, provider timeout, retry with the same key, and stock restored exactly once.\n7. **Docs.** Update `README.md` with the refund behavior and the new order fields.\n\n## Data that changes\n\n| Where | Change |\n|---|---|\n| Order record | New fields: `amount_cents`, `status`, `created_at`, `refund_key`, `refunds: [{refund_id, items, amount_cents, at}]`. Status values: `paid`, `refund_pending`, `partially_refunded`, `refunded`. |\n| `STOCK` (in memory) | Incremented by returned quantities after a confirmed refund. Also needs to be restored from the orders file on startup, which the code does not do today. Startup stock is currently hardcoded. |\n| `data/orders.json` | Rewritten atomically. Existing orders get the migration in step 1. |\n| Provider | A refund record on the provider side, keyed by `refund_key`. |\n\nNo new data stores.\n\n## When the payment provider fails\n\n`charge()` and the new `refund()` return `{ok: False}` rather than raising, so every failure is a value the code must handle. Cases:\n\n| Failure | What we do | Stock | Order status |\n|---|---|---|---|\n| Refund returns `ok: False` (declined, unknown payment) | Revert to previous status, store the error. Return `{status: \"refund_failed\"}`. Staff can retry. | Unchanged | Previous status |\n| Timeout or network error, outcome unknown | Keep `refund_pending` with the refund key. Do not guess. Retry later with the same key. A reconciliation job asks the provider what happened to that key. | Unchanged until confirmed | `refund_pending` |\n| Crash after provider success, before we save | On restart, `refund_pending` orders are reconciled by querying the provider with the stored key. If it succeeded, finish steps 4.3. If not, revert. | Restored only in 4.3 | Resolved on restart |\n| Provider success but local save fails | Retry the local write with the same key. Never call the provider again without the key. | Unchanged until saved | `refund_pending` until saved |\n| Partial refund succeeded, then another refund fails | Each refund is its own record, so the first one stays. Status becomes `partially_refunded`. | Only the first refund's items restored | `partially_refunded` |\n\nRules:\n- Never restore stock or mark `refunded` before the provider confirms.\n- Never call the provider twice for the same refund without the same idempotency key.\n- A `refund_pending` order blocks new refunds on that order until resolved.\n\n## Open questions (need an answer before step 3)\n\n1. Who can call refunds, and through what interface? The README mentions HTTP, but the code has none.\n2. Do we refund whole orders only, or line items too? This plan supports both.\n3. Does the provider support idempotency keys and a refund status query? If not, the timeout row above needs a manual process.\n4. Should a refund send an email? The README says receipts are emailed, but no email code exists.\n5. Is there a time limit on refunds?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-refunds",
+ "kind": "trigger",
+ "prompt": "Write a plan in docs/plans/refunds.md for adding refunds to this app: the steps, the data that changes, and what happens when the payment provider fails. Do not change any code."
+}

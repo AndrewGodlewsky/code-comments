@@ -1,0 +1,75 @@
+{
+ "label": "act-t-rate-limit-haiku-desc",
+ "model": "haiku",
+ "hooks": false,
+ "wall_s": 32.6,
+ "cost_usd": 0.00909835,
+ "junior_cost_usd": 0.0,
+ "num_turns": 9,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report",
+   "final message lacks the changes and holes"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-v6tw4bjd\\project\\docs\\plans\\rate-limit.md",
+  "artifact_hash": "13a3b5ea7277e6f7b04fefd0ac627c520219b9160a3d7d450c763713cd5216b8",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The plan is saved at `docs/plans/rate-limit.md`. I didn't change any code.\n\nThe junior-dev review did not validate the plan. The helper ran in activation mode, where the junior is stubbed, so `ask` returned no questions and the teach-back output is a placeholder. I didn't record a verdict, because a \"correct\" verdict would have been made up. The review state is in `.junior-dev/rate-limit-eedda80f`, which the helper created in the project. Delete it if you don't want it there.\n\n**The plan in brief:** a per-customer token bucket with a per-minute and a per-day limit, in a new `src/ratelimit.py`. The check runs first in `place_order`, so a rejected attempt never touches stock or the card. The steps are test-first, with a fake clock and a thread test for concurrency.\n\n**Problems I found while reading the code, which the plan addresses:**\n- **There is no `POST /orders` route.** The README describes one, but `src/app.py` has only `place_order`, and running `python -m src.app` does nothing. The email receipt is also not implemented.\n- **`customer` is a string the caller supplies.** A limit keyed on it can be bypassed by changing the string, so the plan makes a verified customer ID a prerequisite.\n- **Stock and order writes are not concurrency-safe.** I left these out of scope, but the plan notes they can race with the limiter.\n\n**Decisions for you (the plan gives recommendations):**\n1. How customer identity is verified: add auth first, or use IP as a stop-gap.\n2. The limits. I proposed 5 per minute and 30 per day, as config values.\n3. Whether failed attempts count toward the limit. I recommend yes, so clients can't probe stock and card validity for free.\n4. Single process versus multiple workers. An in-memory store is only correct for one process.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/rate-limit.md": "# Plan: per-customer rate limiting for order placement\n\nStatus: proposal. No code has been changed.\n\n## Goal\n\nStop any one customer from placing orders faster than a set limit. A rejected attempt\nis refused before stock is reserved and before the card is charged.\n\n## Current state (what the code does today)\n\n- `src/app.py` `place_order(customer, items, card_token)` is the only entry point. It\n  checks stock, calls `charge()`, decrements `STOCK`, appends to `data/orders.json`.\n- There is **no HTTP layer**. `README.md` says customers use `POST /orders` and that\n  `python -m src.app` runs the service. `src/app.py` has no route and no `__main__`\n  block, so running it does nothing. The README also promises an email receipt, which\n  is not implemented.\n- `customer` is a free-form string supplied by the caller. Nothing authenticates it.\n- `src/payments.py` `charge()` is a stub. It returns `ok: True` for any non-empty token.\n- `STOCK` and `PRICES` are module-level dicts. There is no locking, and orders are read\n  and rewritten as a whole JSON file on each placement.\n- There is no test directory and no test runner configured.\n\n## Decisions needed before building\n\n1. **Customer identity.** A rate limit keyed on a string the caller chooses can be\n   bypassed by changing the string. The key must come from an authenticated identity\n   (account ID, session, or API token). If no auth exists yet, the options are:\n   (a) add a minimal auth step first, or (b) key on something the caller cannot easily\n   vary, such as client IP at the HTTP layer. Recommendation: (a), with (b) as a\n   stop-gap. This plan assumes a verified `customer_id` reaches `place_order`.\n2. **Limits.** Proposed starting values, to be confirmed: 5 placements per minute and\n   30 per day per customer. Burst allowance is the minute limit. Both are config values,\n   not constants in code.\n3. **Counting rule.** Recommendation: count every placement attempt, including ones that\n   fail stock or payment. Counting only successful orders lets a client probe stock and\n   card validity without limit.\n4. **Process model.** Recommendation: in-memory store, which is correct for one\n   process. If the service runs as several workers, the limit becomes per-process and\n   needs a shared store such as Redis. That is out of scope unless the deployment\n   requires it.\n5. **Response shape on limit.** Recommendation: follow the existing pattern,\n   `{\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": <seconds>}`, so\n   callers handle it like the other rejections.\n\n## Design\n\n### Algorithm\n\nToken bucket per customer, two buckets (per-minute and per-day). Each bucket stores\n`(tokens, last_refill_time)`. On each attempt, refill from elapsed time, then take one\ntoken from both. If either is empty, reject and compute `retry_after` from the bucket\nthat is empty. Taking tokens from both buckets only when both are available avoids\ndraining one bucket on a rejected attempt.\n\n### Module\n\nNew file `src/ratelimit.py`:\n\n- `class RateLimiter(per_minute, per_day, clock=time.monotonic)`\n- `RateLimiter.check_and_consume(customer_id) -> (allowed: bool, retry_after: float)`\n- A `threading.Lock` guards the whole check-and-consume step, so two concurrent requests\n  cannot both take the last token.\n- Injected `clock` so tests can advance time without sleeping.\n- Idle entries are evicted, or the dict is capped, so memory does not grow with every\n  customer ID ever seen.\n\n### Integration in `src/app.py`\n\nAdd an optional `limiter` parameter to `place_order`, defaulting to a module-level\ninstance, so existing callers and tests keep working. The order of checks becomes:\n\n1. Rate limit (`check_and_consume`). Reject early.\n2. Stock check.\n3. `charge()`.\n4. Stock decrement and order write.\n\nPutting the limit first means a rate-limited request never touches stock or payments.\n\n### Configuration\n\nRead `RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_PER_DAY` from the environment, with the\ndefaults above. Keep the defaults in one place.\n\n### Observability\n\nLog each rejection with the customer ID and bucket that triggered it, at INFO level.\nDo not log card tokens.\n\n## Steps\n\n1. Confirm decisions 1–5 with the owner.\n2. Add a minimal test setup (`tests/`, using `unittest` so no new dependency is needed).\n3. Write `tests/test_ratelimit.py` first, covering:\n   - a burst up to the per-minute limit is allowed, the next attempt is rejected\n   - tokens refill after the clock advances\n   - the per-day limit blocks even when the per-minute bucket has refilled\n   - `retry_after` is correct for each bucket\n   - two customers do not affect each other\n   - concurrent calls (threads) never allow more than the limit\n4. Implement `src/ratelimit.py` until those tests pass.\n5. Add tests for `place_order`:\n   - a rate-limited call does not call `charge` (mock it and assert zero calls)\n   - a rate-limited call leaves `STOCK` and `data/orders.json` unchanged\n   - a placement that fails stock still consumes a token (per decision 3)\n6. Wire the limiter into `place_order` and update the signature to take the verified\n   customer ID.\n7. Update `README.md`: the limit values, the env variables, and the rejection shape.\n8. Manual check: call `place_order` in a loop with a small limit and confirm the\n   rejection and that no card charge IDs are produced for rejected calls.\n\n## Out of scope\n\n- Adding the `POST /orders` HTTP route, or any server framework.\n- Authentication itself (only the dependency is noted above).\n- The email receipt.\n- Fixing the non-atomic stock update and whole-file order writes. These are real\n  concurrency issues, and they interact with the limiter's thread safety, but they\n  should be fixed separately. Note that the stock check and decrement in `place_order`\n  can race even with the limiter in place.\n- Distributed rate limiting across processes (see decision 4).\n\n## Risks\n\n- **Bypass via identity.** Covered by decision 1. Shipping the limiter keyed on an\n  unverified string gives a false sense of protection.\n- **Memory growth.** Covered by eviction or a cap.\n- **Clock issues.** Use a monotonic clock for refill. Wall-clock changes must not reset\n  or extend a bucket.\n- **Limit too tight for legitimate bulk buyers.** Mitigate with per-customer overrides\n  in config, added only if needed.\n- **Charge-then-fail paths.** If `charge()` succeeds and the order write later fails,\n  the customer is charged with no order. That is an existing risk, not created by this\n  change, but the limiter does not fix it.\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-rate-limit",
+ "kind": "trigger",
+ "prompt": "Plan how to add per-customer rate limiting to placing orders. Save it to docs/plans/rate-limit.md. Do not change any code."
+}

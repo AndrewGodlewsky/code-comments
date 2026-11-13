@@ -1,0 +1,80 @@
+{
+ "label": "act-t-rollout-haiku-desc",
+ "model": "haiku",
+ "hooks": false,
+ "wall_s": 51.0,
+ "cost_usd": 0.01312259,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback",
+   "report"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-3r6uwt7p\\project\\docs\\rollout.md",
+  "artifact_hash": "8589449f219963cd27044c176b9730f17d1ef050e69eb33de6a92be3d8c17a62",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The rollout plan is saved at `docs/rollout.md`. No code was changed.\n\nThe junior-dev review did not really run. `ask` returned no questions, and `teachback` reported \"activation run: the junior is stubbed\", so no fresh reader checked the file. I did not record a verdict, because a pass there would be false. The report shows 0 rounds used and no changes. The plan should be treated as unreviewed until someone reads it cold.\n\nThe repo has no pricing rules yet. There is no feature flag, no tests, and no git history. The only pricing code is the flat `PRICES` dict and `total()` in `src/app.py`. The plan therefore assumes the new rules replace `total()`, and it covers:\n\n- **Current state:** the facts above, plus two risks. The order record does not store the charged amount or a pricing version, and `orders.json` is written without locking.\n- **Flag design:** `pricing_v2`, default off, sticky per-customer bucketing, an allowlist, and a percentage kill switch.\n- **Prerequisites:** store `amount_cents` and `pricing_version` on each order, add tests for the v1 path before any change, add logging, confirm a single worker, and find where the receipt email gets its amount.\n- **Phases:** 0 refactor with the flag off, 1 shadow mode (compute v2, charge v1), 2 internal staff, 3 canary ramp from 1% to 100%, and 4 cleanup.\n- **Guardrails and rollback:** metrics with stop conditions, a rollback that sets the percentage to 0 without a deploy, and a reconciliation path for orders already charged under v2.\n\nThresholds, durations, owners and the config source are left as placeholders for you to fill in. Section 9 lists the open questions, the most important being where the new rules' spec lives and whether production runs more than one worker.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback",
+  "report"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/rollout.md": "# Rollout plan: new pricing rules behind a feature flag\n\nStatus: draft. Owner: _to assign_. Pricing approver: _to assign_.\n\n## 1. Current state\n\nFacts from the repo as it is today:\n\n- Prices are a flat dict, `PRICES`, at `src/app.py:10`.\n- `total(items)` at `src/app.py:13` is the only place a total is computed.\n- `place_order` (`src/app.py:17`) computes the total at line 21 and passes it to `charge()` in `src/payments.py`. Only after a successful charge does it decrement stock and write the order.\n- The order record (`src/app.py:27`) stores `id`, `customer`, `items` and `payment`. It does **not** store the amount or any pricing version.\n- Stock is an in-memory dict (`src/app.py:9`). It resets on restart.\n- Orders are persisted to `data/orders.json` by read-modify-write with no locking (`src/app.py:26-29`).\n- The repo has no feature-flag mechanism, no pricing-rules module, no test suite, no metrics or structured logging, and no git history in this working directory.\n- The README says customers get an email receipt. No email code exists in this repo.\n\nWhat this means for the rollout:\n\n- The new rules can only take effect safely if the flag gates `total()` and the amount used for the charge and for the stored order come from the same evaluation.\n- Without a stored amount and pricing version, we cannot audit or reconcile orders charged under the new rules.\n- With no tests, nothing currently proves the v1 path is unchanged.\n\n## 2. Assumptions\n\nIf any of these is wrong, revisit the plan before starting.\n\n- The new rules replace `total(items)`. If they need more inputs (customer tier, coupon, region), the signature changes and Phase 0 grows.\n- The rollout unit is one `place_order` call.\n- `customer` is a stable identifier that can be used for sticky bucketing.\n- Production runs as a single process, or we can make it so during the ramp (see prerequisite 4).\n\n## 3. Flag design\n\n- **Name:** `pricing_v2` (placeholder).\n- **Default:** off. Flag off must produce exactly the current `total()` output.\n- **Evaluation:** once per order, before `total()` is called. The chosen arm is used for the charge and recorded on the order.\n- **Bucketing:** stable hash of `customer` modulo 100, compared against the rollout percentage. A customer stays in the same arm across orders, so arms can be compared by customer.\n- **Allowlist:** a set of customer IDs always placed in the new arm, for internal testing. Checked before the percentage.\n- **Kill switch:** setting the percentage to 0 must take effect without a deploy.\n- **Config source:** _decision needed._ Options are an environment variable (needs restart; each process reads its own), a config file re-read per request, or an existing flag service if the org has one. Pick one before Phase 1.\n\n## 4. Prerequisites (must be done before Phase 1)\n\n1. **Record what was charged.** Add `amount_cents` and `pricing_version` (`\"v1\"` or `\"v2\"`) to each new order. Orders written before this change have neither field; treat a missing version as `\"v1\"`.\n2. **Tests.** Add tests for:\n   - `total()` under v1 for all items, matching today's output exactly.\n   - `total()` under v2 for each new rule, using worked examples from the pricing spec.\n   - Rejection paths unchanged: out of stock never calls `charge`; a failed charge does not decrement stock and does not write an order.\n3. **Logging hooks.** Phase 1 needs a structured log line per order with both the v1 and v2 totals. None exists today.\n4. **Concurrency check.** `orders.json` read-modify-write and the in-memory `STOCK` are per process and unlocked. If more than one worker runs, either run a single worker for the whole rollout or fix this first. This is a blocker for any ramp beyond Phase 2 on a multi-worker deployment.\n5. **Receipt source.** Identify where the receipt email gets its amount. It must show the charged amount under the arm the order was placed in.\n6. **Sign-off.** The pricing approver signs off on the rules and on the worked examples the tests encode.\n\n## 5. Phases\n\nEach phase has an exit gate. Do not start the next phase until the gate is met and recorded.\n\n**Phase 0: Refactor with the flag off.**\n- Route `total()` through the flag-aware function. With the flag off, output is identical to today.\n- Exit: all tests pass; v1 output matches the pre-change output for the full test set.\n\n**Phase 1: Shadow mode.**\n- Flag on for computation only. Compute the v2 total for every order, log both totals, and charge the v1 amount.\n- Exit: at least _N_ orders or _N_ days reviewed (set by owner). Every difference between v1 and v2 is explained and expected. The v2 path raises no exceptions.\n\n**Phase 2: Internal.**\n- Allowlisted staff customers are charged under v2 for real. Include one full refund through the provider.\n- Exit: staff orders store the correct amount and version; receipts match the charged amount; the refund path has been exercised.\n\n**Phase 3: Canary ramp.**\n- Ramp the percentage: 1% → 5% → 25% → 50% → 100%.\n- Hold at each step for at least _X_ hours and until all guardrails in section 6 pass.\n- Do not ramp during a change-freeze window or outside staffed hours (set by owner).\n\n**Phase 4: Full on, then cleanup.**\n- Keep the flag at 100% for _2_ weeks.\n- Remove the flag and the v1 branch in a separate change. Keep the v1 rules available for reading historical orders.\n\n## 6. Metrics and guardrails\n\nThresholds are set by the owner before Phase 1. Compare the v2 and v1 arms by customer bucket.\n\n| Metric | Source | Stop condition |\n|---|---|---|\n| Uncaught exceptions in the pricing path | logs | Any occurrence |\n| Amount mismatch (stored `amount_cents` ≠ recomputed amount) | orders file | Any occurrence |\n| Payment failure rate (`charge` returns `ok: false` ÷ attempts) | logs | v2 exceeds v1 by _X_ points |\n| Rejection rate by reason (out of stock, payment failed) | logs | v2 exceeds v1 by _X_ points |\n| Average order value | orders file | Reviewed at each step, not an automatic stop |\n| Support tickets about price or charges | support queue | Reviewed at each step |\n\n## 7. Rollback\n\n**Triggers:** any stop condition in section 6, or any report of a wrong charge.\n\n**Procedure:**\n1. Set the percentage to 0 (and clear the allowlist if it is part of the incident). No deploy.\n2. Confirm that new orders show v1 amounts.\n3. Do not delete orders recorded under v2.\n\n**Orders already charged under v2:**\n1. List orders with `pricing_version: \"v2\"` in the affected window.\n2. Compute the difference from the v1 amount for each.\n3. Decide with finance on refunds or credits. Refunds are not in this repo; `charge()` has no refund function and refunds go through the provider.\n\n**Code rollback:** deploy the previous version only if the flag-off path itself is broken.\n\n## 8. Roles\n\n- Rollout owner: _to assign_\n- Pricing approver: _to assign_\n- On-call during ramp: _to assign_\n- Support lead: _to assign_\n- Finance contact for reconciliation: _to assign_\n\n## 9. Open questions\n\n1. Where is the spec for the new rules, and who owns it?\n2. Which config source will hold the flag and percentage (section 3)?\n3. Is `customer` a stable identifier across orders?\n4. Does production run more than one worker?\n5. Where is the receipt email generated, and does it read the stored amount?\n6. What is the refund process, and who runs it?\n7. What is the timeline, and which change-freeze windows apply?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-rollout",
+ "kind": "trigger",
+ "prompt": "Write a rollout plan for new pricing rules behind a feature flag, saved to docs/rollout.md. Do not change any code."
+}

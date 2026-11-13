@@ -49,6 +49,7 @@ function canned(role, run, prompt) {
     case 'critic': return { critiques: [], done: true }
     case 'critic-revise': return { artifact: `CRITIC-REVISED for ${caseOf(run)}\n`, changes: ['x'] }
     case 'judge': return { winner: 'A', reason: 'stub' }
+    case 'simplify': return { artifact: `SIMPLIFIED for ${caseOf(run)}\n1. A step.\n`, changes: ['merged two rules'] }
     default: throw new Error(`no canned result for role ${role}`)
   }
 }

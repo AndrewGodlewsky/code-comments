@@ -1,0 +1,81 @@
+{
+ "label": "act-t-architecture-haiku-hooks",
+ "model": "haiku",
+ "hooks": true,
+ "wall_s": 34.6,
+ "cost_usd": 0.010848870000000002,
+ "junior_cost_usd": 0.0,
+ "num_turns": 15,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback",
+   "report"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-qjro6jgl\\project\\docs\\architecture.md",
+  "artifact_hash": "5d0c996936b054afc2b7e2195b40d4506a4f4608505e440f12c9f824dcab91a6",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "I wrote `docs/architecture.md` with a Mermaid flowchart of the order flow, a component table, and a list of known gaps. No code was changed.\n\nThe junior-dev review did not really run. The helper reported \"activation run: the junior is stubbed\", so it produced no questions and its teach-back is not evidence the doc is clear. I did not record a `verdict correct`, since that would claim a check that never happened. The report shows 0 rounds used and no holes. To get a real read, the junior needs to be unstubbed, then the loop run again on `.junior-dev/architecture-72bf506e`.\n\nThe doc describes the code as it is, and it flags where the README claims more than the code does:\n- **No HTTP entry point.** The README says `POST /orders` and `python -m src.app`, but `src/app.py` has no server and no `__main__` block, so running it does nothing.\n- **No email receipt.** The README mentions one, but no email code exists.\n- **Payments is a stub.** `charge()` makes no provider call and succeeds for any non-empty token.\n- **Charge happens before the write, with no rollback.** If saving `orders.json` fails after the charge, the card is charged and no order is recorded.\n- **Stock is in memory.** It resets on restart and is not tied to `orders.json`. Concurrent calls are unprotected.\n\nThe flowchart draws the caller as abstract, since no HTTP layer exists to draw.\n\nFile: `C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-qjro6jgl\\project\\docs\\architecture.md`",
+ "helper": [
+  "start",
+  "ask",
+  "teachback",
+  "report"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/architecture.md": "# Architecture\n\nThis document describes the components in the `shopfront` repo and how an order moves through them. It reflects the code as it is now, so where the README describes behaviour that the code does not contain, the gap is listed under [Known gaps](#known-gaps) rather than drawn as if it existed.\n\n## Components\n\n| Component | Location | Role |\n|---|---|---|\n| Order service | `src/app.py` | `place_order()` validates stock, requests a charge, updates stock, and stores the order. Holds the in-memory `STOCK` and `PRICES` tables. |\n| Payments client | `src/payments.py` | `charge(card_token, amount_cents)` returns `{ok, id}` and never raises. Currently a stub: it does not call any provider. |\n| Order store | `data/orders.json` | JSON list of placed orders. Read and rewritten in full on every placed order. Currently `[]`. |\n| Package marker | `src/__init__.py` | Empty. Makes `src` importable as a package. |\n| README | `README.md` | Describes the intended service: `POST /orders`, card charge, order storage, and an email receipt. |\n\n## Order flow\n\n```mermaid\nflowchart TD\n    Caller[\"Caller<br/>(README: POST /orders)\"]\n    PlaceOrder[\"src/app.py<br/>place_order(customer, items, card_token)\"]\n    StockTable[\"In-memory STOCK<br/>mug 12, shirt 3, poster 0\"]\n    PriceTable[\"In-memory PRICES<br/>mug 900, shirt 2500, poster 1500\"]\n    StockCheck{\"Every requested qty<br/>at most STOCK?\"}\n    RejectStock[\"return rejected<br/>out of stock: name\"]\n    Total[\"total(items)<br/>sum of PRICES x qty, in cents\"]\n    Charge[\"src/payments.py<br/>charge(card_token, total)\"]\n    ChargeOk{\"payment ok?\"}\n    RejectPay[\"return rejected<br/>payment failed\"]\n    Decrement[\"Decrement STOCK<br/>per item\"]\n    Append[\"Read data/orders.json<br/>append order, id = count + 1<br/>write file back\"]\n    Store[(\"data/orders.json\")]\n    Placed[\"return placed + order\"]\n    Email[\"Email receipt<br/>(in README, no code exists)\"]\n\n    Caller -->|\"customer, items, card_token\"| PlaceOrder\n    PlaceOrder --> StockCheck\n    StockCheck -->|\"no\"| RejectStock\n    StockCheck -->|\"yes\"| Total\n    PriceTable -.-> Total\n    Total --> Charge\n    Charge --> ChargeOk\n    ChargeOk -->|\"no: empty token\"| RejectPay\n    ChargeOk -->|\"yes: pay_ id\"| Decrement\n    Decrement --> StockTable\n    Decrement --> Append\n    Append --> Store\n    Append --> Placed\n    RejectStock --> Caller\n    RejectPay --> Caller\n    Placed --> Caller\n    Placed -.->|\"documented, not implemented\"| Email\n```\n\n### Step by step\n\n1. The caller passes `customer`, `items` (name to quantity), and `card_token` to `place_order()`.\n2. Stock check: each item's quantity must be no more than `STOCK`. An unknown item name counts as stock 0, so it is rejected. On failure the function returns `rejected` with `out of stock: <name>`, and nothing is changed.\n3. Total: `total()` multiplies each `PRICES` entry by its quantity and sums the result in cents.\n4. Charge: `charge()` is called with the token and total. An empty token gives `ok: False`, which returns `rejected` with `payment failed`. Any other token gives `ok: True` and an id of the form `pay_<12 hex chars>`.\n5. Stock is decremented in memory.\n6. The order is appended to `data/orders.json` with `id = count + 1`, `customer`, `items`, and the payment id.\n7. The function returns `placed` with the order.\n\n## Known gaps\n\nThese are places where the README or the code layout implies something the code does not do. They are listed so the diagram is not read as a description of working behaviour.\n\n- **No HTTP entry point.** `README.md` says customers use `POST /orders` and that the service runs with `python -m src.app`. `src/app.py` has no web server, no route, and no `if __name__ == \"__main__\":` block, so running it does nothing. The caller in the diagram is abstract for this reason.\n- **No email receipt.** The README says a receipt is emailed when an order is placed. No email code exists in the repo.\n- **Payments is a stub.** `charge()` makes no network call. It succeeds for any non-empty token and invents the payment id locally.\n- **In-memory stock and prices.** `STOCK` is reset to its literal values on every process start and is not derived from `orders.json`. Stock changes are lost on restart.\n- **Charge before write, no rollback.** If the write to `orders.json` fails after the charge succeeds, the card is charged, stock is already decremented, and no order is recorded. No refund or compensation path exists.\n- **Order ids are not stable.** `id = len(orders) + 1` can repeat if the file is edited by hand or if orders are removed.\n- **Concurrency.** The read-modify-write of `orders.json` and the in-memory stock updates are not protected by any lock, so concurrent calls can lose orders or overcount stock.\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-architecture",
+ "kind": "trigger",
+ "prompt": "Create a Mermaid flowchart of this repo's components and how an order moves through them, in docs/architecture.md. Do not change any code."
+}
