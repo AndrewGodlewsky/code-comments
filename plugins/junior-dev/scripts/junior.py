@@ -186,8 +186,48 @@ def _cost(raw: str) -> float:
         return 0.0
 
 
-def _hash(text: str) -> str:
+def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+_hash = text_hash
+REGISTRY = "registry.json"
+
+
+def ensure_root(root: Path) -> Path:
+    """The project's .junior-dev folder; it ignores itself so its scratch files are never committed."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    ignore = root / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("*\n", encoding="utf-8")
+    return root
+
+
+def load_registry(root: Path) -> dict:
+    """Which plan and diagram files the hooks have seen: {absolute path: {status, hash, snapshot}}."""
+    path = Path(root) / REGISTRY
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def mark(root: Path, artifact: Path, status: str, text: str | None = None) -> None:
+    """Set an artifact's status (pending, reminded, reviewing, done); text records the reviewed version."""
+    registry = load_registry(root)
+    key = str(Path(artifact).resolve())
+    entry = registry.get(key, {})
+    entry["status"] = status
+    if text is not None:
+        entry["hash"], entry["snapshot"] = text_hash(text), text
+    registry[key] = entry
+    path = ensure_root(root) / REGISTRY
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(registry, indent=1, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _slug(path: Path) -> str:
@@ -212,11 +252,7 @@ class JuniorSession:
         if rounds < 1:
             raise JuniorError("--rounds must be at least 1")
         text = artifact.read_text(encoding="utf-8")
-        root = Path(state_root) if state_root else Path.cwd() / ".junior-dev"
-        root.mkdir(parents=True, exist_ok=True)
-        ignore = root / ".gitignore"
-        if not ignore.exists():
-            ignore.write_text("*\n", encoding="utf-8")
+        root = ensure_root(Path(state_root) if state_root else Path.cwd() / ".junior-dev")
         state_dir = root / f"{_slug(artifact)}-{_hash(str(artifact))[:8]}"
         state_dir.mkdir(parents=True, exist_ok=True)
         state = {"artifact": str(artifact), "artifact_hash": _hash(text), "model": model, "rounds_cap": rounds,
@@ -225,6 +261,7 @@ class JuniorSession:
         session = cls.__new__(cls)
         session.state_dir, session.runner, session.state = state_dir, runner or run_claude, state
         session._save()
+        mark(root, artifact, "reviewing")
         return session
 
     def _save(self) -> None:
@@ -331,6 +368,9 @@ class JuniorSession:
 
     def report(self) -> str:
         s = self.state
+        artifact = Path(s["artifact"])
+        if artifact.is_file():
+            mark(self.state_dir.parent, artifact, "done", artifact.read_text(encoding="utf-8"))
         reason = {"teachback-correct": "a fresh junior explained it back correctly",
                   "cap": "the round cap was reached", None: "the loop has not finished"}[s["end_reason"]]
         lines = [f"## Junior-dev review of {Path(s['artifact']).name}", "",
