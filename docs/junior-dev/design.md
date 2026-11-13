@@ -158,7 +158,8 @@ plugins/junior-dev/           what gets installed
   hooks/hooks.json, scripts/  only if hooks win the trigger comparison
   evals/                      activation cases for `claude plugin eval`
   README.md
-evaluation/junior-dev/        cases, graders, run scripts, iteration results
+evaluation/junior_dev/        cases, graders, run scripts, iteration results (a Python
+                              package next to skill_eval, hence the underscore)
 docs/junior-dev/              research, this design, the evidence report
 ```
 
