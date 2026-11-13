@@ -1,0 +1,373 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Login does 'insert throttle row if missing' then SELECT FOR UPDATE, but on a successful login the row is deleted. What happens to another request for the same email that is already waiting on that row lock when it is deleted?",
+     "about": "Exact counting under concurrency / Delete throttle row for email"
+    },
+    {
+     "id": "2",
+     "text": "On the 429 path the app does ROLLBACK. The throttle row was just inserted if missing. Does that insert get undone too, and is that intended?",
+     "about": "Locked (locked_until is later than now) / ROLLBACK"
+    },
+    {
+     "id": "3",
+     "text": "In a failed login, who writes the failure timestamp and which clock is used: database now() or the app's clock? The 10-minute window is evaluated where?",
+     "about": "Append failure time, drop failures older than 10 min"
+    },
+    {
+     "id": "4",
+     "text": "The sequence diagram has the 'Database error' branch only on protected requests and logout. What does login return if the database fails midway, for example after the bcrypt check but before COMMIT? Is any cookie set?",
+     "about": "Storage failure policy: Login / Database unavailable"
+    },
+    {
+     "id": "5",
+     "text": "Decision 3 says the cookie has no Max-Age, so it is a browser-session cookie. What does the browser do with it when it is closed, and how does that fit with the server expiring sessions at 30 minutes idle or 12 hours?",
+     "about": "Cookie: __Host-sid, no Max-Age"
+    },
+    {
+     "id": "6",
+     "text": "Decision 10 says the old session row is deleted on login. What if the incoming old cookie belongs to a different user, or is invalid or expired? Is anything checked before deleting it?",
+     "about": "Session rotation / Delete session row whose ID hash matches old cookie"
+    },
+    {
+     "id": "7",
+     "text": "What does the 429 login page contain and how is Retry-After computed? Also, what does a user who is already logged in see if they visit /login?",
+     "about": "429 login page with Retry-After"
+    },
+    {
+     "id": "8",
+     "text": "The protected-request query only checks the session row and returns user_id. Where does the app load the user's details for the page, and what if that user was deleted or disabled?",
+     "about": "UPDATE session ... RETURNING user_id / 200 page for that user"
+    },
+    {
+     "id": "9",
+     "text": "Decision 7 says the 5th wrong password returns 401 and the list is cleared at lock. If the 5th failure arrives, what does the user see to know they are now locked? And do unknown-email attempts create throttle rows that grow without limit?",
+     "about": "Failure counting is per normalized email"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Postgres under READ COMMITTED makes the waiting SELECT ... FOR UPDATE skip a row that the successful login deleted and committed, so it returns no row. The old text (insert only if missing, then lock once) would have carried on with no throttle row. Fixed: the insert-and-lock step now loops until it holds a row, so the waiter inserts a fresh row and checks it normally. The same loop covers a row removed by the sweep."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes, the insert is undone, and that is harmless. The insert can only add a row when none exists, and the 429 path needs an existing row with a future locked_until. So on that path the insert was a no-op, and ROLLBACK only ends the transaction and releases the row lock. COMMIT would give the same result. The diagram now says this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The database clock is used, never the app's. The app reads clock_timestamp() once, after it holds the throttle row lock, and uses that one value for the lock check, the failure time, the 10-minute window, locked_until and expires_at. Reading after the lock means a wait for the lock does not leave the time stale. Both instances therefore share one clock."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Any error from BEGIN to COMMIT rolls the whole transaction back. The app then sends the 503 page with no cookie and does not count the attempt. The 503 is the same whatever the password check returned, so it gives no signal about the password. A cookie is set only after COMMIT succeeds, so a failed COMMIT sends no cookie. The failure policy table and decision 12 now state this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Browsers normally delete a session cookie when the browser closes, but some restore it after restart (session restore in Chrome, Edge and Firefox). The server rules still apply to any restored cookie: an idle or expired session is rejected and the user goes to /login. So closing the browser usually ends the sign-in. This is a product result of having no Max-Age, which the brief implies. A remember-me option is out of scope. The notes now say this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Nothing is checked before the delete, and none is needed. The delete matches only the row whose hash equals the hash of the cookie value. Holding the cookie value is the only proof of ownership, so the delete can only hit the session that cookie pointed to, whoever owns it. That is what requirement 4 asks for. An invalid or expired cookie matches no row, deletes nothing, and login continues. The delete is in the same transaction, so a failure rolls it back."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The 429 page shows the login form, the message 'Too many failed sign-in attempts for this email. Try again in N minutes.', and a Retry-After header in seconds until locked_until, rounded up with a minimum of 1. A signed-in user who visits /login sees the login form. GET /login ignores the cookie and makes no database call, so it still works during an outage. The old session stays live until a successful sign-in rotates it."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The app does not load user details in a second query. The protected-request UPDATE joins users and returns the user's id and email in the same statement. If the user is deleted, ON DELETE CASCADE removes the session, the UPDATE returns no row, and the request goes to /login. The brief and the users table have no disabled state, so a disabled account is not handled. It is listed as an open item, since a disabled flag would need to be checked in that query too."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Changed. The 5th failing attempt now returns 429 with the lock message and Retry-After, instead of 401. Users otherwise learn of the lock only on the next attempt. Unknown and wrong-password emails both reach this result, so it still reveals nothing about existence. Unknown-email rows are not unbounded: the sweep removes a throttle row 10 minutes after its last failure once no lock is active, and a row is removed after its lock ends if no later failure exists. Email input is capped at 254 characters before any database call. Per-source rate limiting is not in scope and is listed as an open item."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "How is the email matched against the users table? Is users.email stored trimmed and lowercase, or does the lookup normalize it? Which columns does the lookup read, and where is the bcrypt password hash stored?",
+     "about": "Look up user by email (may find none)"
+    },
+    {
+     "id": "11",
+     "text": "What actually runs the sweep job and starts it every 10 minutes? If both app instances run it, do they run it at the same moment, and does one wait on or conflict with the other?",
+     "about": "Sweep job: A job runs every 10 minutes on either instance"
+    },
+    {
+     "id": "12",
+     "text": "What counts as a malformed cookie value, and who checks it? Does the check happen in the app before any database call?",
+     "about": "Cookie present / No cookie, or cookie value malformed"
+    },
+    {
+     "id": "13",
+     "text": "What happens if the wait for the row lock, bcrypt, or a database statement is slow or hangs? Are there timeouts, and does a timeout become the 503? Is the database connection held open for the whole bcrypt step?",
+     "about": "Exact counting under concurrency / bcrypt runs while that row lock is held"
+    },
+    {
+     "id": "14",
+     "text": "How does the app decide which routes are protected and run the session check? Is it one shared step in front of every page, and does it also apply to POST /logout and other non-GET requests?",
+     "about": "Protected request: any page except /login"
+    },
+    {
+     "id": "15",
+     "text": "What bcrypt cost is used for real hashes, and is the dummy hash generated with the same cost? Is the 5th-failure 429 and the 401 timing also meant to match each other, or only 401 for unknown vs wrong password?",
+     "about": "Unknown emails take the same path / dummy bcrypt hash"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The input is trimmed and lowercased (decision 7), then matched with WHERE email = $1 on users. The brief states that users.email is stored lowercase and unique, so the column is compared directly with no lower() and uses the unique index. The lookup reads only id and password_hash, and password_hash holds the bcrypt hash. This is checked against the brief only, not the live table. Added as decision 14 and in the diagram."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Each app instance runs its own 10-minute timer. Each run takes a transaction-scoped advisory lock with pg_try_advisory_xact_lock on one fixed key, and only the run that gets the lock sweeps. The other run exits at once, so nothing waits and no work is duplicated. Even an overlap would be safe, because the deletes are idempotent and only match dead rows. Added to decision 6."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "A valid cookie value is exactly 43 base64url characters (32 random bytes, unpadded). One shared parser checks this in the app before any database call. A value that fails is treated as no cookie: the guard redirects to /login with the cookie expired, logout redirects without a database call, and login deletes nothing. Added to the cookie handling notes."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. Starting values are: pool checkout wait 2 s, throttle row lock wait 2 s (lock_timeout), each statement 5 s, idle-in-transaction 10 s as a backstop. Any timeout is an error that maps to the existing 503 rules, with rollback and no counted attempt. The connection is held from BEGIN to COMMIT, including bcrypt, by design, because the row lock has to cover the check. bcrypt is CPU-bound and has no timeout. The values are not measured and are to be tuned. Added as decision 17 and in the failure table."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "It is one guard in front of the router that runs for every request. It is default deny, with a public list of GET /login and POST /login. It applies to all HTTP methods, so other POSTs also need a session. POST /logout is handled by its own handler, outside the guard, so it succeeds with no session. I do not know whether the app serves static assets, so the guard's public list may need a static path prefix. Listed as an open item."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "I do not know the bcrypt cost factor of the existing hashes; the brief does not give it. Decided: real hashes and the dummy hash must use one configured cost, and that value must equal the existing hashes' cost, because a mismatch would let timing reveal whether an email exists. On timing, the 5th-failure 429 also runs bcrypt, so it matches the 401 for unknown and wrong-password emails. The faster 429 during a lock skips bcrypt, but it only shows that an email is locked, which anyone can cause, so it is not meant to match the 401. The cost value is an open item to confirm before release."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "What is 'the brief'? Who wrote it, and which of its requirements does this design have to satisfy (for example the 30-minute idle rule, the 12-hour limit and the 5-failures lockout)? I only have this document.",
+     "about": "Decisions: 'The brief states that users.email is stored lowercase and unique' / 'requirement 4'"
+    },
+    {
+     "id": "17",
+     "text": "What is the App built with (language, web framework, bcrypt library, database driver)? How do requests reach instance A or B, for example through a load balancer, and where does HTTPS end? The Secure cookie and the pool settings depend on this.",
+     "about": "Sequence diagram: Participants Browser, App (instance A or B), Postgres"
+    },
+    {
+     "id": "18",
+     "text": "How big is the connection pool, and what do protected requests do when the pool is used up by logins running bcrypt? Is that the 2-second wait followed by a 503?",
+     "about": "Decision 17: Waiting for a pooled connection: 2 seconds"
+    },
+    {
+     "id": "19",
+     "text": "Where does the user land after a failed login (401 or 429)? Is the login form re-rendered at once in the POST response, and does it keep the email the user typed?",
+     "about": "Login: Delete session row whose ID hash matches old cookie / Redirects after POST use 303"
+    },
+    {
+     "id": "20",
+     "text": "When the sweep deletes a session row that a browser still holds a cookie for, what does that browser see on its next request? Is it the same redirect to /login with the cookie expired?",
+     "about": "Sweep job: Each app instance runs its own timer"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "The brief is the requirements list given to the author for this change. Who wrote it is not recorded in the material this design was written from, so I cannot name the author. The eight requirements are now reproduced in the Requirements section as R1 to R8, and each decision that depends on one names it. The 30-minute idle rule is R6, the 12-hour limit is R6, and the 5-failure lockout is R3. Requirement 4 is R4. The document no longer needs the brief to be read."
+    },
+    {
+     "id": "17",
+     "tag": "unknown",
+     "text": "The language, web framework, bcrypt library and database driver are not in the material this design was written from, so they are not stated. The design does not depend on them, except for the pool and timeout settings in decision 17. Where TLS ends (load balancer or app) is also unknown. The design reads no forwarded headers and always sets Secure, so it does not depend on that point. These are listed in the open items."
+    },
+    {
+     "id": "18",
+     "tag": "unknown",
+     "text": "The pool size is not known. Yes: per decision 17 and the failure table, a protected request that cannot get a pooled connection within 2 seconds gets a 503, with the cookie kept. A login holds its connection through the bcrypt step and any row-lock wait, so the pool must cover the logins and protected requests that can run at once. Pool sizing is an open item. Logins can also use up the pool during a guessing burst on one email, which would delay protected requests. This is listed as an open item with options not yet decided."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "After a failed login (401 or 429), the POST response re-renders the login form directly, at once, with that status code. It does not redirect (decision 11). The form keeps the email the user typed and never the password. The 401 and 429 notes say this. A 503 is also rendered directly."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The sweep only removes rows that the protected-request check already rejects (decision 6: expires_at past, or last_seen_at more than 30 minutes old). So the browser's next request gets the same response as for any unknown session: a 303 to /login with the cookie expired. The sweep can never end a live session. The sweep and browser notes now say this."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "21",
+     "text": "On a successful login, the transaction deletes the throttle row and later commits. Does the user's old throttle failure count, kept only on the row, survive if the COMMIT fails and the 503 is sent?",
+     "about": "Decision 8 / Locked path / Password matches: Insert session row"
+    },
+    {
+     "id": "22",
+     "text": "The failure list holds timestamps, and 5 within 10 minutes locks. When the 5th failure arrives, is the check 'count after dropping old ones equals 5' and does that count include the current attempt?",
+     "about": "Decision 7 / Append failure time, drop failures older than 10 min"
+    },
+    {
+     "id": "23",
+     "text": "Where does the session ID hash come from in this query, and who computes SHA-256 of the cookie? Is that the app, and is the comparison done on the id_hash primary key?",
+     "about": "Protected request: UPDATE sessions SET last_seen_at = now() FROM users"
+    },
+    {
+     "id": "24",
+     "text": "Where is the random session ID generated, in the app or the database, and what happens if two logins somehow produce the same ID and the insert hits the primary key?",
+     "about": "Decision 2 / Session ID"
+    },
+    {
+     "id": "25",
+     "text": "After a successful login, the 303 goes to /dashboard. What is /dashboard and what other protected pages exist? Does the document say what they contain or whether they change anything?",
+     "about": "Decision 13 / GET /login always shows the form"
+    },
+    {
+     "id": "26",
+     "text": "Is the repeat loop limited to a number of tries? What happens if the row keeps disappearing, and is the 2-second lock_timeout counted per wait or for the whole loop?",
+     "about": "Decision 8 / Concurrency loop: INSERT ... ON CONFLICT DO NOTHING then SELECT FOR UPDATE"
+    },
+    {
+     "id": "27",
+     "text": "The guard and logout both parse the cookie. Does logout need any CSRF protection, and can a cross-site page log a user out? Does the document say anything about that?",
+     "about": "Decision 16 / POST /logout is not behind the guard"
+    }
+   ],
+   "answers": [
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Yes. The throttle-row delete on success runs inside the same login transaction (decision 10). If COMMIT fails, the transaction rolls back, the delete is undone, and the row keeps its recent failures. The attempt is not counted and the 503 is sent with no cookie (decision 12). Decisions 8 and 10 now state this."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Yes, the count includes the current attempt. The order is: append this attempt's timestamp, drop entries older than 10 minutes, then count what remains. If the count is 5, this attempt is the 5th failure in the window and locks the email. Decision 7 now lists these steps in order, and the diagram says the count includes this attempt."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The app computes the SHA-256 hex of the cookie value after the shape check (cookie format note) and passes that hash as a parameter. The UPDATE, the login delete and the logout delete compare it to the id_hash primary key. The raw cookie value never goes to the database. Decision 2, decision 10, the diagram and the cookie-handling note now say this."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The app generates the ID: 32 bytes from a cryptographic random number generator, base64url without padding. The database does not generate IDs. A duplicate is effectively impossible with 256 random bits. If an insert hit the primary key anyway, it is an error inside the login transaction, so decision 12 applies: rollback, 503, no cookie, and the user signs in again. The design does not retry the insert. Decision 2 now says this."
+    },
+    {
+     "id": "25",
+     "tag": "unknown",
+     "text": "/dashboard is the page a successful login redirects to, as the brief names it. The material does not describe what /dashboard or the other protected pages contain, or whether any of them change data. This design does not change them; it only decides whether a request may reach them. The document now says this in the protected-pages note and lists the contents as an open item."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "It was not limited before. It is now capped at 3 passes. After a third pass with no held row, the login takes the 503 path with no counted attempt. The 2-second lock_timeout applies to each wait: each INSERT and each SELECT FOR UPDATE in a pass. Worst case is 3 passes x 2 waits x 2 s = 12 s. A row keeps disappearing only if a successful login for that email commits during each pass, so this is rare. The cap and timeout values are starting points to tune. Decisions 8, 12 and 17 and the diagram are updated."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "Logout has no CSRF token, and the document did not say anything about this before. Browsers send the SameSite=Lax cookie only with same-site requests or top-level GET navigations, so a cross-site form POST to /logout arrives with no cookie. It takes the no-cookie path: no database call, redirect to /login, cookie expired. A cross-site page therefore cannot log a user out. A sibling subdomain counts as same-site and is not covered. Login CSRF stays an open item. A note in the notes section now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup facts. Two identical app instances sit behind a load balancer with no sticky sessions. They share one Postgres database. The database holds the existing `users` table plus two new tables: `sessions` (keyed by the SHA-256 hex of the session ID) and `login_throttle` (keyed by normalized email, with a list of recent failure times and a `locked_until`). All session state lives in Postgres. The cookie `__Host-sid` holds only an opaque 43-character ID.\n\nI'll follow one user through: a failed login, then a successful login, then a protected page, then logout.\n\n2. Browser asks for the login page. The browser sends GET /login. The app shows the form and does not look at any cookie or call the database. This works even if the database is down. A signed-in user also sees the form, and their old session stays live.\n\n3. User submits the form. The browser sends POST /login with email, password and the old cookie, if it has one. The route guard runs first on every request. It is default deny, and POST /login is on the public list, so the request passes. The app trims and lowercases the email. That normalized value is the key for the throttle and for the user lookup.\n\n4. Unusable email shortcut. If the email is empty, missing, or over 254 characters, the app runs a dummy bcrypt comparison. It makes no database call and creates no throttle row. It answers 401 with the login page and \"Invalid email or password\".\n\n5. Open the transaction and take the row lock. For a usable email, the app starts a transaction (BEGIN) on a pooled connection. It waits at most 2 seconds for a connection. Then it loops up to 3 passes. Each pass does an INSERT of the throttle row ON CONFLICT DO NOTHING, followed by SELECT ... FOR UPDATE on that row. The loop ends when a row is held. A SELECT can return no row if a concurrent success or the sweep deleted it. Each wait has a 2-second `lock_timeout`. Other attempts for the same email queue behind this lock, so the failure count is exact. If no row is held after 3 passes, the login takes the failure path in step 14.\n\n6. Read the clock once. With the lock held, the app reads the database's `clock_timestamp()` once. It uses that single value for every time check and timestamp in this login. The app's own clock is never used.\n\n7. Locked check. If `locked_until` is later than that time, the app rolls back. This only releases the lock. It answers 429, shows the login form with the message \"Too many failed sign-in attempts for this email. Try again in N minutes.\", and sets `Retry-After` to the seconds until `locked_until`, rounded up, minimum 1. It does not check the password or run bcrypt.\n\n8. Not locked: user lookup and password check. The app runs `SELECT id, password_hash FROM users WHERE email = $1`. It compares bcrypt against the found hash. If no user is found, it compares against a dummy hash made at startup with the same cost factor. This keeps timing the same for unknown and wrong-password cases. The bcrypt step runs while the transaction and row lock are open.\n\n9. Wrong password or unknown email. The app clears `locked_until` if it has passed. It appends the current time to `failed_at` and drops timestamps older than 10 minutes. The count includes this attempt.\n   - Fewer than 5 remain: COMMIT, then 401 with the login page, \"Invalid email or password\", and the typed email kept (never the password).\n   - Exactly 5: set `locked_until` to the clock time plus 15 minutes and clear the list. COMMIT, then 429 with `Retry-After`. This 5th attempt also ran bcrypt, so its timing matches a 401.\n\n10. Correct password (success). Inside the same transaction the app does the following.\n   - It generates a new ID: 32 random bytes, base64url, 43 characters. It computes the SHA-256 hex of that ID.\n   - It deletes the throttle row for the email.\n   - It inserts a session row with the new hash, `user_id`, `last_seen_at` and `expires_at` = clock time plus 12 hours.\n   - It deletes the session row whose hash matches the hash of the incoming cookie, if the cookie has a valid shape. Zero rows deleted is fine.\n   - It COMMITs.\n   Only after the commit succeeds does the app reply with 303 to /dashboard and Set-Cookie `__Host-sid` = the new ID. The cookie flags are HttpOnly, Secure, SameSite=Lax and Path=/. It has no Domain, Max-Age or Expires.\n\n11. Cookie shape check. A shared parser accepts only values that are exactly 43 base64url characters. Anything else counts as \"no cookie\" everywhere, so a malformed cookie never reaches the database. The raw ID never goes to the database and is never logged.\n\n12. Protected request, for example GET /dashboard. The route guard runs on every request and every HTTP method. If there is no cookie or the cookie is malformed, it answers 303 to /login and expires the cookie. Otherwise it hashes the cookie value and runs one UPDATE. The UPDATE sets `last_seen_at = now()` on the `sessions` row. It joins `users` and requires the hash to match, `last_seen_at` to be later than now minus 30 minutes, and `expires_at` to be later than now. It returns the user id and email.\n   - A row comes back: the page is served for that user. The 30-minute idle clock restarts, and `expires_at` is never extended, so 12 hours is the hard cap.\n   - No row comes back (unknown, idle-expired, past 12 hours, or the user was deleted): 303 to /login and the cookie is expired.\n   - Database error or timeout, or no pooled connection within 2 seconds: a 503 page with the cookie kept.\n   Which instance handles the request does not matter, because all state is in Postgres.\n\n13. Logout. The browser sends POST /logout. It is not behind the guard, and its handler checks the cookie itself.\n   - No cookie or a malformed cookie: no database call, 303 to /login and the cookie is expired.\n   - Valid-shaped cookie: the app deletes the session row by hash. If the delete ran (0 or 1 row), the reply is 303 to /login with the cookie expired. If the delete errored or timed out, the reply is a 503 \"could not sign out\" and the cookie is kept.\n   There is no CSRF token. A cross-site form POST arrives without the SameSite=Lax cookie, so it takes the no-cookie path and cannot end a session.\n\n14. Failures inside login. Any error from BEGIN through COMMIT triggers a rollback. This covers lock timeouts, statement timeouts, a duplicate session ID, the 3-pass limit with no row held, and a failed COMMIT. The app sends the 503 page, sets no cookie, and the attempt is not counted. A rollback also leaves the old session row and the throttle row as they were. There is no retry of the insert.\n\n15. Background sweep. Each instance runs a timer every 10 minutes. It opens a transaction and tries `pg_try_advisory_xact_lock` with a fixed key. If it gets the lock, it deletes dead session rows and dead throttle rows (no active lock and no failure newer than 10 minutes). If it does not get the lock, it ends at once. A sweep failure is logged and retried on the next run. Correctness never depends on the sweep, because the request query already rejects expired rows.\n\n16. Timeouts. Statement timeout is 5 seconds. The idle-in-transaction timeout is 10 seconds for the app's database role. It must stay above the bcrypt time.",
+   "gaps": [
+    "Application language, web framework, bcrypt library, database driver, and where TLS ends are not stated.",
+    "Connection pool size is not set. It matters because logins hold a connection through bcrypt and lock waits.",
+    "The bcrypt cost factor of the existing password hashes is unknown, so the real work cost of the password check can't be stated.",
+    "The types and rules of `users.id` and `users.email` (lowercase, max 254 characters) are unconfirmed.",
+    "What /dashboard and the other protected pages contain, and whether they change data, is not described.",
+    "Whether static assets are served, and whether they need to be on the public list, is unknown.",
+    "Static assets and other public routes: the guard's public list has only GET and POST /login, so how any other public content works is unknown.",
+    "How the login form is rendered and how the email is trimmed or validated beyond the length check is not described. The templating is not described either.",
+    "No maximum password length is set, so bcrypt's 72-byte limit and the cost of very long inputs are unhandled.",
+    "Whether the 5th failing attempt should return 429 or 401 is an unconfirmed owner decision. The design could change.",
+    "Login CSRF protection is undecided, and the design has no token on the login form.",
+    "There is no source-address rate limiting. How distinct-email floods or pool exhaustion during a guessing burst are handled is undecided.",
+    "Disabled accounts are not handled, because there is no disabled state.",
+    "How the app expires or sets cookies concretely (the exact Set-Cookie text for clearing) is not given.",
+    "How the load balancer routes or health-checks, and how the sweep key value is chosen, are not described.",
+    "The exact text of the 503 and 401 pages beyond the quoted phrases is not given.",
+    "Password change and sign out everywhere are out of scope and not described.",
+    "The Retry-After rounding and the 'N minutes' calculation are only partly specified, because the document does not say how N is derived."
+   ],
+   "verdict": "wrong",
+   "notes": "Login page 429 message: the explanation could not say how N in 'Try again in N minutes' is derived. The document gave only Retry-After. Fixed in the Login page responses note: N is the Retry-After seconds divided by 60, rounded up, minimum 1.; Cookie clearing: the explanation could not give the exact Set-Cookie text for expiring __Host-sid. The document said only 'expire cookie'. Fixed in decision 3 by stating the clearing header.; Open-item gaps the explanation listed as unknown: application language, web framework, bcrypt library, database driver, where TLS ends; pool size; bcrypt cost factor; users.id type and users.email rules; contents and data-changing behaviour of /dashboard and other protected pages; static asset handling; login form rendering and email validation beyond trim, lowercase and length; maximum password length; 5th-failure 429 versus 401 (owner decision); login CSRF token; source-address rate limiting and distinct-email floods; disabled accounts; load balancer and health checks; sweep advisory key value; exact 401 and 503 page text; password change and sign out everywhere. The document already lists these as open items. They are not designed here, and no answers were invented, so they remain open items in the artifact.; Mechanism steps 1 to 16 were explained correctly (login flow, throttle counting, rotation, protected-request UPDATE, logout, failure handling, sweep, timeouts). No step was wrong, so no mechanism edits were needed."
+  },
+  {
+   "text": "1. Setup facts. Two identical app instances sit behind a load balancer with no sticky sessions. They share one Postgres database. Session state lives in two new tables, `sessions` and `login_throttle`. The cookie `__Host-sid` holds only an opaque 43-character ID.\n\n2. Browser asks for a protected page, for example GET /dashboard, with no session. A guard runs in front of the router on every request. It is default deny, and only GET /login and POST /login are public. The guard checks the cookie shape (exactly 43 base64url characters). With no cookie, or a malformed one, it makes no database call and answers 303 to /login with a Set-Cookie that expires `__Host-sid`.\n\n3. Browser loads GET /login. The app always renders the form. It ignores any cookie and makes no database call. State: none.\n\n4. User submits POST /login with email and password, plus an old cookie if one exists. The app trims and lowercases the email. If the email is empty, missing or longer than 254 characters, the app runs a dummy bcrypt compare and returns 401 \"Invalid email or password\". It makes no database call and creates no throttle row.\n\n5. Otherwise the app opens a transaction (BEGIN) that holds one pooled connection until the end. It then makes up to 3 passes. Each pass inserts a `login_throttle` row for the email (ON CONFLICT DO NOTHING), then runs SELECT ... FOR UPDATE on it. Each wait is capped at 2 s by `lock_timeout`. If no row is held after 3 passes, the transaction rolls back and the user gets a 503. This serializes concurrent guesses for the same email, and `login_throttle` is the state that holds the failure timestamps and the lock.\n\n6. With the row lock held, the app reads `clock_timestamp()` once. That one database-clock value is used for every time check and timestamp in this login.\n\n7. Lock check. If `locked_until` is later than that time, the app rolls back, so the insert was a no-op. It returns 429 with the login form, the message \"Too many failed sign-in attempts for this email. Try again in N minutes.\", and a `Retry-After` header. The password is not checked and bcrypt does not run.\n\n8. Not locked. The app runs `SELECT id, password_hash FROM users WHERE email = $1`. If a user is found, the app compares the password with bcrypt. If none is found, it compares against a dummy hash made at startup. The dummy and real hashes share one cost factor, so timing matches.\n\n9. Success path. All of these happen inside the transaction. First, delete the throttle row. Second, insert a new `sessions` row. Its `id_hash` is the SHA-256 hex of a brand-new ID (32 random bytes generated by the app). It has `last_seen_at` and `expires_at` set to the clock time + 12 hours. Third, delete the session row whose hash matches the old cookie, if the cookie was well formed. Zero rows deleted is fine. Then COMMIT. Only after the commit succeeds does the app answer 303 to /dashboard with `Set-Cookie __Host-sid=<new ID>; HttpOnly; Secure; SameSite=Lax; Path=/`, with no Domain and no Max-Age.\n\n10. Failure path (unknown email or wrong password). The app appends the failure time to `failed_at` and drops timestamps older than 10 minutes. A stale `locked_until` is also cleared. If 5 failures now remain, the app sets `locked_until` = clock time + 15 minutes, clears the list, commits, and returns 429. So the 5th failure gets a 429. If fewer than 5 remain, it commits and returns 401 with the form, the email kept and no password.\n\n11. Protected request with a cookie. The app hashes the cookie value. It runs one UPDATE on `sessions` joined to `users`. The UPDATE sets `last_seen_at = now()` where `id_hash` matches, `last_seen_at` is within 30 minutes and `expires_at` is in the future. It returns the user id and email. If a row comes back, the app serves the page for that user with 200. If no row comes back (unknown, idle-expired, past 12 hours, or user deleted), the app answers 303 to /login and expires the cookie. On a database error or timeout, the app answers 503 and keeps the cookie. Each accepted request restarts the idle clock, and `expires_at` is never extended.\n\n12. Logout is POST /logout and is not behind the guard. With a well-formed cookie, the app deletes the session row by hash and then answers 303 to /login with the cookie expired. A cookie that matches no row is still fine. If the delete errors or times out, the app returns a 503 \"could not sign out\" and keeps the cookie. With no cookie or a malformed one, it makes no database call and redirects to /login with the cookie expired. A cross-site form POST arrives without the cookie because of SameSite=Lax, so it takes this path and cannot end a session.\n\n13. Failures inside login. Any error from BEGIN to COMMIT, including timeouts, a duplicate session ID, and a failed COMMIT, rolls everything back. The user sees a 503 page and no cookie is set. The attempt is not counted. Timeouts are 2 s for a pooled connection, 2 s for lock waits, 5 s per statement, and 10 s for idle-in-transaction.\n\n14. Background sweep. Each instance runs a timer every 10 minutes. Each run tries `pg_try_advisory_xact_lock`. The run that gets the lock deletes dead session rows and dead throttle rows. The other run exits at once. A failed sweep is logged and retried on the next run. Correctness does not depend on the sweep, because expired rows are never accepted.",
+   "gaps": [
+    "Application language, web framework, bcrypt library, database driver and where TLS ends are not stated, so I cannot say how the guard, pool or timeouts are actually implemented.",
+    "Pool size is not set, so I cannot say how many logins can run at once or when the pool runs out.",
+    "What /dashboard and the other protected pages contain, and whether they change data, is not described.",
+    "Whether static assets are served and whether they need the public list is unknown.",
+    "The existing bcrypt cost factor, the type of users.id, and whether users.email is really lowercase and at most 254 characters are unconfirmed.",
+    "The document does not say what the login page shows or does for a 503 beyond the wording 'sign-in is temporarily unavailable'.",
+    "The owner has not confirmed that the 5th failure should return 429 instead of 401 (R2 versus R3).",
+    "No login CSRF protection is defined.",
+    "The document does not say how the app handles an old session cookie that is malformed when logging in, other than that nothing is deleted. Nor does it say how the 'clear a stale locked_until' step is ordered relative to the lock check beyond the diagram.",
+    "There is no maximum password length, and no per-IP rate limiting.",
+    "How disabled accounts are handled is not defined.",
+    "The document does not say how the load balancer routes requests, or how the dummy hash is stored between requests beyond 'generated at startup'.",
+    "The exact HTML of the login form and the 503 pages is not given."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 10 (failure path) and the malformed-cookie rule: the junior says the document does not say how a malformed old cookie is handled at login. It does say this in Cookie format, but decision 10 does not point to it. Decision 10 now states the rule directly.; Lock check order: the junior could not say how clearing a stale locked_until is ordered relative to the lock check. Decision 7 now states that the lock check uses the decision 8 clock, a passed locked_until is not a lock, and it is cleared on the next checked failure.; 503 login page: the junior could not tell what the login page shows for a 503 beyond the wording. Decision 11 now says the 503 is a standalone page with that wording, with no form and no echoed email. Its exact HTML is listed as an open item.; Dummy hash storage: the junior could not tell how the dummy hash persists between requests. Decision 9 now says it is computed once at process start, kept in memory, and not stored in the database.; Load balancer: the junior could not tell how the load balancer routes requests. The Context section now states that any instance can serve any request and no sticky sessions are needed.; Application stack, TLS termination, bcrypt library, database driver: not stated. Still an open item. The design is now marked stack-neutral, so the junior is not left to guess how the guard, pool and timeouts are built.; Pool size: not set. Still an open item (decision 17 and open items). Not decided in this revision.; /dashboard and other protected pages: contents and whether they change data are not described. Still an open item. This design only gates access to them.; Static assets: whether they are served is unconfirmed. Still an open item (decision 16).; bcrypt cost factor, users.id type, and users.email lowercase and 254-character rules: unconfirmed against the live table. Still open items (decisions 9, 14, 15, 7).; 5th failure returns 429 instead of 401 (R2 versus R3): owner has not confirmed. Still an open item (decision 7).; Login CSRF protection: not defined. Still an open item.; Exact HTML of the login form and of the 401, 429 and 503 pages: not specified. Listed as an open item; required content is in the notes and the storage policy table.; Disabled accounts and maximum password length: not defined. Still open items.; Per-IP rate limiting: not in scope. Still an open item."
+  },
+  {
+   "text": "1. Trigger and first check. A browser submits POST /login with an email, a password, and possibly an old __Host-sid cookie. Any instance can take it, because the two instances run behind a load balancer with no affinity. The app trims and lowercases the email. This value is the key for everything that follows. If it is empty, missing, or longer than 254 characters, the app runs a dummy bcrypt compare. It makes no database call. It returns 401 with the login page and \"Invalid email or password\". The state in this step lives only in the request.\n\n2. Open the transaction. For a usable email, the app opens a Postgres transaction with BEGIN. The transaction holds one pooled connection until COMMIT or ROLLBACK, bcrypt time included. Postgres is the only shared state.\n\n3. Take the throttle row lock. The app makes up to 3 passes. Each pass runs INSERT ... ON CONFLICT DO NOTHING on login_throttle for that email, then SELECT ... FOR UPDATE on the row. If the SELECT returns nothing, someone else deleted the row, so the app tries again. Concurrent attempts for one email queue on this lock. Each wait has a 2-second lock_timeout. If no row is held after 3 passes, the failure path applies (step 10).\n\n4. Read the clock once. With the lock held, the app reads clock_timestamp() from the database once. It uses that value for every time check and timestamp in this login.\n\n5. Lock check. If login_throttle.locked_until is later than that time, the app rolls back. The insert was a no-op, so the rollback only releases the lock. It returns 429 with the login page, the \"Too many failed sign-in attempts...\" message, and a Retry-After header. It does not run bcrypt or check the password.\n\n6. User lookup and password check. If there is no lock, the app runs SELECT id, password_hash FROM users WHERE email = $1. If it finds no user, it compares the password against a dummy bcrypt hash. That hash is computed at process start and kept in memory. This keeps timing and response the same for unknown emails and wrong passwords.\n\n7. Success path. If the password matches, all of these happen in the same transaction:\n   - Delete the throttle row.\n   - Generate a new session ID in the app: 32 random bytes, base64url, 43 characters.\n   - Insert a sessions row. Its id_hash is the SHA-256 hex of the ID. The row has user_id, last_seen_at, and expires_at = clock time + 12 hours.\n   - Delete the session row whose hash matches the incoming cookie. This happens only if the cookie passes the 43-character format check. Deleting zero rows is fine.\n   - COMMIT.\n   After COMMIT, the app replies 303 to /dashboard with Set-Cookie __Host-sid=<new ID>; HttpOnly; Secure; SameSite=Lax; Path=/. The cookie has no Max-Age or Expires.\n\n8. Failure path (wrong password or unknown email). The app does these in order:\n   - Clear locked_until if it has passed.\n   - Append the failure time to failed_at.\n   - Drop timestamps older than 10 minutes.\n   - Count what remains, including this attempt.\n   If the count is 5, it sets locked_until = clock time + 15 minutes, clears the list, commits, and returns 429. If the count is below 5, it commits and returns 401 with the form. The form keeps the typed email and never the password.\n\n9. Protected request. The browser sends a request such as GET /dashboard with its cookie. A guard runs in front of the router and is default deny. The only public routes are GET /login and POST /login. POST /logout is not behind the guard, because its handler checks the cookie itself. The guard applies to all HTTP methods.\n   - If there is no cookie, or the cookie fails the shape check, the app answers 303 to /login with the cookie expired. It makes no database call.\n   - Otherwise the app hashes the cookie value with SHA-256. It runs one UPDATE sessions SET last_seen_at = now() FROM users. The WHERE clause requires:\n     - a matching id_hash;\n     - last_seen_at later than now minus 30 minutes;\n     - expires_at later than now.\n     The UPDATE returns the user id and email.\n   - If a row comes back, the app serves the page for that user with 200. Every accepted request restarts the 30-minute idle clock. expires_at is never extended, so a session ends within 12 hours of login.\n   - If no row comes back, the session is unknown, expired, or its user was deleted. The app answers 303 to /login and expires the cookie.\n\n10. Failure handling.\n   - Login. Any error from BEGIN to COMMIT rolls back and returns the 503 page. The 503 page is standalone, with no form and no email. Causes include a database outage, timeouts, a duplicate session ID, a COMMIT failure, and the pass limit. No cookie is set and the attempt is not counted.\n   - Protected request. A database error or timeout returns 503 and the cookie is kept. A request that cannot get a pooled connection within 2 seconds gets the same 503.\n   - Timeouts. Pooled connection wait is 2 seconds. lock_timeout is 2 seconds per wait. statement_timeout is 5 seconds. idle_in_transaction_session_timeout is 10 seconds.\n\n11. Logout. The browser sends POST /logout.\n   - With a well-formed cookie, the app deletes the session row by hash. It replies 303 to /login and expires the cookie. Deleting zero rows still counts as success.\n   - If the delete errors or times out, the app returns 503 \"could not sign out\" and keeps the cookie.\n   - With no cookie or a malformed cookie, the app makes no database call. It redirects to /login and expires the cookie.\n\n12. Background sweep. Each instance runs a timer every 10 minutes. Each run opens a transaction and calls pg_try_advisory_xact_lock with one fixed key. A run that does not get the lock ends at once. A run that gets it deletes dead session rows and dead throttle rows. If the sweep fails, the error is logged and the next run retries. Correctness does not depend on the sweep, because expired rows are never accepted anyway.\n\n13. GET /login. This always shows the form. It ignores any cookie and makes no database call.",
+   "gaps": [
+    "The application language, framework, bcrypt library, database driver and where TLS ends are not stated, so I cannot say what code runs the guard or the pool.",
+    "The exact HTML of the login form and of the 401, 429 and 503 pages is not given. This includes where the CSRF token on the login form would go.",
+    "The document does not say what /dashboard or the other protected pages contain, or whether they change data.",
+    "The bcrypt cost factor of the existing password hashes is not given.",
+    "The connection pool size is not set.",
+    "The document does not say how static assets are handled. It gives the public list only GET and POST /login.",
+    "The document does not confirm the type of users.id, or that users.email is lowercase and at most 254 characters in the live table.",
+    "The document does not say how an over-long password is handled. It sets no maximum and notes bcrypt reads only the first 72 bytes.",
+    "It is undecided whether the 5th failed attempt returns 429, as decision 7 reads R3, or 401, as R2 reads. The owner must confirm.",
+    "It is unclear what the app does during bcrypt if the 10-second idle_in_transaction timeout is exceeded. The document only says the value must stay above the bcrypt time.",
+    "The document does not describe the login CSRF defence, because none is decided.",
+    "There is no source-address rate limiting, and no handling of a flood of distinct emails.",
+    "Disabled accounts, 'sign out everywhere' and password change are not covered.",
+    "The document does not explain how the Retry-After header and the N minutes in the 429 page are computed beyond rounding up with a minimum of 1. It also does not say what the form shows on the 503 page.",
+    "The document does not say which instance, or what monitoring, sees the logged sweep errors."
+   ],
+   "verdict": "wrong",
+   "notes": "Decision 17 says the idle_in_transaction_session_timeout must stay above the bcrypt time, but it does not say what happens if bcrypt runs longer. The revised document states that Postgres ends the transaction, the next statement fails, and the login takes the decision 12 path (rollback, 503, no cookie, attempt not counted). It also asks for bcrypt to be measured on target hardware before release.; The 503 page is described only by reference (decision 11 and the storage policy table). The revised Login page responses note states its content: the wording from the storage policy table, no login form, no echoed email, no cookie change. It also states that the protected-page 503 shows the same wording with no page content.; Decision 6 says sweep errors are logged, but not where or who watches them. The revised decision says the instance that ran the sweep writes the error to its normal application log, and that no alerting is specified (now an open item).; Not resolved by this revision, because the material does not decide them and they are already listed as open items: the application stack and where TLS ends, the exact HTML of the login form and error pages, the connection pool size, the existing bcrypt cost factor, the contents of /dashboard and the other protected pages, the users.id type, the users.email rules, static asset handling, a maximum password length, login CSRF, source-address rate limiting, disabled accounts, sign out everywhere, and the owner's reading of the 5th failure as 429."
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachbacks"
+}

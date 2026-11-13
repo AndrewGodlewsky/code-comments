@@ -116,3 +116,55 @@ What this means for the results that follow:
 
 Each round used about 12.3 million subagent tokens (including about 35,000 tokens of fixed
 input per agent call) and took about one minute per mode.
+
+## Pilot (plan Task 8)
+
+The pilot ran 4 development cases (auth-01, ms-01, mig-02, feat-01) × four arms (NoReview,
+SelfReview, Critic, Junior v0) × two authors (Haiku 5.5, Sonnet 5.5), 1 run each, in
+natural mode. The first Junior runs were invalid: the harness dropped every author answer
+(see `iterations/pilot-invalid-answers-dropped/`). The Junior arm was rerun after the fix,
+and those reruns are what the tables below show.
+
+| Arm | Haiku comprehension | Haiku words | Sonnet comprehension | Sonnet words |
+| --- | ---: | ---: | ---: | ---: |
+| NoReview | 0.863 | 1,789 | 0.927 | 1,694 |
+| SelfReview | 0.951 | 2,551 | 0.977 | 2,070 |
+| Critic | 0.933 | 4,585 | 0.917 | 3,363 |
+| Junior v0 | 0.947 | 5,853 | 0.948 | 5,133 |
+
+The blind pairwise judge (Sonnet) saw each pair in both orders. "Preference" runs from -1
+(always loses) to +1 (always wins).
+
+| Pair | Haiku preference | Sonnet preference | Both orders agree |
+| --- | ---: | ---: | --- |
+| Junior v0 vs NoReview | -1.00 | -1.00 | 8 of 8 |
+| Junior v0 vs SelfReview | -1.00 | -1.00 | 8 of 8 |
+| Junior v0 vs Critic | -0.25 | -0.50 | 3 of 8 |
+| SelfReview vs NoReview | +0.25 | 0.00 | 3 of 8 |
+
+These are 4 cases with 1 run each, so they steer the next step and are not results.
+
+- **Junior v0 makes plans less clear.**
+  - It lost every blind judgment against both baselines. Its plans were 2.3 to 3.5 times
+    longer, and its comprehension was no better than SelfReview's.
+  - The judges' reasons are consistent: the core flow is "buried under" cross-referenced
+    decisions, edge-case machinery, "not defined" caveats and long open-question lists.
+- **The loop spirals into detail.**
+  - The junior asks about edge cases, and the teach-back lists every unstated detail
+    (TLS, cookie formats, `Retry-After`) as a gap.
+  - The author counts each gap as a misreading and adds text. 7 of the 8 runs ended on 3
+    wrong teach-backs, and the other one at the round cap.
+  - The plugin's own SKILL.md and junior prompt drive this. The climb targets it first
+    (Task 10).
+- **There is little room on the quiz.** First drafts already score 0.86 to 0.93, and
+  SelfReview 0.95 to 0.98, so no arm can beat SelfReview by 10 comprehension points. Clarity
+  as the user means it ("simple, cleanly laid out, step by step") has to come from the blind
+  judge, with comprehension as a guardrail.
+- **The cost is the Sonnet junior's.** Estimated API-equivalent cost of the product roles
+  per Haiku-authored run: NoReview $0.0015, SelfReview $0.009, Junior v0 $0.29, which is about
+  ten times Sonnet's NoReview ($0.029). The estimate counts visible tokens only, not thinking
+  tokens.
+
+Usage: the pilot (32 runs), the Junior rerun (8 runs) and the judging (112 judgments) used
+about 31 million subagent tokens. That is roughly $15 at API list prices, not counting
+thinking tokens. Most of it is the fixed ~35,000-token input of each workflow agent.
