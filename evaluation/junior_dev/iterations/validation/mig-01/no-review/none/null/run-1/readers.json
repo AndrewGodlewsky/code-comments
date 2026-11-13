@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "MySQL first: one transaction changes the user and upserts users_pg_pending, then commits, then Postgres is copied. A Postgres failure still returns success.",
+  "q2": "Only if the incoming version is higher than the stored row's version, and the id is not in that database's users_tombstones.",
+  "q3": "Step 3 must be confirmed on every instance, plus at least 1 minute. Instances may disagree for up to 30 s after a flag change.",
+  "q4": "It reads in batches of at most 2,000 rows, only from the MySQL replica, and waits while replica lag exceeds 5 s.",
+  "q5": "Reads: a clean pass (0 mismatches), then 1%→10%→50%→100%, each held 1 h. Source of truth: 3 days at 100% reads with a clean nightly pass.",
+  "q6": "A pending row (users_pg_pending in MySQL), committed with the change. The MySQL sweeper repairs Postgres within about 15 s, or once it is back.",
+  "q7": "Per-id lock before copy or delete: pg_advisory_xact_lock(id) in Postgres, a locking read of users_tombstones in MySQL. Tombstoned ids are skipped.",
+  "q8": "users_backfill_progress in Postgres, updated in the same transaction as each batch, so they roll back together. Stops when no rows remain at or below target_max_id.",
+  "q9": "The comparer walks both databases 10,000 ids at a time. Differences rechecked 5 s later on the primary become mismatches, queued for sweeper repair.",
+  "q10": "Frozen (503s) plus confirmed plus 5 s write deadline means no mixed writers. Overrun past T0+60 s: revert to dual_mysql_primary; writes resume by T0+90 s.",
+  "q11": "Postgres identity, after the switch, restarted at MySQL's AUTO_INCREMENT n so no collision. Rollback sets MySQL AUTO_INCREMENT to Postgres's next value.",
+  "q12": "Each write is safe-copied to MySQL with its id, tracked in users_mysql_pending. Rollback: freeze, drain pending, set AUTO_INCREMENT, return to dual_mysql_primary, read_from_pg=0. Ends at pg_only."
+ },
+ "sonnet": {
+  "q1": "MySQL first: one MySQL transaction changes the user and upserts the pending row, and commits (write succeeds). Then the row is safe-copied to Postgres (500 ms timeout). If the Postgres part fails or times out, the caller still sees success; the pending row stays and the sweeper repairs Postgres.",
+  "q2": "Only when the incoming version is higher than the existing row's version (and the id is not in that database's users_tombstones).",
+  "q3": "Before backfill: at least 1 minute after dual_mysql_primary (step 3) is confirmed on every instance (so no mysql_only write can still commit and the replica holds them all); replica lag must be 5 s or less when reading. Instances can disagree for up to 30 s after a flag change.",
+  "q4": "It reads from the MySQL replica (not primary) in batches of at most 2,000 rows, and waits whenever replica lag is above 5 s. (Only target_max_id is read from the primary, once.)",
+  "q5": "Reads move: backfill done and a full comparer pass reporting 0 mismatches (step 5), then raised 1%→10%→50%→100%, holding each at least 1 h with Postgres errors and p99 latency within the MySQL baseline. Source of truth moves: reads at 100% for at least 3 days and the latest nightly comparer pass shows 0 mismatches; then the frozen-write procedure with users_pg_pending empty.",
+  "q6": "The row in users_pg_pending (in MySQL), upserted in the same transaction as the user change so it survives a crash after commit. The MySQL sweeper (every 10 s, rows older than 5 s) re-reads the user from MySQL and safe-copies it to Postgres, then deletes the pending row if the token is unchanged.",
+  "q7": "Tombstones: every delete removes the row and inserts the id into users_tombstones in the same transaction, in both databases. Safe copy skips ids in the tombstone table, and copy and delete take a per-id lock (pg_advisory_xact_lock in Postgres; locking read of users_tombstones in MySQL) so they cannot interleave.",
+  "q8": "In the one-row Postgres table users_backfill_progress (last_copied_id, target_max_id). Each batch's safe-copy and the last_copied_id update happen in one Postgres transaction, so a failure rolls both back. It stops at target_max_id (max id on the MySQL primary read at start), done when a read finds no rows at or below it.",
+  "q9": "The comparer: walks both databases 10,000 ids at a time comparing id, version and a hash of other columns (MySQL read from replica, pausing when lag >5 s). It re-checks each difference on the source-of-truth primary 5 s later; if still different it is a mismatch, the id is added to the pending table in the source-of-truth database, and the sweeper repairs it. Each pass reports its mismatch count; it runs nightly.",
+  "q10": "Set write_mode = frozen (writes get retryable 503), wait until confirmed on all instances (up to 30 s) plus 5 s write deadline, so no old-mode write can commit; then drain pending, restart the Postgres identity, and set dual_pg_primary. If sub-steps 2-5 are not done by T0+60 s, set dual_mysql_primary instead (MySQL stays source of truth, nothing to undo; retry another day). Last instance resumes writes by T0+90 s either way.",
+  "q11": "Postgres assigns ids (identity column). Collisions avoided by reading MySQL's AUTO_INCREMENT counter n (above every id ever issued, including tombstoned ones) and running ALTER TABLE users ALTER COLUMN id RESTART WITH n. On rollback, MySQL's AUTO_INCREMENT is set to the Postgres identity's next value so MySQL cannot reissue an id Postgres used (explicit-id inserts into MySQL also move it past them).",
+  "q12": "Each Postgres write upserts users_mysql_pending in its transaction, then safe-copies to MySQL with explicit id (500 ms); the Postgres sweeper and nightly comparer repair MySQL. Rollback (any time in step 9, needs Postgres reachable): freeze writes, wait confirmed +5 s, wait users_mysql_pending empty, set MySQL AUTO_INCREMENT to Postgres identity next value, then set dual_mysql_primary and read_from_pg=0 (if not done by T0+60 s, revert to dual_pg_primary; writes resume by T0+90 s). Option ends at the first pg_only write (step 10), the point of no return, after at least 14 days in step 9."
+ }
+}

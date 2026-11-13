@@ -207,13 +207,13 @@ PILOT_CASES = ["auth-01", "ms-01", "mig-02", "feat-01"]   # one simple, one comp
 def named_batch(name: str) -> list[Path]:
     """The batches the plan runs by name; each writes its files under built/<name>/."""
     out = BUILT / name
-    if name == "validation":
+    if name.startswith("validation"):
         ids = [c.id for c in load() if c.split in ("dev", "heldout")]
         none = [arms_mod.CONTROLS[0]]
         files = []
         for mode, graders in (("null", ("sonnet", "opus")), ("seeded-implicit", ("sonnet", "opus")),
                               ("seeded-presentation", ("sonnet",)), ("padded", ("sonnet",))):
-            files += build_batch(ids, none, ["none"], 1, mode, out, f"validation-{mode}", grader_models=graders)
+            files += build_batch(ids, none, ["none"], 1, mode, out, f"{name}-{mode}", grader_models=graders)
         return files
     if name == "pilot":
         pilot_arms = [arms_mod.CONTROLS[0], arms_mod.CONTROLS[1], arms_mod.CONTROLS[3], arms_mod.DEFAULT_JUNIOR]
