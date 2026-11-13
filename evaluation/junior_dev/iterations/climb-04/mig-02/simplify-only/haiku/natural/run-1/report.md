@@ -1,0 +1,18 @@
+## Review of mig-02 (simplify-only, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short summary of today's system and the rollout before the diagram, so a newcomer sees the main flow first.
+- Added a one-line terms list and removed the definitions that were repeated in the modes, state and failure sections.
+- Kept the Mermaid diagram unchanged, including the rollback path and its six steps.
+- Split the mode notes (how the system runs) from the forward moves and the rollback steps (how the rollout moves), so the two are not mixed.
+- Merged the forward gates into one numbered list, one item per move, and gave each forward move and each rollback step the same four parts: start, action, data kept, and failure handling.
+- Merged the rollback trigger, which was repeated in the mode notes, the diagram notes and the failures list, into one trigger paragraph.
+- Removed the repeated 'rollback is possible before day 35' and 'never triggers a rollback' lines from several sections, keeping each rule once where it applies.
+- Replaced the failure bullet list with one table, keeping every failure outcome.
+- Stated fail-closed behaviour and the double-charge guard once, under where state lives.
+- Removed the file-length and meta text. Kept the plan's behaviour, gates, proposed labels and all five open questions unchanged.
+
+### Holes
+- None.

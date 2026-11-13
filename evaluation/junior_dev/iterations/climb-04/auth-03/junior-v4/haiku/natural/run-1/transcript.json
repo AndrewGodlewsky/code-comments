@@ -1,0 +1,135 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In step 4, \"tokens for user created in last 1 hour < 3\" counts rows. Does this count include tokens that were invalidated or used? And is the count taken inside the same locked transaction?",
+     "about": "Flow 1, step 4 (user exists AND tokens in last hour < 3)"
+    },
+    {
+     "id": "2",
+     "text": "What does the email worker read from, and how does it get started? Is it polling the outbox table, and how does it know a job is ready?",
+     "about": "Flow 2: DELIVER THE EMAIL (outbox job)"
+    },
+    {
+     "id": "3",
+     "text": "What does \"token still live?\" check in the worker, and where does it check it? Does it look up the token row by token_id in Postgres?",
+     "about": "Flow 2, token still live?"
+    },
+    {
+     "id": "4",
+     "text": "What is the \"app key\" used to encrypt the raw token? Where is it stored, and who else can read it? Is the encrypted payload deleted after sending, and by what step?",
+     "about": "Outbox job payload / Open issue 1"
+    },
+    {
+     "id": "5",
+     "text": "In Flow 1, how can timing for an unknown email stay close to the known-user path, given the known path does inserts and the outbox write? What does the unknown path actually do?",
+     "about": "Failure paths, Unknown email"
+    },
+    {
+     "id": "6",
+     "text": "On GET /reset the form is shown with the token in a hidden field. Does the GET change any state, or is it only a read? What stops mail scanners that prefetch the link from using it up?",
+     "about": "Flow 3, GET /reset?token=RAW"
+    },
+    {
+     "id": "7",
+     "text": "In the confirm step, what is the point of the lock-free pre-check and the password check before BEGIN, when the authoritative re-check happens later? Why not do everything in the transaction?",
+     "about": "Flow 3, POST /reset/confirm pre-check live (no lock)"
+    },
+    {
+     "id": "8",
+     "text": "How does the session check work for the login race? Where does it run (every request, or only at login), and what does it compare against?",
+     "about": "Failure paths, Login racing the reset"
+    },
+    {
+     "id": "9",
+     "text": "Does the \"password changed\" outbox job go through the same worker in Flow 2? Its payload has no token, so what does the \"token still live?\" step do for it?",
+     "about": "Flow 3, INSERT outbox \"password changed\""
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Yes, the count includes used and invalidated rows, because they are the rate-limit ledger; the count runs inside the same transaction after step 2 locks the user row, so two requests for one account cannot both count below 3."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The brief does not say how the email worker finds new jobs (polling, notification or an external queue) or whether the queue is a Postgres table; the design assumes Postgres so the job can share the reset row's transaction (open question 7)."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The worker reads the reset row by id from Postgres and checks unused, not invalidated and not expired, without a lock, so a link replaced by a newer one is not sent; this check is this design's choice, not a brief requirement."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The app key is a server secret in the app's secret config, not in the database; only the API (encrypts) and the worker (decrypts) hold it, so anyone with the key and read access to the queue table could recover a live raw token; the worker clears the payload when the job is sent or dropped (Flow 2; open question 1)."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The unknown path does one lookup and a commit while the known path does more writes, so reply times differ by a few milliseconds; the earlier wording overpromised, so we accept the difference, state it, and list it as open question 8 rather than padding replies."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "GET /reset only reads the reset row and returns the form or the expired page with no writes; only POST /reset/confirm changes state, so a mail scanner that opens the link does not use it up, and the document now says so."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The lock-free pre-check and the password check run before BEGIN so no transaction is open during the breach lookup network call and dead links are rejected early; the authoritative re-check under the row lock inside the transaction is what prevents two successful resets."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The earlier design was wrong: a login that read the old hash could create its session after the reset, so a created_at check would accept it; the design now has login lock the user row while it checks the password and inserts the session, so the reset waits and deletes that session, and password_changed_at is removed."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes, the password-changed job goes through the same worker with the same retry and drop path; it has no token, so the live check is skipped for that job type."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "The email job holds only the type, user_id, reset row id and encrypted token. How does the worker know which email address to send to? Does it read the user row, and if so, which address (the one typed in the request or the one stored on the account)?",
+     "about": "Data, Email job / Flow 2 send via mail provider"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The worker reads the email address from the users row, using user_id, at send time. It sends to the address stored on the account, not a typed one. The typed address is only used to find the account and is never stored. Reason: a job is created only for a known account, so the stored address is the one the link belongs to, and keeping the address out of the queue keeps personal data out of it. This is a design choice, so it is written into Flow 2 and the Data section."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough: one user who forgot their password, from asking for a link to logging in again.\n\n1. Trigger: the user cannot log in and types their email into a form. The browser sends POST /password-reset { email } to the API server. The only state in play so far is the typed email.\n\n2. The API normalizes the email. The document does not say what \"normalize\" means. It then opens a Postgres transaction (BEGIN), looks up the user by that email and locks the user row. The lock makes two requests for the same account run one after the other.\n\n3. If no user exists, the API commits (it only read) and jumps to the reply in step 8. No row, token or email is created.\n\n4. If the user exists, the API counts that user's reset rows created in the last hour. It counts used and invalidated rows too. If the count is 3 or more, it commits and jumps to the reply. No reset row and no email job are made. This is why used rows are kept after use.\n\n5. Otherwise the API creates the token: 32 random bytes (the \"raw\" token). It computes a SHA-256 hash of it. Then, still inside the transaction, it does three writes.\n   - It marks the user's older unused reset rows as invalidated.\n   - It inserts a new row in `password_reset_tokens` holding only the hash, with expires_at set to now + 30 minutes.\n   - It inserts an email job holding the user_id, the reset row id and the raw token encrypted with the app key. The job holds no email address. The document says this is the \"existing email queue\", but the design assumes the queue lives in Postgres so this insert can share the transaction.\n\n6. The API commits. The reset row and the email job now exist together or not at all.\n\n7. The API replies 200 with the same text whether or not the email is known. The reply does not wait for the email to be sent.\n\n8. Separately, the email worker takes a job from the queue.\n   - If the job type is `reset_link`, the worker reads the reset row by id and checks it is live (not used, not invalidated, not expired). If it is not live (for example a newer link replaced it, or it expired during retries), the worker clears the payload, drops the job and logs it.\n   - If it is live, the worker decrypts the raw token.\n   - If the job type is `password_changed`, it carries no token and skips the live check.\n   - For both types, the worker reads the account's email address from the `users` row using user_id, and sends the mail through the mail provider.\n\n9. Send outcome. On success the worker clears the encrypted payload and marks the job sent. On failure it retries up to 3 times with backoff. If it still fails, it clears the payload, logs and drops the job, and the user is not told. The generic reply already went out, so the user sees nothing wrong. The link stays live but unseen and expires after 30 minutes.\n\n10. The user opens the emailed link: GET /reset?token=RAW. The API hashes RAW with SHA-256 and finds the reset row by hash. This is read only. If the row is not live, the user gets the \"This link has expired. Request a new one.\" page. If it is live, the API returns a form with RAW in a hidden field, with the header Referrer-Policy: no-referrer. Because GET changes nothing, a mail scanner that opens the link does not use it up.\n\n11. The user submits the form: POST /reset/confirm { token, new_password }. The API hashes the token and checks the row is live, with no lock. If it is not live, the user gets the expired page. It then checks the password (at least 12 characters, not breached) and hashes it, with no transaction open, so no lock is held during the breach lookup. If the password is rejected, the user gets a form error and the link stays usable, so they can retry until it expires.\n\n12. The API runs BEGIN, locks the reset row and checks live again. If it is no longer live (expired while the form was open, or a second submit won), it rolls back and shows the expired page. Otherwise, in the same transaction, it does the following:\n   - updates `users.password_hash`\n   - deletes all `sessions` rows for the user\n   - marks the reset row used\n   - inserts a `password_changed` email job\n   Then it commits. If the database errors anywhere in this transaction, everything rolls back: the link is unused, the password is unchanged and the sessions are kept.\n\n13. The API replies 303 to /login. There is no automatic login. A `password_changed` email then goes through steps 8 and 9. If it fails, the reset still stands.\n\n14. Login race. Login reads the user row, checks the password and inserts a session in one transaction, taking a FOR SHARE lock on the user row. The reset's UPDATE users waits for that lock. So a login either finishes first and the reset then deletes its session, or it starts after the reset and sees the new hash. Existing sessions are checked against the `sessions` table on every request, so deleting the rows logs everyone out.\n\n15. Cleanup: reset rows older than 24 hours are purged. The document does not say what does the purging or when.",
+   "gaps": [
+    "How the email worker finds new jobs (polling, notification or an external queue) is not specified; the document says this is needed before implementation (open question 7).",
+    "Whether the email queue is actually in Postgres is unconfirmed. If it is not, the claim that the reset row and the job are written in one transaction does not hold, and a crash after commit leaves a live link with no email (open question 7).",
+    "What 'normalize email' means (case folding, trimming, etc.) is not stated, and the main flow depends on it to find the user.",
+    "What mechanism or schedule purges reset rows older than 24 hours is not stated.",
+    "How the queue marks a job as sent, how it is dropped, and what the retry backoff timing is are not described. The document says only 'retry up to 3 times, with backoff'.",
+    "How the mail provider is called is not described, nor how the worker knows a send failed versus succeeded."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

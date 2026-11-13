@@ -1,0 +1,186 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where does the pod get the three keys in step 12 if they are not in env vars or files? What is the \"store\" and what does \"workload identity\" actually do when the pod asks for a secret?",
+     "about": "12. Startup: load all three keys before doing anything else"
+    },
+    {
+     "id": "2",
+     "text": "In step 6 the new image has no keys in config/app.yaml. In step 3 the PR deletes them. What do the 3 old pods run on, and what does the old image's baked-in file contain vs. the new image?",
+     "about": "6. Roll out the new image to prod, with a canary pause"
+    },
+    {
+     "id": "3",
+     "text": "Step 5 says the old key stays active and the new one is written to the store. Does anything tell a running old pod to switch? Step 7 says old image pods are gone by then, so what exactly is the refresh in step 15 for during this migration?",
+     "about": "5. Create new provider keys and write them to the prod store"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'internal endpoint' in step 7 that exposes version ids, and how does it differ from /healthz? Who calls it and how do you reach all 4 pods?",
+     "about": "7. Confirm every running instance uses the new keys"
+    },
+    {
+     "id": "5",
+     "text": "In step 15, if only one of the three secrets reads successfully, what does the new snapshot contain? And does a request in flight during the swap see old or new keys?",
+     "about": "15. Refresh every 5 minutes"
+    },
+    {
+     "id": "6",
+     "text": "Step 9 says a pre-migration image holds a revoked key. In step 6 you can roll back safely. What exactly is the rollback mechanism (which tool/command) and where do you remove images from the deploy tooling?",
+     "about": "Rollback rule from here on"
+    },
+    {
+     "id": "7",
+     "text": "Step 10 says it must be required on main before step 6, but step 3 builds it with the PR and step 4 deploys to staging. What actually happens on merge: which merge triggers staging and which triggers prod?",
+     "about": "4. Deploy to staging and exercise failure paths"
+    },
+    {
+     "id": "8",
+     "text": "What happens to the secrets for staging and dev: who writes them and what does 'non-production provider keys' mean for those same three providers?",
+     "about": "Scope and assumptions to confirm first"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The store is the managed secret store (secrets at orders-api/<env>/<name>). Workload identity means the cluster issues the pod a short-lived signed token for orders-api-prod, the app presents it to the store, the store checks the access policy and returns the value over TLS. No credential is stored in the pod. This rests on Assumption B, which is flagged in the plan. Added a Terms section and one sentence in step 12."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Per deploy.md the old image bakes in config/app.yaml as it was in the repo, so the old pods run on the old keys in that file. The new image (step 3 PR) has the api_key lines deleted and gets keys from the store. Step 6 now says this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Nothing tells a running old pod to switch, and none needs to. Old pods are replaced by new pods that load the new keys from the store at startup. The step 15 refresh is not needed for this migration. It exists for later rotations and as the required 5-minute behaviour. Step 6 now says this, and step 5 notes that the old pods are unaffected."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "There was no such endpoint in the brief, and it was an extra mechanism. Removed it. Each pod logs its version ids at startup and on change, and exports them as a metric (step 16). Step 7 checks all 4 pods in the metrics service, which covers every pod by name. /healthz is unchanged and only reports readiness."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The new snapshot is a copy of the current one with each successfully read secret replaced, so failed ones keep their last good value. A request in flight keeps the value it already read, because the client reads the snapshot once per call. The next request sees the new snapshot. Step 15 now states this."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "Per deploy.md, rollback is redeploying an earlier image, so the mechanism is the normal deploy pipeline. I do not know which registry or deploy tool is used, so I do not know the exact commands for deleting images or removing them from the deploy tooling. The plan assigns this to the platform owner and lists it under Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "This was ambiguous and partly wrong. Now: the PR build is deployed to staging before merge (step 4). The PR is merged to main only after step 5 (keys in the prod store) and after the CI guard is required. The merge is what builds the image and starts the prod rollout (step 6). Merging earlier could roll out a store-reading image before the keys exist. Whether CI can build a PR-branch image for staging is not known, and it is an open question."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "Decided who writes: the security on-call writes the sandbox keys into staging and dev in step 1, and engineers can read dev. Whether all three providers offer sandbox or test keys is not known. It is now Assumption D, checked in step 1, with an open question for what to do if one has none. 'Non-production provider keys' now means those sandbox or test keys."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The workload token is short-lived. At each 5-minute refresh, where does the app get a valid token to present to the store? Does it re-read it from somewhere, and what happens if it has expired?",
+     "about": "15. Refresh every 5 minutes / Workload identity"
+    },
+    {
+     "id": "10",
+     "text": "Step 6 says '3 or 4 old pods' and step 7 says '4 of 4'. How many pods does prod run, and does the rolling deploy add a surge pod?",
+     "about": "6. Merge and roll out the new image to prod, with a canary pause"
+    },
+    {
+     "id": "11",
+     "text": "Who sets APP_ENV=prod on prod pods, and how does the app know which store path (orders-api/prod vs staging) and identity to use in each cluster?",
+     "about": "11. Local development without prod secrets"
+    },
+    {
+     "id": "12",
+     "text": "When a provider rejects a key during a call (step 14), does the app do anything besides log, such as fetch the secret again right away? Or does it wait for the next 5-minute refresh?",
+     "about": "14. Use the key on every call"
+    },
+    {
+     "id": "13",
+     "text": "In step 6, how does the person watching the canary know the 'provider auth errors' or 'normal error rates' are there? Which dashboards or alerts do they use, and who is that person?",
+     "about": "6. Merge and roll out the new image to prod, with a canary pause"
+    },
+    {
+     "id": "14",
+     "text": "Step 8 requires no traffic for 30 minutes on the old key, but old pods are gone after step 7. If something does still use the old key (e.g. a developer's `make run`), how is that caller found from the provider's data?",
+     "about": "8. Check that the old keys are idle at the providers"
+    },
+    {
+     "id": "15",
+     "text": "In step 9, if errors appear after a revoke, what is the sequence to recover? Which pods fail first, and how long are requests failing before they pick up a new key?",
+     "about": "9. Revoke the old keys, one provider at a time"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The platform renews the workload token, and the store client uses the current token on every read, so the app never handles expiry. If a token is rejected, that read counts as a failed refresh: last good value kept, warning logged, fresh token next cycle. The renewal mechanism itself rests on Assumption B and belongs to the platform. Added to the Workload identity term and to step 15."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "deploy.md says prod runs 4 replicas, so '3 or 4 old pods' was wrong and now says 4. deploy.md does not state maxSurge. With maxUnavailable 0 the tool may add one extra pod, but the plan does not depend on it. Step 6 now says so."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Each cluster's deploy config sets APP_ENV (prod or staging). It is not a secret. The store path is orders-api/<APP_ENV>/<name>, and the identity is the pod's own workload identity. Local runs default to dev, never prod. Added to steps 11 and 12, and a staging identity policy added to step 1."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Nothing besides logging the secret name and version id. The app waits for the next refresh. An on-demand re-fetch would add a mechanism (rate limits, storms against the store) the brief does not require. Steps 7 and 8 are what prevent rejections. Stated in step 14."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "Who: the engineer on the deploy rota runs the rollout, with the security on-call reachable (now in step 6). Healthy means the canary's error rate is no higher than the old pods' and there are no provider-rejected-key log lines (now in step 6). I do not know which dashboards exist for error rate and provider auth failures, so this is listed under Open questions."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "By step 8 all orders-api pods are on new keys, so remaining traffic is from non-pod callers such as an old-checkout make run or scripts. How to find them depends on what the provider's usage data shows (time only, or source address and user agent), which is not known. Step 8 now says to use whatever the provider shows and ask likely teams, and the gap is in Open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Steps 7 and 8 should make failures impossible from pods, so a post-revoke error means an unknown caller or a pod that missed step 7. Recovery: find the caller from the logged secret name and version id, create another new key, write it to the store. A pod holding a revoked key fails its calls until its next refresh, up to about 5 minutes plus jitter. This window is accepted, since the guard is steps 7 and 8, not recovery. Added to step 9."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Prerequisites (step 1). Starts when the plan is approved. Security on-call and the platform owner check that each provider allows two valid keys at once (Assumption A) and offers sandbox keys (Assumption D). They create secret paths `orders-api/<env>/<name>` for prod, staging and dev, each with its own KMS key. The sandbox keys go into the staging and dev paths. Prod paths stay empty. State is in the store policies and KMS key policies. The policies: `orders-api-prod` can read only `orders-api/prod/*`. The staging identity can read only `orders-api/staging/*`. Only the security on-call group can write prod. Engineers can read dev but not prod. If a provider cannot hold two keys, stop and escalate, because a hard cutover would break customer requests.\n\n2. Policy test (step 2). The security on-call writes a throwaway prod secret. `orders-api-prod` reads it from a test pod, which must succeed. An engineer account tries to read it and `orders-api-prod` tries to read outside its path, and both must be denied. Then the secret is deleted. The evidence is in the store audit logs. A wrong outcome is a policy bug, so fix it and repeat.\n\n3. Code change (step 3). One PR, not merged. It adds `app/secrets.py` and switches the three clients to it. It changes `/healthz` to report readiness. It deletes the three `api_key` lines from `config/app.yaml`. It adds the local-dev backends and the CI guard. State is git and the PR. Failing CI blocks the merge, and nothing is deployed.\n\n4. Staging (step 4). The PR build is deployed to staging before the merge, and it reads `orders-api/staging/*`. Cases tested: normal start, unreachable store (pod exits non-zero and never turns ready), a new version written while running (picked up within 5 minutes), a failed refresh (last good value kept and a warning logged), and a search for key values in logs, environment and filesystem (must find none). If a case fails, fix the code and redeploy to staging. Prod is untouched.\n\n5. New prod keys (step 5). The security on-call creates one new key per provider and leaves the old keys active. They make one harmless authenticated call per new key. If that call fails, they do not write the key and create another. Then they write each key to `orders-api/prod/<name>`, and the store assigns a version id. They record the version ids, not the values. The keys live in the store, encrypted by the prod KMS key, and in the providers' key lists. The running prod pods still use the old keys from their baked-in file, and nothing tells them to switch. A wrong value is fixed by writing a corrected new version.\n\n6. Merge and rollout (step 6). Preconditions: all three new keys are in the prod store, and the CI guard (step 10) is a required check on `main`. Then the PR is merged and CI builds the image. An engineer on the deploy rota runs a rolling deploy to the 4 prod pods, with `maxUnavailable: 0` and a hold after the first new pod. The security on-call is reachable.\n a. A new pod starts and loads its keys (steps 7 to 8 below). It becomes ready only if all three load.\n b. Old and new keys are both valid, so requests succeed on either kind of pod.\n c. Canary check: watch the first new pod for 10 minutes. It is healthy if its error rate is no higher than the old pods' and no log line shows a provider rejecting a key. Then the remaining pods are replaced.\n d. Pods never switch keys while running. Each old pod is replaced by a new pod that starts with the new keys.\n State is pod memory and Kubernetes rollout state. If the store is unreachable or a secret is missing, the new pod exits and never turns ready. The rollout halts and the old pods keep serving. If the canary shows provider auth errors, redeploy the previous image through the normal pipeline. This is safe because the old keys are still valid. Then investigate the store value.\n\n7. Startup of a new pod (step 12). Before the HTTP server serves traffic, `app/secrets.py` presents the pod's workload identity token to the store and asks for the three secrets under `orders-api/<APP_ENV>/`. The platform provides and renews the token, and the store client uses the current one each time. The store checks its policy and returns each secret over TLS as a value plus a version id. The three go into one immutable snapshot in process memory. The version ids are logged and the values are not. Nothing goes to environment variables or disk, core dumps are disabled, and debug logging redacts the `Authorization` header. On failure the app makes 4 attempts in total (one try plus 3 retries, 2 seconds apart). If a secret is still unavailable, it logs an error without values and exits non-zero.\n\n8. Readiness (step 13). The kubelet probes `GET /healthz`. It returns 503 until the snapshot holds all three keys, then 200. It stays 200 even if later refreshes fail. This is a flag in process memory. A pod that never loads keys exits and never turns ready, so the rollout halts. A progress deadline on the rollout should raise an alert.\n\n9. Serving a request that calls a provider (step 14). A call such as `PaymentsClient.charge` reads the key from the current snapshot at call time (for example `secrets.get('payments_api_key')`) and builds the `Authorization` header from it. Base URLs and timeouts still come from `app.yaml`. A call already in flight keeps the value it read. If a provider rejects the key, the app logs the secret name and version id and does nothing else. It does not re-fetch and waits for the next refresh.\n\n10. Refresh (step 15). A background timer fires 5 minutes after the last attempt, plus a few seconds of random jitter. Each of the three secrets is read again with the current token. A new snapshot is built as a copy of the current one, with each successfully read secret replaced. Failed reads keep their last good value. The new snapshot is swapped in atomically. In-flight requests keep their old value and the next request sees the new one. Version changes are logged. Each secret is handled independently. A failed read, a missing secret or a rejected token keeps the last good value and logs a warning with the name and error type. The next cycle tries again with a fresh token. This is not needed for the migration itself and is meant for later rotations.\n\n11. Stale-key monitoring (step 16). Each pod exports, per secret, the age of its last successful refresh and the version id it holds, as metrics and in logs. It alerts when any secret is stale for more than 15 minutes (3 missed refreshes). The app keeps running on the last good value, and a human fixes the store, network or permissions before a rotation is attempted.\n\n12. Confirm all pods are on the new keys (step 7 of the plan). Starts when 4 of 4 pods are on the new image. The checks are read-only. In the metrics service, all 4 pods must show the version ids recorded in step 5. The cluster pod list must show no pre-migration image. Wait at least 10 minutes (two refresh intervals), so that a pod that picked up a newer version would show it. If anything differs, stop and investigate. The old keys stay active.\n\n13. Check the old keys are idle (step 8). The security on-call checks each provider's \"last used\" data for each old key. It should show no traffic for at least 30 minutes. Any remaining traffic comes from someone else, such as developer machines, scripts or other services (Assumption C). If a key is still used, find the caller from whatever the provider shows (for example source address or user agent), ask the teams that might use it, and give that caller its own credentials. Do not revoke while the key is in use.\n\n14. Revoke, one provider at a time (step 9). Starts when steps 7 and 8 pass for that provider. The security on-call revokes the old key. Revocation cannot be undone. After each revocation, watch the error rate and provider auth failures for 15 minutes before the next. When the first key is revoked, the platform owner deletes all pre-migration images from the registry and removes them from the deploy pipeline's list of deployable images. After that, rollback is only possible to images that read from the store. If errors appear, a caller was still on the old key. Find it from the logged secret name and version id. Create another new key, write it to the store, and running pods pick it up at their next refresh, within about 5 minutes. Until then, calls from a pod holding the revoked key fail.\n\n15. CI guard (step 10). A CI job parses `config/app.yaml` and fails if a key named `api_key` appears at any depth, whatever its value. A self-test runs a fixture containing `api_key`, and the job must fail on it. It is required on `main` before the step 6 merge.\n\n16. Local development (step 11). The backend is chosen by `APP_ENV`, which defaults to `dev` and never to `prod`. Each cluster's deploy config sets it to `prod` or `staging`. `make run` reads `orders-api/dev/*` with the engineer's own identity, and these are sandbox keys. `make run-offline` uses a stub backend and fake local provider servers, with dummy values. Both run the same code path as steps 7 to 11 above. A missing dev secret causes the same startup exit, with no fallback to prod.\n\n17. Future rotation (step 17). The security on-call decides when. They repeat steps 5, 7, 8 and 9. They create and test a new key while the old one is valid, write it to the store, and running instances pick it up through the refresh. They check every instance's version id and the provider's last-used data, then revoke the old key. A bad new value is replaced by writing a corrected version.\n\n18. Closing checks. Search pipeline logs, container environment and image layers for all six key values (none should be found). Confirm the CI guard fails on a test change that adds `api_key`. Confirm engineers cannot read prod and the security on-call can write it. Leave the rotation cadence open.",
+   "gaps": [
+    "The document does not say how the 5-minute refresh timer and the retry loop behave if the very first startup load partly succeeds (for example two secrets load and one does not). It only says the process exits if a secret is still unavailable after 4 attempts.",
+    "It does not say what the app does when the first token read at startup is rejected, or how a rejected token differs from an unreachable store, beyond the generic retry and exit.",
+    "It does not say how the provider-side check in step 8 works if the provider's 'last used' data shows only a time and not a source (listed as an open question), so I cannot explain how the caller is identified in that case.",
+    "It does not say how a canary pod is chosen or how the 10-minute hold, the error-rate comparison and the 'provider rejecting a key' log search are measured, because the dashboards are unknown.",
+    "It does not say what staging and dev use if a provider has no sandbox key, so I cannot explain that case in step 1 and step 11.",
+    "It does not say how a pod is notified of, or recovers from, a revoked key other than by waiting for the next refresh, so I cannot explain how in-flight requests behave for those up to 5 minutes beyond 'they fail'.",
+    "It does not say how the 'previous image' rollback in step 6 is performed beyond 'through the normal deploy pipeline', nor the exact commands for deleting pre-migration images in step 9."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,17 @@
+## Review of ms-02 (simplify-only, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Replaced 'Design in brief' with a short summary that explains how sending works today and the new main flow, then a terms list with one-line definitions.
+- Merged the per-step component descriptions (consumer, sender, relay, result publisher, result consumer) into one table of the running system with the same columns for every part: start, action, state, failure.
+- Moved the system's runtime behaviour apart from the rollout steps, so 'how it runs' and 'how we ship it' are now separate sections.
+- Merged the three duplicate-protection layers, retry rules and the nothing-lost rule into one 'Rules for every step' section.
+- Cut repeated 'Data, state and failures: same as Step 6' text in steps 7 and 8, and repeated rollback text; made rollback one section.
+- Added a single failure table; dropped the 'Failed rows' and 'Poison messages' standalone bullets by folding them into the sender and consumer rows.
+- Shortened rollout steps to point to the parts in the table instead of restating them; removed codes that send readers elsewhere by naming the parts inline.
+- Rollback timing now says about 10 s consistently (flag propagation), keeping the one-minute requirement implied.
+- Reduced Open risks to the two real ones; the rollback risk is stated once.
+
+### Holes
+- None.

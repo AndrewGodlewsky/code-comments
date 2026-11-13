@@ -1,0 +1,35 @@
+## Review of ms-02 (junior-v4, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a short Terms section (caller, old worker, MailRelay, broker, flag, outbox) after the opening summary, to answer Q1 to Q5 in the file itself.
+- Added a two-sentence opening summary describing how notifications work today and the main flow.
+- Reworded design rule 6: the 23 h guard runs in the owning side (old worker or service sender loop), and the service reports failed over the result message.
+- Step 2 now has the old worker apply the 23 h guard; step 3 sender loop applies it too.
+- Step 4 reconciliation alert clarified: it only pages and changes no row.
+- Message shapes: stated that the service picks the template from type, fills it from payload and sends to email.
+- Added an Open questions section: who flips flags, what reads status, broker product and dead-letter queue, whether MailRelay sends itself.
+- Step 3 sender loop: added 1 s poll, batch of 50, and the lease condition in the due-row query.
+- Step 3 sender loop: stated that attempts changes only when an outcome is committed, so a crash re-send is not a new attempt.
+- Step 3 result publisher: added 1 s DB poll, independent of the sender loop, and that the monolith row stays pending until the result arrives.
+- Step 3 pager loop and Old worker term: noted that the monolith pages with alerts.page_oncall and the service's paging is open.
+- Step 3 malformed message: defined malformed and what happens to the monolith row afterwards.
+- Step 4 publisher: each row is published independently and a failed row does not block others; replaced the backoff wording with a retry on the next 1 s loop.
+- Message shapes: noted that user_id is for traceability only.
+- Failure matrix: added a malformed-message row.
+- Open questions: added how the service pages on-call.
+- Reordered into the newcomer layout: summary, terms, how the system runs, rollout steps, rollback, failures, open questions
+- Separated runtime design (rules, topics, messages, service parts, monolith loops) from the rollout steps
+- Moved the service's sender loop, result publisher, pager loop and the monolith publisher and result consumer into one runtime section, so steps 3 and 4 only say what is deployed and tested
+- Merged the six soak and move steps into three combined steps (shipping_update, order_confirmed, password_reset) and shortened the step list from 12 to 10; calendar renumbered
+- Merged step 12's soak and decommission into a separate removal step 10
+- Cut the repeated old-worker details and per-step failure bullets that duplicated the failure table
+- Added a Route term and removed the codes 'rule 6' style cross-references in favour of naming the 23 h guard
+- Dropped fine detail: partial index rationale text, golden-output decision paragraph, repeated 'nothing lost' explanations, and the 'Keep the old worker deployed' duplicate
+- Merged the duplicate Broker and Message shape notes into short lists
+- Kept all requirements and decisions unchanged
+
+### Holes
+- Q1: What is the flag system (flags.get) and how does a flag change reach every monolith instance within 10 s? Who flips it, and how? (author: The brief says flags.get(name) exists in the monolith and a change reaches every instance within 10 s. How the change propagates and who flips it with which tool is not described in the files. I added a Flag term and an open question assuming the platform's flag tooling.)
+- Q12: How does on-call get paged today in the monolith, and what does the service use? Is it the same mechanism? (author: Per notifications.py, the monolith pages with alerts.page_oncall(...). Whether the service can call the same paging system is not in the files, and I do not know. Added an open question. The plan only needs the service to be able to page on-call.)

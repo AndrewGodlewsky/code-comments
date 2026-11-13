@@ -1,0 +1,96 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where do the user's password hash and the `users` table come from? What columns does it hold, and who creates accounts?",
+     "about": "Login attempt, step 4 (Look up the user) / `sessions.user_id REFERENCES users(id)`"
+    },
+    {
+     "id": "2",
+     "text": "What do 'either' app instance and the browser's path to them look like? Is something in front (a load balancer) that picks the instance, and does the browser ever need to hit the same one?",
+     "about": "participant A as App instance (either)"
+    },
+    {
+     "id": "3",
+     "text": "If a second login attempt for the same email arrives while the first holds the row lock, what does it do and for how long? What happens if it waits too long?",
+     "about": "Insert the login_throttle row if missing, then SELECT ... FOR UPDATE"
+    },
+    {
+     "id": "4",
+     "text": "What does GET /login do, and what does the user see? Does the login page know about the lockout or send the user anywhere if they already have a valid session?",
+     "about": "303 to /login / 401 login page"
+    },
+    {
+     "id": "5",
+     "text": "On a protected request, what code runs this check: one shared piece of middleware for every protected route? What does it do with the returned user_id afterwards?",
+     "about": "Protected request check / GET /dashboard"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'email' used for throttling when the same person can enter different spellings, and does the 429 lock apply to the whole email regardless of which IP or browser attempted it?",
+     "about": "Login attempt, step 1 and step 3 (locked_until > now())"
+    },
+    {
+     "id": "7",
+     "text": "What runs the 5-minute sweep inside the app (timer, scheduler?), and what happens if a sweep fails or a sweep runs while a login is in progress?",
+     "about": "Cleanup sweep (every 5 minutes, per instance)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The brief says the users table already exists with id, email (lowercase, unique) and password_hash (bcrypt). Sign-up and password reset are out of scope, so accounts are created outside this design. I added this to the opening paragraph."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Per the brief: two identical instances behind a load balancer, no sticky sessions, so any request can hit either instance and the browser never needs the same one. That is why state lives in Postgres. Added to the opening paragraph."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The second attempt for the same email waits on the row lock until the first commits, then sees the updated count or lock. I set lock_timeout to 5 seconds. Beyond that it fails as a storage failure with the generic 503 and no cookie. The 5 seconds is a judgement for this small scale, not derived from measurements."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "GET /login is public and shows the email and password form, with no lockout knowledge. The 401 and 429 responses re-show the form with a message. A signed-in visitor still sees the form, and submitting it replaces their session. The brief does not ask for a redirect for signed-in users, so I kept the simplest behaviour."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes, one shared middleware runs the check for every route except /login. On a valid session it attaches user_id to the request as the current user and the handler runs. What handlers do with it is outside this design."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The throttle key is the lowercased, trimmed email only, as the brief defines it. The lock applies to that email regardless of IP or browser. The tradeoff is that an attacker can lock out a victim's email. The brief requires this per-email limit and I add no IP rule."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An in-process timer on each instance, started at boot, runs the sweep every 5 minutes. A failed sweep logs the error and retries at the next tick, since the sweep only reclaims space. If a sweep meets a throttle row locked by a login, it waits for the login to commit. If the sweep deletes a throttle row first, the next login recreates it. I did not test this lock interaction against Postgres, so it is reasoned rather than verified."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. Two identical app instances sit behind a load balancer with no sticky sessions, and one shared Postgres holds all state. The `users` table already has `id`, lowercase unique `email`, and a bcrypt `password_hash`. Accounts are made outside this design. Sessions live in `sessions`, keyed by `id_hash`, which is the SHA-256 of the session ID. The `sessions` row also holds `user_id`, `created_at` and `last_seen_at`. Lockout state lives in `login_throttle` (`email`, `locked_until`) and `login_failures` (`email`, `failed_at`). All time comparisons use Postgres `now()`, not the app clocks.\n\n2. Visiting the site. A browser requests a protected page such as `GET /dashboard` with no cookie. The shared middleware sees there is no `sid` cookie and skips the database. It replies 303 to `/login` with a `Set-Cookie` that clears `sid` (same name and Path, `Max-Age=0`).\n\n3. Login page. `GET /login` is public. It shows an email and password form and knows nothing about lockout. Someone who is already signed in still sees it.\n\n4. Submitting the form. The browser sends `POST /login` with email, password, and the old `sid` cookie if it has one. Either instance may handle it. The app lowercases and trims the email. That string is the throttle key, even if no account exists.\n\n5. Throttle row and lock. The app opens a transaction and inserts the `login_throttle` row if it is missing. It then runs `SELECT ... FOR UPDATE` on that row. This makes attempts for the same email wait for each other across both instances, so the limit of 5 is exact. `lock_timeout` is 5 seconds. Waiting longer counts as a storage failure (step 14). The lock is held while bcrypt runs.\n\n6. Already locked. If `locked_until > now()`, the app answers 429 with the login form and a \"try again later\" message. It does not check the password and records no failure. It commits the transaction.\n\n7. Not locked. The app looks up the user by email. If there is none, it runs bcrypt against a fixed dummy hash so the timing is similar. It treats that as a failure. If the user exists, it compares the password with the bcrypt hash.\n\n8. Failure path. The app inserts a `login_failures` row and counts rows for that email from the last 10 minutes. If the count is 5 or more, it sets `locked_until = now() + 15 min`. It commits and answers 401 with the login page and \"Invalid email or password\". The body is identical for unknown email and wrong password. The 5th failure still gets 401, and the 429 starts on the next attempt.\n\n9. Success path. In the same transaction the app deletes that email's `login_failures` rows and sets `locked_until = NULL`. It generates a fresh 32-byte random ID and deletes the `sessions` row matching the hash of the incoming cookie, if any. It inserts a new `sessions` row with the SHA-256 of the new ID. It commits. Only after the commit does it reply 303 to `/dashboard` with `Set-Cookie: sid=<new id>; Path=/; HttpOnly; Secure; SameSite=Lax`, with no expiry. The old ID is dead from the commit.\n\n10. Protected request. The browser follows the redirect with `GET /dashboard` and the cookie. The middleware hashes the cookie value and runs one `UPDATE sessions SET last_seen_at = now() WHERE id_hash=$1 AND last_seen_at > now()-30min AND created_at > now()-12h RETURNING user_id`. One row back means the session is valid and the idle clock has restarted. The middleware attaches `user_id` as the current user, and the handler runs and returns 200. Idle and absolute limits are both enforced by this one statement.\n\n11. Invalid session. If the UPDATE returns zero rows (unknown or expired), the app runs `DELETE FROM sessions WHERE id_hash=$1`, which is harmless if no row exists. It then clears the cookie and replies 303 to `/login`.\n\n12. Logout. The browser sends `POST /logout`. If there is a cookie, the app deletes the row by hash and waits for it to finish. Zero rows affected is fine. It then replies 303 to `/login` with the cookie cleared. The reply is the same with or without a session.\n\n13. Background cleanup. Each instance has an in-process timer, started at boot, that fires every 5 minutes. It deletes expired `sessions`, `login_failures` older than 10 minutes, and `login_throttle` rows that are neither locked nor have remaining failures. It only reclaims space, since expired rows are already rejected by the check in step 10. If a sweep fails, it logs the error and tries again at the next tick. A sweep that meets a throttle row locked by a login waits for that login to commit.\n\n14. Storage failures. Any database error or timeout returns 503 with the generic page \"Something went wrong. Please try again in a moment.\" Details and a request ID go to the log, never the session ID or password. For login, the app rolls back, sends no `Set-Cookie`, and lets nobody in. For a protected request, the app returns 503 and keeps the cookie. For logout, the app returns 503 and keeps the cookie so the user can retry.",
+   "gaps": [
+    "Where the 303 target after login comes from is unclear. The diagram and requirement 4 hardcode /dashboard. The document does not say whether a user who was bounced from another protected page returns to it.",
+    "The document does not say how a login that arrives with a valid old session behaves if the incoming cookie names an expired or unknown session. It says only that the row matching the hash is deleted 'if there is one'.",
+    "The document does not say how the middleware turns the cookie value into a hash when the cookie is malformed, for example the wrong length or characters not in base64url. Nor does it say whether the password or email fields can be missing or empty.",
+    "The document says the throttle is checked per email and that the 'brief' defines requirement numbers 1 to 8, but the brief is not included. I cannot say what the numbered requirements actually say beyond the coverage table."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

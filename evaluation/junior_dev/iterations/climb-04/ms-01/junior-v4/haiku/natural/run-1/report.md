@@ -1,0 +1,42 @@
+## Review of ms-01 (junior-v4, author haiku, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Added a Terms section before the flowchart defining hold, claim, idempotency key, outbox, webhook and open order, because the junior could not tell what open checkout means or how events travel.
+- Defined open order as PENDING_STOCK or AWAITING_PAYMENT in ORD1 and added a path that resends reserve for an open order still in PENDING_STOCK, so a lost reserve reply does not leave the order stuck.
+- ORD3 now saves the reservation id on the order, and the Happy path note says where the id is kept.
+- Added the 202 PENDING reply from POST /charges back to Order in the chart, and explained what Order does with it.
+- Added the ORD7R retry branch for a claim that gets no answer, and a Retries and lost replies section covering reserve, charge, webhook and claim replies.
+- ORD9 and INV7 now say nothing is held for the order, because the refused claim only happens after the hold has expired.
+- Watchdog now polls every 5 minutes while the charge is pending and treats a no-record reply as declined, with poll replies sent through the same dedupe path. Added decision 7 to record this choice.
+- Outbox is now named on PAY5 and on the decline and success events.
+- Moved the failure notes into one table and merged the separate timer and failure paragraphs into the Watchdog note, to keep the file close to its first length.
+- Added the customer's Awaiting payment screen to the Happy path, and listed the unknowns (retry limit, pending limit, card capture) under Open questions.
+- Retry job added as a defined term and as a Notes section. It is now the main trigger for resending reserve, charge and claim calls, instead of only the customer pressing Place order again (Q10).
+- Reserve on an order that already has a HELD or CLAIMED reservation returns that reservation. The lost-reply note no longer says only the sweeper frees the hold. Expired or released reservations are checked again, shown as INV0 in the flowchart (Q9).
+- Order's refund is no longer a direct POST /refunds call. Order writes an OrderCancelledOutOfStock outbox event in the same transaction as CANCELLED_OUT_OF_STOCK, and Payment refunds from that event, so a crash cannot lose the refund (Q13).
+- Emails for CONFIRMED and CANCELLED_OUT_OF_STOCK now go through Order's outbox in the same transaction as the status change, with a mailer job that retries until sent. Crash behaviour and the one possible duplicate are stated (Q12).
+- Added the late-success-after-no-record-decline branch. Payment sets LATE_SUCCESS and refunds, and never flips DECLINED to SUCCEEDED. Added PAY5B to the flowchart and to the stored payment statuses (Q11).
+- Order applies PaymentSucceeded and PaymentDeclined only when the order is AWAITING_PAYMENT, and acknowledges other events without changes (Q11).
+- Refund section states that Order is not told the refund outcome and that Payment owns refund state. Refund key changed from a refund id to the order id (Q13).
+- Failure table and open questions updated for the retry job, the late-success-after-decline customer email, and the retry limit for reserve, charge, claim and release. Decision 7 now points to the refund path for a charge that succeeds later.
+- Retry job now covers only reserve, charge and claim. Release is one call, not retried; the sweeper frees the hold if it gets no answer (Q14). Flowchart ORD6 and the Declined payment note updated; Terms and the open question on retries narrowed to match.
+- Payment checks the webhook signature before recording the event id, and an invalid signature stores nothing (Q15). Flowchart gained a PAY0 signature step and PAY0X reject node; poll results skip the signature step; PAY5 notes the unique constraint for racing repeats; Duplicate webhooks note and the failure table updated.
+- Duplicate webhooks note now says Order hears only about applied changes, each once through the outbox, and nothing about repeats or ignored events (Q16).
+- Cart removes only ordered lines whose quantity and price still match the snapshot; later edits stay (Q17). CART2, the success node, the Happy path and a new Cart edits note updated; decision 8 added to confirm with the business.
+- Added a Customer page note: the page polls Order's status every 10 seconds while the order is open and never calls Payment (Q18).
+- One open order per cart is enforced by a unique rule while the status is open. ORD2 gained a racing-duplicate edge back to ORD1, POST /orders now carries the cart id, and a Racing Place orders note was added (Q19).
+- Refund note now says the refund names the charge id on that order's own payment row, so it cannot refund another order's charge (Q20). PAY8 label updated to match.
+- Cut the separate "Happy path" and "Decisions to confirm" notes that repeated the flow. The flow now appears once, as the numbered steps after the diagram.
+- Replaced the long "Notes on the flow" with one numbered step per stage (place order, reserve, charge, outcome, declined, succeeded and claim, refund). Each step gives what starts it, what it does, what keeps its data, and what happens when it goes wrong.
+- Merged the lost-reply notes, the short-stock note and the declined-payment note into the step they belong to and the failure table. Added a failure row for a charge that reached the provider but whose reply was lost.
+- Merged the watchdog and no-record rules into step 4. Removed the "decision 7" reference and the R/Q-style codes, and wrote each decision in plain words.
+- Folded the eight "Decisions to confirm" into one open-questions list, each with the trade-off or the thing to confirm. Dropped the duplicate-checkout decision because step 1 already states it.
+- Simplified the flowchart: merged the open-order branches into one decision, removed the separate reservation-return node, merged repeated stop nodes into one shared node, and split the watchdog's "no record" branch into its own node so it can point to the declined path.
+- Removed the "retried until resolved, never dropped" wording from the diagram. The text said refunds stop after the last attempt and the row stays open until someone resolves it. That conflicts with "retried until resolved", so I kept the text and moved the question into open questions.
+- Added a step-2 sentence that says an expired or released hold is replaced by a new hold after the lines are checked again. This came from the original notes and was missing from the step version.
+- Cut the "Customer sees" wording in the stores table and the repeated retry-job explanation. Each now appears once, in the notes after the diagram.
+
+### Holes
+- None.

@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The scheduler starts it at 02:00 UTC daily. It extracts replica orders with updated_at after window_start (hwm minus 2 hours), including rows with deleted_at set.",
+  "q2": "Bulk imports can become visible on the replica up to 90 minutes after their updated_at, so the 2-hour lookback overlap catches them.",
+  "q3": "The edit has a newer updated_at, so a later nightly extract within the lookback re-reads it, and the guarded merge overwrites the warehouse row.",
+  "q4": "The app's write sets deleted_at with a newer updated_at. The warehouse keeps the row and sets is_deleted to true. Nothing is hard-deleted.",
+  "q5": "The attempt rolls back, the mark stays unchanged, and the scheduler waits 15 minutes and retries, up to 3 attempts total. The third failure pages on-call.",
+  "q6": "Dashboards show the last committed state in dw.orders. The watchdog posts a staleness alert to #data-alerts if no successful run exists for today's run_date.",
+  "q7": "The Sunday reconciliation compares 30 days of counts and checksums with the replica and reloads any mismatched day, applying the guarded merge.",
+  "q8": "The guarded merge matches on order_id and overwrites only when the incoming updated_at is strictly greater. Older or repeated versions change nothing.",
+  "q9": "It is stored in etl.state, column hwm_updated_at, pipeline='orders'. It is set to the greatest of the old mark and batch_max, in the same transaction as the merge, on commit only.",
+  "q10": "The merge and the mark update run in ONE warehouse transaction that commits or rolls back together, so dashboards see the whole night or none of it.",
+  "q11": "Staged data is discarded: each attempt truncates stg.orders first. The retry re-reads the mark and extracts from the old mark minus 2 hours, not the failed window.",
+  "q12": "It re-reads all orders created on mismatched days from the replica, stages them, and applies the same guarded merge in one transaction. It does not touch the high-water mark."
+ },
+ "sonnet": {
+  "q1": "The scheduler triggers it daily at 02:00 UTC (attempt 1). It extracts rows from the replica's orders table with updated_at after window_start, where window_start = saved hwm minus 2 hours (changed rows, including deleted_at). First-ever run starts the mark at the epoch (full backfill).",
+  "q2": "The document says bulk imports can become visible up to 90 minutes after their updated_at. It does not state why (the cause is NOT STATED beyond 'bulk imports'; replica lag is mentioned elsewhere as a case of invisibility).",
+  "q3": "The edit has a newer updated_at, so a later nightly extract (window starting at hwm minus 2h) picks it up and the guarded merge overwrites dw.orders because the incoming updated_at is strictly greater.",
+  "q4": "Nothing is hard-deleted. The app sets deleted_at (a write with newer updated_at); the nightly load merges the row and sets is_deleted = (deleted_at IS NOT NULL). The row is kept.",
+  "q5": "The transaction rolls back and hwm is unchanged. The failed attempt is logged status=failed. If attempt < 3, wait 15 min and retry from step 1 (attempt+1). After the 3rd failure, on-call is paged; the next night re-covers the missed span. The watchdog also alerts at 06:00 if no success.",
+  "q6": "Dashboards (refreshing at 06:00 UTC) read dw.orders and show the last committed state. The watchdog at 06:00 finds no success for today's run_date and posts a staleness alert to #data-alerts (on-call is also paged if all 3 attempts failed).",
+  "q7": "The Sunday reconciliation: it compares per-created_at-day count and checksum (last 30 days) between replica and dw.orders, re-extracts all orders for mismatched days, and merges them with the guarded merge.",
+  "q8": "The guarded merge: match on order_id and overwrite only if the incoming updated_at is strictly greater, so older or repeated versions change nothing. Staging is also deduped to keep max updated_at per order_id.",
+  "q9": "In etl.state (one row, pipeline='orders', column hwm_updated_at) in the warehouse. The value is GREATEST(current hwm, batch_max), where batch_max is the max updated_at actually extracted (never now()); unchanged if batch empty. It is written inside the single warehouse transaction in step 6, at commit, together with the merge and success log.",
+  "q10": "Loading goes into stg.orders, which dashboards never read, and the merge into dw.orders plus hwm update plus log happen in one warehouse transaction that commits atomically; dashboards see only last committed state, so the whole night or none of it.",
+  "q11": "The staged data is discarded: each attempt truncates stg.orders first (only staging is dirty; dw.orders untouched). The retry re-reads hwm from etl.state and extracts from hwm minus 2 hours, never reusing the failed attempt's window (hwm unchanged, so same span unless a prior commit moved it).",
+  "q12": "It re-reads ALL orders created on the mismatched days from the replica into stg.orders, then applies them in one transaction with the same guarded MERGE into dw.orders for all mismatched days. It does NOT touch the high-water mark; it logs run_log kind=reconcile."
+ }
+}

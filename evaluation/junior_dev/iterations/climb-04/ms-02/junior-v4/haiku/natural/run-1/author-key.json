@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The caller's transaction inserts a `pending` row in the monolith `notifications` table, then the monolith outbox publisher reads committed `route = 'service'` rows and publishes them to the `notifications` topic, setting `published_at` only after broker confirmation. The monolith's part is done once the caller's transaction commits, but the row stays `pending` until a completion event arrives on `notification-events`, and the reconciler republishes it if none arrives within 30 minutes.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "`enqueue_notification` decides, at insert time, by reading the runtime flag `notifications.route.<type>` with `flags.get` inside a try/catch that defaults to `monolith`. The result is stored in the row's `route` column, and it is never changed afterwards, so a flag flip affects only rows inserted after it.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The service inbox's `notifications` table uses the notification id as its primary key, and the insert is `ON CONFLICT (id) DO NOTHING`, so a repeated message changes nothing and never resets a row to `pending`. Sending is also guarded: the claim lease allows one send per claim, success writes only where `status = 'pending'`, and every MailRelay call carries `idempotency_key = id`, so MailRelay should drop any duplicate send within its 24-hour window.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The inbox commits its insert (and any shadow report outbox write) first and acknowledges the message after that commit. It never calls MailRelay, and sending happens later in the service sender loop. If it crashes after the commit but before the ack, the broker redelivers, the insert conflicts, and the message is acknowledged with no duplicate; if it crashes before the commit or the service database is down, there is no ack and the broker redelivers.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The retry state (`attempts`, `next_attempt_at`, `lease_until`) lives in the service database's `notifications` table. The service sender loop acts on it: every 5 seconds it claims due rows with `FOR UPDATE SKIP LOCKED`, applies the 5-attempt and 1/2/4/8-minute policy, and marks a row failed and pages on-call after its last attempt. The monolith's old worker never touches these rows, and the monolith row keeps `pending` until the completion event arrives.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Nothing already routed to the service is moved back. The flag flip changes only new inserts, so existing service rows keep `route = 'service'` and finish on the service, while the monolith publisher drains its backlog for that type. The service keeps running until its pending rows and the monolith outbox backlog for that type reach zero, so nothing is lost and nothing is re-sent.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Each message on the `notifications` topic carries `schema_version`, `id`, `type`, `email`, `payload`, `created_at` and `mode` (`live` or `shadow`). Email content is not sent over the broker: the service renders the subject and body from `type` and `payload` using the shared template package, which is pinned to one version in both systems during rollout.",
+  "decided": true
+ }
+}

@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The document says the limit is passed into the script by the gateway, but where does the gateway get 'Standard' vs 'Enterprise' from? Is the plan field returned by the Key Service the only source, and what are the possible plan values?",
+     "about": "Limit by plan / Key Service: customerId + plan"
+    },
+    {
+     "id": "2",
+     "text": "What are 'req 1', 'req 4', 'req 5', 'req 7' and 'req 8'? Where are these requirements defined?",
+     "about": "Decisions (req references)"
+    },
+    {
+     "id": "3",
+     "text": "If a customer's plan is Enterprise and the Enterprise config value is not set, what does the gateway do with that request today: forward it unlimited, reject it, or error?",
+     "about": "Limit by plan / Enterprise = OPEN"
+    },
+    {
+     "id": "4",
+     "text": "The script's step 1 reads the clock with TIME and step 4 sets EXPIRE 120. If the key is created by INCR but the EXPIRE does not run (for example failover happens between them), what happens to that key?",
+     "about": "What the Redis script does, step 4"
+    },
+    {
+     "id": "5",
+     "text": "How does the gateway tell the difference between 'rejected' and 'allowed' replies, and how does it compute X-RateLimit-Remaining from the returned count? Does the script return the limit back or does the gateway use its own?",
+     "about": "count below limit / Headers"
+    },
+    {
+     "id": "6",
+     "text": "On the 5-minute in-memory cache: is it per gateway instance, keyed by the API key, and does a cache miss on a revoked key keep working for up to 5 minutes?",
+     "about": "Look up key in 5-minute in-memory cache"
+    },
+    {
+     "id": "7",
+     "text": "Under fail open, if Redis is slow (say 50 ms timeout every request), does each request wait the full 50 ms before being forwarded? Is there any circuit breaker or does every request try Redis again?",
+     "about": "Redis errors or no answer within 50 ms"
+    },
+    {
+     "id": "8",
+     "text": "What happens if the backend is slow or never answers after the counter was incremented? Does the gateway have a timeout and what does the client see?",
+     "about": "Forward request / Budget stays used even if backend failed"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The Key Service returns customerId plus plan, and it is the only source. Values are Standard or Enterprise, per the brief. Added to the terms and the limit decision."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "They were numbers from the brief's requirements list, which the junior never sees. I removed all 'req N' codes and state each rule in plain words."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The gateway skips the rate-limit check for Enterprise while the value is unset: no Redis call, no headers, forwarded as today. Reason: rejecting or erroring would break Enterprise traffic, and guessing a number is forbidden. Added to the document and the open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Redis replicates a Lua script's effects together, so INCR and EXPIRE normally land or fail together. Even if a key had no expiry, the window is in the key name, so it never affects a later window. It would only waste memory. Added one line to the notes."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The script returns a status (allowed or rejected), the count and the seconds to window end. The gateway branches on the status and uses its own limit. Remaining is limit minus the returned count, floored at 0. Clarified in the notes and the limit decision."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The brief says the gateway caches the answer in memory, so it is per instance. It is keyed by API key because the lookup starts from the key. A revoked key can keep working up to 5 minutes. That is existing behaviour and accepted. Added to the edge cases."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, a slow Redis can cost each request up to 50 ms. There is no circuit breaker in v1, to keep it simple, so every request retries Redis. The document now states it and lists a circuit breaker as out of scope."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not say what backend timeout the gateway has today. The counter stays used regardless. I added a line saying the existing gateway behaviour is unchanged, and an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a public request with an `X-Api-Key` header to the API Gateway. Any of the 6 stateless instances can receive it. Nothing about the request is stored in advance on a particular instance.\n\n2. The gateway looks the key up in its own in-memory cache. This cache is per instance, is keyed by API key, and holds entries for 5 minutes. On a miss, the gateway asks the Key Service to resolve the key. The Key Service answers with a customer ID and a plan (`Standard` or `Enterprise`), or with \"unknown\". The result is cached in that instance's memory. The state here is the Key Service's data plus each gateway's local cache.\n\n3. If the key is missing or the Key Service says \"unknown\", the gateway returns 401 Unauthorized. It makes no Redis call and no counter is read or changed. Because of the cache, a revoked key or a changed plan can keep working for up to 5 minutes, and the limit follows the cached plan. If the Key Service is down and the key is not cached, that counts as an existing authentication failure. The document says it is out of scope, so I can't say what the client sees.\n\n4. If the key is valid, the gateway picks the limit from the plan, using its own copy. Standard is 100 requests per customer per minute. Enterprise is not decided. It is a config value with no default. While it is unset, Enterprise requests skip the rate-limit check entirely. There is no Redis call, no headers, and the request is forwarded as it is today (jump to step 9, without the headers).\n\n5. For a Standard customer, the gateway calls Redis with one atomic Lua script. It passes the key `rl:{customerId}:{window}` and the limit, and the call has a 50 ms timeout. The counter is per customer ID, not per API key, so all of a customer's keys share one budget. The state lives in the shared Redis (a replicated primary with failover). Every gateway instance counts against the same counter. The window is a fixed calendar minute, `floor(redisNow / 60)`, where the time comes from the Redis server clock (`TIME`), so gateway clock skew doesn't matter.\n\n6. Inside the script, which Redis runs one at a time:\n   - It reads the count for the key (0 if the key is absent).\n   - If the count is at or above the limit, it returns `rejected` and the seconds to window end, `60 - (now mod 60)`. It writes nothing.\n   - Otherwise it does INCR on the key. If the result is 1, it sets the key to expire after 120 s. It returns `allowed` and the new count.\n   Since the script is atomic, two instances can't both take the last slot.\n\n7. If the answer is `rejected`, the gateway returns 429 Too Many Requests with `Retry-After` set to the seconds to window end (1 to 60). The request is never forwarded. The rejected request did not increment the counter, so it cost nothing.\n\n8. If Redis errors or doesn't answer within 50 ms, the gateway fails open. It emits the `ratelimit_store_unavailable` metric, forwards the request, and adds no rate-limit headers, because it doesn't know the count. There is no circuit breaker. During a slow outage every request can wait up to 50 ms first.\n\n9. If the answer is `allowed`, the count has already been incremented, and the gateway forwards the request to the backend. The request counts even if the backend then fails, and nothing is refunded.\n\n10. The backend responds with any status (200, 500, and so on). The gateway returns that response to the client and adds `X-RateLimit-Limit`, which is the gateway's own copy of the limit. It also adds `X-RateLimit-Remaining`, which is `limit - count` and never below 0. Both headers are added to every response that passed the check, including backend errors. For a slow or silent backend, the gateway does whatever it already does for backend timeouts. The document says this is unchanged, but it doesn't say what that behaviour is.\n\nOther things the document tells us. The fixed window lets a customer send up to 2x the limit across a window boundary. This is accepted for v1. A Redis failover can lose recent counts, so a few extra requests may get through. Sliding windows, per-route limits and a local fallback are out of scope.",
+   "gaps": [
+    "The Enterprise limit value is undecided. Until it is set, I can't say what an Enterprise customer's budget is. I know only that their requests skip the check.",
+    "The document doesn't say what the client sees when the Key Service is down and the key is not cached. It calls this an existing authentication failure but doesn't describe the response.",
+    "The document doesn't say what timeout the gateway applies to slow backends today, or what the client sees when it fires. Both are listed as unknown or unchanged. This stops me describing the failure path after the budget has been spent.",
+    "The document doesn't say how the gateway decides whether an Enterprise limit is 'unset'. It gives no way to tell when config has been supplied or whether the gateway has to be restarted to pick it up."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

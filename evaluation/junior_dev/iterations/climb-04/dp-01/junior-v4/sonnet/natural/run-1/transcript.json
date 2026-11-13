@@ -1,0 +1,219 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The notes say this lock stops a Sunday recon and a late nightly retry from overlapping. But the index is one running row per kind, so a nightly row and a recon row could both be running. How do the two actually exclude each other?",
+     "about": "Run log: partial unique index allows only one running row per kind"
+    },
+    {
+     "id": "2",
+     "text": "When step 1 refuses to start because another run is active, what is recorded? Does that count as a failed attempt, and does it get retried?",
+     "about": "1. Lock and log: refuse to start if another run is active"
+    },
+    {
+     "id": "3",
+     "text": "If the load process crashes or the machine dies, nothing writes status=failed and the row stays as running. What clears it, and what does the next attempt do given the lock?",
+     "about": "Failure and retry: any error rolls back and the attempt is logged as failed"
+    },
+    {
+     "id": "4",
+     "text": "What component actually does the waiting and starts attempts 2 and 3? Is it the scheduler, the load job itself, or something else?",
+     "about": "Attempts 2 and 3: 15 minutes after the previous attempt is recorded as failed"
+    },
+    {
+     "id": "5",
+     "text": "What is the bulk-import lag? What writes rows to the orders table with an updated_at that is up to 90 minutes behind the time they become visible?",
+     "about": "Extract: 2-hour lookback is longer than the 90-minute bulk-import lag"
+    },
+    {
+     "id": "6",
+     "text": "How is the replica count obtained, and how does the staging row count differ from it if staging can hold duplicates? Is validation on raw staged rows or after dedupe?",
+     "about": "5. Validate: staged row count equals replica count"
+    },
+    {
+     "id": "7",
+     "text": "What happens to the Sunday run_date if the nightly succeeds on attempt 2 or 3 and recon then runs late? Does recon's own retry count start fresh, and what is its run_date and attempt in the run log?",
+     "about": "Reconciliation: runs after the Sunday nightly load commits"
+    },
+    {
+     "id": "8",
+     "text": "If the load commits at 06:30 after the alert, who or what tells people the dashboards are current again? Does the dashboard show anything to indicate it is showing the previous night?",
+     "about": "Staleness at 06:00 and dashboard refresh"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "They did not exclude each other; that was a flaw. Changed the index to allow one running row in the whole table across both kinds, so nightly and recon cannot overlap."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "If the running row cannot be inserted because another run holds the lock, the attempt logs itself as failed with error 'lock busy'. It counts as a failed attempt and follows the normal retry rule. This is the simplest handling and needs no new mechanism."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "If the attempt crashes, the runner marks it failed when it sees the error or timeout. If the process died so nothing wrote the status, the next attempt first marks any running row older than the 60 minute timeout as failed (error 'stale'), then takes the lock. A stale row therefore blocks for at most about an hour."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A runner job started by the scheduler at 02:00 does it. It loops through attempts, waits 15 minutes between them, pages after the third failure, and starts the Sunday recon. This is my design choice. It is the simplest way to keep retries in one place. If the runner itself dies nothing retries, which I listed as an open question."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "It comes from the brief. The app's bulk-import transactions can stay open up to 90 minutes. They stamp updated_at when each row is written, but the rows are only visible to readers, including the replica, when the transaction commits. I added this explanation to the Extract section."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The replica count is a count(*) over the same updated_at window, run inside the same REPEATABLE READ snapshot as the extract. Both counts are on raw, undeduped data. One snapshot has one row per order_id, so staging normally has no duplicates and the counts match. Duplicates arise across nights between staging and core.orders, not inside staging. The dedupe is a cheap safeguard. I corrected the wording in the flowchart and the Merge logic section."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Recon starts whenever the Sunday nightly commits, even if that is after attempt 2 or 3. Its log rows use kind=recon, the same Sunday run_date, and an attempt counter that starts at 1. Its retry budget is independent of the nightly's. Written into the Sunday reconciliation section."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief only requires the staleness alert and gives no recovery signal. Nothing in this design tells people when a late commit makes the dashboards current, and the dashboards show no previous-night marker. The data appears at the next dashboard refresh. I added this to Open questions instead of inventing a mechanism."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How does the runner enforce the 60 minute timeout? Does it stop the attempt, and what stops a timed-out attempt from still committing in step 6 after it was marked failed?",
+     "about": "Nightly load attempt (60 min timeout) and Failure and retry: the runner marks it failed when the attempt errors or times out"
+    },
+    {
+     "id": "10",
+     "text": "What is the timeout for a recon attempt? Is it also 60 minutes, and does the stale-row cleanup use the same 60 minutes for recon rows?",
+     "about": "Sunday reconciliation: RECON (any step errors or timeout)"
+    },
+    {
+     "id": "11",
+     "text": "Does recon read the replica inside one snapshot like the nightly extract, and are the replica and core.orders numbers taken at about the same moment? Where is the comparison done: in the runner or in a database?",
+     "about": "Sunday reconciliation: 1. Per order-creation day, last 30 days and 2. Same count and checksum from core.orders"
+    },
+    {
+     "id": "12",
+     "text": "What does 'page on-call' actually do here? Does a third recon failure page the same way as a third nightly failure?",
+     "about": "Failure and retry: Page on-call"
+    },
+    {
+     "id": "13",
+     "text": "What is the HWM on the very first run, and how is history older than the 2 hour window loaded? Is the first run the same code path as a normal night?",
+     "about": "Where state lives: ops.etl_state, seed it once with the backfill start"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The runner starts each attempt as its own process and kills it at 60 minutes, then marks the run_log row failed. To stop a killed or zombie attempt from still committing, the load transaction's first statement flips its own run_log row from running to committed and requires exactly one row changed. If the runner or the stale cleanup already marked it failed, zero rows change and the transaction rolls back. This reuses the log row, so no new mechanism is added. Written into the flowchart step 6 and the Failure and retry section."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. Recon attempts use the same 60 minute timeout, and the stale-row cleanup uses the same 60 minutes for every running row, nightly or recon. Recon also does the own-row-still-running check before its commit. Written into the Sunday reconciliation section and the flowchart."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The replica side reads inside one REPEATABLE READ transaction. The warehouse side is a separate query a moment later, so the two are not from the same instant. The comparison is done in the runner, which fetches about 30 small rows per side. Edits between the two reads can cause false positives, and reloading a day is idempotent, so I accept that. Written into the Compare bullet."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "The brief says 'page on-call' but not how. The paging tool and message format are not known and are outside this design. A third recon failure is paged by the same runner in the same way as a third nightly failure, with a message saying it was the reconciliation (that part is decided). I noted in the file that the paging tool is outside the design rather than invent one."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "On the first run the HWM is the seed value. It is set earlier than the oldest order's updated_at, so the normal code path loads all history in one window. The first run is the same path as a normal night. The risk is that a large history does not fit in the 60 minute timeout. I do not know the table size, so I added that to Open questions (a one-off backfill outside this pipeline would be needed) rather than build a chunked backfill mechanism."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "The nightly load only brings core.orders up to hi (about 02:00), but recon reads the replica later. Orders edited after hi will have a different updated_at on the replica than in core.orders. Does that make today's and yesterday's creation days mismatch every Sunday, and is that expected?",
+     "about": "Sunday reconciliation: 1. Per order-creation day, last 30 days and 2. Same count and checksum from core.orders"
+    },
+    {
+     "id": "15",
+     "text": "Is the recon extract into stg.orders_recon done in one REPEATABLE READ snapshot, like the nightly extract? And is there a validation step (row count check) before its merge?",
+     "about": "Sunday reconciliation: 4. Extract all rows of each mismatched day"
+    },
+    {
+     "id": "16",
+     "text": "What kind of problem is recon meant to catch that the nightly load with its 2-hour lookback misses? What does it fix, and what can it not fix?",
+     "about": "Sunday reconciliation: 3. Any day where count or checksum differs?"
+    },
+    {
+     "id": "17",
+     "text": "The watchdog only looks at the nightly row. If the nightly commits but the Sunday recon fails all three attempts, who finds out besides the page to on-call? Does the watchdog or dashboard show anything?",
+     "about": "Staleness at 06:00: watchdog checks run_log for a committed nightly row"
+    },
+    {
+     "id": "18",
+     "text": "The runner kills an attempt at 60 minutes and the stale cleanup marks rows older than 60 minutes as failed. Can these two race, for example attempt 2 starting while attempt 1's process is still alive but already marked failed? What stops attempt 1 from doing damage before it is killed?",
+     "about": "1. Lock and log: mark stale running rows failed"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Partly yes. The warehouse holds data only up to the nightly hi, and recon reads the replica a little later (it starts right after the commit, so the gap is short). Orders edited in that gap show a newer updated_at on the replica, so recent creation days can mismatch on a Sunday. That is expected and harmless: the reload applies the newer versions through the guarded merge, and reloading a day is idempotent and cheap. I did not add a cutoff, because capping both sides at hi still mismatches for an order edited after hi (core holds its old version, the replica hides the new one). Written into the False positives bullet."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "It was not stated; now it is. The recon extract for all mismatched days runs in one REPEATABLE READ snapshot, and before the merge the staged row count must equal a count(*) over the same days taken in that snapshot, the same check as the nightly validation. A failure counts as a failed recon attempt. Written into the Reload bullet and flowchart step 4."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "It catches rows that became visible on the replica later than the 2-hour lookback covers, such as when the replica falls behind (the brief's case). For the last 30 creation days it loads missing orders and newer versions. It cannot fix: days older than 30, a replica that is still behind (the day mismatches again next Sunday), or two versions with the same updated_at, since the checksum uses only order_id and updated_at. Added a Purpose bullet."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Nobody besides the page to on-call. The brief asks for a staleness alert only for the nightly load, so the watchdog checks only the nightly row. Dashboards are unaffected by a failed recon because core.orders stays consistent and current as of the nightly load; recon only repairs late rows. I did not add a recon alert or dashboard marker, and noted this in the Staleness section."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "In normal running they cannot race. The runner kills attempt 1 at 60 minutes and marks it failed, and attempt 2 starts 15 minutes after that, so the stale cleanup only finds rows left by a dead runner. If a killed process somehow lingers, the commit check (its own run_log row must still be running) stops it from changing core.orders or the HWM. You exposed a real gap: staging was shared and truncated per attempt, so a lingering process could write into attempt 2's staging. I fixed it by tagging staged rows with run_id and having each attempt validate and merge only its own rows, instead of truncating."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. At 02:00 UTC the scheduler starts the runner with run_date = today and attempt = 1. The runner is the only thing that retries. It runs each load attempt as its own process and kills it after 60 minutes.\n\n2. Lock and log (warehouse, ops.etl_run_log). The attempt first marks any `running` row older than 60 minutes as `failed` with error \"stale\". Then it inserts its own run_log row with status `running`. A partial unique index allows only one `running` row in the whole table, across nightly and recon. If the insert hits that index, the attempt logs itself `failed` with error \"lock busy\". That counts as a failed attempt and goes through the normal retry rule.\n\n3. Read the high-water mark (HWM). The attempt reads `high_water_mark` from the single pipeline row in `ops.etl_state` and sets lo = HWM minus 2 hours. The row is seeded once before the first run, with a time earlier than the oldest order.\n\n4. Open the replica snapshot. The attempt opens a read-only REPEATABLE READ transaction on the app Postgres read replica. It sets hi to the replica's now() at that moment. The replica holds no pipeline state.\n\n5. Extract and stage. From the replica it selects all columns of orders with updated_at > lo and <= hi. It deletes staging rows that belong to runs no longer `running`, then bulk-COPYs the new rows into `stg.orders_extract`, each tagged with its own run_id. Dashboards never read staging.\n\n6. Validate. It compares two counts on raw, undeduped data. One is its own staged rows. The other is a count(*) over the same window, run inside the same replica snapshot. It also checks that order_id is never null. A failure counts as a failed attempt.\n\n7. Commit in one warehouse transaction.\n a. It updates its own run_log row from `running` to `committed` and checks that exactly one row changed. If a timeout or stale cleanup already marked the row `failed`, nothing changes and the transaction rolls back.\n b. It dedupes its own staging rows to the latest updated_at per order_id. It MERGEs them into `core.orders`. Matched rows update only if the staged updated_at is newer. Unmatched rows are inserted. is_deleted is derived from deleted_at, and nothing is ever physically deleted.\n c. HWM = GREATEST(HWM, hi).\n d. COMMIT. The merge, the HWM advance and the `committed` status therefore land together or not at all. Dashboards see either the previous night or the full new night.\n\n8. Failure and retry. Any error, failed validation, lock busy, crash or 60-minute timeout leaves core.orders and the HWM unchanged and the run logged as `failed` with an error. The runner marks the row failed on an error or timeout. After a crash, the next attempt's stale cleanup does it. The runner waits 15 minutes and starts attempt + 1. A retry reads the unchanged HWM, so it re-covers the same window. After the third failed attempt the runner pages on-call. The document says attempt 3 starts by 04:30 at the latest and times out by 05:30.\n\n9. Sunday reconciliation. This only happens when run_date is a Sunday. The runner starts it right after the nightly commit. If the nightly never commits, recon does not run. Recon has its own run_log rows with kind = recon, its own attempt counter, a 60-minute timeout and the same lock.\n - It asks the replica (one REPEATABLE READ transaction) for count and checksum per creation day over the last 30 days. It asks the warehouse for the same figures from core.orders a moment later. The runner compares the two sets.\n - If no day differs, it logs a clean result and finishes.\n - If days differ, it extracts all rows of those days from the replica in one snapshot into `stg.orders_recon`. It checks the staged count against the replica count. Then, in one warehouse transaction, it checks that its own row is still `running`, runs the same guarded MERGE into core.orders and logs the days reloaded. It does not touch the HWM.\n - On failure it rolls back, logs the failure, and retries up to 2 more times 15 minutes apart. After that it pages on-call.\n\n10. Watchdog and dashboards. A separate cron job at 06:00 UTC checks run_log for a `committed` nightly row with today's run_date. If there is none, it posts a staleness alert to #data-alerts, and retries keep running. It ignores recon. The dashboard refresh also runs at 06:00 regardless, and reads only committed data from core.orders.",
+   "gaps": [
+    "Where the runner process itself runs, and what restarts it, is not stated. The document lists this as an open question and says nothing retries if the runner dies.",
+    "The document does not say what happens to an attempt that is killed on timeout partway through a bulk COPY. Specifically, it does not say how the lingering process's staging rows are cleaned up before the next attempt. It only says they are excluded by run_id.",
+    "Where recon's comparison between the replica figures and the warehouse figures runs is only described as 'in the runner'. How the runner connects to both systems and what credentials it uses are not covered. The document does not need to decide this, but it is an unstated step in the flow."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,19 @@
+## Review of auth-04 (simplify-only, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Cut the separate 'Notes on the flow' prose and the 'Failure modes covered' table. Their content moved into the steps (entry points, callback order, Google error, failed exchange) and into one failure table.
+- Restructured the document in the order a newcomer needs: summary with how login works today, terms, flowchart, numbered steps, failures, state table, build notes, open questions.
+- Defined the terms the junior needed (sub, transaction, binding cookie, pending link, google_identities, intent), each in one line.
+- Rewrote the eight steps so each has the same four parts: starts, does, keeps data, what happens on failure.
+- Merged the duplicate refusal rules for Settings and login into their steps and the single failure table.
+- Moved the database SQL, the NULL-hash rule and the email rule into a 'Build notes' section, separate from the flow.
+- Kept the flowchart's nodes and branches, with shorter labels. Changed 'Save gauth pend in Redis' to 'Save pending link' and the 'gpend missing' edge to 'pending link missing or expired', using the terms defined above. Changed 'Settings: already linked' to 'Already linked, nothing changes'.
+- Merged the five 'Decisions to confirm' into 'Open questions' and kept each as a question with its proposal, not as a decision.
+- Added open question 6 (Redis unavailable), which the rewrite exposed as a gap. The design does not decide it.
+- Cut the 'Redis holds only short-lived data' paragraph into one line under the state table, and removed the 'Unlink does not end sessions' sentence, which step 8 already states through 'sessions untouched'.
+- Did not change the plan's intent: no new mechanism, no new session type, and no change to any refusal or lockout rule.
+
+### Holes
+- None.

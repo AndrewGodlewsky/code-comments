@@ -346,6 +346,11 @@ class ScoreTest(unittest.TestCase):
         self.assertAlmostEqual(score.comprehension(grades, excluded={"q2"}), 1.0)
         self.assertAlmostEqual(score.comprehension(grades, excluded=set()), 0.75)
 
+    def test_cost_counts_the_final_simplify_pass(self):
+        # The skill's step 7 is part of the product; leaving it out made simplify-only look free.
+        usage = {"roles": {"simplify": {"model": "sonnet", "in": 4000, "out": 4000, "calls": 1}}}
+        self.assertAlmostEqual(score.run_cost(usage), 1000 * 2.0 / 1e6 + 1000 * 10.0 / 1e6)
+
     def test_cost_counts_product_roles_only(self):
         usage = {"roles": {"draft": {"model": "haiku", "in": 4000, "out": 4000, "calls": 1},
                            "reader": {"model": "sonnet", "in": 400000, "out": 4000, "calls": 2}}}

@@ -1,0 +1,26 @@
+## Review of auth-04 (junior-v4, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Error page 400 now links to the login page, in the flowchart and the failure table (Q1).
+- Login start node says no session or CSRF is needed, and Decisions explains why; next-path check is defined (Q2).
+- Callback node notes it is a top-level redirect so the Lax sid cookie arrives, and that it always clears oidc_flow (Q3, Q6).
+- Background states there is no disabled flag and deleting a user cascades (Q4).
+- Confirm node says no email is typed; the account is the pending record's user_id (Q5).
+- Removed oidc_flow cookie deletion from the OK node and clarified cookie removal in the state table (Q6).
+- Race edges say re-run once; failure table says the error page is shown if it conflicts again (Q7).
+- Schema change says where the reset email goes; added an Open questions section about email change (Q8).
+- Reordered into the newcomer layout: summary, today's system, terms, flowchart, notes after the chart, state table, failures, build changes, decisions, open questions.
+- Added a short summary paragraph and a Terms section with five one-line definitions (attempt, mode, pending link, link, sub).
+- Merged the old Background and Schema change sections: today's behaviour stays up front, and the ALTER and NULL-hash handling moved into a separate Build changes section.
+- Moved the Redis rate-limit item out of Decisions into Build changes, since it is something to build, not a decision.
+- Merged the repeated 'every Google sign-in calls start_session' bullet into the summary and the chart notes.
+- Merged the two race rows in the failure table (sub or email) into one row.
+- Removed the repeated 'attempt record consumed' wording from the failure table, since the state table already says it.
+- Dropped the 'state hash (the key)' item from the attempt state row because the key is already named in the Where column.
+- Shortened the 'Where state lives' and failure table text, and added short notes after the chart: the Lax cookie, no lockout effect on linked sign-in, and no NULL hash in the confirm branch.
+- The Mermaid diagram is unchanged.
+
+### Holes
+- None.

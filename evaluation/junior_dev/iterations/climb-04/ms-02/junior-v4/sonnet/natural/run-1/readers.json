@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "It becomes durable when the caller's own transaction commits. The row exists only if that transaction commits; no commit means no notification.",
+  "q2": "It redelivers the message after 30 seconds, possibly to another consumer.",
+  "q3": "5 attempts, waiting 1, 2, 4 and 8 minutes before attempts 2 to 5. End state is failed, and on-call is paged.",
+  "q4": "shipping_update moves on day 0, order_confirmed day 3 or later, password_reset day 6 or later. password_reset needs 3 days on order_confirmed and the p99 under 60 s gate.",
+  "q5": "idempotency_key is the notification id. The value comes from the row. MailRelay drops a repeat accepted within 24 h and returns success.",
+  "q6": "The monolith publisher sends route='service' rows to the broker topic notifications.requested. It marks published_at only after the broker confirms; the result consumer later updates status.",
+  "q7": "enqueue_notification decides it, reading flag notifications.route.<type> during the caller's insert. The route is stored on the row and never changes.",
+  "q8": "The service's INSERT ON CONFLICT (id) DO NOTHING ignores the duplicate row. MailRelay's idempotency key on the id also drops any repeat send within 24 h.",
+  "q9": "It stores the row in its own database first, then acks. If it crashes before the ack, the broker redelivers and the id conflict makes it a no-op.",
+  "q10": "In the service's notifications table (attempts, next_attempt_at, lease_until). The service's sender loop acts on it.",
+  "q11": "They keep route='service' and finish on the service; nothing is moved. Operators can hand stuck rows under 23 h old to the monolith; older ones are marked failed and paged.",
+  "q12": "Id, type, user_id, email, payload and created_at travel to the service. The service picks the template from type and renders the email content itself."
+ },
+ "sonnet": {
+  "q1": "The notification becomes durable when the caller's transaction commits and the row is inserted in the monolith `notifications` table via `enqueue_notification(tx, ...)`. The row exists only if that transaction commits; if the monolith crashes before the commit, there is no notification.",
+  "q2": "The broker redelivers an unacked message after 30 s, possibly to another consumer.",
+  "q3": "5 attempts total, with waits of 1, 2, 4 and 8 minutes before attempts 2 to 5. After the fifth failure the row is `failed` and on-call is paged.",
+  "q4": "Order: `shipping_update` (day 0), then `order_confirmed` (day 3 or later), then `password_reset` (day 6 or later). Before the last one (`password_reset`) moves: `order_confirmed` has soaked 3 days, step 7's conditions hold (no `route='service'` row pending beyond its retry window, no duplicate traced to the service, monolith CPU and DB connection use dropped, every `failed` row paged), and p99 enqueue-to-MailRelay latency on `order_confirmed` is under 60 s.",
+  "q5": "`idempotency_key=<notification id>`, which is the notification's `id` (the row id). If MailRelay accepted the same key in the last 24 h, it drops the new send and returns success.",
+  "q6": "The monolith's publisher loop (every 1 s) selects `route='service' AND published_at IS NULL AND status='pending'` rows from the outbox and publishes each to the broker topic `notifications.requested`. After the broker confirms, it sets `published_at`. The monolith's part is done at that point, but the row stays `pending` until the result comes back on `notifications.result` and the result consumer updates the status.",
+  "q7": "`enqueue_notification` decides, by reading the flag `notifications.route.<type>` and setting the row's `route` column (`monolith` or `service`). It is decided at insert time, inside the caller's transaction, and never changes afterwards.",
+  "q8": "Two things stop a second email. The service consumer does `INSERT ... ON CONFLICT (id) DO NOTHING`, so a duplicate message creates no new row. MailRelay's idempotency key (the id) drops any repeated send within 24 h.",
+  "q9": "The consumer writes to its own database first (the insert, in one transaction) and acks afterwards. It does not send, so it acks well inside 30 s. If it crashes between the store and the ack, the broker redelivers the message and the duplicate does nothing, because of `ON CONFLICT (id)`.",
+  "q10": "In the service database `notifications` table (`attempts`, `next_attempt_at`, `lease_until`). The service's sender loop acts on it. It polls every 1 s and claims due `pending` rows, and the pager loop acts on `failed` rows.",
+  "q11": "Nothing changes for them. Rows with `route='service'` keep their owner and finish on the service, whether unpublished, in the broker, mid-retry or mid-send. The service keeps running. Only rows inserted after the flip go to the monolith. (In an emergency with the service dead, an operator can hand stuck rows to the monolith.)",
+  "q12": "The requested message carries `{id, type, user_id, email, payload, created_at}`. The email content is produced in the service: it picks the template from `type`, renders it, and sends to `email`. `user_id` is only for traceability."
+ }
+}

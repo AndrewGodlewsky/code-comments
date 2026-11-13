@@ -1,0 +1,297 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"replicated log\" and \"Kafka\"? Are they the same thing, and what job does it do between the collector and the consumers?",
+     "about": "Collector validation and durable write, step 3"
+    },
+    {
+     "id": "2",
+     "text": "Rejected events are not retried by the client. What happens to them afterward: are they stored anywhere, or just dropped?",
+     "about": "Collector validation and durable write, step 4"
+    },
+    {
+     "id": "3",
+     "text": "The dedup consumer sets the key, then writes the manifest row. If it crashes between those two actions, or after the set but before passing the event on, what happens when it restarts and sees the event again?",
+     "about": "Deduplication, steps 1-4"
+    },
+    {
+     "id": "4",
+     "text": "What does the raw archive sink do if it falls behind or fails? Does dedup or the clean write wait for it, or do they run independently?",
+     "about": "Raw archive sink"
+    },
+    {
+     "id": "5",
+     "text": "What is the \"key-value store\" here, and what happens to the live path if it is down or slow?",
+     "about": "Deduplication, step 1"
+    },
+    {
+     "id": "6",
+     "text": "If a batch is retried after its first write succeeded, the duplicate gets a new received_at, maybe on a different day. Which copy's received_at ends up in events_clean and in which partition? Can a winner's day differ from its raw archive day?",
+     "about": "Collector validation and durable write; Clean write"
+    },
+    {
+     "id": "7",
+     "text": "What is the \"seal\" run at day close, concretely: who triggers it, what happens if the completeness check fails, and what is the day's state until then?",
+     "about": "Freshness and day close, step 7"
+    },
+    {
+     "id": "8",
+     "text": "What is \"the replay ledger\" and where does it live? Also what is the \"staging table\" and how does a replay job get started and run (operator command, scheduler)?",
+     "about": "Replay path, steps 8-10"
+    },
+    {
+     "id": "9",
+     "text": "A late event arrives after seal and triggers a replay of D. Replay keeps only manifest winners, but the late event's decision was written to the manifest by dedup. Does the replay then include it, and who or what starts the replay automatically?",
+     "about": "Freshness and day close, last bullet"
+    },
+    {
+     "id": "10",
+     "text": "Replay re-runs enrichment with target versions. If a day is replayed with the same versions, how is the output identical when the geo-IP database may differ from the original?",
+     "about": "Isolation and idempotence"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Same thing. The brief calls the log a replicated append-only log (Kafka-style, 14-day retention), and the plan now says so in Terms. Its job is to hold accepted events in order, in partitions chosen by a hash of event_id, so the raw archive sink and the dedup consumer can each read it at their own pace. It is a buffer, not the archive."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Rejected events are not stored. The brief requires keeping only accepted events for 90 days. The collector lists rejected events in its 202 response, and that response is the only record. This is now stated in the collector step and in the failure table. Whether operations wants them kept for debugging is left as an open item, since the brief does not ask for it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The earlier plan was wrong here. If the consumer crashed after setting the key, a restart would see the key and mark the winner as a duplicate, so the event would be lost from events_clean. The fix: the key's value is now the event's log position (partition and offset). On restart the same position is read again, the stored value matches, and the event is still a winner. If the crash happens before the set, the event is handled as new. Manifest rows are keyed by event_id, so writing one twice is harmless. A crash in the clean write can still double rows until the seal; that is listed as open."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "They run independently. The sink has its own offset, and deduplication and the clean write do not wait for it. The seal does wait for the sink, because the seal needs every archived copy. The log keeps events for 14 days, so the sink must recover within that time or events are lost from the archive. A lag alert is required. I chose this design because it keeps live freshness independent of archive health."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The key-value store is the store with per-key TTL from the existing infrastructure, and it holds one key per event_id. If it is down or slow, deduplication cannot decide whether an event is a winner, so it stops and does not advance its offset. No event is passed on without a decision. Events wait in the log, which keeps them for 14 days, and the freshness alert fires. Restarts must not rewind more than 9 days, because older keys have expired."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The winner is the first copy in log order, and its received_at is the one its own collector stamped. A later retry copy is a duplicate and is dropped, so its received_at is never used. A winner's day always equals its raw archive day, because both come from the same received_at stamp. The day can differ only between a winner and a duplicate, and only the winner counts."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A scheduler runs the seal, not an operator. Every 10 minutes after 02:00 UTC on D+1 it checks whether day D is complete: sink and dedup offsets have passed every record stamped before 02:00, and the collector confirms no such write is in flight. When the check passes, the seal rebuilds day D with the replay steps, verifies it, and atomically replaces partition D. If the check fails, the seal does not start. Day D stays closing, which means it still accepts appends like an open day, and the operator is alerted at 06:00 UTC. The 06:00 time is my choice, not a brief requirement."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The replay ledger is a warehouse table with one row per replay request, updated at each step. The staging table is a separate warehouse table with the same columns as events_clean, which dashboards do not read. An operator starts a replay by running it for day D with a reason and the target enrichment versions. The brief requires that an operator can rebuild a day, so no scheduler starts replays. The exact command interface is a detail the plan does not need, so it is left out of the file."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes, the replay includes it. The late event's raw copy and its winner row both sit under day D, and replay reads all of D's manifest files at the time it runs. The earlier plan made the late event start a replay automatically. That was an unstated choice, and the brief leaves the late-event policy open. So I changed the plan: a late event is counted and alerted, and an operator starts the replay. This is a change in plan behavior, and it is recorded in Changed and in Open."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "It is not identical unless the geo-IP and user-agent files for that version are the same. The plan now pins each enrichment version to stored files that never change, and replay refuses any version whose files are not stored. With that, the same day and versions give the same output. How long those files are kept is not in the brief, so it is listed as open."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "The client resends a batch after a lost 202. Where does the dedup consumer see the two copies: always in the same partition? What guarantees that, given partitions are chosen by hash of event_id?",
+     "about": "Deduplication, Starts: the next event in a log partition"
+    },
+    {
+     "id": "12",
+     "text": "What are the manifest decision values besides winner, and who writes the manifest row for a duplicate? Is a bot-dropped event also a row there?",
+     "about": "Deduplication, step 4 (manifest row)"
+    },
+    {
+     "id": "13",
+     "text": "The clean write appends to events_clean while the seal later rebuilds the day. Where do the clean-write micro-batches get their offset saved, and which component saves it (dedup, enrichment, or the clean write itself)?",
+     "about": "Clean write, If it goes wrong"
+    },
+    {
+     "id": "14",
+     "text": "What is the dedup consumer's own offset and where is it stored? How does the plan know the 'dedup offsets have passed every record stamped before 02:00'?",
+     "about": "Freshness and day close, Does: scheduler checks every 10 minutes"
+    },
+    {
+     "id": "15",
+     "text": "How does the seal rebuild a day 'with the replay steps' when replay refuses unless the day is sealed or passes the completeness check? Which enrichment versions does the seal use?",
+     "about": "Freshness and day close; Start and check"
+    },
+    {
+     "id": "16",
+     "text": "While day D is closing and the seal swaps partition D, rows the clean write appended to D during the rebuild: are they in the rebuilt partition, or lost by the swap?",
+     "about": "Atomic swap, and Freshness and day close (closing accepts appends)"
+    },
+    {
+     "id": "17",
+     "text": "If enrichment fails for a winner repeatedly (for example a geo-IP lookup error), does dedup or the whole partition stop? What happens to other events behind it?",
+     "about": "Enrichment, If it goes wrong"
+    },
+    {
+     "id": "18",
+     "text": "Duplicates are 'dropped from the clean path' but the stored value equals a log position. If a duplicate's copy is at an earlier-read position after a rewind, can it ever win? How does 'Restart from the last saved offset' interact with this?",
+     "about": "Deduplication, step 2 and restart bullet"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Both copies go to the same partition. The collector chooses the partition by a hash of event_id (step 2), so the same event_id always maps to the same partition. Log order within that partition then makes the first copy the first one read. That ordering, and keeping the partition count fixed while the 9-day window is live, are listed in Facts to confirm."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "The decision values are winner and duplicate. Dedup writes a manifest row for every event it reads, duplicates included (step 4, step 3). A bot-dropped event is not a row today, because no bot decision has been made. The manifest is written before enrichment, so the plan cannot yet say how a drop would be recorded. That is now stated under Open, and the earlier claim that replay would stay the same is removed."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The clean write does not save an offset of its own. Dedup owns the offset. After the warehouse confirms a micro-batch, the clean write saves the dedup offset for that batch (step 6). I chose this so there is one offset per partition, and so the completeness check (dedup offset passed the pre-02:00 positions) means the rows are already written. A crash after the warehouse accepts but before the save writes the batch twice, as before."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The dedup offset is the consumer's position in each log partition, saved in the log as the dedup consumer's offset, and it is defined in Terms. The old plan did not say how completeness was known. Now the collector reports, per partition, the last position it wrote for a write stamped before 02:00, once none are in flight. The day is complete when the dedup and sink offsets reach those positions (step 7). The collector reporting is a new interface, and its timing rests on the close-time guarantee in Open."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The seal is the replay steps 9 to 11, run automatically once the completeness check passes, using the live enrichment versions. Replay now requires the day to be sealed, not sealed or passing the check, because the seal is what passes the check. That is stricter than the brief's only closed days can be replayed, and it is needed so the replay never reads an incomplete manifest. The reason is in step 8."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Nothing is lost. The seal reads the manifest only after the completeness check, so it rebuilds every day-D winner the clean write already wrote during closing. Late winners are not passed on after the seal (step 4), so no day-D row is written during the swap. Step 7 now says why."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Only that partition stops. The failing winner is retried, which is safe because its key still says winner. If it keeps failing, that partition stops at the event and alerts. Events behind it in the same partition wait in the log, which keeps them for 14 days. Other partitions keep their own offsets and continue. I did not add a dead-letter store, since the brief does not allow a new mechanism for this."
+    },
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "A duplicate cannot win on a rewind within the 9-day window. The key holds the winner's position, and in the same partition a duplicate is always later, so it never matches. If the rewind starts before the winner, the winner is read first and matches. Only an expired key lets a duplicate win, which is why rewinds are limited to 9 days (step 4)."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "19",
+     "text": "Step 4 says winners are held out if their day is already sealed. How does the dedup consumer know a day is sealed, and where is that state stored?",
+     "about": "Deduplication, step 5 (late event)"
+    },
+    {
+     "id": "20",
+     "text": "The late-event rule says a winner reaching the log after the completeness check is held out. But a closing day still accepts live writes until the seal finishes. What exactly separates a normal closing-day winner (written to events_clean) from a late one?",
+     "about": "Freshness and day close, Late events"
+    },
+    {
+     "id": "21",
+     "text": "The seal rebuilds from the raw archive and the manifest. How does the seal know the manifest and archive hold all winners when dedup has only reached the pre-02:00 positions and not later ones?",
+     "about": "Freshness and day close, Why a closing day is safe"
+    },
+    {
+     "id": "22",
+     "text": "Dedup saves its offset only after the clean write confirms a batch. What happens to duplicates and manifest rows in a batch, and how is the offset advanced past duplicates that never reach the clean write?",
+     "about": "Clean write, Does"
+    },
+    {
+     "id": "23",
+     "text": "The collector reports a position for writes stamped before 02:00. What does 'in flight' mean, and how does the collector know no such write is still pending across its instances?",
+     "about": "Freshness and day close, The collector reports"
+    },
+    {
+     "id": "24",
+     "text": "Replay step 9 reads raw objects and manifest winners. How does it match a manifest winner row to the right raw object, given a retry duplicate shares the same event_id?",
+     "about": "Build into staging, step 2"
+    },
+    {
+     "id": "25",
+     "text": "Who handles the alert when the freshness alert fires or a partition stops, and does the system recover by itself once the cause is fixed?",
+     "about": "Enrichment, If it goes wrong"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Dedup does not need the seal state. It uses the day's cutoff. Once the collector has reported a cutoff for day D, dedup holds back any day-D winner whose position is past the cutoff in its partition (step 4, item 5). The cutoff and the sealed flag are stored in a per-day record in the key-value store, with no TTL. The old text, 'unless its day is already sealed', was unclear and had no mechanism behind it, so I replaced it."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "A winner is late when its log position is past its day's cutoff in its partition. A normal closing-day winner is at or before the cutoff. Before the collector reports a cutoff, no winner is late. The cutoff is the last position of a write stamped on day D, which is what makes the boundary exact. The old wording, 'stamped before 02:00', was wrong: it would mix day D+1 writes into day D's cutoff (see Changed)."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Dedup and the sink have reached the cutoff in every partition before the seal runs. So every day-D winner at or before the cutoff is already in the manifest and the archive. The seal reads only manifest winners at or before the cutoff, so late winners that reached the manifest later are not rebuilt into D. Manifest rows now carry the log position so this filter can be applied (step 7 and step 3 or 4)."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Duplicates and late events are passed over, not sent to the clean write. The dedup offset saved after a batch is the last log position read in that batch, not the last row written. Manifest rows are written as each event is read, before the offset is saved, so a crash just reprocesses them and they come out the same. A batch with no winners saves its offset once its manifest rows are written (step 6)."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "In flight means stamped on day D and not yet confirmed or refused by the log. Each collector instance reports its count of pending day-D writes and its last day-D position per partition to the day record. The cutoff is set only when every instance reports zero pending. No day-D stamp can start after midnight, so the report is final. An instance that stops reporting blocks the cutoff and alerts. Its timeout is in Open, under the close-time guarantee."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The manifest row and the raw archive copy both carry the event's log position (partition and offset). Replay step 9 matches each manifest winner to its raw copy by that position. A retry copy has a different position, so it can never be matched to a winner. Step 3 and step 9 now state this."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "Alerts go to an on-call operator, a role I chose because the plan needs an owner. The brief names no rota, so that is listed under Open. Recovery is automatic for the key-value and dedup path, enrichment partitions, the archive sink and the seal check, since their retries and saved offsets resume on their own. Replay and replay of a late event need an operator to start them. This is written in the new Alerts and recovery section."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client has a batch of up to 100 events (each with a client-made event_id UUID, a device_id and a client timestamp). It sends the batch over HTTPS to the collector. On a timeout, 429 or 5xx it resends the same batch with the same event_ids. Backoff starts at 1 s and caps at 5 minutes. The mobile SDK keeps a buffer on the device for up to 7 days, so a retry can arrive up to 7 days after the first copy.\n\n2. The collector receives the batch and stamps every event with received_at, the server's UTC time. That time decides the event's day (day D), its partition in events_clean and any replay. Client time is never used for these.\n\n3. The collector checks each event on its own. An event with no event_id or device_id, or over 32 KB, is rejected. The rest of the batch is kept. Rejected events are not stored. The only record is the 202 response body, which lists them by index and event_id. Clients do not retry them.\n\n4. The collector appends the accepted events to the replicated log in one durable write. Each event goes to the partition chosen by a hash of its event_id. So all copies of one event_id land in the same partition. The log holds the data, keeps it 14 days, and is a buffer, not an archive. The collector returns 202 only after the log confirms.\n   - If the log write fails or is not confirmed, the collector returns 429 or 5xx and the client resends the whole batch.\n   - If the write succeeded but the response was lost, the resend creates a second copy with a new received_at and a later log position.\n\n5. The raw archive sink reads the log at its own pace and keeps its own offset. It copies each event as received, with received_at, batch id and log position, into gzip files under raw/received_day=YYYY-MM-DD/. Files are never rewritten and are deleted 90 days after creation. If it fails, it resumes from its saved offset. Dedup and the clean write do not wait for it, but the seal does. A lag alert must fire long before 14 days, because the log drops events after that.\n\n6. The dedup consumer reads one partition in order. For each event it does a set-if-absent on a key-value store key named by event_id. The value is this event's log position and the TTL is 9 days. If the set succeeds, or the stored value already equals this position, the event is the winner. Otherwise it is a duplicate. Because both copies are in the same partition and the first copy is read first, the first copy in log order wins.\n\n7. Dedup then writes a manifest row (event_id, received_day, log position, decision). Rewriting the same row gives the same row. A duplicate stops here. It stays in the raw archive and the manifest but is not written to events_clean.\n   - Crash before the key is set: on restart the key is missing, so the event is handled as new.\n   - Crash after the key is set: on restart the same position is read again, the stored value matches, and it is still a winner.\n   - Restart is from the dedup offset, which is saved in the log. It must not rewind more than 9 days, because older keys expire.\n   - If the key-value store is down or slow, dedup stops without advancing its offset. Events wait in the log and the freshness alert fires.\n\n8. For a winner, dedup checks whether the day has a cutoff and whether the winner's position is past it. If so, the winner is late. It is counted and alerted and it stops. It stays in the archive and manifest but is not written to events_clean. Every other winner goes to enrichment.\n\n9. Enrichment looks up geo-IP and parses the user agent. It stamps the row with enrichment_version, geoip_db_version and ua_parser_version, using only stored file versions so replay can reproduce the result. It holds no state. If a winner fails, it is retried, which is safe because its key still says winner. If it keeps failing, that partition stops at that event and an alert fires. Later events in that partition wait in the log. Other partitions continue.\n\n10. Enriched winners are collected into micro-batches at most one minute apart. The batch is appended to events_clean, in the partition for each row's received_day. After the warehouse confirms, the dedup offset is saved as the last log position read in that batch. Duplicates and late events count as read. A batch with no winners saves its offset once its manifest rows are written.\n    - A failed write is retried.\n    - If the process dies after the warehouse accepts the batch but before the offset is saved, the batch is read again and written twice. Dashboards can see these duplicate rows until the seal removes them.\n    - Freshness is the time from received_at until the row can be queried. The alert fires at 4 minutes against a 5-minute target.\n\n11. Day D is open until it closes at 02:00 UTC on D+1. At that moment it becomes closing. It still takes normal writes. The collector reports the cutoff: each instance reports its count of pending day-D writes (pending from stamp until the log confirms or refuses) and its last day-D log position per partition. The cutoff is written to the day record in the key-value store only when every instance reports zero pending writes. If an instance still has pending writes, the cutoff is not set, the day stays closing, and an alert fires at 06:00 UTC if it is still unset.\n\n12. Every 10 minutes a scheduler checks completeness. Day D is complete when the cutoff is set and, in every partition, both the dedup offset and the archive sink offset have reached the cutoff. If it is not complete, the seal does not start, the day stays closing, the scheduler keeps checking, and the operator is alerted at 06:00 UTC.\n\n13. When day D is complete, the seal runs the replay steps (build into staging, verify, atomic swap) with the live enrichment versions. It uses only manifest winners at or before the cutoff. It replaces partition D in one atomic swap, and then the day is sealed. This is safe because every winner at or before the cutoff is already in events_clean (the offset is saved only after the write), and later winners are held out as late. So no day-D row is written during the swap, and the seal rebuilds the same set of rows that is already there, minus any double-written copies. If a seal check fails, partition D does not change and the operator is alerted.\n\n14. Replay, step 1: an operator runs replay for a sealed day D, giving a reason and the target enrichment versions. The system refuses the request if the day is not sealed or if a requested version's geo-IP or user-agent files are not stored. A refusal is recorded with its reason and nothing else changes. Otherwise it writes a replay ledger row with the requester, the day, the reason and the target versions. The ledger is a warehouse table.\n\n15. Replay, step 2 (build): on separate compute with its own quota, it reads all manifest files for D and keeps only the rows marked winner. It does not repeat the dedup decisions. For each winner it finds the raw copy by log position (partition and offset), so a retry copy is never used. It re-runs enrichment with the target versions and writes the rows to the staging table. If this fails, the staging rows are discarded, events_clean is unchanged and the operator can run it again. Replay includes late winners, unlike the seal.\n\n16. Replay, step 3 (verify): it checks that the staging row count equals the number of winner rows in D's manifest, that event_id is unique, and that every row has the target versions. It records counts and checksums in the ledger. Any failed check stops the replay, leaves events_clean unchanged and is recorded in the ledger.\n\n17. Replay, step 4 (swap): it replaces partition D of events_clean with the staging rows in one all-or-nothing operation, then drops the staging rows. Readers see the old day or the new day, never a mix. If the swap fails, the old day stays and the replay can be run again. Throughout, replay touches only object storage, the warehouse, the staging table and partition D. It does not touch the collector, the log, the key-value store or other days. The ledger records the day, requester, before and after versions, counts, checksums, and start and end times.\n\n18. Retention: raw archive and manifests 90 days, key-value dedup keys 9 days, day records no TTL, log 14 days. Alerts go to an on-call operator, whose owner is not named.",
+   "gaps": [
+    "The document does not say how the 'last day-D log position per partition' is judged to include the dedup winner check. Specifically, how a winner's position is compared with the cutoff when a day-D event was written in a partition with no day-D writes, and what 'the day has a cutoff' means for a winner read before the cutoff is set, are not explained. Such a winner would be passed on and written, so it is unclear how the seal handles it.",
+    "How the manifest, the staging build and the seal obtain winners 'at or before the cutoff' is not specified. The manifest has only the log position, and the cutoff is stored per partition, but the document does not say how the two are compared or where a manifest row is flagged.",
+    "It does not say how the seal is triggered and executed. Which component runs it, and how an operator or the scheduler starts it, is not stated beyond 'the scheduler checks completeness'.",
+    "It does not say how the seal removes the double-written clean-write copies. The seal rebuilds only from manifest winners, so it should replace them, but the document never states where in the swap this happens, and a day is not sealed until 02:00 UTC on D+1, so how the open day's duplicates are removed beforehand is not said.",
+    "It does not say which log records (and from which partition) the dedup offset covers when a micro-batch spans several partitions. The offset is described as a single place per partition, but the save step says 'the last log position read in that batch'.",
+    "The behavior when the collector's pending-write count never reaches zero for an instance that crashes is not described (a crashed instance's pending writes may never be reported).",
+    "How the raw copy is located 'by log position' in the gzip files, such as an index or a naming scheme, is not stated.",
+    "What a client does after receiving the 202 with rejected events, and what happens when a client retry happens after the 7-day window or when the TTL has expired, is not covered beyond the Open items.",
+    "The storage location and format of the manifest and day record are only partly given, and the key-value store holds both dedup keys and day records, but how the dedup consumer reads the cutoff on each event is not said.",
+    "What a seal does with the late events, and who decides to replay them, is deliberately left open.",
+    "Where the bot-traffic decision would be recorded is explicitly undecided."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

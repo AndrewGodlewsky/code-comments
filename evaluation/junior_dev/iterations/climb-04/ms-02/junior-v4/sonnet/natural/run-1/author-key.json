@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "enqueue_notification inserts the row in the caller's transaction with route='service'. A monolith publisher loop (every 1 s) selects route='service' AND published_at IS NULL AND status='pending' rows and publishes them to the notifications.requested topic. Once the broker confirms, it sets published_at. The monolith's part is done at that point as far as sending goes. The row stays pending until the service's result message arrives and the result consumer sets sent or failed.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "enqueue_notification decides, inside the caller's transaction at insert time. It reads the flag notifications.route.<type> and stores the result in the row's route column. The route never changes afterwards, so a later flag flip affects only rows inserted after it. The one exception is the emergency runbook, where an operator hands stuck rows back to the monolith by hand.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "There are two guards. The service consumer inserts with INSERT ... ON CONFLICT (id) DO NOTHING, so a repeated message creates no second row and no second send. If a re-send happens anyway, for example after a crash or lease expiry, every send passes idempotency_key=<notification id>, and MailRelay drops a repeat within 24 h.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The consumer stores the row and acks in one step, and it does not send. The ack comes after the database write commits, and it comes before any send, so it is well inside 30 s. If it crashes before the commit, nothing is stored and the broker redelivers. If it crashes after the commit but before the ack, the redelivery hits ON CONFLICT and does nothing. A separate sender loop later does the sending, using a lease. If it crashes mid-send, the lease expires and the re-send uses the same key.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The retry state lives in the service database's notifications table, in the attempts, next_attempt_at, status and lease_until columns. The service's sender loop acts on it. It polls every 1 s, claims due rows, sends, and commits each outcome. The monolith row only shows pending, then the final status once the result arrives.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Rows already routed to the service stay with the service. Flipping the flag back affects only new rows, which get route='monolith' and go to the old worker. The in-flight service rows finish there, whether unpublished, in the broker, mid-retry or mid-send, and the service keeps running. Nothing moves, so nothing is lost or re-sent. The exception is the emergency runbook for a dead service. There an operator stops the service sender and hands stuck rows to the monolith by hand, and the MailRelay key drops any repeat.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Each requested message carries {id, type, user_id, email, payload, created_at}. user_id is only for traceability. The email content is produced in the service. It picks its own copy of the template from type and renders it from payload in the sender loop, then sends to email.",
+  "decided": true
+ }
+}

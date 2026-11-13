@@ -1,0 +1,175 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the flag system (flags.get) and how does a flag change reach every monolith instance within 10 s? Who flips it, and how?",
+     "about": "Step 2 / Rollback: notifications.route.<type> flags"
+    },
+    {
+     "id": "2",
+     "text": "What is MailRelay, and what does it do with idempotency_key? Does it send the email itself, or hand it on? What does 'accepted' mean?",
+     "about": "Design summary rule 2: MailRelay is the final duplicate guard"
+    },
+    {
+     "id": "3",
+     "text": "In the old worker, how does the poll work today: how often, what does a batch look like, and when does a row become sent or pending again?",
+     "about": "Step 1: _deliver and the batch commit"
+    },
+    {
+     "id": "4",
+     "text": "Who calls enqueue_notification, and what does 'in the caller's own transaction' mean here? For example, what does a shipping_update webhook do from start to finish?",
+     "about": "Design summary rule 1: enqueue_notification"
+    },
+    {
+     "id": "5",
+     "text": "What is the broker (which product), and what does 'confirms' versus 'ack' mean? What is the 30 s limit before redelivery?",
+     "about": "Broker topics: notifications.requested / notifications.result"
+    },
+    {
+     "id": "6",
+     "text": "How does the service know which email address and template to use, and where does the template data come from? The requested message has type, email and payload; is anything else needed?",
+     "about": "Step 3: Sender loop, Rendering"
+    },
+    {
+     "id": "7",
+     "text": "Why does the monolith need to know the final status at all? What reads notifications.status in the monolith (users, support, other code)?",
+     "about": "Design summary rule 3: monolith table stays the system of record for status"
+    },
+    {
+     "id": "8",
+     "text": "If a row is 'failed' by the 60-minute reconciliation alert or the 23 h guard, who marks it, and where does the 23 h guard run for service-routed rows, since the monolith cannot see the service DB?",
+     "about": "Design summary rule 6: 24 h guard"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief says flags.get(name) exists in the monolith and a change reaches every instance within 10 s. How the change propagates and who flips it with which tool is not described in the files. I added a Flag term and an open question assuming the platform's flag tooling."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "From notifications-overview.md: send() takes an optional idempotency_key; if MailRelay accepted the same key in the last 24 h it drops the new send and returns success. 'Accepted' is defined in the file as send() returning success. Whether MailRelay sends itself or hands on is not stated; added to open questions. Added a MailRelay term."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "From notifications.py: run_worker loops with a 5 s sleep, selects up to 50 due pending rows FOR UPDATE SKIP LOCKED in one transaction, commits once per batch. Success sets sent; failure sets a later next_attempt_at, or failed after attempt 5; a crash before commit leaves the batch pending. Added an Old worker term."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Per the docstring in notifications.py, checkout, the carrier webhook and password reset call enqueue_notification inside their own transaction, so the row exists only if that transaction commits. A shipping_update webhook updates the shipment and inserts the row in one transaction. Added a Caller term with this example."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Overview says it is the existing broker used by billing and search, at-least-once, unacked messages redelivered after 30 s, publishers get a confirmation once stored. Confirm = publisher side, broker stored it; ack = consumer side, processing done. The product name is not given (open question). Added a Broker term."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The requested message carries type, email and payload. The service picks its own template copy from type and fills it from payload, sending to email. Nothing else is needed because rendering only uses type and payload today. user_id is carried only for traceability. Stated in the message shapes section."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The brief says the monolith table stays the first place a notification is recorded, so I keep it as the system of record and feed terminal status back. Without it, service-routed rows would stay pending forever and the 60 min reconciliation alert would be meaningless. What reads status today is unknown; added to open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The 60 min reconciliation alert marks nothing; it only pages, and a human checks. The 23 h guard runs in whichever side owns the row: the old worker for monolith rows (added to step 2), and the service sender loop for service rows (added to step 3), which then reports failed back through the result message. Rule 6 and step 4 were reworded to say this. The earlier text implied the monolith could do it, which it cannot."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How often does the sender loop run, and how many rows does it claim each time? A new row arrives via the consumer. How soon does it get picked up?",
+     "about": "Step 3: Sender loop"
+    },
+    {
+     "id": "10",
+     "text": "The claim query checks `status='pending' AND next_attempt_at <= now()`. Where does `lease_until` come into the claim? After a crash, what makes the row due again once the lease expires, and does that re-send count as an attempt?",
+     "about": "Step 3: Sender loop (lease_until)"
+    },
+    {
+     "id": "11",
+     "text": "How often does the result publisher run? Does the sender loop trigger it, or does it poll the service DB? What does the monolith row look like between the send and the result arriving?",
+     "about": "Step 3: Result publisher"
+    },
+    {
+     "id": "12",
+     "text": "How does on-call get paged today in the monolith, and what does the service use? Is it the same mechanism?",
+     "about": "Step 3 / Step 4: Pager loop, on-call paged"
+    },
+    {
+     "id": "13",
+     "text": "What counts as malformed here? What happens to that notification afterwards, given its monolith row stays `pending`?",
+     "about": "Step 3: Malformed message to a dead-letter queue"
+    },
+    {
+     "id": "14",
+     "text": "What does the publisher do for rows it fails to publish, for example a row the broker rejects? Does it keep retrying the same row, and does that block newer rows behind it?",
+     "about": "Step 4: Publisher"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The sender loop polls every 1 s and claims up to 50 due rows per poll, so a new row is picked up within about 1 s. Chosen to be faster than the old worker's 5 s because password_reset has a 60 s target and the new path adds a hop. Added to step 3."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The claim query was missing the lease. It is now: status='pending' AND next_attempt_at <= now() AND (lease_until IS NULL OR lease_until < now()). After a crash the lease expires and the row is due again. The re-send does not count as a new attempt, because attempts changes only when an outcome is committed. The same key makes the re-send safe. Fixed in step 3."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The result publisher polls the service DB every 1 s for terminal rows with result_published_at IS NULL. The sender loop does not trigger it, which keeps the two independent. Until the result is applied, the monolith row stays pending and nothing else changes on it. Added to step 3."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "Per notifications.py, the monolith pages with alerts.page_oncall(...). Whether the service can call the same paging system is not in the files, and I do not know. Added an open question. The plan only needs the service to be able to page on-call."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Malformed means the body cannot be parsed, a required field is missing, or the type has no template. The message goes to the dead-letter queue with a page. The monolith row stays pending, so the 60 min reconciliation alert also fires, and a human decides what to do. I add no automatic recovery. Added to step 3 and the failure matrix."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Each row is published independently. A row the broker rejects stays unpublished and is tried again on the next 1 s loop, while other rows go ahead, so one bad row does not block newer ones. The 2 min unpublished-age alert flags a row that keeps failing. Added to step 4 and removed the vague backoff wording."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Worked example: a carrier webhook for a shipping update after step 7, when the shipping_update flag is \"service\".\n\n1. Prerequisites (steps 1 to 6). The old worker sends an idempotency key (the notification id) to MailRelay, so a repeat send within 24 h is dropped and reported as success. The monolith table gets `route` and `published_at` columns. The service is built and deployed with its own DB. The monolith publisher and result consumer are deployed but idle. A canary type is tested, and go/no-go gates are defined. Step 7 starts only after every monolith instance runs the route-aware worker.\n\n2. Start: a carrier webhook arrives. The business code (the \"caller\") opens a database transaction. It updates the shipment and calls `enqueue_notification(tx, ...)`. Nothing is sent at this point.\n\n3. Routing is decided at insert. `enqueue_notification` reads the flag `notifications.route.shipping_update`. If the flag is `service`, it inserts a `notifications` row with `route='service'`, `status='pending'` and `published_at` NULL. If the flag is missing or errors, it uses `monolith`. The row exists only if the caller's transaction commits. If the monolith crashes before that, there is no row and no notification. The route never changes afterwards, so each row has exactly one owner. A flag flip reaches all instances within 10 s and affects only rows inserted after it. The monolith table is the first record and the system of record for status.\n\n4. The monolith publisher loop runs every 1 s. It selects rows with `route='service' AND published_at IS NULL AND status='pending'`, oldest first, using `FOR UPDATE SKIP LOCKED`. It publishes each row to the broker topic `notifications.requested` as `{id, type, user_id, email, payload, created_at}`. After the broker confirms it has stored the message, the publisher sets `published_at`. If one row fails to publish, it stays unpublished and is retried on the next loop, and other rows carry on. If the broker is down, rows wait in the monolith (the outbox) and an alert fires when the oldest is over 2 min old. If the monolith crashes between the confirmation and the commit, the row is published again, and the service dedupes it by `id`.\n\n5. The service consumer receives the message. In one transaction it does `INSERT ... ON CONFLICT (id) DO NOTHING` into the service DB `notifications` table, then acks after the commit. It does no sending, so it acks well inside the broker's 30 s limit. If the service DB is down, it does not ack and the broker redelivers after 30 s. Duplicate deliveries produce one row. A malformed message (unparseable, missing field, or a type with no template) is rejected to a dead-letter queue and on-call is paged. The monolith row stays `pending` and the 60 min alert fires.\n\n6. The sender loop polls the service DB every 1 s. It claims up to 50 due rows (`status='pending'`, `next_attempt_at <= now()`, lease free or expired) with `FOR UPDATE SKIP LOCKED`. First it applies the 23 h guard. A row older than 23 h that is not terminal is marked `failed` and on-call is paged. Otherwise it sets `lease_until = now() + 2 min` and commits, so no transaction is open during the network call. It renders the template from `type` and `payload`. A render exception counts as a failed attempt. It then calls `mailrelay.send(..., idempotency_key=id)`.\n\n7. The outcome is committed per row. On success the row becomes `sent`. On failure `attempts` and `next_attempt_at` are updated with waits of 1, 2, 4 and 8 min before attempts 2 to 5. After the fifth failure the row becomes `failed`. `attempts` changes only when an outcome is committed. If the service crashes mid-send or after MailRelay accepts but before the commit, the lease expires and the row becomes due again. It is re-sent with the same attempt number and the same key, and MailRelay drops the repeat and returns success, so the user gets one email.\n\n8. Paging for failures. A pager loop pages on-call for `failed` rows where `paged_at IS NULL`, then sets `paged_at`. Because it is driven from the DB, a crash after the commit cannot lose a page. A crash between the page and `paged_at` can page twice, which is accepted.\n\n9. Reporting back. The result publisher polls the service DB every 1 s for terminal rows with `result_published_at IS NULL`. It publishes `{id, status, attempts}` to `notifications.result` and sets `result_published_at` only after the broker confirms. If the service crashes before that, the row is republished.\n\n10. The monolith result consumer runs `UPDATE notifications SET status=$s, attempts=$a WHERE id=$id AND status='pending'` and acks after the commit. Redelivery is a no-op. The monolith row is now `sent` or `failed`. If the result is lost or delayed, the row stays `pending`, the monolith does not resend, and a reconciliation alert pages on-call after 60 min. The alert changes no row, and a human checks.\n\n11. For comparison, a `route='monolith'` row is handled by the old worker. Every 5 s it locks up to 50 due rows, applies the 23 h guard, sends each with the key, and commits once per batch. Success gives `sent`. Failure keeps the row `pending` with a later `next_attempt_at`, or gives `failed` plus `alerts.page_oncall` after attempt 5. A crash before the commit leaves the batch pending and re-sent, and the key prevents duplicates.\n\n12. Rollout and rollback. `shipping_update` is soaked for 3 days against the listed criteria. Then `order_confirmed` moves and is soaked for 3 days, with a p99 enqueue-to-MailRelay latency gate under 60 s. Then `password_reset` moves, with extra alerts. After 7 days the old worker is removed and `enqueue_notification` always writes `route='service'`. To roll back a type, set its flag to `monolith`. New rows go to the old worker, and in-flight service rows are finished by the service, so nothing is moved or sent twice. In an emergency with a dead service, an operator can hand stuck rows under 23 h old to the monolith with a manual UPDATE. Those rows get a fresh attempt count, and older rows are marked `failed` and paged.",
+   "gaps": [
+    "How the service pages on-call: the document says whether it can use `alerts.page_oncall` is an open question, so I cannot explain how the failed-row page (step 8) or the dead-letter page actually reaches a person.",
+    "How the monolith publisher and result consumer attach to the broker, and whether the broker has a dead-letter queue at all. The document says the product and DLQ support are unknown, so I cannot explain the malformed-message path mechanically.",
+    "How an operator finds and reads the dead-letter queue entries, and what a human does with them. The document says only 'a human decides'.",
+    "What happens on the monolith side when the broker rejects a result or requested message beyond 'left unpublished and retried'. For example, there is no stated retry limit or alert for a single permanently rejected row, other than the 2 min oldest-unpublished alert and the 60 min pending alert.",
+    "What the monolith does with `status` once it is `sent` or `failed` for service rows beyond storing it. The document does not say what reads it today (an open question), so I cannot say who sees the final outcome.",
+    "What the 'sent' status means in end-to-end terms. The document does not say whether MailRelay delivers the email itself or hands it on, so I cannot say what 'accepted' guarantees to the user."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

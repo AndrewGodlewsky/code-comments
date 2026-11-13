@@ -24,7 +24,7 @@ import statistics
 import sys
 
 PRICES = {"haiku": (0.10, 0.50), "sonnet": (2.0, 10.0), "opus": (4.0, 20.0)}  # $ per million tokens (in, out)
-PRODUCT_ROLES = {"draft", "junior", "author", "teachback", "verdict", "self", "critic", "critic-revise"}
+PRODUCT_ROLES = {"draft", "junior", "author", "teachback", "verdict", "self", "critic", "critic-revise", "simplify"}
 JUDGE_WIN, COMP_TOLERANCE, OPUS_WIN, WORTH_IT_GAP, EPS = 0.65, 0.03, 0.45, 0.05, 1e-9
 PRIMARY_JUDGE = "opus"  # chosen on 2026-11-13: decisive across orders where the Sonnet judge followed position
 

@@ -1,0 +1,18 @@
+## Review of mig-01 (simplify-only, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short "What this is" overview and a "Terms" list, so a newcomer can follow the main flow before the steps.
+- Moved the copy rule, the repair sweeper, erasure and id assignment out of step 1 into one "How copying works" section. Dual writes, the sweeper, the backfill and the comparison repair all use the same rule, so it is now written once instead of being repeated in several steps.
+- Changed the repair sweeper to drain the outbox of whichever store is the source at the time. The original described only MySQL-to-Postgres, but step 8 needs the Postgres outbox to drain into MySQL. This clarifies existing intent and adds no new mechanism.
+- Added the MySQL table `erasure_requests` to step 0's schema list. The erasure description used it, but step 0 did not create it.
+- Moved the check that `app_flag_value` exports string flags into step 0 as a "Check before step 1" line, and added it to the open questions, since it is a real unknown.
+- Added an open question about the MySQL snapshot retention period. The plan says drops wait for it but never sets its length.
+- Merged the step 6 "If it fails" text into the clock rule, since both said the same thing about resetting the clock.
+- Split step 1's per-write behaviour into one numbered list and removed repeated sentences. The timeouts and failure cases are unchanged.
+- Removed the "Reads before writes" and similar summary phrasing and kept each step's parts in the same order: starts, changes, state, failure. No step codes such as R3 or Q7 are used.
+- Kept the plan's intent unchanged: the switch timing, pause limits (80 s per instance, 90 s total), the 3-day hold, the 14-day hold, the version rule, the 5-second replica lag limit and the 2,000-row batch size are the same as before.
+
+### Holes
+- None.

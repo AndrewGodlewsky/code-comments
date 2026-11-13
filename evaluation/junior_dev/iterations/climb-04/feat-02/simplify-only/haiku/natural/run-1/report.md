@@ -1,0 +1,20 @@
+## Review of feat-02 (simplify-only, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Cut the full Lua script from the notes. Its rules now sit in step 3: check and count happen in one atomic Redis operation, rejected requests are not counted, and expiry is set only on the first count. This is an implementation detail the plan does not need yet.
+- Removed all references to brief requirement numbers and note numbers (for example 'requirement 3', 'see note 2'). A newcomer cannot see those, so each rule is now stated where it applies.
+- Merged the old Notes 1 and 8 into the terms and the failure table. Merged Notes 5 and 6 into steps 4 and 5, and Note 7 (ordering) into the steps themselves.
+- Added a short 'What this is' section that explains how the gateway works today and what changes, before the diagram.
+- Added a terms list with one line per term, placed before the diagram.
+- Rewrote the notes after the diagram as numbered steps, each with the same four parts: what starts it, what it does, what keeps its data, and what happens when it goes wrong.
+- Added a single failure table in place of failure details scattered across the notes.
+- Kept the Enterprise placeholder as a visible open question. It is still a proposal for Product to confirm, not a decision.
+- Fixed a mismatch: the old Retry-After rule had a 1 second minimum in the text but not in the diagram. The diagram now shows 'minimum 1' as well.
+- Changed the diagram labels to plain words: 'EVAL check and increment' became 'atomic check and count', and 'see note 2' became 'see open questions'. The diagram form and all branches are unchanged.
+- Added an open question for Key Service failure. The original design never said what happens when the Key Service cannot resolve a key. This is flagged as a hole, not filled in with a guess.
+- Merged the old 'Open items' list into the 'Open questions' section and removed the duplicate Enterprise entry.
+
+### Holes
+- None.

@@ -1,0 +1,166 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What process actually takes the log end offsets and writes `sealed/dt=D`? What runs it, what triggers it at 02:00 UTC, and what happens if the archiver is still behind then?",
+     "about": "11. Seal each day before it can be replayed"
+    },
+    {
+     "id": "2",
+     "text": "How does the live job know a day is sealed? Does it read `sealed/dt=D` from object storage on each write, or is there some other check?",
+     "about": "9. Live job: write to the warehouse idempotently (refuse to write to a sealed day)"
+    },
+    {
+     "id": "3",
+     "text": "Archive file names are by offset range, but files are cut by `received_at` day. Can one offset range hold records from two days? If so, how does the archiver split them while keeping a single \"archived through offset\" checkpoint per partition?",
+     "about": "5. Archiver: the 90-day raw copy"
+    },
+    {
+     "id": "4",
+     "text": "What does the live job do with a record whose claim loses (a duplicate)? Is it only counted, or does it still get the offset committed so the consumer moves on?",
+     "about": "6. Live job: deduplicate by event_id alone, first copy wins"
+    },
+    {
+     "id": "5",
+     "text": "What is a \"quarantine location\" and what happens to a quarantined record afterwards? Does anyone or anything move it into `events_clean`?",
+     "about": "9. Live job: write to the warehouse idempotently"
+    },
+    {
+     "id": "6",
+     "text": "Step 8 says it runs after dedup, and step 7 is enrich. Where exactly does the bot hook sit relative to enrich and the warehouse write, and what does the hook do right now before Product decides (pass everything through)?",
+     "about": "8. [OPEN] Bot-traffic decision point"
+    },
+    {
+     "id": "7",
+     "text": "What does the 202 response body contain on success, and when a batch has both accepted and rejected events, is it 202 with the rejected list? What is the response for a batch rejected whole under A4?",
+     "about": "2. Collector: validate each event on its own / A4"
+    },
+    {
+     "id": "8",
+     "text": "The live path takes the winner by the key-value claim order, but replay picks the earliest log order. Why are these the same copy, given consumers may process out of order or across restarts? Is it the one partition per event_id that guarantees it?",
+     "about": "13. Replay: read and dedupe from the archive"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A small scheduled seal job runs it. It starts at 02:00 UTC on D+1 and retries every 5 minutes. If the archiver is behind, the job waits, replay of D stays refused, and an alert fires if D is not sealed by 04:00 UTC. A scheduled job is the simplest trigger. The 04:00 alert time is an arbitrary operational choice."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The live job checks whether the object sealed/dt=D exists before writing a record for D, and caches the answer for up to 1 minute. Reading the existing seal marker avoids a second mechanism. The cache lag is harmless because insert-if-absent on (dt, event_id) stops duplicate rows and the replay swap replaces the day anyway."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes. Collectors stamp received_at independently, so a chunk of consecutive offsets can hold two days. The archiver splits each chunk by day into separate files, named by the first and last offset of the records inside, so ranges for different days may interleave. It commits the single per-partition checkpoint only after all files of the chunk are written. The checkpoint means every record up to that offset is in some file."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The duplicate is dropped and counted. Its offset is committed like any other record's, as part of the micro-batch commit after the warehouse write, so the consumer moves on. Step 6 and step 9 now say so."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It is the object-storage prefix quarantine/dt=D/. Nothing moves records out of it automatically. The record is already in the archive, so a replay of D includes it. An operator reads the alert and decides whether to replay. This is the simplest handling and adds no new mechanism."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The hook sits in the live job after dedup (step 6) and enrich (step 7), and before the warehouse write (step 9). Until Product decides it passes every event through unchanged. Step 8 now states both."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A batch with at least one accepted event gets 202 and {accepted: count, rejected: [{index, event_id, reason}]}, with an empty list when nothing was rejected. A batch rejected whole under A4 gets a 4xx with {error: reason} and no per-event list. The brief does not fix these bodies, so this is my design. The exact status code for each A4 case (400 or 413) is left undecided because it is a detail the plan does not need. What a batch with every event rejected returns is also not decided."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes, it is the single partition per event_id (A3). Offsets on one partition are a total order. The live job handles each partition with one consumer, one record at a time in offset order, also after restarts and redelivery, so the lowest offset always claims first. Replay picks the lowest offset in the archive, so both pick the same copy. This holds only if two consumers never process the same partition at once, which relies on the log's consumer-group fencing. That is now an open item. Step 6 and step 13 state the ordering."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What does the live job do when the warehouse write fails or is slow? Does it retry the same micro-batch, stop consuming, and how does that show up before the 3-minute freshness alert?",
+     "about": "9. Live job: write to the warehouse idempotently"
+    },
+    {
+     "id": "10",
+     "text": "How does the archiver know a record belongs to an already sealed day? Does it check for the `sealed/dt=D` object, and who does the \"re-seal\" the operator is told to run, and how?",
+     "about": "11. Seal each day before it can be replayed (stale seal)"
+    },
+    {
+     "id": "11",
+     "text": "Where does the lock keyed by day live, and what happens to it if the replay job crashes partway? Who releases it?",
+     "about": "12. Replay request and preflight (lock keyed by day)"
+    },
+    {
+     "id": "12",
+     "text": "When validation fails and an operator uses the named override, or does not, what is the state of `events_clean` for D and what does the operator do next? Is the live partition for D left as it was?",
+     "about": "15. Replay: validate before publishing"
+    },
+    {
+     "id": "13",
+     "text": "What happens if the archiver crashes after writing some files of a chunk but before committing the checkpoint? How do the partial files and the restart fit together with the file names by offset range?",
+     "about": "5. Archiver: the 90-day raw copy"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The job retries the same micro-batch with backoff and does not commit offsets. This is safe because the insert is idempotent on (dt, event_id). It reads no further while retrying, so lag builds and the 3-minute freshness alert fires. Step 9 now says so. The backoff numbers are not fixed."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Before writing a file for day D, the archiver checks whether sealed/dt=D exists. If so it still writes the file and creates the marker stale/dt=D, then alerts. Replay preflight refuses a stale day. The operator re-seals with `seal --day D --force`, which takes fresh end offsets, waits for the archiver, overwrites the seal and deletes the stale marker. Steps 5 and 11 now say this. This is my design, since the brief does not cover it."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The lock is an object replay-lock/dt=D in object storage, created only if absent (new assumption A5). The job deletes it when the run ends, success or failure. After a crash it stays, and the operator confirms the run is dead and runs `replay --day D --release`. I chose object storage so replay never touches the live key-value store. There is no automatic expiry, to avoid adding a lease mechanism. Whether the storage supports create-if-absent is not verified, so it is listed as A5."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Nothing is published when validation fails. events_clean for D stays as live left it and live writes to D continue. The run ends and releases the lock, and the stage is kept for inspection. The operator either fixes the cause and re-runs, or re-runs with an override that names the failed check and gives a reason, recorded in the replay log. The next run drops the old stage. Steps 15 and 16 now say so. The step 16 line that said a failed run drops the stage was changed to match."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "On restart the archiver resumes from the last checkpoint and rereads the chunk. Files already written stay. The new chunk may be cut differently, so files can overlap. That is harmless: each file holds real records and replay dedupes on (log_partition, log_offset). The seal file list may include overlapping files. Step 5 now says this and step 19 adds a crash test."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a batch of events to the collector. The collector keeps no state, so any instance can take it. First check is on the whole batch (A4). A batch with more than 100 events, or a body that cannot be parsed, is rejected whole with a 4xx and `{error: <reason>}`. Clients do not retry this status.\n2. The collector validates each event on its own. It rejects an event with no `event_id`, no `device_id`, or a size over 32 KB. Rejected events are not stored. They go in the response as `{index, event_id if present, reason}`, because clients never retry them. The rest of the batch carries on, and rejections are counted by reason as a metric.\n3. The collector stamps `received_at` (UTC) once for the request. It appends each accepted event to the replicated log, keyed by `event_id`, and waits for all replicas to acknowledge. Each record is the original event bytes, never re-serialized, plus an envelope (`received_at`, `collector_id`, `batch_id`). `log_partition` and `log_offset` are added later at archive time. Every accepted copy is appended, including resent batches. The collector does not dedupe, because duplicates must be kept.\n4. Once every append in the batch is acknowledged, the collector returns 202 with `{accepted: count, rejected: [...]}`. If the log is unavailable or slow it returns 503, or 429 when shedding load, and never 202. A partial append failure fails the whole request. The client backs off (1 s to 5 min) and resends the whole batch, which is safe because dedup is by `event_id`.\n5. Two independent consumer groups now read the log. The first is the archiver. It reads a chunk of consecutive offsets from one partition and splits it by the `received_at` day. It writes one file per day, `raw/dt=<day>/partition=<p>/<first>-<last>`, with the original bytes and envelope. Before writing a file for day D it checks whether `sealed/dt=D` exists. If it does, it writes the file anyway and also creates `stale/dt=D`. After all the chunk's files are written, it commits one per-partition \"archived through offset\" checkpoint. If it crashes before the checkpoint, it re-reads the chunk from the last checkpoint. Overlapping files are harmless because replay dedupes on `(log_partition, log_offset)`. It alerts if archive lag exceeds 1 hour. Objects are deleted 91 days after creation, so each event is kept at least 90 days.\n6. The live job reads the same log. Each partition has one consumer that processes records one at a time in offset order. For each record it does an atomic key-value claim, `SET event:<event_id> = (partition, offset)` if not present, with an 8-day TTL. If the claim succeeds, or the stored value equals this record's `(partition, offset)`, the record wins and continues. The second case makes crash recovery safe. Otherwise the record is dropped as a duplicate and counted. Its offset is still committed. If the key-value store is down, the job stops consuming and lets lag build. It never lets duplicates through and never drops events.\n7. The winner is enriched with geo-IP lookup and user-agent parsing. The enrichment is a pure function of the event and versioned reference data. The code and database versions are written into the row as `enrich_version`.\n8. A bot-traffic hook sits after enrich and before the write. For now it passes everything through unchanged.\n9. The job writes micro-batches of about 30-60 s into `events_clean`, with `dt` taken from the winning copy's `received_at`. It uses insert-if-absent on `(dt, event_id)`, so a replayed batch adds nothing. Before writing a record for day D it checks `sealed/dt=D`, caching the answer for up to 1 minute. If D is sealed, it writes the record to `quarantine/dt=D/` and raises an alert. It does not move quarantined records automatically, and an operator decides whether to replay. Log offsets are committed only after the warehouse write succeeds, and that covers dropped duplicates too. If the write fails or times out, the job retries the same micro-batch with backoff, commits nothing and reads no further. Lag builds and the freshness alert fires at 3 minutes.\n10. Monitoring: freshness is `now - max(received_at)` in `events_clean`, with an alert at 3 minutes against the 5-minute target. There are also alerts on consumer lag, archive lag, key-value errors, and the rejection, duplicate and quarantine counts.\n11. Sealing a day. Day D closes at 02:00 UTC on D+1. The seal job starts then and retries every 5 minutes. It takes the log end offsets for all partitions and waits until the archiver's checkpoints reach them. Then it writes `sealed/dt=D`, containing the end offsets and the file list. It alerts if D is not sealed by 04:00 UTC. If `stale/dt=D` appears later, the operator runs `seal --day D --force`. That takes fresh end offsets, waits for the archiver, overwrites the seal and deletes the stale marker.\n12. An operator runs `replay --day D`. Preflight refuses unless D is sealed with no stale marker. It also refuses unless it can create `replay-lock/dt=D`, which holds the run id. The lock is deleted when the run ends, but after a crash the operator checks the run is dead and runs `--release`. Archive data must exist for D and for the lookback D-8 to D-1, and the code and reference-data versions must be pinned and recorded.\n13. Replay reads only the object-storage archive, on separate compute. It drops overlapping records by `(log_partition, log_offset)`. It keeps a copy of an event in D only if no copy of the same `event_id` has a lower offset in the lookback window or earlier in D. All copies sit on one partition (A3), so this picks the same winner as the live claim. It never touches the key-value store.\n14. Replay enriches with the fixed code, applies the bot decision once it exists, and writes to a hidden staging table such as `events_clean_stage_<D>_<run_id>`.\n15. Validation. The run is blocked unless all of these hold: there are no duplicate `event_id`s; every row has `dt = D`; the row count equals the number of distinct first-copy `event_id`s from the archive; and the `event_id` set matches the live partition's set, where a mismatch needs a named operator override. A diff report of changed enrichment columns is also produced. On failure nothing is published, `events_clean` for D stays as live left it, the lock is released and the stage is kept. The operator fixes the cause and re-runs, or re-runs with a recorded override.\n16. Publish. The warehouse's atomic partition replace swaps `dt = D` from the stage in one operation, so dashboards see the old day or the new day and never a half-built one. The run is recorded in the replay log, and the stage is dropped. Re-running is safe.\n17. Isolation holds because replay uses separate compute, reads only the archive, has no key-value credentials, and the live job cannot write to a sealed day (it quarantines instead).",
+   "gaps": [
+    "How the live job and warehouse behave when the live job reads the same day during the swap: the document says the live job cannot write to a sealed day, but not how events_clean rows that live wrote to D after seal/quarantine are reconciled except by an operator replay.",
+    "How the seal job gets 'log end offsets for all partitions' and how the archiver checkpoints are read by it (the interface between them) is not described.",
+    "How the 'live partition's set' of event_ids is read for the step 15 comparison is not stated, nor what happens when the live job is still writing a not-yet-sealed day.",
+    "What the operator's mechanism is for the override and who is authorised is not stated, beyond that it is named and recorded.",
+    "How the live job's 'winner' check treats a record whose first claim has expired (TTL 8 days) versus replay's lookback window is not fully specified, for retries beyond the 7-day window.",
+    "How the key-value store's atomic read of the stored value (A2) and the (dt, event_id) insert-if-absent are implemented when A1 is unavailable is only sketched (a ledger by partition and offset range) and not explained.",
+    "How clients are identified or authenticated by the collector is not stated."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

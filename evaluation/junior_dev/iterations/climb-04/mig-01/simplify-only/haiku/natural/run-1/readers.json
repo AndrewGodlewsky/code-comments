@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "MySQL commits first, with its outbox row in the same transaction; Postgres is copied after. If Postgres fails, the caller still succeeds; the sweeper retries.",
+  "q2": "Only if no tombstone exists for the id and the incoming version is higher than the stored version.",
+  "q3": "All instances must run the step 0 build and report users_shadow_writes true for a 30 s refresh plus a scrape. Flags reach instances within 30 s.",
+  "q4": "Reads 2,000-row batches from the replica, waits while lag exceeds 5 s or is unknown, and caps its Postgres pool at about 5 connections.",
+  "q5": "Reads need a zero-mismatch comparison, then a gradual ramp. The switch needs the 3-day read hold, clean comparison, empty outbox and healthy Postgres.",
+  "q6": "The outbox row in the source's users_sync_outbox table, written in the same transaction. The repair sweeper retries copying it until Postgres matches, then deletes it.",
+  "q7": "Copies lock the id, then do nothing if a tombstone exists for it. Erasure adds a tombstone, so copies cannot recreate the user.",
+  "q8": "Cursor is backfill.last_id in Postgres, committed with its rows. Stops when no rows follow it, the flag is off, or write state leaves mysql.",
+  "q9": "The step 4 comparison, per 10,000-id range: fingerprints, tombstones and counts. Confirmed mismatches get an outbox upsert repair, and the pass repeats.",
+  "q10": "Every instance is paused and metric-confirmed before the postgres flag is set. The outbox must drain within 15 s, or the switch aborts to mysql.",
+  "q11": "Postgres assigns ids after the switch, from a sequence set above both databases' maxima. Rollback checks MySQL's AUTO_INCREMENT exceeds Postgres's max id.",
+  "q12": "MySQL is a shadow fed from the Postgres outbox and reverse-compared regularly. Rollback pauses, drains the outbox, then switches. The option ends at step 10."
+ },
+ "sonnet": {
+  "q1": "MySQL first: one MySQL transaction (write + outbox upsert) commits, then the row is copied to Postgres (300 ms timeout, all exceptions caught). If Postgres fails, the caller still sees success (success once MySQL commits); the outbox keeps the user and the sweeper retries.",
+  "q2": "Only if the existing Postgres row's version is lower than the incoming version (users.version < EXCLUDED.version), and no tombstone exists for the id.",
+  "q3": "Step 2 must hold: app_flag_value{flag=\"users_shadow_writes\"} is true on every instance (count matches instance count, all on the step 0 build), held for one 30 s refresh plus one scrape interval, and users_backfill = true. Instances can disagree for up to 30 s after a flag change.",
+  "q4": "It reads from the replica, not the primary; checks replica lag via direct query before each batch (sleeps 1 s if lag >5 s or unknown); batches are at most 2,000 rows by id; and the migration connection pool is capped (e.g. 5 connections).",
+  "q5": "Reads: step 4 passes, i.e. one full comparison pass, started after the last repair, finds zero mismatches in rows and tombstones (then ramp 1/10/50/100%). Source switch: 72 h hold at 100% reads with clean metrics, latest step 4 pass clean, outbox empty, Postgres healthy, operator on call, every instance pausable.",
+  "q6": "The MySQL outbox row (users_sync_outbox, one row per user with seq), written in the same MySQL transaction as the write, records it. The repair sweeper (on every worker) reads the current source row, applies the copy rule to Postgres, and deletes the outbox row if seq still matches, retrying until Postgres recovers.",
+  "q7": "Tombstones plus the copy rule: in the shadow transaction it takes an advisory lock on the id and, if a tombstone exists, does nothing. The sweeper treats a user whose source row is gone as erased. Ids are never reused.",
+  "q8": "In Postgres migration_state, backfill.last_id cursor. The batch of rows and the cursor update commit in the same Postgres transaction, so no batch is skipped or half-applied; a crash resumes from the committed cursor. It stops when the replica returns no rows after the cursor (backfill.complete_at set), or when the flag is off or users_write_state is no longer mysql.",
+  "q9": "The step 4 comparison: ranges of 10,000 ids, fingerprints (id, version, hash) from replica vs Postgres, plus tombstone sets and row counts. A mismatch counts only if rechecking on both primaries still differs and the id has no outbox row; each real mismatch is repaired by an outbox upsert and the pass repeats. Recurring same-kind mismatches are investigated as a bug. Also sampled comparison of 0.1% of ranges per hour.",
+  "q10": "Set users_write_state=paused (retryable 503 for writes), wait 35 s and confirm by metric that every instance reports paused (else set mysql and abort), drain the outbox within a 15 s barrier (else set mysql and abort), set the identity sequence, then set postgres. Per-instance pause is at most 80 s, under 90 s. If it fails before e, MySQL stays source; if it fails after e, no automatic rollback, use step 9.",
+  "q11": "Postgres, from its identity sequence. At step 7d the sequence is set to max(MySQL max id, Postgres max id)+1 under the pause. Ids are never reused, and MySQL receives the same ids explicitly. On rollback, check that MySQL AUTO_INCREMENT is greater than the max Postgres id (InnoDB advances on explicit inserts, but verify).",
+  "q12": "Writes commit to Postgres with a Postgres outbox, and the sweeper copies them to the MySQL shadow with the copy rule (reverse comparison run regularly). Rollback (step 9): pause, wait 35 s and confirm, drain the Postgres outbox into MySQL, check AUTO_INCREMENT, set users_write_state=mysql, keep shadow writes on. It is blocked if MySQL is unreachable. The option ends at step 10, 14 days after switch_pg_source_at, when users_shadow_writes is set false."
+ }
+}

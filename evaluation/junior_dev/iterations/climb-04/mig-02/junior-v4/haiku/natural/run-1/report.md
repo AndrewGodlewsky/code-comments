@@ -1,0 +1,55 @@
+## Review of mig-02 (junior-v4, author haiku, natural)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Added a rollback from shadow as a single Cutover step (flag change and gate reset), since the new engine has charged nothing there.
+- Added Cutover as its own step in the diagram. Verify now leads to Cutover, not straight to old_only.
+- Removed the no_return node and the retry loop on Replay. Day 35 is now a note, and Replay stays and alerts, as the brief says.
+- Defined G1 and G2 explicitly in the terms, with their counts and conditions.
+- Defined one meaning for each term: a ledger charge row is the done mark, an open period is the queue, and the rollout record step is the freeze flag. No separate queue store.
+- Freeze is now a step written in the rollout record, and workers read that step as well as billing_mode, since billing_mode keeps its four values.
+- Verify now has two checks: no period with two charge rows, and an old-engine invoice in the shadow store for each open period.
+- Cutover runs automatically when Verify passes, because Verify is the check and a person's approval would only delay a rollback. This resolves an open question.
+- A missed or failed comparison day counts toward neither gate and breaks the G1 run, since G1 needs a measured rate on each of 7 consecutive days. This resolves an open question.
+- Merged the separate 'where state lives' and 'what fails' sections into the terms and one failure table. Steps now share the same four parts: starts, does, keeps its data, goes wrong.
+- Kept the 2 percent trigger as the brief states it, with no minimum attempt count, and kept the question open.
+- Replaced the codes 'Gate G1' and 'Gate G2' with 'gate to both' and 'gate to new_only', so the reader need not look up a code.
+- Reconcile: removed the invoice-amount matching. A period with a charge row is done, because the row alone stops a second charge. An amount that differs from the old invoice is now an open question, not an action (Q15).
+- Reconcile: added the case where the provider shows a succeeded charge but the ledger has no row. The row is written before the period is judged done. Without this, a worker crash after a provider success could make the period look open, and the old engine could charge it again. This is a plan change, and it relies on a provider assumption that is listed in the open questions.
+- Freeze: stated who writes the ledger row for a succeeded charge (the submitting worker), and that a failed charge leaves the period open (Q12).
+- Replay: defined the skipped events as the log entries for periods with no shadow-store invoice (Q17).
+- Cutover: stated that the old engine's normal billing run charges open periods, with no separate job (Q13).
+- Nightly comparison: described what is compared and where the counts are recorded (Q16).
+- Rollback start: the on-call request is written to the rollout record. The tool used to write it is an open question (Q14).
+- Merged the mode descriptions and the state location into the notes after the diagram, and removed the repeated 35-day and trigger rules from the rollback section.
+- Diagram: shortened labels. Shadow rollback goes straight to Cutover, and both and new_only share one Freeze node that leads to the origin choice.
+- Failure table: added two rows for provider charge outcomes, and merged the trigger rows.
+- Open questions: added the provider repeated-key behaviour, the event-log gap check, the on-call tool and the nightly job owner. Removed the 'open period' question, because the plan now defines it.
+- Cutover now clears the rollout step to none as its last write, and workers stop new-engine charges whenever the step is not none, so a freeze is read from the step alone and ends at Cutover (Q18).
+- Added a Forward moves section: the controller refuses a move unless the person approved it, the gate is met, and no rollback is running (Q19).
+- Added the one-at-a-time rule for rollback: a second request is written to the audit log and changes nothing (Q20).
+- Moved the rollback start rules and the route into one section before the steps, and gave each step a Moves on when line so every step has the same parts.
+- Failure table: added rows for a second rollback request and for a refused forward move.
+- Open questions: reworded the question about a worker that cannot read the rollout record to match the step none rule.
+- Terms: the rollout record now lists the rollback step and the audit log. The diagram's Cutover label now says the step is cleared.
+- Freeze step now says the controller checks each submitted charge at the provider until it is final, and it names how often and from what list as an open question. Why: junior Q22 asked who checks finality and how often, and the brief does not answer that.
+- Rollback start now says which component measures the 2 percent failure rate is an open question. Why: junior Q21 asked what measures the rate and where its failures come from, and the brief does not say.
+- Added two lines to Open questions for the failure-rate source (Q21) and the Freeze check schedule and charge list (Q22). Why: neither can be decided from the brief, so they are listed rather than guessed.
+- Summary cut to four sentences. Removed the restated brief rules that the modes and gates already cover.
+- Terms: shortened each definition to one plain line. Gate to both and gate to new_only now sit in the terms list only, and are not repeated in the modes or forward-move text.
+- Merged the duplicated worker rule (read billing_mode and the rollback step, submit no new charges when the step is not none, keep last values when the config service is down) into one section, Where the state lives. Freeze and the failure table still state their own part of it, so each step stands alone.
+- Moved the notes on modes after the diagram, as the layout asks, and cut repeated wording in each mode.
+- Forward moves: kept the three conditions and the refusal rule, trimmed the wording.
+- Rollback start, one-at-a-time rule, route and controller sentence merged into one list under How a rollback starts and runs. The route and the rule for a second request are unchanged.
+- Steps: each step now has the same five parts in the same order. Removed repeated sentences and kept every check, branch and data owner.
+- Failure table: merged the three forward-move refusal causes into one row. Trimmed wording in the other rows. No row was dropped, and each still matches its step.
+- Open questions: merged the two questions about how people trigger actions (forward moves and rollback requests) into one. Kept every other question, since each one is an unresolved gap in the plan. The gap in the Freeze step is no longer repeated there, and the open question list carries it.
+- Kept the plan's intent throughout. No mechanism was added. The rollout record stays marked as a proposal, and the mermaid diagram is unchanged.
+
+### Holes
+- Q3: Who or what is 'the person' who approves transitions? How do they approve (a tool, a config change, a ticket), and who actually sets billing_mode when they do? (author: The brief says a person makes each forward move. It does not say how the approval is given (a tool, a config change or a ticket), or who writes billing_mode. The file only requires that a person makes each forward move.)
+- Q8: What is the invoice version in the idempotency key, and what changes it? If the old and new engines produce different totals for the same period, do they still get the same key? (author: The brief does not define the invoice version or what changes it, and the file does not decide it. Both engines use the same key form. If they agree on the version, they produce the same key, and the ledger check stops a second charge under that key. If the totals differ under the same key, the ledger keeps the first charge.)
+- Q10: What does the stuck rollback escalate to, and who handles it? What state is billing then in, and what keeps charging customers while it is stuck? (author: The brief does not say who handles a stuck rollback, or what keeps charging customers while it is stuck. The file says the rollback cannot reach old_only, and open periods stay open and are not dropped. Periods the old engine never computed cannot be charged by it. This is an open question.)
+- Q21: What component measures the new engine's charge failure rate over 10-minute windows, and where does it get the failures from (workers, the provider, the ledger)? (author: The brief does not say which component measures the new engine's charge failure rate, or where its failures come from (workers, the provider or the ledger). The file does not decide this. It is listed under Open questions.)
+- Q22: Who checks that a submitted charge is final in Freeze, and how often? The text says the controller reads status from the provider by idempotency key. Does it poll every submitted charge, and where does it get the list of submitted charges? (author: The brief does not say how often Freeze checks a submitted charge, or where the list of submitted charges comes from. The file says the rollout controller checks each submitted charge at the provider until it is final. The polling interval and the list source are open questions.)

@@ -1,0 +1,107 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where does the limit number in the Redis check come from? The diagram says 'limit from plan'. Does the gateway pass the limit into the Lua script on every call, or does Redis know it?",
+     "about": "GW->>RS: Check and count, limit from plan (Standard 100, Enterprise TBD)"
+    },
+    {
+     "id": "2",
+     "text": "For Enterprise with no ENTERPRISE_LIMIT set, what does the gateway actually do on each request? Does it still call the store to count, and what does the script do with no limit? Are X-RateLimit headers sent?",
+     "about": "Open items: Enterprise limit"
+    },
+    {
+     "id": "3",
+     "text": "What happens on a cache miss when the Key Service is down or slow? The diagram shows no failure path for that step.",
+     "about": "GW->>KS: Resolve key"
+    },
+    {
+     "id": "4",
+     "text": "Is 'unknown' from the Key Service also stored in the key cache, and for how long? Does a newly created key get 401 until the cache entry expires?",
+     "about": "GW->>KC: Store answer"
+    },
+    {
+     "id": "5",
+     "text": "What is the exact key/value layout in Redis? Is the value just an integer, and is the 60 s expiry set only when the key is first created?",
+     "about": "Note over RS: One atomic Lua script"
+    },
+    {
+     "id": "6",
+     "text": "Design note 8 says a timed-out script may still have run. In that case the request is forwarded anyway. Is the count in Redis then incremented without the client getting any headers? Please confirm that is the intended outcome.",
+     "about": "Store error or no answer within 50 ms"
+    },
+    {
+     "id": "7",
+     "text": "Design note 1 mentions '6x the limit'. What is the 6, and how many gateway instances run?",
+     "about": "Design note 1: Counter store: Redis"
+    },
+    {
+     "id": "8",
+     "text": "On a Redis failover to the replica, how does the gateway find the new primary? Does that count as an error that triggers fail open until it reconnects?",
+     "about": "Design note 10: Store availability"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The gateway passes the plan's limit into the script on every call. It takes the plan from the Key Service answer it already has. Redis holds no plans, only counters, so the limit lives in the gateway. The diagram and note 2 now say this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The gateway still calls the store for each Enterprise request, so usage is counted. With no limit passed, the script increments and always allows, so nothing is rejected. No X-RateLimit headers are sent, because there is no limit value to report and a guessed one would mislead. This departs from requirement 6 as written, so it is listed under open items for Product to confirm."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "Neither the brief nor the design says what happens when the Key Service fails or is slow on a cache miss. Fail open covers only the counter store. I did not invent a rule. It is now a failure row in the table and an open item."
+    },
+    {
+     "id": "4",
+     "tag": "unknown",
+     "text": "Not known from the brief or the existing description whether an 'unknown' answer is cached, or for how long. If it is cached, a newly created key could get 401 until that entry expires. Added as an open item."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Checked against the design. The key is rl:{customerId}:{windowIndex}. The value is an integer, set by INCR. The 60 s expiry is set only when INCR creates the key (first write). The Terms section and the diagram note now say this in one place."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes, that is intended. A timed-out script may or may not have counted, and the request is forwarded regardless with no X-RateLimit headers, as fail open requires. Counts can run slightly low during a store blip. Note 9 states this and accepts it."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The 6 is the number of gateway instances. The brief says 6 stateless instances behind a load balancer. With per-instance counters, each instance would allow 100, giving up to 600 a minute. Note 1 now shows the arithmetic."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The design does not decide how the gateway finds the new primary after failover (for example through Sentinel or a cluster-aware client). Under the current rule, any call that errors or times out during failover fails open. Whether it stays failed until reconnect depends on the discovery method, which is not chosen. Added as an open item."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request to one of the 6 API Gateway instances, with an `X-Api-Key` header.\n\n2. The gateway turns the key into a customer ID and a plan. It first asks its in-memory key cache, which keeps answers for 5 minutes. A key revoked in the Key Service can keep resolving from the cache for up to 5 minutes.\n\n3. On a cache miss, the gateway asks the Key Service. The Key Service returns a customer ID and plan, or \"unknown\", and the gateway stores that answer in the cache. The document does not say what happens if the Key Service errors or times out. It says \"open item\".\n\n4. If the key is missing or unknown, the gateway returns `401 Unauthorized`. The Redis counter store is never called on this path.\n\n5. If the key is valid, the gateway calls Redis once, passing the plan's limit. Standard is 100 per minute. Enterprise has no number yet. Redis stores no plans, so the gateway supplies the limit on every call. The call has a 50 ms deadline.\n\n6. Redis runs one atomic Lua script. Because it is atomic, two instances cannot both read 99 and both proceed.\n   - It works out the window as floor(Redis server time / 60). Using Redis time means gateway host clock skew does not matter.\n   - It reads the counter at `rl:{customerId}:{windowIndex}`. An absent key counts as 0.\n   - If no limit was passed (Enterprise before `ENTERPRISE_LIMIT` is set), it increments and allows.\n   - If the count is already at the limit, it returns \"rejected\" plus the milliseconds until the window ends. It does not increment.\n   - Otherwise it increments. If the key was just created, it also sets a 60 s expiry. It returns \"allowed\" and the new count.\n\n7. Over limit. The gateway returns `429 Too Many Requests` with `Retry-After`. That is the script's milliseconds rounded up to whole seconds, with a minimum of 1. The request is not forwarded and uses no budget. The document says only that sending `X-RateLimit-*` headers on a 429 is \"recommended\" and not yet decided.\n\n8. Under limit. The count was already incremented, so the budget is used before the backend is called. The gateway forwards the request to the backend and gets a response. Any status, including 500, is passed back, and the budget stays spent. The gateway adds `X-RateLimit-Limit` (the plan limit) and `X-RateLimit-Remaining` (limit minus the new count, floored at 0) to the response. Enterprise requests with no limit value get no headers.\n\n9. Redis failure. If Redis errors or does not answer within 50 ms, the gateway emits the `ratelimit_store_unavailable` metric and forwards the request anyway (fail open). It returns the backend response with no `X-RateLimit` headers. A timed-out script may or may not have counted the request. Each request during an outage can add up to 50 ms of latency. Counts can run low during a blip, which the document accepts. The document gives no circuit breaker and calls it a v2 item.\n\n10. Counters expire 60 seconds after creation, and the next minute uses a new key, so the budget resets each clock minute. The document accepts that a customer can send about 200 requests across a minute boundary. Because the key uses the customer ID, all of a customer's API keys share one budget.\n\n11. Redis is one primary and one replica. On a failover, calls fail open until the gateway reaches the new primary, and a few recent counts may be lost.",
+   "gaps": [
+    "What the gateway returns to the client when the Key Service errors or times out on a cache miss. The document says this is not specified.",
+    "Whether and for how long an 'unknown' key answer is cached, which affects whether the gateway reaches the limiter or returns 401.",
+    "The Enterprise limit value. It is not chosen, so I cannot say what the gateway passes to the script for Enterprise once enforcement starts.",
+    "How the gateway finds the new Redis primary after a failover. Until it does, calls fail open.",
+    "Whether a 429 response carries X-RateLimit-Limit and X-RateLimit-Remaining: 0. The document recommends it but has not decided."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}
