@@ -1,0 +1,56 @@
+## Review of dp-02 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 6. Ended: cap.
+
+### What changed
+- Rewrote the file in the skill's order: summary, terms, steps, failure table, build order, open questions.
+- Defined raw log, lag, archive, KV store, received_at, closed day and partition swap in a terms section (Q1, Q2, Q9).
+- Collector now returns 202 only after the log write is confirmed. Rejects are per event, listed in the response and never retried by clients (Q3, Q4).
+- Removed the reject bucket. Rejected events are counted in a metric, and keeping them is an open question (Q4).
+- Specified dedup as set-if-absent on event_id with an 8-day TTL, and what happens when the KV store is down or the processor crashes (Q5).
+- Live processor appends to the day of received_at. Replay writes to a staging table and swaps into the partition (Q6).
+- Replay is operator-started on a closed day only. It dedups against the 7 previous days of archive so first-copy-wins holds across days, and it never touches the log or KV (Q7).
+- Replay is limited to days up to 83 days old because of the 90-day archive and the 7-day look-back (Q8).
+- Added the 2-hour close rule, the 5-minute freshness target (micro-batches at least once a minute), and the retry, backoff and 7-day device buffer details that the first version dropped.
+- Alerts now name specific triggers. Who responds is listed as an open question (Q9).
+- Kept bot filtering as an open question without choosing, and added the open question on automatic replay.
+- Dedup now only reads the KV store and an in-batch seen set. IDs are written once, after the load. This removes the contradiction with the load step.
+- Added the in-batch seen set so duplicates inside one micro-batch are dropped.
+- Archiver stores log partition and offset beside each event. Replay tie-break defined as received_at, then partition, then offset. Added a term for log position.
+- Crash case now explains why the KV check does not drop the reprocessed events.
+- Terms: added the hour-complete marker definition.
+- Step 3: added that part files are uploaded whole (never visible half-written) and that the archiver writes an hour-complete marker once its position in every log partition has passed the hour's end.
+- Step 5: replay now also refuses if any hour of D or the prior 7 days lacks its marker, so a lagging archiver cannot give an incomplete rebuild.
+- Failure table: added a row for the archiver being behind when replay starts.
+- Build order: archiver step mentions the markers.
+- Open questions: added the unknown collector clock skew and its effect on the hour-complete rule.
+- Step 5: replay now also refuses unless the live processor's saved log position has passed the end of day D, so late live rows cannot land after the swap (real hole found by Q16).
+- Step 5: restructured the refusal conditions into a list and clarified that replay reads only the archive plus the live processor's saved position.
+- Step 4: stated that the live processor saves its log position after each micro-batch.
+- Step 5 swap line: reason now rests on the live position check instead of the 02:00 closing time alone.
+- Failure table: added a row for the live processor being behind when replay starts.
+- Open questions: clock skew note now also covers the live-position check.
+- Added a 'Passed time T' term defining how a reader decides it is past an hour or day, including the quiet-partition case with a 10-minute grace period.
+- Step 3: archiver writes the hour-complete marker once it has passed the end of the hour in every partition, using the new definition.
+- Step 4: live processor saves its per-partition passed time along with its log position.
+- Step 5: replay's live-processor check now compares the saved passed time to the end of D instead of an undefined 'position passed'; replay reads only saved state.
+- Failure table: reworded the live-behind row and added a row for a quiet log partition.
+- Open questions: skew item now notes the 10-minute grace period is a guess.
+- Terms and step 2: collector picks the log partition by hashing event_id so all copies of an event share a partition (fixes cross-partition dedup hole raised by Q19/Q20).
+- Step 4: live processor may run as several instances, each owning some partitions; dedup stays correct because copies share a partition.
+- Step 4: added handling for a failed or timed-out append (keep position, retry, possible duplicates) and for a failed KV write without a crash (retry, then stop like KV down).
+- Step 5: replay refusal message names the failed check and lists missing markers or lagging partitions.
+- Step 5 dedup: tie-break is now smaller offset only, and the cross-partition tie caveat is removed.
+- Failure table: added append failure row and merged KV write failure into the KV row.
+- Open questions: added whether a warehouse append can partly succeed.
+- Merged the archiver's hour-complete rule and its catch-up note into step 3, and reordered so the main behaviour comes first, then the marker, then lag.
+- Moved the rejected-events metric into the collector's validation sentence so rejection is described once.
+- Merged the dedup description into one sentence defining a later copy (KV hit or seen earlier in the batch), removing the two-step phrasing.
+- Moved the 'replay only reads archive and saved state' paragraph out of the refusal list, to its own paragraph after the three refusal checks, so the list holds only refusal cases.
+- Trimmed repeated wording in the replay swap, failure and refusal text, and dropped 'live' quote marks around passed time.
+- Removed the crash-row failure-table detail that repeated the step 4 explanation.
+- Kept all stated facts: 5 minutes, 100 events, 32 KB, 7 days, 90 days, 14 days, 02:00 UTC close, 8-day TTL, 83-day replay limit, alert thresholds, bot question open.
+- Added nothing new; no mechanisms changed.
+
+### Holes
+- Q9: What does the alert on consumer lag fire on, and who responds? Which consumers does it cover? (author: The alerts cover live processor lag over 3 minutes (page), archiver lag over 1 hour (warn), collector 5xx rate and replay failure. The thresholds are my choice. The brief does not say who responds, so that is listed as an open question.)

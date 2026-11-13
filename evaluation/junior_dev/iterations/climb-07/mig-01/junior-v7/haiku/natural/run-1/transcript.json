@@ -1,0 +1,110 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the sweeper deletes a queue row only if marked_at is unchanged, how does a write that lands during the copy end up re-copied? Does the claimed_until lease get reset when a write upserts the row?",
+     "about": "Design decisions 1: Durable dirty set / user_sync_queue"
+    },
+    {
+     "id": "2",
+     "text": "Who increments users.version, and when? Is it bumped by every UserRepository write in MySQL, and what happens if a write doesn't bump it?",
+     "about": "Design decisions 3: apply_copy, version rule"
+    },
+    {
+     "id": "3",
+     "text": "What exactly happens to the inline Postgres copy when the 200 ms timeout hits? Is it cancelled, left running, or could it still commit later and race with the sweeper?",
+     "about": "Step 3. Turn on dual write: inline copy with 200 ms timeout"
+    },
+    {
+     "id": "4",
+     "text": "How does the switch tooling find every web and worker instance and know the expected count? What is the 'orchestrator' that supplies the replica count?",
+     "about": "Step 2. Gate 1 and Design decisions 5: GET /internal/users-migration"
+    },
+    {
+     "id": "5",
+     "text": "The decision point at T0+45 s requires the queue to be drained, but drain is sub-step 3 after it. How do these fit together, and what if the queue isn't empty at 45 s?",
+     "about": "Step 9. Write switch, sub-step 2 and 3"
+    },
+    {
+     "id": "6",
+     "text": "How does an instance count its in-flight users writes and decide it is paused? What does a client see during the pause beyond 503 with Retry-After: 1?",
+     "about": "Step 9. Write switch, sub-step 1: 'reports paused'"
+    },
+    {
+     "id": "7",
+     "text": "In pg mode, does a Postgres write also write a user_sync_queue row in the same Postgres transaction, and what bumps version when the id comes from the Postgres sequence?",
+     "about": "Step 10. Keep MySQL in sync as a shadow: pg mode writes"
+    },
+    {
+     "id": "8",
+     "text": "Reads go to Postgres while MySQL is still the write source. How does a user who just updated see their own change if Postgres is behind by queue age?",
+     "about": "Step 7. Ramp reads: read path for get(id)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The write's upsert sets marked_at to a new time, so when the sweeper's conditional delete runs it sees a changed marked_at, deletes nothing, and the row stays. The upsert does not touch claimed_until, so a write does not reset the lease. The row is retried after the 10 s lease ends. The plan now says this in the sweeper section."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "In MySQL, create sets version to 1 and update adds 1 in the same SQL statement as the change. Delete removes the row. Only UserRepository writes users, because the no-raw-users-sql lint rule blocks other SQL. A write that skipped the repository would bypass both the version and the queue, which is why the periodic comparison exists. The version rules are now stated in their own section."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The plan does not say whether the 200 ms wait cancels the Postgres statement. I left that open, because the design does not depend on it. The copy runs through apply_copy under the per-id lock, so a late commit is ordered against the sweeper, and the version rule stops an older copy from overwriting a newer one. The queue row stays until the sweeper's conditional delete, so nothing relies on the inline copy finishing. The driver question is in the open questions."
+    },
+    {
+     "id": "4",
+     "tag": "unknown",
+     "text": "The plan does not say how the switch tooling discovers every web and worker instance, or where the expected count comes from. It names an orchestrator replica count but does not define how it is read. This is recorded under open questions and must be settled before step 2."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The drain was listed after the decision point, which was a real ordering error. The drain now runs in the window from T0 to T0 + 45 s, and the decision at 45 s checks both that every instance is paused and that the queue is empty. If the queue is not empty at 45 s, the switch aborts to mysql. That is safe because no Postgres writes have happened, and the forward sweeper keeps draining the queue. Step 11 uses the same order."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The plan did not say how in-flight writes are counted. I decided that each users write adds 1 to a per-instance counter before it reads users_write_source, and subtracts 1 when it ends. The status endpoint reports paused when the flag says paused and the counter is zero. The client sees only the 503 with Retry-After: 1. Reads continue, and a write that had already passed the check finishes normally. The plan promises nothing further about the response body."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The plan says the pg-mode write has its queue row in the Postgres user_sync_queue. I have stated that this row is in the same Postgres transaction as the write, which matches dual write in design decision 1. For the version, I decided that the update runs on Postgres and adds 1 there, and that a create sets version to 1 for the new row. The id comes from the Postgres sequence, which the write switch sets. The MySQL shadow receives the row with the same explicit id and version."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The plan accepts this. A user can briefly see old values after their own update, bounded by queue age, which is seconds when healthy. Nothing in the brief asks for read-your-writes, so I added no mechanism for it. A stale update fails with StaleWrite (409) rather than overwriting newer data. The plan now says this in step 7, and read-your-writes is an open question for the product owner."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough: one user update, followed from start to finish through the whole migration.\n\n1. **Starting point (what the system is).** The `users` table is moving from MySQL 8 to Postgres 16 with no downtime. All reads and writes go through `UserRepository`. Reads come from the MySQL replica and writes go to the MySQL primary. MySQL is the source of truth, meaning writes commit there first. Three runtime flags, which each instance re-reads every 30 s, control the stages. They are `users_pg_dual_write` (default off), `users_read_source` (a percentage, 0 means MySQL and 100 means Postgres) and `users_write_source` (`mysql`, `paused` or `pg`, default `mysql`).\n\n2. **Preparation (steps 0-2).** Postgres tables are created through migrations: `users`, `users_tombstones`, `migration_state` and `migration_runs`. In MySQL, `user_sync_queue` and an empty `users_tombstones` are created before the deploy. Build M1 is then deployed \"dark\". It adds the queue upsert to every write, the `apply_copy` routine, the status endpoint `GET /internal/users-migration`, and flag reads at safe defaults. Gate 1 polls the status endpoint on every instance. It passes when each fleet's instance count equals the orchestrator's replica count and every instance reports build M1 for 2 minutes. The tooling then writes `gate_m1_at` to Postgres `migration_state`.\n\n3. **A user updates their profile (dual-write phase, step 3).** An operator turns on `users_pg_dual_write`. The write now enters `UserRepository`. It first adds 1 to the instance's in-flight write count, and only then reads `users_write_source`. The value is `mysql`, so it continues.\n\n4. **MySQL transaction.** The update runs on the MySQL primary, and `version` goes up by 1 in the same SQL statement. In the same transaction the write upserts the user's row in `user_sync_queue` (`ON DUPLICATE KEY UPDATE marked_at = NOW(3)`). The queue holds one row per user, so its size follows the number of pending users and not the write rate. The queue is the durable record of what Postgres still owes. The commit happens at this point.\n\n5. **Inline copy to Postgres.** After the commit, the write calls `apply_copy(target=Postgres, user_id, row)` and waits up to 200 ms. The result is ignored, and a Postgres failure never fails the user's request. `jobs.enqueue` (Redis) may also be called to wake the sweeper early. It is only a hint, because Redis can be down and failed jobs go to `jobs:dead`, which nothing reads.\n\n6. **Inside `apply_copy`.**\n   1. Take the per-id lock (`pg_advisory_xact_lock` on Postgres).\n   2. If a tombstone exists for the id, stop.\n   3. Run the conditional upsert, which inserts a missing row or replaces a row only if the target's version is lower. The version rule means retries and out-of-order copies are safe.\n   4. For a deletion, delete the row and insert a tombstone in one transaction.\n   5. Commit, then release the lock.\n\n7. **If the inline copy is missed.** Postgres may be slow or down, or the process may crash after the commit. The queue row is still there, so the sweeper covers it. The request still returns normally. Its only cost is up to 200 ms of waiting.\n\n8. **Sweeper (worker fleet).** It claims up to 500 queue rows with a 10 s lease (`claimed_until`), so only one sweeper works on a row. For each row it reads the current row from the source primary, never the replica, and runs `apply_copy` to the target. A missing row means the user was erased, so it applies a deletion. It then deletes the queue row only if `marked_at` is unchanged. If another write touched the user during the copy, the delete does nothing and the row stays for another pass. A write does not reset the lease, so the row is retried when the lease ends, within 10 s. Retries back off exponentially with no cap.\n\n9. **Gate 2 and backfill (steps 4-5).** Gate 2 requires every instance to report M1 and dual write on continuously for 60 s, with counts matching the orchestrator. It records `gate_dual_write_at`. A single backfill worker, guarded by a lease row in `migration_state`, then loops. It checks replica lag (it sleeps if the lag is above 5 s), reads 2,000 rows by id from the replica, and rechecks lag (it discards the batch if the lag is above 5 s). In one Postgres transaction it runs `apply_copy` for each row and updates `last_id`, then sleeps 250 ms. A crash before commit just re-reads the batch. When the lease expires, another worker resumes from the checkpoint.\n\n10. **Comparison (step 6).** Hourly at first, then nightly after the first clean run. It compares digests per 2,000-id chunk between the replica and Postgres. For each id in a differing chunk: if the id is in the source queue, skip it. Otherwise read the row from the primary and `apply_copy` it, counting a mismatch and a repair. A Postgres row that the primary lacks is applied as a deletion. If Postgres has a higher version than the primary, it alerts and blocks the read ramp. A clean run has zero mismatches and zero repairs.\n\n11. **Read ramp and hold (steps 7-8).** After a clean run within 24 h, with queue age within SLO and no open anomalies, `users_read_source` goes 1, 10, 50, 100. `get(id)` reads Postgres if `flags.enabled_for` says so for that user. A Postgres error or a read over 200 ms falls back to the MySQL replica, so reads never fail. A user may briefly see old values after their own update. A write made from stale data fails with `StaleWrite` (409). When every instance reports 100 on the status endpoint, `reads_100_at` is recorded. Reads are then held at 100% for 72 h with daily checks. Any violation resets the clock. If anything fails, set the flag lower, with no pause needed.\n\n12. **Write switch (step 9).** This pauses writes for at most 90 s (aim: about 80 s), starting at T0.\n    1. At T0 an operator sets `paused`. Writes return 503 with `Retry-After: 1`. Reads continue. A write that already passed the flag check finishes normally. An instance reports `paused` once its in-flight count is zero, which takes at most 5 s.\n    2. The forward sweeper drains the queue until it has no rows and no leases. Writes are stopped, so it reaches empty.\n    3. At T0+45 s, if all instances report `paused` and the queue is drained, continue. Otherwise abort by setting `mysql`. This is safe because nothing has been written to Postgres.\n    4. Set the Postgres sequence to `max(MySQL AUTO_INCREMENT, max id in both stores) + 10,000,000` and verify it.\n    5. By T0+50 s, set `pg`. After this the switch cannot be aborted.\n    6. Poll until every instance reports `pg`, by about T0+80 s. An instance that has not reported `pg` by T0+120 s is restarted, and until then its writes return 503.\n    7. Start the reverse sweeper and stop the forward sweeper.\n    The flag can only change as `mysql -> paused -> pg`, so no two instances ever write to different stores.\n\n13. **Our same update after the switch (step 10).** The update now commits to Postgres, with its queue row in the Postgres `user_sync_queue` in the same transaction. Postgres runs the same `version + 1` update. It then applies to MySQL inline with a 200 ms wait. The reverse sweeper drains the Postgres queue into MySQL with `apply_copy`, using the version rule and MySQL's `users_tombstones`. Creates take ids from the Postgres sequence, and the MySQL shadow receives the row with that explicit id. A daily reverse comparison runs. If MySQL is down, writes continue and the queue grows. If Postgres is down, writes return 503, and that is an incident outside the 90 s budget. Reads then fall back to the MySQL shadow.\n\n14. **Rollback (step 11), allowed until step 12.** The same pause pattern applies. At T0 set `paused`. The reverse sweeper drains until the Postgres queue is empty. At T0+45 s, if not every instance is paused and drained, abort back to `pg`. Then check that MySQL `AUTO_INCREMENT` is above `max(id)`, and set it to `max(id) + 1` if not. At T0+50 s set `mysql` and start the forward sweeper. Wait until every instance reports `mysql`. Then set `users_read_source` back to 0 and run a clean comparison before reads may move back.\n\n15. **Point of no return and cleanup (steps 12-13).** The conditions are at least 14 days since the switch, a clean reverse comparison in the last 24 h, reverse queue age within SLO, and a recorded sign-off. The reverse queue is drained and `users_write_targets = pg_only` is set. Every instance must confirm this on the status endpoint, then `pg_only_at` is recorded. A final MySQL backup is taken, and rollback is withdrawn. After at least 7 quiet days, a backup restore test and team agreement, the MySQL `users`, `users_tombstones` and `user_sync_queue` tables are dropped. The MySQL code is removed from `UserRepository` and the lint rule is updated.\n\n16. **Erasure and tombstones.** When a user is erased, the delete is copied as a deletion plus a tombstone. The tombstone is never removed. Ids are never reused, so any later copy of that id, such as a late retry or a backfill batch read before the erasure, is blocked. The tombstone check in `apply_copy` is what stops an erased user from reappearing.",
+   "gaps": [
+    "How the switch tooling discovers every web and worker instance and reads the expected replica count from the orchestrator. The document says this is open, and Gates 1 and 2 and every later poll depend on it.",
+    "Where the percentage read-source value shown by the status endpoint comes from during the ramp, and what a single instance reports when its users sit in different buckets. The document says only that it reports 'flag values'.",
+    "How the reverse sweeper and the reverse queue get their own lease and claim mechanics in Postgres. The document says only that the reverse sweeper drains the Postgres queue, not how it claims rows.",
+    "How MySQL `users_tombstones` and Postgres `users_tombstones` get populated by the erasure job. The document does not describe the erasure job itself or what triggers it, only that it exists and that deletes are copied as deletion plus tombstone.",
+    "What happens to an in-flight write that started under `mysql` when the flag moves to `pg` (the document implies the count and pause handle it, but not what a client sees on a 503 retry beyond `Retry-After: 1`).",
+    "What the SLO for the oldest queue row age is. The gates and the read ramp refer to it without giving a number.",
+    "How the operator or tooling sets the flags (the interface that changes `users_pg_dual_write`, `users_read_source` and `users_write_source`) and where flag values are stored, since only the 30 s instance refresh is described.",
+    "How `StaleWrite` (409) is detected, since the document says only that a write from a stale read fails with it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

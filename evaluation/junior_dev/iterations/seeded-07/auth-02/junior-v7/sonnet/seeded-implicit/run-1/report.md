@@ -1,0 +1,35 @@
+## Review of auth-02 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the plan in the skill's layout: summary, terms, runtime steps, rollout steps, rollback, failure table, open questions.
+- Added a terms section defining secret store, version id, service identity, replica, readiness probe and APP_ENV.
+- Made /healthz return 503 until all three keys are loaded, so a pod without keys is never ready and the rollout halts safely.
+- Made clients call secrets.get() on every request instead of copying the key in the constructor, so refreshed keys are used.
+- Defined APP_ENV handling: prod in deploy config, dev in make run, exit non-zero if unset.
+- Wrote out the per-key rotation sequence with a version-id check on every replica before revoking.
+- Added a rollback rule: the pre-change image stops working once old keys are revoked.
+- Defined the verify step and the CI check on api_key.
+- Added open questions for the store product, the identity mechanism, provider support for two active keys, and per-pod access to /healthz, alongside the rotation schedule.
+- Refresh step: said a missing, deleted or empty secret counts as a failed read, and that replicas refresh on their own timers so versions can differ for up to about 5 minutes, which is safe (Q11, Q14).
+- Startup load step and failure table: a missing or empty secret counts as a failed load/read (Q14).
+- Rotation 6.3: wait at least 6 minutes, then keep checking until every replica shows the new version (Q12).
+- Use in clients: said config_loader.py is unchanged and keeps loading base_url and timeouts, secrets.py is separate, and a provider auth error is returned without retry or re-read (Q13, Q17).
+- Rollout step 3: noted config_loader.py is unchanged (Q17).
+- Rollout step 4: stated that old and new pods serve together and that this is safe because old keys stay valid (Q15).
+- Readiness and Verify steps: named the engineer running the rollout as the operator; reworded the /healthz open question to cover how to reach each pod individually (Q16).
+- Merged the 'missing, deleted or empty counts as failed read' wording, repeated in startup, refresh and the table, into one rule under 'Rules that apply everywhere'.
+- Moved the rolling-deploy halting behaviour into the readiness probe term and removed the repeated explanations in Readiness.
+- Added 'We are not rewriting git history' to the summary (a stated fact from the brief that was missing).
+- Added an 'Operator' term, replacing the inline parenthetical definition.
+- Moved 'APP_ENV=dev' for make run out of the startup step, since Local development covers it.
+- Merged rotation step 4 and its 'do not revoke' line into one step; shortened the Deploy step by cutting the redundant 'nothing else depends on the mixed state'.
+- Pointed the access-policy failure at the deploy step instead of a vague 'later step'.
+- Added that the CI check parses config/app.yaml where the check is first described in the rollout.
+- Cut nothing else of substance; all brief requirements (retries, 5-minute refresh, memory-only keys, access rules, rotation order, CI check, dev flow, open rotation cadence) are kept.
+
+### Holes
+- Q1: What is "the store"? Which product or service is it, and where does it run? (author: The brief only says 'our managed secret store'; the product and where it runs are not stated. The plan now defines it by behaviour (paths, per-env KMS encryption, version ids) and lists the product as an open question.)
+- Q2: How does the app prove to the store who it is when load() runs? What identity does orders-api-prod use? (author: The brief says only that the prod service identity is orders-api-prod; how the pod proves it to the store is not stated. The plan calls it the service identity and lists the mechanism as an open question. Developers locally use their own credentials limited to dev read (decided, so that no one reads prod locally).)
+- Q16: Who runs the step 5 Verify and the step 6 checks, and how do they call /healthz on each of the 4 pods individually? (author: The brief does not say who. I assumed the engineer running the rollout (security on-call writes the new secret values). How they reach each pod's /healthz individually, and whether they are permitted to, is not known; it is listed as an open question.)

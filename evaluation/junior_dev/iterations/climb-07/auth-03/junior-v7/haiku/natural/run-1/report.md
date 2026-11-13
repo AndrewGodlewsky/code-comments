@@ -1,0 +1,42 @@
+## Review of auth-03 (junior-v7, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a summary and a terms list, placed before the diagrams. The terms define the email queue, worker, mail provider, row lock, SHA-256, password hash, breached-password list and edge.
+- Added the raw-token generation step before the transaction, with its reason (Q2).
+- Made the over-limit path explicit: ROLLBACK, then the same generic response, with no token and no email (Q1).
+- Changed the count to 'count >= 3' in words, so the 3rd link is allowed and the 4th request is refused. Fixed F2 wording to match (Q6).
+- Added the rule that a token not found on submit gets the expired page and writes nothing (Q7).
+- Explained why the session cookie is cleared and why no automatic login happens (Q8).
+- Stated where the breached-password list lives at runtime (local copy), and left its source open as open question 1 (Q9).
+- Stated in F3 that a drop does not free a slot, since invalidated rows still count (Q10).
+- Stated in F10 that the same retry and drop handling applies, but nothing is marked, since the link is already used. This is a clarification, not a new rule.
+- Moved the response-timing difference into open question 6 (Q4).
+- Turned the request and link flows into numbered steps that say what starts each step, what it changes and what happens on failure. Failure handling is in the steps and in the table, and no F-code cross-references remain in the steps.
+- Kept every stated fact from the brief and the first version, including the exact generic message, the rate limit, the 30-minute validity, the 12-character minimum, the logout on every device, the lock order, the reset-page rules, the table fields, the purge rule, F1 to F13 and open decisions 1 to 5 (now open questions 1 to 6).
+- Step 7 and the request diagram: the email job is now { to, token_id, raw token }, so a dropped job (F3) can find its row (Q11).
+- F3 row: on drop, the worker sets invalidated_at on the row whose id is token_id (Q11).
+- Step 7 and F4 row: a failed queue add after COMMIT is logged with the token_id and counted with the F3 metric, with no retry (Q13).
+- Section 2 step 3 and F7 row: a 422 re-renders the same form with the same hidden t, so the user can retry (Q14).
+- Data rules: the 1-hour purge is named as a periodic cleanup whose scheduling is open question 7 (Q12).
+- Open questions: added question 7 for the cleanup schedule (Q12).
+- Terms: added Session and Referer header, which the new steps use. Failure text for an expired link now matches the brief's wording.
+- Added a two-to-three sentence summary that says how today's system works, then how the flow goes and why it is shaped that way.
+- Added a terms list that defines each name a newcomer would not know: raw token, token hash, argon2id, token_id, email queue, worker, mail provider, row lock, rolling hour, used, invalidated, session, breached list, edge, Referer header, Referrer-Policy, history.replaceState, and the 422 and 302 status codes.
+- Kept each flow as its ASCII diagram in a code block, with the diagram's branches stated once. Steps now add only what the diagram cannot show: what starts the step, which data it keeps, and what happens when it fails.
+- Removed the duplicated step text that repeated the diagram, and the 'steps 5-7 already in the diagram' repetition.
+- Replaced the F-codes and numbered cross-references (F1 to F13, open question numbers) with names, so no line sends the reader elsewhere to look something up. The failure table keeps one row per trigger, with no ID column.
+- Merged the two expired-page rows (invalid, expired or used at page load; and superseded by a newer link) into one row, since both show the same page and state.
+- Moved the worker's retry, drop, invalidate and metric behaviour into the failure table only, so it is stated once. The step for queuing the email now points to the table, not to a second copy.
+- Added a failure row for the database and random-source errors during the forgot request. The first version stated these in its steps, but the table did not list them.
+- Made explicit in the steps: the 3rd link in an hour is allowed and the 4th request is refused; used and invalidated rows count toward the limit; a refused request writes nothing, so it cannot invalidate the earlier link; the job carries token_id so the worker can mark the row without a hash lookup.
+- Made explicit in the link flow: a rejected password re-renders the same form with the error and the same t in the hidden field, so the user can retry until the link expires.
+- Changed the breached-password failure trigger from 'service unreachable' to 'list cannot be loaded', because the decided local copy removes the live call. Still fails closed.
+- Open questions are named, not numbered, where other sections point to them. Each question states what is decided and what is not known. The raw-token and queue-add failure question now says the queue's storage location is not known.
+- Cut only repetition: the drop and invalidate rules are stated once, the lock-order rule is stated once in the reset flow, and the reset-page privacy rules are one list in one place.
+- Kept every requirement, limit, number and setting from the brief and the first version: the exact generic message; unknown addresses get nothing sent; 3 emails per rolling hour; 32 random bytes; SHA-256 only; 30-minute validity; single use; a new link kills the older unused link; check on load and on submit; the 12-character minimum and breached-list check; a rejected password keeps the link valid; on success, new hash, burned link, logout on every device including this one, the password-changed email, redirect to login with no auto-login; the table fields; the 1-hour purge; the password_hash overwrite and sessions deletion; the 3 retries with backoff; per-IP rate limits at the edge; the Referrer-Policy, replaceState, no query-string logging and POST-body-only rules; and the open decisions on the breached list, the failed-send count, user notification, the outbox, other credentials, response timing and cleanup scheduling.
+
+### Holes
+- Q9: What is the 'breached list' used in step 4, and where does it live at runtime? F11 says a local copy, but open decision 1 says the source is undecided. Which one applies today? (author: The runtime location is decided: a local copy of the list inside the API server (F11), so there is no live call. The list's source and refresh schedule are not known yet. That is open question 1, which the brief leaves undecided.)
+- Q12: What runs the purge of rows older than 1 hour, and how often? Is it an existing scheduled job or something new? (author: I do not know what runs the 1-hour purge or how often. The brief does not name a scheduler, and I did not check the codebase for an existing scheduled job. The file says a periodic cleanup runs and points to open question 7.)

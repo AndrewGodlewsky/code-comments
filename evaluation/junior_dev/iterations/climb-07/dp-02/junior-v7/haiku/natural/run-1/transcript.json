@@ -1,0 +1,109 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The decision record is written to object storage before enrichment. When the dedup stage restarts and treats a copy as the winner again, is the decision record written twice or overwritten? How is it kept to one record per copy?",
+     "about": "7. Dedup and decision stage, step 3"
+    },
+    {
+     "id": "2",
+     "text": "If the dedup stage crashes after writing the decision record but before sending the winner row to the live writer, how does that winner reach events_clean?",
+     "about": "7. Dedup and decision stage, steps 3-4"
+    },
+    {
+     "id": "3",
+     "text": "If the KV store is down or slow when a copy arrives, what does the dedup stage do? Does it stop, skip the copy or retry?",
+     "about": "7. Dedup and decision stage, step 1"
+    },
+    {
+     "id": "4",
+     "text": "If the enrichment lookup (geo-IP or UA parsing) fails for a winner, what happens to the row, given that the decision is already recorded as a winner?",
+     "about": "7. Dedup and decision stage, step 4"
+    },
+    {
+     "id": "5",
+     "text": "What does 'quarantine the row' mean here? Where does the row go, and how does a later replay of D pick it up, given that the replay reads only the archive and decisions?",
+     "about": "10. Day close"
+    },
+    {
+     "id": "6",
+     "text": "The replay is described as re-enriching raw bytes and reading metadata, but how does it get the winner list? What does a decision record contain, and how does the replay find the right copies in the archive (by partition and offset)? Does the archive object store the offset?",
+     "about": "Part B, step 3. Join decisions"
+    },
+    {
+     "id": "7",
+     "text": "In the live path, how does a copy with received_at on D+1 that is a first copy (not a duplicate) work when its event_id already won on day D? Which day's winner row is kept, and is the D+1 copy recorded as a duplicate?",
+     "about": "9. Duplicates stay in the archive"
+    },
+    {
+     "id": "8",
+     "text": "What is the 'manifest' and who seals it? What marks it sealed, and what happens if the archive writer is still behind at 02:00 UTC on D+1?",
+     "about": "6. Archive writer / Part B, step 1. Check completeness"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The decision record is named by its (partition, offset), so a restart rewrites the same object with the same content, and there is only ever one record per copy."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "On restart the KV key still holds this copy's (partition, offset), so it is a winner again and is enriched and sent. The group B offset now moves only after the warehouse write is confirmed, and MERGE stops a second row."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It waits and retries the same copy without skipping it or moving its offset. Skipping would leave the copy with no decision and fail the replay check, and guessing could create two winners. Ingestion keeps running while live lag rises and alerts fire."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The winner row is still written, with empty enrichment columns and an empty enrichment_version. Dropping it would lose an already-decided winner, and waiting would miss the 5-minute target. The replay of the day fills the columns in from the archive."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Quarantine is a separate table that dashboards do not read, and replay does not read it either. Replay rebuilds D from the archive and the decision records, which already hold the late copy under D, so the next replay includes it. Quarantined rows are deleted after the swap."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The archive object name and metadata include the log partition and offset, which is the join key. A decision record holds event_id, received_at, winner or duplicate, and for a duplicate the winning copy's (partition, offset). Replay reads the copies, joins them to decisions on (partition, offset), and keeps the winners."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A D+1 copy cannot win if a copy of the same event_id from D was processed first, because the KV key already exists. It is recorded as a duplicate, archived under D+1, and partition D is untouched. A D+1 copy wins only if no earlier copy exists in log order, and that edge case is open question 7."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The manifest is a per-day summary written by the archive writer. At 02:00 UTC on D+1 it records the seal point (the log end offset per partition), and it is sealed once every copy up to that point is written. If the writer is behind, the manifest stays unsealed and the replay waits, so no replay starts on an incomplete day."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Client sends a batch (up to 100 events) over HTTPS to the collector. The collector parses the envelope and validates each event on its own: event_id and device_id present, serialized size at most 32 KB. Invalid events are rejected individually and listed in the response (batch index, event_id if present, reason). Valid ones are kept. Malformed JSON or more than 100 events returns 400 for the whole batch. The doc admits it is unsure how 400s should be handled (open question 3), and clients never retry rejected events.\n\n2. The collector sets received_at from its own clock, assumed NTP-synced within seconds. It keeps metadata beside each event: batch_id, collector node, client IP, User-Agent. These are kept because enrichment needs the IP and UA and the event body does not carry them. The UTC day of received_at fixes the event's warehouse partition, archive folder, decision folder and replay.\n\n3. The collector appends each accepted event's raw bytes plus metadata to the log. The log partition is a hash of event_id, so all copies of one event_id go to the same partition in order. The collector does no dedup, and a retry just becomes another copy. If any append fails, the client gets no 202 and resends the whole batch with the same event_ids, which may create extra copies. That is allowed.\n\n4. After the log confirms the replicated write of every accepted event, the collector returns 202. The body lists the rejected events. With no 202 (timeout, 429, 5xx), the client resends the same batch with the same event_ids, backing off from 1 s to 5 min. Mobile SDKs buffer unacknowledged events for up to 7 days, so a retry can arrive up to 7 days later.\n\n5. Archive writer (consumer group A) reads the log forward from its committed offset. It writes every copy, as received, with its metadata and its log partition and offset, to object storage. Objects are foldered by received_at UTC day. The object name includes partition and offset, so a rewrite after a restart replaces the same object and nothing is skipped or double counted. A lifecycle rule deletes each object 90 days after it is written. It also keeps a per-day manifest (copy count and offset range per log partition). At 02:00 UTC on D+1 it records the seal point for D (the log end offset per partition). When every copy up to the seal point is archived, it marks D's manifest sealed. Failure: if it falls behind, an archive-lag alert fires. Copies that leave the log after 14 days before being archived are lost.\n\n6. Dedup and decision stage (group B) reads the log forward, in order per partition. Dedup is by event_id only. Per copy:\n a. It atomically sets the KV key event_id only if absent, TTL 8 days, with value (partition, offset, received_at).\n b. If the set succeeded, the copy is the winner. If the key exists with this same (partition, offset), it is also the winner, which makes restarts safe. Otherwise it is a duplicate.\n c. It writes one decision record object per copy, named by (partition, offset) and foldered by received_at day. It holds event_id, received_at, winner or duplicate, and the winner's (partition, offset) for a duplicate. This happens before enrichment. Records are kept 90 days.\n d. For winners only, it runs geo-IP and UA enrichment, sets enrichment_version, and sends the row to the live writer.\n e. The group B offset advances only after the live writer confirms the warehouse write.\n Failures: if the KV store is down or slow, it waits and retries the same copy without skipping or advancing. Ingestion continues, lag grows and alerts fire. If enrichment fails for a winner, it sends the row with empty enrichment columns and empty enrichment_version, and a later replay fills them. A crash after the KV set but before the decision record: on restart the KV value matches, so it wins again and the record is written. A crash after the decision record but before the warehouse write: the offset has not moved, the copy is reprocessed with the same decision, the record is rewritten identically, and MERGE prevents a second row.\n\n7. The live warehouse writer receives winners and writes them to events_clean in the day partition for their received_at day, in micro-batches of about a minute. It uses MERGE by event_id (or keyed batch IDs), so restarts do not duplicate rows. Target: queryable within 5 minutes of received_at, measured at p95 and p99 with an alert at 4 minutes. If the warehouse or writer fails, the offset does not move, copies are reprocessed and lag alerts fire. Once confirmed, group B commits its offset (6e).\n\n8. Day close is at 02:00 UTC on D+1. Before then every winner for D should be in events_clean, checked by comparing the winner count in D's decision records with D's row count. A winner arriving after close is an incident. It alerts and goes to the quarantine table, not partition D. The next replay of D includes it, since the archive and decision records already hold it, and after the swap the quarantined rows for D are deleted. Late copies with received_at on D+k are archived under D+k. They win only if no earlier copy of that event_id exists, and either way partition D is untouched.\n\n9. Replay of a closed day starts when an operator requests it for day D. Preconditions: D is closed, still inside the 90-day archive window, and no other replay of D holds the per-day lock. Completeness check: wait for D's manifest to be sealed and for the decision writer to pass the seal point. Then archived copy count must equal the manifest count and every copy must have a decision record. Otherwise the replay fails and events_clean is unchanged.\n\n10. Replay reads D's copies and metadata from object storage only (not the log, not KV). It joins decision records on (partition, offset), where each copy must match exactly one decision. It keeps the winners and records that count as a baseline. It re-parses each winner's raw bytes and re-enriches with the corrected enrichment and a new enrichment_version, applying the bot-traffic choice (open question 1, undecided). Replay never re-decides winners.\n\n11. It writes the rebuilt rows to a staging table named for D and this run, checking that received_at is on D and event_id is unique. Validation: row count equals the winner count, required fields are non-null, event_id is unique. It diffs against the current partition D (rows added, removed, changed enrichment columns). A human must approve if the change exceeds a threshold, which is not yet set. If validation fails, events_clean is unchanged.\n\n12. Atomic swap: partition D in events_clean is replaced with the staging contents in one operation, so dashboards see the old partition or the new one, never a mix. Then it drops staging, deletes quarantined rows for D, and records the run (day, run ID, enrichment version, counts, operator, start and end times). Any failure before the swap leaves events_clean unchanged, and re-running with the same version gives the same output. Replay uses its own compute quota, rate-limited archive reads, and never touches KV, live offsets, archive objects or decision records.",
+   "gaps": [
+    "How the dedup stage (group B) is told about or ordered against the live writer: the document does not say how a row is handed to the live writer or how the live writer returns its confirmation (queue, call, etc.).",
+    "How a replay gets the sealed manifest, the seal point and the decision-writer progress to compare. The document does not say how the replay learns that the decision writer has passed the seal point, or how it counts archived copies per day.",
+    "What the client or operator sees when a batch-level 400 occurs and what should happen to those events (open question 3, undecided), so the step 1 failure path is incomplete.",
+    "What happens to the live path for a winner whose day partition has been swapped by a replay while live writes for later copies continue. The document says live writes never touch D after close but does not say how this is enforced, so the mechanism of the post-close check that routes a late winner to quarantine is unspecified.",
+    "Bot-traffic handling (drop or flag) and where the filter sits relative to dedup is undecided, so I cannot say whether suspected bots appear in events_clean or in the winner count the replay validates against.",
+    "How a human approval is requested and given in replay validation, and the threshold that triggers it (open question 8).",
+    "How an operator actually triggers a replay, and how the per-day lock is acquired and released, are not described."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

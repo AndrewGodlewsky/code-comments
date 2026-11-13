@@ -1,0 +1,30 @@
+## Review of feat-01 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the whole plan in the skill's order: summary, terms, numbered run steps, failure table, build order, open questions.
+- Added the threshold (reports.row_count, 10,000) and the two paths with their failure handling.
+- Defined the report_exports columns, who sets each status, and the POST response (202 with the record).
+- Added the GET latest endpoint so the page can find and poll the export after returning later.
+- Defined duplicate prevention as a partial unique index on (user_id, report_id) for queued or running records, returning the existing record.
+- Specified the job: 5,000-row keyset batches from the replica, about 8 MB parts, abort on error, fixed key, restart on each attempt, and stop if already done.
+- Decided that an email failure after the file is done does not fail the job.
+- Stated the retry settings (3 attempts, 60 s and 300 s), final-failure handling, and link validity of 24 hours versus 7-day file deletion.
+- Added an open question that 2 million rows within the 30-minute limit is untested.
+- Step 2: small path builds the full CSV in memory before responding, so a failure or 60 s kill never yields a truncated download.
+- Step 3: on an index conflict, a queued record with no job_id older than 5 minutes is marked failed and a fresh one inserted; otherwise the existing record is returned and its state shown.
+- Step 3: enqueue failure now says the API returns a 500, the page shows the export could not be started, and the user may click again.
+- Steps 1, 3, 5: stated that filters and cols come from the POST body (the page URL at click time), are stored on the record, and used by every attempt; status never returns to queued.
+- Failure table: added rows for waiting between attempts, process death after complete_multipart, and API death between insert and enqueue.
+- Open questions: added 10,000-row timing and stale row_count, and possible overlap of attempts.
+- Merged the 'Retry after partial progress' and 'Waiting between attempts' failure rows into the handler-raises row and the waiting row; removed the duplicate-delivery repetition from step 5 by keeping it in step 5 and one table row.
+- Moved the keyset/row_id explanation into a new 'row_id' term and cut the repeated paging detail from steps 2 and 5.
+- Added the 'row_id' term, a note that row_count is unfiltered so filtered views of large reports still use the job path, and that the payload limit is 64 KB.
+- Added to step 2 that a 60-second kill gives an error, not a partial file; added to step 7 that a done record is outside the index so a new click starts a new export.
+- Added the reason for ignoring email failure in step 6 (retry would rebuild the file).
+- Shortened the summary and moved current-page behaviour into it in one sentence; kept every stated limit, number and rule from the brief.
+- Merged complete_multipart-replaces-object into the bucket term so it is stated once.
+
+### Holes
+- Q13: On a retry, the record is already running and the same key {export_id}.csv is reused. Can two attempts ever run at once, for example after a timeout while the old worker is still alive? (author: jobs.py does not say whether a timed-out attempt's old worker is guaranteed dead, so I do not know if two attempts can overlap. If they did, each has its own multipart upload to the same key and complete_multipart replaces the object, so the result is the same file; I did not add a lock. Added as an open question.)

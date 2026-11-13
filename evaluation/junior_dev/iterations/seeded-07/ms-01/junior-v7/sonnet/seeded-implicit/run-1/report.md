@@ -1,0 +1,39 @@
+## Review of ms-01 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Rewrote the document into summary, terms, rules, diagram, steps, failure table and open questions, since the original left every question unanswered.
+- Fixed the diagram: Refund no longer follows Confirm order; Clear cart follows CONFIRMED and Refund follows a failed stock claim.
+- Added the missing steps to the diagram: short stock, declined payment, webhook dedupe, claim after success, and the refund retry loop, with a lane per service showing what it stores.
+- Defined the idempotency key as the order id, as the brief requires, and used it for refunds too.
+- Added the order statuses and made Order their only owner.
+- Specified the 10-minute expiry (expiry time checked plus a sweep job) and the late-payment claim with re-reserve.
+- Specified the cart-clear event with an outbox, and refund retry with capped backoff and an alert after 5 failures.
+- Added open questions: who sends the email, no webhook within 30 minutes, and the refund retry numbers.
+- Step 4: Payment now saves the webhook id and the outcome together with an outbox row in one transaction, so a crash cannot lose the outcome (real hole).
+- Step 2: stated that Order calls Inventory over HTTP and waits; if Inventory is down or slow, the order stays PLACED, no payment, customer told to retry.
+- Step 3: charge retry set to 3 more times, 5 seconds apart; stated that a provider that never answers leaves the payment pending and the order STOCK_RESERVED.
+- Step 6: claim is safe to repeat; a claim timeout or error is repeated until a definite answer, and only a refusal triggers the refund.
+- Step 5: a retry after a decline creates a new order with a new id and key.
+- Step 1: customer screen shows the order's current status from Order.
+- Failure table: added rows for Inventory down, webhook crash, and claim timeout; updated charge and declined rows.
+- Open questions: added charge retry numbers, customer notification, and the unbounded wait on claim.
+- Step 1: a repeated Place order returns the open PLACED or STOCK_RESERVED order instead of creating a second one (stops double hold and double charge).
+- Step 3: Order's call to Payment is a direct HTTP call carrying order id and total from the saved lines; Order repeats it 3 more times, 5 seconds apart, then leaves the order STOCK_RESERVED.
+- Step 4: Order acts on a payment outcome only while STOCK_RESERVED and ignores repeats in any other status.
+- Step 5: a failed hold release is not retried; the hold expires after 10 minutes.
+- Step 9: Order is not told when a refund completes; refund progress stays in Payment.
+- Failure table: added rows for repeated Place order, failed Order-to-Payment call and repeated outcome event, and extended the declined row.
+- Open questions: added Payment-never-answers case, refund completion notice, and stale snapshot on repeated Place order.
+- Cut the closing failure table: every row repeated a failure already stated in its step, so failures now live once, in each step.
+- Merged the two separate retry statements for charge and the duplicated 'never charged twice' wording; each rule now appears at one step only.
+- Added terms for Claim and Outbox (junior asked what they mean), and removed the repeated outbox explanation from steps 4 and 7.
+- Added a line under Steps saying the diagram shows the path and the notes add only trigger, mechanism and failure.
+- Kept all brief facts: 10-minute hold, all-or-nothing reserve, order id as idempotency key, 30-minute webhook, duplicate dedupe, late-success refund/cancel/email, refund never dropped, cart cleared only on confirm, no partial orders, own databases.
+- Kept every earlier fix: duplicate Place order returns the open order, direct HTTP calls, outbox for webhook outcome and OrderConfirmed, status guard against repeated outcomes, claim retried on timeout, declined retry makes a new order.
+- Reordered open questions so the gaps that leave money or stock held come first; text unchanged in substance.
+- Terms and Rules sit before the diagram, notes after it, as the skill requires; nothing about rollout was in the document so no separate build section was added.
+
+### Holes
+- Q15: What does the customer see on screen between pressing Place order and the webhook arriving, which can take seconds to 30 minutes? How do they learn the final result? (author: The brief does not say what the customer sees. I added that the screen shows the order's current status, served by Order, so it reads 'waiting for payment' until a final status. How the customer is told of confirmed or declined (push, polling, email) is not decided; added to Open questions.)

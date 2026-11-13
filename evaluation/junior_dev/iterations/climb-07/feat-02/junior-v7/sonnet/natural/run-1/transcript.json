@@ -1,0 +1,97 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"limit\" passed to check_and_incr for an Enterprise customer, given that Enterprise requests skip the check? What does the client see for those requests (headers, any counting)?",
+     "about": "Limit lookup / Enterprise is open (TBD)"
+    },
+    {
+     "id": "2",
+     "text": "The Lua script returns 'denied, retryAfter' or 'allowed, newCount'. What exactly does it do with the key on first use in a window, and when is the 120 s expiry set?",
+     "about": "Counter key / check_and_incr"
+    },
+    {
+     "id": "3",
+     "text": "Where does the gateway get the plan from, and what is cached for 5 minutes: the key-to-customer mapping, the plan, or both? What happens on a cache miss when the Key Service is slow or down?",
+     "about": "Key Service / Resolve key (skipped on cache hit, 5 min TTL)"
+    },
+    {
+     "id": "4",
+     "text": "What does the gateway send to the client when the key is valid but the backend times out or is unreachable (not just returns 500)? Is the request still counted?",
+     "about": "Forward request / Backend service"
+    },
+    {
+     "id": "5",
+     "text": "The diagram says the denial case is 'count >= limit' and Remaining = limit - newCount. Can you walk through the 100th and 101st requests in one window, showing the counter value, headers and status for each?",
+     "about": "Under the limit / Over the limit"
+    },
+    {
+     "id": "6",
+     "text": "How does the gateway know redisTime if it never reads its own clock? Is the window start computed inside the Lua script using the Redis TIME command?",
+     "about": "Window / Redis server clock sets the window boundary"
+    },
+    {
+     "id": "7",
+     "text": "In the fail-open case, if Redis answers after 50 ms and the script already incremented the counter, what happens to that count?",
+     "about": "Redis errors or no answer within 50 ms"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "No limit is passed for Enterprise, because the check is not called at all. Those requests are forwarded normally, are not counted and carry no X-RateLimit-* headers until product sets a limit. Skipping is the simplest way to leave the number open without picking one."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "In one atomic script: read Redis TIME, compute windowStart, read the count (missing means 0). If count >= limit, deny. Otherwise INCR. If the new count is 1 (first use in the window), set EXPIRE 120 in the same script. The key is created and given its expiry together. 120 s outlives the 60 s window with margin."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The cache is keyed by API key and holds the single Key Service answer, customerId plus plan, for 5 minutes. The brief does not say what happens on a cache miss when the Key Service is slow or down. That is existing gateway behavior I have not verified, so it is listed under Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The request is counted, because the increment happens before forwarding (req. 5). The status the client sees is whatever error the gateway already returns for a backend timeout or unreachable backend. I did not check what that is, and this design does not change it."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "100th request: count was 99, below 100, so it increments to 100. It is forwarded and gets Limit 100 and Remaining 0. 101st: count is 100, so it is denied with 429 and Retry-After, the counter stays at 100, and it is not forwarded. Added as an example in the notes."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes. The Lua script calls Redis TIME and computes windowStart and retryAfter inside Redis. The gateway never needs a clock for this and never computes windowStart. Stated in the terms and rules."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The gateway has already given up and forwarded the request, so it ignores the late answer. If the script ran, the increment stays and is not rolled back. The result is a slight overcount, which is acceptable for a first version and avoids adding a compensating mechanism."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request to the public API with an `X-Api-Key` header. A load balancer hands it to one of 6 stateless API Gateway instances. The instances keep no shared state of their own, so any of them can get any request.\n\n2. The gateway has to turn the key into a customer ID and a plan (Standard or Enterprise). It first checks its own in-memory cache, which is keyed by API key and holds both customer ID and plan for 5 minutes. On a hit it skips the Key Service. On a miss it asks the Key Service, which answers with a customer ID and plan, or says the key is unknown. State here is the per-instance cache, so a plan change can take up to 5 minutes to show.\n\n3. If the key is missing or unknown, the gateway returns 401 Unauthorized and stops. It makes no Redis call, so no counter is read or changed. Authentication always comes before rate limiting.\n\n4. If the key is valid, the gateway picks the limit from the plan. Standard is 100 requests per minute. Enterprise is undecided. For now an Enterprise request makes no Redis call. It is forwarded to the backend, not counted, and the response has no `X-RateLimit-*` headers.\n\n5. For a Standard request, the gateway calls the shared Redis with `EVAL check_and_incr(customerId, limit)` and a 50 ms timeout. Redis is shared so all 6 instances see one counter per customer. The Redis state is a counter key `rl:{customerId}:{windowStart}`. It uses the customer ID, not the API key, so all of a customer's keys share one budget.\n\n6. Inside Redis the Lua script runs as one step. Redis runs scripts one at a time, so two instances cannot both take the last slot.\n   - It reads Redis's own clock with `TIME` and computes `windowStart = floor(redisTime / 60) * 60`. This puts requests in fixed one-minute windows and means gateway clock skew does not matter.\n   - It reads the count for the key, treating a missing key as 0.\n   - If `count >= limit`, it denies and returns `retryAfter = max(1, windowStart + 60 - redisTime)`, in whole seconds. It does not increment.\n   - Otherwise it runs `INCR`. If the new count is 1, it sets the key to expire after 120 s, which outlives the 60 s window. It then returns allowed and the new count.\n\n7. Over the limit: Redis returns denied and `retryAfter`. The gateway sends the client 429 Too Many Requests with a `Retry-After: seconds` header and a small JSON error body. It carries no `X-RateLimit-*` headers. The request is not forwarded, and the counter was not incremented, so 429s cost no budget.\n\n8. Under the limit: Redis returns allowed and `newCount`. The gateway forwards the request to the backend that owns the route. The backend's response goes back to the client with `X-RateLimit-Limit` and `X-RateLimit-Remaining = limit - newCount` added. For example, the 100th request in a window sees count 99, increments to 100, is forwarded and gets `Remaining: 0`. The 101st sees count 100 and gets 429, and the counter stays at 100.\n\n9. Backend failure: the increment happens before forwarding. A backend 500, timeout or unreachable backend still uses a slot. In the timeout or unreachable case the client gets whatever error the gateway already returns today.\n\n10. Redis failure (fail open): if Redis errors or does not answer within 50 ms, the gateway emits the metric `ratelimit_store_unavailable` and forwards the request anyway. The backend response goes back with no `X-RateLimit-*` headers. If the script did run and Redis answers late, the gateway ignores the answer and does not roll back the count, so a slow Redis can slightly overcount. While Redis is down nothing is counted and limits are not enforced. The document says to alert on the rate of `ratelimit_store_unavailable`.\n\n11. Known limitation: fixed windows let a client send up to 2x the limit across a window boundary, for example 100 requests at 12:00:59 and 100 more at 12:01:00. The document accepts this for a first version and names a sliding window as a later upgrade.",
+   "gaps": [
+    "The Enterprise limit is undecided, so I cannot say whether Enterprise traffic will be counted or what headers it will get.",
+    "The document does not say what the gateway does on a Key Service cache miss when the Key Service is slow or down (step 2).",
+    "The document does not give the exact status the gateway returns when a backend times out or is unreachable (step 9).",
+    "The document does not say how the gateway chooses which backend owns a route, or how the 429 or other error bodies are formed beyond 'small JSON error'.",
+    "The document does not say how the gateway recognises a Redis 'error' versus a normal denial, or what it does if the script returns something unexpected."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

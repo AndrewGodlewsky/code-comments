@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does the App check in login_locks, and what does the user see if the account is locked?",
+     "about": "A->>DB: check login_locks"
+    },
+    {
+     "id": "2",
+     "text": "When is a row written to login_failures, and when does a row in login_locks get created or cleared (e.g. on successful login)?",
+     "about": "Lockout: 5 fails / 10 min, 15 min lock"
+    },
+    {
+     "id": "3",
+     "text": "Is the lockout per user account, per IP, or both? And what happens if the username doesn't exist?",
+     "about": "A->>DB: look up user"
+    },
+    {
+     "id": "4",
+     "text": "What is stored in a sessions row, and what exactly goes in the sid cookie (a random ID, or something else)?",
+     "about": "A->>DB: create session"
+    },
+    {
+     "id": "5",
+     "text": "On each page request, how are the 30 min idle and 12 h max timeouts checked, and does a request update any session timestamp?",
+     "about": "A->>DB: validate session"
+    },
+    {
+     "id": "6",
+     "text": "What does 'New session ID on each login' mean for a browser that already has an old sid? Is the old session deleted?",
+     "about": "New session ID on each login"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Handle DB errors' mean concretely: what does the user see, and does the request fail open or closed if Postgres is down during session validation?",
+     "about": "Handle DB errors"
+    },
+    {
+     "id": "8",
+     "text": "What does the cleanup job run on (schedule, which process) and which tables does it clean?",
+     "about": "Cleanup job for expired rows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "It looks for a login_locks row for the lowercased email whose locked_until is in the future. If found, it replies HTTP 429 with the login page and 'Too many attempts, try again later', without checking the password. Applies to any email, so it reveals nothing about accounts."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "A login_failures row is written on every failed attempt (unknown email or wrong password). When the email then has 5 failures in the last 10 minutes, a login_locks row is created with locked_until = now + 15 minutes. On successful login the email's failure rows are deleted (no lock can exist then, since locked emails are refused before the password check). Expired locks and old failures are removed by cleanup."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Per email only; IP is not used because the brief specifies per-email and per-IP would add complexity. Unknown emails are counted and locked the same way, and get the same 401 response as a wrong password, so nothing reveals whether the account exists."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A sessions row has id, user_id, created_at, last_seen_at. The cookie holds only the random session ID (at least 128 bits, secure random), no user data."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Both are checked on the server in one lookup using the database clock: last_seen_at within 30 minutes and created_at within 12 hours. Yes, each valid request sets last_seen_at to now, which restarts the idle clock; created_at never changes, giving the 12-hour cap."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Login always creates a brand-new random ID even if the browser sent one. If the incoming sid matches a session, that row is deleted in the same transaction as the new one is created, so the old ID is dead."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Fail closed. On a Postgres error during login, validation or logout, the user sees HTTP 503 with a plain 'Service unavailable, try again' page. No protected page is served, no session is created, and the cookie is left unchanged. Failing open would let anyone in during an outage, which defeats the requirement."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Each of the two app instances runs it in-process every 5 minutes, since there is no separate job runner in the stack. It deletes expired sessions, login_failures older than 10 minutes and login_locks past locked_until. The deletes are idempotent, so both instances running it is safe. It is housekeeping only because the request checks already reject expired rows."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: the browser sends POST /login with an email and password. The app lowercases the email before any lookup.\n2. Lock check. The app reads login_locks in Postgres for that email. If a row exists with locked_until in the future, it replies HTTP 429 with the login page (\"Too many attempts, try again later\") and does not check the password. Lockout is per email, not per IP. Unknown emails are counted too, so lockout does not reveal whether an account exists.\n3. Credentials check. The app looks up the user in Postgres and compares the password. If the email is unknown or the password is wrong, it adds a login_failures(email, failed_at) row and replies HTTP 401 with the login page showing \"Invalid email or password\". Both cases look identical to the user. After recording the failure, if the email has 5 failures in the last 10 minutes, the app creates a login_locks row with locked_until = now + 15 minutes.\n4. Successful login. The app deletes that email's login_failures rows. Then, in one transaction, it deletes the session the incoming sid cookie pointed to (if the browser sent one) and inserts a new sessions row (id, user_id, created_at, last_seen_at) with a fresh random ID of at least 128 bits. The old ID is dead even if the browser sent one. The app sets the sid cookie to the new ID only (HttpOnly, Secure, SameSite=Lax, no user data) and redirects to /dashboard. The session row in Postgres is what proves the user is signed in. Both app instances share the database, so either can serve the next request.\n5. Protected request. The browser sends GET with the sid cookie. The app finds the session row by ID. It is valid only if last_seen_at is within 30 minutes and created_at is within 12 hours, judged by the database clock. If valid, the app sets last_seen_at to now (restarting the 30-minute idle clock; created_at never changes, which gives the 12-hour cap) and serves the page. If the session is missing, unknown or expired, the app deletes the row if there is one, clears the cookie and redirects to /login.\n6. Logout. The browser sends POST /logout. The app deletes the session row if one exists, clears the cookie and redirects to /login. The result is the same when there is no session.\n7. Cleanup. Every 5 minutes each app instance deletes expired sessions, login_failures older than 10 minutes and login_locks past locked_until. Running on both instances is harmless because the deletes are idempotent. It is housekeeping only, because the checks above already reject expired rows.\n8. Storage failure. If Postgres errors during login, validation or logout, the app replies HTTP 503 with a plain \"Service unavailable, try again\" page. It fails closed: it serves no protected page, creates no session, treats no one as signed in, and leaves the cookie unchanged.",
+   "gaps": [
+    "How the app decides which requests are protected and how it reads the sid from them is not stated beyond 'every page except /login'. It is not clear whether GET /login itself (showing the form) is handled or what an already signed-in user sees there.",
+    "The document does not say what happens on login when the email is locked but the password would have been correct beyond skipping the check. This is fine, but it does not say whether a lock check also happens on the 503 path ordering, i.e. which step a DB error in the lock check maps to (it says 503 generally).",
+    "The document does not say how the password is stored or compared, for example hashing, so the 'compare the password' step cannot be explained in more detail.",
+    "The document does not say what happens if the transaction in step 4 fails midway after login_failures rows were already deleted. It says only that Postgres errors give 503 and no session is created.",
+    "The document does not say what happens on a successful login if the email also has a login_locks row. It is implied that the lock check blocks this first, but expiry of the lock versus leftover failures is not covered.",
+    "The document does not say how the app handles a login_failures count when the lock is already active or after a lock is created. It does not say whether failures are cleared when a lock is created."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,35 @@
+## Review of mig-01 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the whole plan from a nine-line checklist into summary, terms, runtime rules, rollout checklist, failure table and open questions, because every question showed a term or mechanism that was never defined.
+- Defined the four tables and where each lives (pending in the primary, tombstones in the secondary, backfill progress in Postgres) after Q1, Q4 and Q6.
+- Specified the dual-write order, the 1 second Postgres timeout and the pending-row repair path after Q2.
+- Defined `write_mode` (four values) and added `write_paused` and the switch procedure with its 90 second abort rule after Q3 and Q8.
+- Added the per-user lock after finding that a backfill copy could slip in between a delete and its tombstone and revive an erased user.
+- Defined the sweeper, comparer and 'clean' after Q4 and Q5.
+- Added ramp go/back thresholds after Q7. They are my own picks, flagged in the open questions.
+- Set the sequence to the larger of max MySQL id and max tombstone id, plus 1,000,000, after Q8. This avoids reusing an erased id.
+- Described rollback, with the roles swapped for the secondary, after Q9.
+- Added an Open questions section for the request timeout, the email unique-index conflict and the thresholds I chose.
+- Sweeper ignores its 30 second age limit while a pause is active, so the switch's 15 second drain can finish (Q10).
+- Spelled out the 90 second timeline: step budgets 40, 15, 5, step 4 issued by 60 seconds, plus 30 for flag spread; removed the 'about 75' target (Q11).
+- Replaced the boolean `users.write_paused` with the deadline flag `users.write_paused_until`, so a crashed switch script unpauses itself; added a failure table row and an open question about clock agreement (Q12).
+- Stated how the sweeper finds the primary from `write_mode` and which pending table it reads, including mysql_only and pg_only (Q13).
+- Added a Version term describing the column, who bumps it and how StaleWrite uses it; clarified that the normal write runs on whichever database is primary (Q14).
+- Added a token to pending rows and made removal conditional on an unchanged token, in both the dual write and the sweeper, to stop a newer write's pending row being lost; noted that several sweepers are safe (Q15).
+- Clarified that deletes take the lock and add a tombstone with no version check, and that a failed secondary delete is finished by the sweeper (Q16).
+- Updated the rollout checklist and failure table wording for the new pause flag and abort rules.
+- Merged the separate Sweeper/Comparer/Backfill definitions in Terms with their behavior: Terms now hold one-line definitions, and details appear once under How it runs.
+- Added a one-line definition of backfill_progress and Backfill, and a note that the repository logic today runs only on MySQL.
+- Folded the Q10 fix (sweeper ignores age limit during a pause) into the sweeper section only, and removed its repeat from the switch steps' prose.
+- Merged switch step 5 (60 second budget) into step 4, and renumbered abort and crash handling to steps 5 and 6.
+- Moved the rollout checklist after How it runs so system behavior and rollout are separate sections; shortened its repeats of mechanisms (e.g. step 3, 4, 8).
+- Stated flags change as one set within Flag refresh instead of repeating it in the switch step.
+- Restored dropped facts: replica shared with reporting jobs, primary-key order, about 38 million rows, ~2,000 erasures per day, same user always same read database, backfill must not start over.
+- Cut the word-for-word restatement of the version rule inside the tombstone and backfill text, and the 'In mysql_only' repeat in the Terms.
+- No new mechanisms added; no change to the plan's intent.
+
+### Holes
+- None.

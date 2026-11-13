@@ -1,0 +1,27 @@
+## Review of auth-01 (junior-v7, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Decision 9: the cleanup runs on a timer inside each app instance every 10 minutes; described what happens if one or both instances are down.
+- Decision 10: any database error before COMMIT rolls back the whole login, so nothing is written and the cookie is unchanged.
+- Rules: the advisory lock is held until COMMIT or ROLLBACK, so bcrypt runs under the lock and same-email logins wait behind it.
+- Rules: added the Retry-After formula, and that a locked email gets 429 while lockout does not reveal whether an account exists.
+- Rules: added that a failed login with a valid cookie changes nothing.
+- Rules: added the session check scope, which allowlists /login, /logout and static assets and applies the check to every other request, including form POSTs.
+- Open questions: added a section with the unconfirmed meaning of page, who creates users rows, and the lock wait limit. The static-asset confirmation request moved here from the rule.
+- Summary: rewritten as three sentences that say how the app works today, what changes, and how a login and a request flow. Replaces the first version's decision-list opening.
+- Terms: added a section defining each name a newcomer would not know (session, cookie flags, __Host- prefix, SHA-256, CSPRNG, bcrypt, dummy hash, transaction, advisory lock, hashtext, lockout, idempotent, upsert, Retry-After, sticky session, Redis, anti-enumeration, session fixation, login CSRF, credential stuffing, Mermaid) and the existing users table. Each is one line.
+- Flow: the sequenceDiagram is kept exactly as in the first version, placed after the terms, with notes after it.
+- Notes on the flow: the first version's Rules section was reduced to the points the diagram cannot show. Merged the lock-before-password rule, the 5th-failure rule, Retry-After, wrong password with a valid cookie (Q7), clear-cookie headers, expired-or-missing equivalence, logout equivalence, and session check scope (Q8, /logout allowlisted). Removed the rule that success clears failure rows, because the diagram shows it.
+- Advisory lock hold time (Q1): merged into Design choice 6 from a separate rule, and kept the no-wait-limit point with a pointer to Open questions. Diagram and rule no longer repeat each other.
+- Design choices: the first version's Decisions 1 to 10 are kept, each stated once. Decision 1 keeps the full Redis reasoning. Decision 4 keeps the 12-hour absolute limit. Decision 5 keeps the normalization and the rolling window. Decision 9 now names the timer inside each process, started at boot (Q6), and keeps the cleanup queries, moved here from the Rules list.
+- Storage failure: Decision 10 moved to a failure table with three rows and one cleanup row. Added the rollback detail for a failed login (Q3): no failure row, no session row, no lockout change, old session kept. Kept the reasons for each 503 and the logout cookie rule.
+- Removed repetition: logout's immediate row delete (in the diagram) is not repeated in Design choices. The cleanup-job rule was merged into choice 9. The sign-up out-of-scope fact is stated once in Terms, and the open question keeps only the question.
+- Schema: the SQL is kept unchanged, under its own section.
+- Open risks: all five bullets from the first version are kept unchanged.
+- Open questions: the three from the first version are kept. Q2 (who creates users) and Q8 (static assets) are reflected there. Q4 (what the dashboard loads with user_id) is not added, because the answer keeps it out of the design. Nothing from the brief, the first version or the answers was dropped.
+
+### Holes
+- Q4: After the row is returned, how does the app use user_id to build the dashboard? What does the app do with the cookie when the request is not a page, such as an API or form POST? (author: The design does not say what the dashboard loads with user_id. That is outside this design and is left out of the file. Cookie handling for non-page requests: the session check runs on every request except /login, /logout and static assets, so form POSTs are checked too and get a redirect to /login when there is no session. The brief says there are no API clients. Added a Session check scope rule.)
+- Q8: What is the "session check" in terms of code: middleware on every route or per-route? Which routes are public, and who decides that? You say to confirm what "page" means; has it been confirmed? (author: The check is one middleware on every route, with an allowlist: /login, /logout and static asset paths. I decided this, and it is not in the brief. /logout is allowlisted because it must work with no session. The brief does not confirm that page means HTML pages, so the static-asset exemption is not confirmed. Listed as an open question.)

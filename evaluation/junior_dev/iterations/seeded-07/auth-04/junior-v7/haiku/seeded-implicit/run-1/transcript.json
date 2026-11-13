@@ -1,0 +1,126 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly does the callback do after Google redirects back, and what does 'checks them' mean when state, nonce or the verifier doesn't match?",
+     "about": "Callback / Notes: start endpoint saves state, nonce and PKCE verifier"
+    },
+    {
+     "id": "2",
+     "text": "Where are state, nonce and the verifier saved, how does the callback find the right ones for this browser, and how long do they live?",
+     "about": "Start endpoint / some Redis entries"
+    },
+    {
+     "id": "3",
+     "text": "What is the 'Known identity?' check: which values from Google are looked up in user_identities?",
+     "about": "Known identity?"
+    },
+    {
+     "id": "4",
+     "text": "How does 'Match or create account' decide between matching an existing account and creating a new one? What is matched on, and what is created?",
+     "about": "Match or create account"
+    },
+    {
+     "id": "5",
+     "text": "The diagram shows two arrows out of 'Match or create account', to Confirm password page and straight to start_session. Which case takes which?",
+     "about": "Match or create account -> Confirm password page / start_session"
+    },
+    {
+     "id": "6",
+     "text": "On the Confirm password page, how does the app remember which Google identity is being linked while the user types the password, and what happens after a wrong password or lockout?",
+     "about": "Confirm password page / usual lockout"
+    },
+    {
+     "id": "7",
+     "text": "What is start_session and what does 'the normal session' consist of (cookie, store, contents)?",
+     "about": "start_session / Uses the normal session"
+    },
+    {
+     "id": "8",
+     "text": "When Settings starts Link Google, how does the callback know it is a link for the logged-in user rather than a login? Does it skip the confirm password step?",
+     "about": "Settings has its own Link Google button"
+    },
+    {
+     "id": "9",
+     "text": "What does 'Errors show a message and change nothing' cover, for example Google being down, user cancelling, or an expired state? Where does the user land?",
+     "about": "Errors show a message and change nothing"
+    },
+    {
+     "id": "10",
+     "text": "What stops a Google-only user from unlinking, since they have no password and unlinking needs one?",
+     "about": "Settings can also unlink / Google-only users have no password"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The callback first handles any Google error. Otherwise it takes the attempt by state and deletes it in one step (use once). A missing attempt gives an error page with nothing changed. It then exchanges the code using the PKCE verifier, validates the ID token, and compares its nonce with the attempt's nonce. 'Checks them' means: a state with no matching attempt, a nonce that differs from the saved one, or a bad verifier (the exchange fails) each give an error page and change nothing. Changed: the step now spells out these checks in order."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The attempt is stored in Redis under oidc:attempt:<state>, holding nonce, verifier, purpose, next path and, for linking, the user id. The callback finds it by the state value Google returns in the redirect, not by a cookie, and the callback deletes it when read. It lives 10 minutes, which is the brief's round-trip limit. The reason for a Redis key rather than a cookie is that the brief asks for single use, and a deleted key gives that directly."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Only Google's sub is looked up in user_identities. This is the brief's rule: Google accounts are identified by sub, never by email. The email is used only later, in the match step."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The match uses the lowercased email from the verified ID token against users.email. schema.sql says emails are stored lowercased and users.email is UNIQUE. A user is created only when no user has that email, with password_hash NULL and email_verified_at set to now, plus a user_identities row. The unverified case is refused before this step."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The confirm-password arrow is the case where the sub is unlinked, the email is verified, and a user with that email exists whose account has no other Google. Creating a new user goes to start_session directly, after the user_identities row is inserted. A sub that is already linked also goes straight to start_session. The earlier diagram wrongly drew the match arrow straight to start_session, so the diagram is redrawn with these cases separate."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The pending link is stored in Redis as oidc:pending:<id>, with the id in an HttpOnly, Secure, SameSite=Lax cookie oidc_pending, for 10 minutes. The confirm page reads it on each request. A wrong password adds 1 to failed_logins as the existing rule says, and the pending link is kept so the user can retry. At 5 failures, locked_until is set to 15 minutes ahead, failed_logins goes to 0, and the pending link is deleted with the locked message. The lock check runs before the password check, as in auth_flow.md."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "start_session is in auth_flow.md. It deletes the sessions row for any sid cookie already sent, inserts a new sessions row, sets the sid cookie (HttpOnly, Secure, SameSite=Lax), and redirects to next if it is a relative path on the site, otherwise to /home. The normal session is the sessions row in PostgreSQL (id of 32 random bytes in base64url, user_id, created_at, expires_at 14 days ahead and slid forward) plus the sid cookie that holds that id. No other data is stored. Changed: the diagram and steps now say what start_session does in one line."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Settings starts Link Google only from a signed-in session. The attempt records purpose 'link' and that user's id. The callback then uses sub only: no password, no email match, no confirm page. It refuses if the sub belongs to another user or this user already has a different Google. It also checks that the session still belongs to the user in the attempt, so a logout in the middle of the round trip changes nothing. Reason: the check stops a link from being completed for a session that no longer exists."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "A Google error (such as Cancel) with a known state deletes the attempt and returns the user to the page they started from, with 'Google sign-in was cancelled.' An unknown state with a Google error shows an error page, because we cannot tell where the user started. Unknown, expired or used state shows an error page. A failed code exchange, including a Google outage, shows an error page and changes nothing. Refusals (unverified email, other account linked) show a message on the start page and change nothing. An expired confirmation returns to login. Changed: all these outcomes are in the failure table."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Unlink checks password_hash IS NOT NULL before it deletes the user_identities row. A Google-only user has NULL there, so the server refuses and points them to the existing reset email (POST /forgot, one-hour link), which sets a password. The check runs on the server, not in the page. Changed: the unlink rule is now its own section."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start (user action). The user clicks \"Sign in with Google\" on the login page, or \"Link Google\" in Account Settings. Settings needs a signed-in session; without one the user is redirected to login. The start endpoint generates a state, a nonce and a PKCE verifier (and its hash, the challenge). It saves an Attempt in Redis under oidc:attempt:<state> for 10 minutes. The Attempt holds state, nonce, verifier, purpose (login or link), and either the next path (login) or the signed-in user id (link). It then redirects the browser to Google with scope \"openid email profile\", the state, the nonce and the challenge. State lives in Redis only. If Redis is down, an error page is shown and no attempt exists.\n\n2. Google consent. The user is on Google's screen. Google redirects the browser back to our callback with either code+state or an error.\n\n3. Callback, error case. If Google sent an error (e.g. Cancel) and the state matches an Attempt, the Attempt is deleted and the user goes back to the page they started from with \"Google sign-in was cancelled.\" If the state matches nothing, an error page is shown, because we cannot tell where they started. Nothing changes.\n\n4. Callback, normal case. The server looks up the Attempt by the state in the redirect (not by cookie) and deletes it in the same step, so it is single-use. Unknown, expired or used state gives an error page. It then sends the code plus the PKCE verifier to Google's token endpoint. If that fails, an error page is shown; the Attempt is already gone so the user must start over. Google returns an ID token. The server checks signature, issuer, audience (our client id), expiry and that the nonce equals the Attempt's nonce. Any failure gives an error page and nothing changes. It reads sub, email and email_verified. No Google access or refresh tokens are kept. Then it branches on the Attempt's purpose.\n\n5. Purpose link (from Settings). Matching uses sub only; no password, emails need not match, email_verified not needed. In order: (a) if the current session no longer belongs to the user in the Attempt, show an error page and change nothing; (b) if the sub is linked to a different user, or this user already has a different Google account, refuse with a message in Settings; (c) if the sub is already linked to this user, say so and return to Settings; (d) otherwise insert a user_identities row (Postgres; google_sub and user_id are both unique) and return to Settings. No new session. A DB write failure gives an error page with nothing linked.\n\n6. Purpose login. The Google email is lowercased. First matching case wins:\n   a. sub is in user_identities: call start_session for that user (creates a sessions row, sets the sid cookie), then redirect to the saved next path if it is a relative path on our site, else /home. This works even if the Google email changed.\n   b. sub not linked and email_verified false: refuse with a message on the start page pointing to email and password. Nothing created.\n   c. sub not linked, email verified, no user with that email: create a user with password_hash NULL and email_verified_at = now, insert user_identities, call start_session. If a concurrent sign-up grabs the email first (unique email), show an error page and create nothing.\n   d. sub not linked, email verified, user M has that email: if M already has a different Google account, refuse with a start-page message and change nothing. Otherwise save a Pending link in Redis at oidc:pending:<id> for 10 minutes (user id, sub, email, next path), set the cookie oidc_pending=<id> (HttpOnly, Secure, SameSite=Lax), and redirect to the confirm page. No session yet.\n\n7. Confirm password (only reached from 6d). The page shows M's email and a password box. The server finds the Pending link through the oidc_pending cookie. On each submit, in order:\n   - Pending link missing or expired: back to login with \"Your confirmation expired. Sign in with Google again.\"\n   - locked_until in the future: delete the Pending link, show \"Account temporarily locked.\" The password is not checked.\n   - Wrong password: failed_logins + 1. If that reaches 5, set locked_until 15 minutes ahead, reset failed_logins to 0, delete the Pending link, show \"Account temporarily locked.\" Otherwise show \"Incorrect password.\" and keep the Pending link until it expires (user can retry).\n   - Right password: re-check that M has no other Google and the sub is still unlinked. If either fails, refuse with a message, link nothing, delete the Pending link. Otherwise set failed_logins to 0, insert user_identities, delete the Pending link, clear the oidc_pending cookie, and call start_session for M (same session as a password login). A DB write failure gives an error page, nothing linked, Pending link kept until expiry.\n\n8. Afterwards. The session (sessions row plus sid cookie) lasts 14 days, slid forward, and ends by sign-out, password reset or expiry. The Google link persists until unlinked or the user is deleted. Google-created users have no password and can only use Google; password login for them shows the same generic message as a wrong password and counters do not change. Unlinking in Settings is checked on the server: it deletes the user_identities row only if password_hash is not NULL; otherwise it refuses and tells the user to set a password first via the existing POST /forgot reset email (link valid one hour).",
+   "gaps": [
+    "Where the 'start page' is for the cancelled/refusal messages is only loosely defined (the page the user started from); how the callback knows it for a login attempt vs link attempt is implied by purpose but not stated.",
+    "How the confirm page and callback tie to the PKCE/state generation details (e.g. how random values are produced, how the redirect URI is registered) is not stated; only needed in outline.",
+    "Whether the link-purpose callback needs the user's session cookie to identify the current user is implied but not stated explicitly (how 'session still belongs to the attempt's user' is determined).",
+    "What exactly happens after the user sets a password following an unlink refusal (the reset flow's effect on the link) is not described beyond POST /forgot sending a link."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

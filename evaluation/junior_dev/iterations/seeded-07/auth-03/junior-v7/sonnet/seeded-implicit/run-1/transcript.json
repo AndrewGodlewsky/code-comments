@@ -1,0 +1,167 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In 'look up user', what happens if the email matches no account? What does the user see, and does anything get sent?",
+     "about": "Forgot password: look up user"
+    },
+    {
+     "id": "2",
+     "text": "What is the rate limit counted against (email, IP, account), and where is the count stored? What does the user get when they go over it?",
+     "about": "rate limit / Rate limit: 3 per hour"
+    },
+    {
+     "id": "3",
+     "text": "What exactly does 'create token' do and store? What goes in reset_tokens, and what is in the emailed link?",
+     "about": "create token / reset_tokens"
+    },
+    {
+     "id": "4",
+     "text": "If the user requests a second reset link, does the first one still work?",
+     "about": "Links last 30 minutes and work once"
+    },
+    {
+     "id": "5",
+     "text": "The API puts a job on the Email queue and responds. Does the response wait for the email to be sent? What is in the queue message, and what is the queue software?",
+     "about": "Email queue ---> Email worker"
+    },
+    {
+     "id": "6",
+     "text": "What does 'the usual retries' mean here: how many attempts, what delay, and what happens when all of them fail? Does anyone find out?",
+     "about": "The email worker has the usual retries"
+    },
+    {
+     "id": "7",
+     "text": "In 'Set password', when exactly is the token marked used, and are the steps (save password, revoke sessions) done in one transaction? What if one fails midway?",
+     "about": "Set password: validate token -> check password -> save password -> revoke sessions"
+    },
+    {
+     "id": "8",
+     "text": "What does the user see when the token is expired, already used or invalid, or when the new password fails the policy or the breached-list check? Where is the breached list and how is it checked?",
+     "about": "validate token / check password"
+    },
+    {
+     "id": "9",
+     "text": "What does 'revoke sessions' do: which sessions, how, and is the user logged in afterwards or sent to the login page?",
+     "about": "revoke sessions -> confirmation email -> login page"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "No account: nothing is sent and nothing is stored. The user sees the same generic message as everyone: \"If an account exists for that address, we've sent a link.\" This is required so the endpoint does not reveal which addresses have accounts."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Counted per account (user_id), not per IP or email string. The count is the number of reset_tokens rows created for that user in the last hour, so no separate counter is needed. Over the limit the user still gets the generic message, but no token is created and no email is sent."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It generates 32 random bytes as the token and inserts a reset_tokens row with user_id, SHA-256 hash of the token, created_at, expires_at (now + 30 min) and used_at (empty). The emailed link holds the site URL plus the raw token; the raw token is never stored."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "No. Issuing a new link marks every earlier unused token for that account as used, in the same transaction that inserts the new row. Only the newest link works."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "No, the response does not wait for the send. The API adds a job to the existing email queue and responds. The job carries the recipient address and the link (for the reset email) or the template type (for the confirmation). Which queue software it is, I do not know; it is the existing system and the design does not depend on it."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "From the brief: the worker retries a failed send up to 3 times with backoff; after that it logs the failure and drops the job, and nobody is notified. Exact delays are not known. For the reset email, the user can request another link; I added this to the notes."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The token is marked used inside the same single transaction as saving the password hash and deleting the user's sessions. If any step fails the transaction rolls back, so nothing changes and the link stays usable. The confirmation email is queued only after commit, so a failed reset never sends it."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Invalid, expired or used token (at page load or on submit): the \"this link has expired, request a new one\" page. Password rejected (under 12 characters or on the breached list): the form is shown again with the reason, the token stays live, and the user can retry until it expires. Where the breached list lives and how it is checked: unknown, listed as an open question."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "It deletes every sessions row for that user, so all devices are logged out, including the device that did the reset. Afterwards the user is redirected to the login page and is not logged in automatically."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "On the \"choose a new password\" form, how does the raw token get back to the server on submit (stays in the URL, hidden form field, cookie)? Is it the same raw token from the emailed link?",
+     "about": "2. Open link -> 3. Submit new password (token checked again)"
+    },
+    {
+     "id": "11",
+     "text": "In forgot-password, the token row is committed and then the job is added to the queue. If adding the job fails (queue unavailable), what does the user see, and does the token row still count toward the 3-per-hour limit?",
+     "about": "1. Forgot password: add job \"send reset link\" to the email queue"
+    },
+    {
+     "id": "12",
+     "text": "If the \"password changed\" job cannot be added to the queue after the commit, does the reset still count as successful and does the user still get redirected to the login page?",
+     "about": "3. Submit new password: after commit: add job \"password changed\" email to the queue"
+    },
+    {
+     "id": "13",
+     "text": "How does the site URL in the link get chosen, and does the email worker build the link or does the API put the finished link in the job?",
+     "about": "2. Open link (link = site URL + raw token)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The raw token stays in the page URL after the link is opened, and the form sends that same raw token back in a hidden field on submit. The server hashes it again at step 3. Reason: it needs no cookie or extra server state, and step 3 must re-check the token anyway."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The token row is already committed, so it still counts toward the 3-per-hour limit. The user still sees the generic message, because the response must never vary. The API logs the failure. The user can request another link, subject to the limit. No retry queue or rollback added, since the brief does not require one."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. The password, token and sessions changes are already committed, so the reset stands and the user is redirected to the login page. The failure is logged and the user only misses the 'password changed' notice, the same as a lost confirmation email."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The API builds the finished link and puts it in the job; the worker just sends the job. The site URL comes from a configured setting, not the request Host header, so a forged request cannot make the emailed link point at another site. The setting's name and where it lives are not decided; added to open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. User forgot their password and submits their email on the forgot-password form. The browser sends it to the API server. The API responds at once and never waits for the email to be sent.\n\n2. The API looks up the user by email in Postgres (users table). The document assumes the lookup is case-insensitive but says this is not verified.\n   - No account: the API does nothing more. Nothing is stored and nothing is sent.\n   - Account found: go to step 3.\n\n3. The API counts this user's reset_tokens rows created in the last hour. Each row is one issued link, so this equals the number of reset emails.\n   - 3 or more: stop. No token and no email.\n   - Under 3: go to step 4.\n\n4. Inside ONE Postgres transaction, the API does two things.\n   - It marks all of this user's older unused tokens as used. This kills the earlier links.\n   - It inserts a new reset_tokens row holding the SHA-256 hash of a fresh 32-byte random token, with expires_at set to now + 30 minutes.\n   Only the hash is stored. The raw token exists only in the emailed link.\n\n5. After the commit, the API builds the finished link. The link is the site URL from server configuration plus the raw token. The API then adds a \"send reset link\" job to the email queue. The job carries the recipient and the finished link. The API builds the link and the worker only sends it. If adding the job fails, the API logs it and carries on. The row stays and still counts toward the 3-per-hour limit.\n\n6. The API always responds with the same generic message: \"If an account exists for that address, we've sent a link.\" It sends this message in every case: unknown address, rate-limited, queue failure, or success.\n\n7. Separately and later, the email worker takes the job off the queue and sends the email through the third-party mail provider. If sending fails, the worker retries up to 3 times with backoff. After that it logs the failure and drops the job. Nobody is notified. The user can request another link, within the limit.\n\n8. The user clicks the emailed link, which opens in the browser. The API hashes the token from the link and looks for the row in reset_tokens.\n   - Live (row exists, used_at empty, expires_at in the future): it shows the \"choose a new password\" form. The token stays in the page URL. The form sends the same raw token back in a hidden field, so no cookie is needed.\n   - Dead or no row: it shows \"this link has expired, request a new one\".\n\n9. The user submits the form. The API hashes the token and finds the row again, because the link can die between opening and submitting. If the link is dead or there is no row, it shows the same \"expired\" page.\n\n10. The API checks the new password. It must be at least 12 characters and not on the breached-password list.\n   - Rejected: the form shows the reason. The link stays live, and the user can retry until it expires.\n   - Accepted: go to step 11.\n\n11. In ONE transaction, the API does three things.\n   - It saves the new password hash in users.\n   - It sets used_at on the token row.\n   - It deletes every sessions row for this user, which logs out all devices including this one.\n   If the transaction fails, nothing changes. The user sees a generic error and can submit again while the link is live. The confirmation email is never queued.\n\n12. After the commit, the API adds a \"password changed\" email job to the queue. If adding it fails, the API logs it. The reset still stands and the user only misses the notice. The worker later sends this email, with the same retry-then-drop behavior as in step 7.\n\n13. The API redirects the user to the login page. There is no automatic login. The user logs in with the new password.",
+   "gaps": [
+    "The document does not say how the API generates the token, beyond '32 random bytes'. This is probably not needed for the main flow.",
+    "It does not say how the breached-password list is stored or checked (local hash list or external service). The document marks this as an open question. It also does not say what happens if the check itself is unavailable, which blocks explaining step 10 fully.",
+    "It does not say how the new password is hashed or stored beyond 'password hash in users'. This is probably a detail the design did not need to decide.",
+    "It does not name the configuration setting that holds the site URL. The document marks this as an open question, but the flow only needs to know that it comes from server configuration.",
+    "It does not say which queue software is used or the exact backoff delays. The document marks both as existing system details it does not know.",
+    "Case-insensitive email lookup is only assumed, so I cannot say what happens with differently cased addresses.",
+    "It does not say how the API tells a rate-limited case from an account-found case in the response timing. It also does not say whether the immediate generic response hides the difference. It only says the message text never varies.",
+    "It does not say how the existing session check reacts after the sessions rows are deleted, for example what the user sees on their other devices. It only says that the API checks sessions on every request."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,33 @@
+## Review of auth-03 (junior-v7, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the single-line flows as numbered, fully specified flows so a newcomer sees each step, not just a list of verbs.
+- Added a terms block defining reset_tokens, token, session and dead link.
+- Specified what happens when the email matches no account: generic message, nothing stored or sent.
+- Specified the rate limit: per account, counted from reset_tokens rows in the last hour, generic message when over, no token or email.
+- Specified the reset_tokens columns and that the link holds the raw token while only the SHA-256 hash is stored.
+- Stated that a new link marks earlier unused links as used in the same transaction.
+- Stated that the API responds without waiting for the email and queues a job.
+- Replaced 'the usual retries' with 3 retries with backoff, then log and drop, nobody notified, and the user can request a new link.
+- Made the password-set step one transaction (save hash, burn token, delete all sessions) with the confirmation email queued after commit, and defined failure behavior.
+- Added the user-visible outcomes: expired page for dead tokens, retry-able form errors for rejected passwords, redirect to login with no auto-login.
+- Restored the stated requirements that were missing: 30 minute expiry, token checked on load and again on submit, 12 character minimum, link stays usable after password rejection.
+- Added an Open questions section for the breached-list location, queue software and backoff delays, and email case handling.
+- Step 2: added that the token stays in the URL and the form returns the same raw token in a hidden field (Q10).
+- Step 1: the queue job is added after commit, holds recipient and finished link, and a failed add is logged while the generic response still goes out (Q11, Q13).
+- Step 3: a failed 'password changed' queue add is logged and the reset still succeeds (Q12).
+- Notes: added the configured-site-URL rule and the step 1 failure note; extended the step 3 failure note.
+- Open questions: added the name of the site URL setting.
+- Moved the Terms to just after the summary and the diagram's component sketch, and added definitions for email queue, live link and dead link (from questions about queue and token state).
+- Added a single 'Rules that apply to several steps' list holding token, 30-minute, single-use, new-link-kills-old, generic message, rate limit, password policy and site-URL rules, so each stated fact appears once.
+- Merged the separate Notes bullets on rate limit, newer-link-kills-older, double token check and site URL into the rules list and the steps where they apply.
+- Added to step 1 that nothing is stored for unknown accounts, that the API builds the finished link and the worker only sends it, and that the response does not wait for the email.
+- Added to step 2 why the raw token goes in a hidden field (no cookie needed).
+- Moved the transaction-failure behavior into step 3 and shortened the Failures section to the cross-step cases.
+- Reworded the summary to explain today's system and the shape of the main flow in a few sentences; removed the repeated retelling of step flow.
+- Kept all original open questions and the rollout exclusion; no stated fact was dropped.
+
+### Holes
+- None.

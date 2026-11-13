@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The user's row in MySQL `user_sync_queue` records that Postgres is behind. It is upserted in the same MySQL transaction as the write, so it survives an app crash right after the commit. The sweeper on the worker fleet claims it, reads the current row from the primary, applies it with `apply_copy`, and deletes the queue row only if `marked_at` is unchanged.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Each erasure writes a tombstone in the target store, in the same transaction as the row delete. Every copy, including backfill and repair, takes the per-id lock and checks for a tombstone before inserting, so a copy that read the user before the erasure cannot recreate it. The tombstone table is never cleaned up, so the check holds even if the copy runs later.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept in the Postgres `migration_state` row `backfill`, which holds `last_id` and the lease. `last_id` is committed in the same Postgres transaction as that batch's `apply_copy` calls, so progress and copied rows always agree. The backfill stops when a batch comes back empty, at which point it sets `done_at` and releases the lease.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The comparison in step 6 finds differences by comparing chunk digests of 2,000 ids between the replica and Postgres, then checks each differing id. If the id is still in the source's queue it is skipped as in flight. Otherwise the primary's row is applied to Postgres with `apply_copy` (or as a deletion if the primary lacks it) and counted as a mismatch and repair, while a Postgres row with a higher version is never overwritten and raises an alert that blocks the read ramp. A run is clean only with zero mismatches and zero repairs. After the switch, a daily reverse comparison does the same job in the other direction.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each instance reads a single `users_write_source` flag with the values `mysql`, `paused` or `pg`, and every transition must pass through `paused`, so no instance writes to one store while another writes to the other. The tooling polls the status endpoint until every instance reports `paused` with zero in-flight writes, and it aborts back to `mysql` at T0+45 s if any instance is not paused or the queue is not empty. The step-5 set to `pg` at T0+50 s is the point of no return, and after it the switch cannot abort. If an instance has not reported `pg` by T0+120 s, the plan restarts it, which goes past the 90 s budget. Until then that instance returns 503.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns new ids from `users_id_seq` once the write switch sets the sequence to `max(MySQL AUTO_INCREMENT, max(id) in both stores) + 10,000,000`, and the plan verifies this during the pause. The MySQL shadow receives each new row with its explicit id, which moves InnoDB's counter up as well. Before a rollback returns writes to MySQL, step 11 checks that AUTO_INCREMENT is above `max(id)` and sets it to `max(id) + 1` if not, so MySQL cannot reuse an id.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "In `pg` mode each write commits to Postgres with its own queue row, then is applied inline to MySQL with a 200 ms wait. The reverse sweeper drains the Postgres queue into MySQL using `apply_copy`, with the version rule and MySQL's tombstones, and a reverse comparison runs daily. A rollback (step 11) pauses writes, drains the reverse queue until every row has reached MySQL, aborts to `pg` at T0+45 s if that has not happened, fixes AUTO_INCREMENT, switches to `mysql` at T0+50 s, sets reads back to MySQL, and runs a clean comparison before reads may return to Postgres. The rollback option ends at step 12, which needs at least 14 days since the switch to `pg`, a clean reverse comparison within 24 h, reverse queue age within SLO, and a recorded sign-off. Step 12 then sets `users_write_targets = pg_only`.",
+  "decided": true
+ }
+}

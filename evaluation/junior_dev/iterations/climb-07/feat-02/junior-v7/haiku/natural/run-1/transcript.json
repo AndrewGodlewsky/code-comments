@@ -1,0 +1,107 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the 5-minute cache misses and the Key Service is slow or down, what does the gateway do with the request?",
+     "about": "Cache miss: GW->>KS Resolve key"
+    },
+    {
+     "id": "2",
+     "text": "Does the gateway cache a 'not found' answer from the Key Service, or only valid keys?",
+     "about": "Look up key in in-memory cache, 5 min TTL"
+    },
+    {
+     "id": "3",
+     "text": "How does the gateway get the limit number it passes to the Lua script? Is it sent as an argument, and where does the script get 'plan' from?",
+     "about": "Limit by plan. Standard = 100 per minute"
+    },
+    {
+     "id": "4",
+     "text": "What should the gateway do for an Enterprise customer today, given the limit is OPEN? Is no limit applied, or is there a config default?",
+     "about": "Enterprise = OPEN, Product to decide"
+    },
+    {
+     "id": "5",
+     "text": "What is the epochMinute in the key based on: the gateway's clock or Redis TIME? Could instances disagree about which window a request belongs to?",
+     "about": "Decision 1, key format rl:{customerId}:{epochMinute}"
+    },
+    {
+     "id": "6",
+     "text": "What does 'Remaining' show for the request that uses the last allowed slot, and does the Retry-After on a 429 come straight from the script's reply?",
+     "about": "Decision 5, Rate-limit headers"
+    },
+    {
+     "id": "7",
+     "text": "If the Redis call fails, does the gateway retry, or does it fail open immediately after the first error or timeout?",
+     "about": "Store error or no answer within 50 ms"
+    },
+    {
+     "id": "8",
+     "text": "If the backend is slow or times out, does the gateway have its own timeout and what does the client receive?",
+     "about": "BE-->>GW: Backend response, any status"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief and this document do not say what the gateway does when the Key Service is slow or down on a cache miss. I did not invent a rule. It is now an open item."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The existing system only says the gateway caches the Key Service answer for 5 minutes. It does not say whether a not-found answer is cached. It is now an open item."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The gateway looks up the plan limit (Standard 100 per minute, Enterprise from configuration) and passes it to the Lua script as an argument with the customer ID. The script does not read the plan. Reason: plan rules stay in one place in the gateway, and the script stays keyed by customer only. Decision 3 now says this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Until a value is set in configuration, Enterprise requests are not rate-limited. Reason: the brief forbids a guessed number, and blocking Enterprise traffic is worse than an unlimited Enterprise window in v1. This is a known gap, and it is listed under the Enterprise open item so it is settled before Enterprise is covered."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The minute comes from Redis TIME, read inside the Lua script, not from a gateway clock. All instances use the same Redis clock, so they agree on which window a request belongs to. Decision 1 now says this."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Decision 5 says Remaining is the limit minus the count after this request's increment, floored at 0. So the request that uses the last allowed slot shows Remaining 0. Yes, the Retry-After on a 429 comes straight from the script's denied reply (decision 4 and the sequence diagram). Decision 4 now says the gateway copies it."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "No retry. The 50 ms deadline leaves no room for one. The gateway fails open after the first error or timeout. Decision 6 now says this."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief and this document do not give a backend timeout, or say what the client receives on a backend timeout. The only fixed fact is that a request which already passed the check still counts (decision 7). It is now an open item."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request with an X-Api-Key header. Because the gateway is stateless (six instances behind a load balancer), any instance can receive it. That instance is the one that handles the whole request.\n\n2. The gateway looks the key up in its own in-memory cache, which holds each answer for 5 minutes. On a miss it asks the Key Service, which returns a customer ID and plan, or \"not found\". Because of the caching, a plan change or key revocation can take up to 5 minutes to take effect.\n\n3. If the key is missing or unknown, the gateway returns 401 Unauthorized. It never touches the counter store.\n\n4. If the key is valid, the gateway now holds the customer ID and plan. It picks the limit from the plan. Standard is 100 per minute. Enterprise comes from configuration, and no value is set yet. Until one is set, Enterprise requests are not rate-limited.\n\n5. The gateway calls a Lua script in the shared Redis counter store. It passes the customer ID and the limit. The script does not read the plan. The call has a 50 ms deadline, enforced by the client timeout. All six instances use this one Redis, so a customer's budget is shared across them.\n\n6. The script runs atomically. It reads the current minute from Redis TIME, so gateway clocks do not matter. It builds the key rl:{customerId}:{epochMinute}. Using the customer ID means all of a customer's API keys share one budget. The key name includes the minute, so the counter is a fixed one-minute window aligned to the clock minute. It then reads the count.\n   - If the count is below the limit, it adds 1. On first use it sets a TTL of about 120 seconds. It returns allowed plus the new count.\n   - If the count is at the limit, it returns denied, the count and Retry-After. It does not change the count.\n   - Retry-After is the seconds left in the current window, rounded up, with a minimum of 1. For example, it is 15 at second 45.\n\n7. If the script said denied, the gateway returns 429 Too Many Requests. It sets Retry-After to the script's value and does not forward the request. The rejected request does not use up budget.\n\n8. If the script said allowed, the count was already incremented in Redis before forwarding. The gateway forwards the request to the backend service that owns the route.\n\n9. The backend responds. The gateway passes the response through whatever its status, including 500. A backend failure therefore still uses budget. The gateway adds X-RateLimit-Limit (the plan limit) and X-RateLimit-Remaining (the limit minus the count after this request, never below 0, so the last slot shows 0).\n\n10. Failure path for the store. If the Redis call errors or gives no answer within 50 ms, the gateway does not retry. It emits the ratelimit_store_unavailable metric and forwards the request immediately (fail open). The client gets the backend's response with no X-RateLimit headers, because the count is unknown. A timed-out script may still run in Redis, which at worst over-counts a request that was forwarded anyway.\n\n11. Known limitation. The fixed window lets a customer send up to about 200 requests across a minute boundary. This is accepted for v1.",
+   "gaps": [
+    "What the gateway does when the Key Service is slow or down on a cache miss is not decided, so I cannot explain that branch of step 2. The client response there is also not decided.",
+    "Whether a 'not found' answer from the Key Service is cached is not stated. I cannot say whether repeated bad keys hit the Key Service each time.",
+    "Whether the gateway has its own backend timeout, and what the client gets if the backend is slow or times out, is not decided. I cannot finish the forward step for that case, even though the request is already counted.",
+    "How the gateway knows which backend service owns a route (routing mechanism) is not described.",
+    "The Enterprise limit value and what the config looks like are not set. I can only say Enterprise requests are currently not rate-limited. This stops me explaining what the script receives for an Enterprise customer."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

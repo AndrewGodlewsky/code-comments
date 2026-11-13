@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL write transaction also inserts a row in users_outbox (user_id, op, no row data) on the MySQL primary, so the record commits atomically with the change and survives an app crash. Relay workers scan outbox rows older than 5 s, re-read the current row from the sot primary, apply it to Postgres with the version rule, and delete the outbox row on success. Failures back off per row (cap 5 min) and retry forever, with an alert if the oldest row exceeds 2 minutes.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Deletes are tombstones in Postgres: a users row with the same id, deleted_at set, and version 2147483647. Every copy (dual write, backfill, relay, repair) uses the version rule, which only replaces a row with a lower version, so no stale copy can overwrite or re-create an erased user. In MySQL the erasure also writes users_erased in the same transaction as the delete, and the relay re-reads a missing row as a tombstone.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept in migration_state (name='backfill') in Postgres. Each batch's upsert and the cursor update commit in one Postgres transaction, with a compare-and-set on the previous cursor, so the cursor always matches the rows copied; a failed batch rolls back and a second worker is stopped by the CAS and by pg_try_advisory_lock. The backfill stops when the select after the cursor returns no rows and the cursor equals the final id.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "A full comparison worker walks ids in chunks of 10,000, hashes all columns on both sides, with its cursor in migration_state.compare, and runs nightly later. It re-checks differing rows against the MySQL primary and Postgres and ignores ids with a pending outbox row. Each persistent mismatch (missing or different row in Postgres, a non-tombstone Postgres row missing from MySQL, a tombstone whose id still exists in MySQL) gets a repair outbox row that the relay applies. A pass with any confirmed mismatch is not clean, and a new full pass is needed.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The switch goes through users_sot=paused. Writes get a retryable 503 once an instance sees paused (refresh within 30 s), or once its flag cache is older than 40 s. The switch to postgres happens only when every instance reports paused in app_flag_value, 5 s have passed for in-flight writes, the MySQL outbox is empty and recent versions match. If these gates are not met by T0+45 s, the operator sets users_sot=mysql (abort), and the last instance sees it by T0+75 s, so the pause stays under 90 s.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids from its identity sequence after the switch. Before setting users_sot=postgres, the sequence is set with setval to GREATEST(MySQL AUTO_INCREMENT counter, max Postgres id) + 100000. The copy to MySQL carries the explicit id, which keeps MySQL's counter ahead. On rollback, the MySQL AUTO_INCREMENT counter is checked to be above max(id) and fixed if not, before users_sot is set back to mysql.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "During step 9 writes commit to Postgres and the relay copies every change to MySQL via the Postgres outbox with the version rule, so MySQL trails by seconds. Erasures write the Postgres tombstone, then the relay deletes the MySQL row and writes users_erased. Rollback is the step 8 pause protocol in reverse: set paused, wait for every instance and for the Postgres outbox to empty, check the AUTO_INCREMENT counter, then set users_sot=mysql. The option ends at step 10, at least 14 days after step 8, when users_dual_write is set to false.",
+  "decided": true
+ }
+}

@@ -1,0 +1,35 @@
+## Review of mig-01 (junior-v7, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a summary, a terms list, and a 'How the system works' section ahead of the checklist, so the runtime design is separate from the rollout steps. Each repeated rule now appears in one place.
+- Sweeper (Q1): stated that a write during a copy changes marked_at, so the conditional delete leaves the row in place, and that a write does not reset the lease.
+- Versions (Q2, Q7): stated the MySQL rules (create sets 1, update adds 1 in the same statement, delete removes the row) and the Postgres rules (copies keep the source version, a pg-mode update adds 1 on Postgres).
+- Step 10 (Q7): the Postgres queue row is written in the same Postgres transaction as the write, matching the MySQL rule in dual write.
+- Writes during dual write (Q3): the 200 ms wait is described as a wait, and the design says it does not rely on the copy finishing.
+- Step 9 (Q5): the drain moved into the T0 to T0 + 45 s window, before the decision point, so the decision checks a queue that can actually be empty. Heading corrected from 'MySQL becomes the Postgres source' to 'Postgres becomes the source of truth'.
+- Step 9 and status endpoint (Q6): stated how in-flight writes are counted, and when an instance reports paused.
+- Step 11 (Q5): same reordering of the drain and the 45 s decision as step 9. Step numbers in the abort rules were updated to match.
+- Step 12 (found while rewriting): the status endpoint must also report users_write_targets. The first version gave instances no way to confirm the flag, so step 12 could not pass.
+- Step 6: the queue check now names the current source, so the reverse comparison in step 10 uses the same rule.
+- Step 7 (Q8): stated that a user may briefly see old values after their own update, and that there is no read-your-writes guarantee.
+- Open questions: added instance discovery and the orchestrator replica count (Q4), whether the driver cancels on the 200 ms wait (Q3), and read-your-writes for the product (Q8). Removed the status-endpoint and Postgres-outage bullets, which repeated the flags section and step 10.
+- All brief requirements, numbers and rules from the first version are kept, including the 80 s pause target, the 14-day window, the 7-day quiet period, the lease and pacing values, and the signals list. No failure table was added, because each step already lists its own failure handling.
+- Added a three-sentence summary of the whole flow and why it is staged, with the current MySQL design stated first.
+- Added a Terms section with one plain line per name a newcomer would not know (for example Redis, lease, marked_at, claimed_until, tombstone, per-id lock, digest, AUTO_INCREMENT, citext, shadow copy, drain, orchestrator, build M1). The earlier version defined only some of them.
+- Separated how the system runs (How the system works) from the rollout checklist, in the order summary, terms, mechanics, steps, open questions. Removed the numbered design-decision list; its content now sits in the mechanics sections.
+- Merged the repeated sweeper and drain descriptions: the sweeper is described once, and steps 9 and 11 refer to it instead of restating it.
+- Step 9: moved the queue drain into the T0 to T0 + 45 s window, before the decision point, and made the decision check both that every instance is paused and that the queue is empty. The earlier order had the drain after the decision.
+- Stated the brief's 90 s pause limit next to the 80 s target in the checklist and in steps 9 and 11. The earlier text gave only the 80 s target.
+- Added the in-flight write counter to the status endpoint section, with what a client sees during a pause (only the 503 with Retry-After: 1).
+- Sweeper: made explicit that a write does not reset the lease, so the row is retried within 10 s when the lease ends.
+- Step 10: stated that the pg-mode queue row is written in the same Postgres transaction, and that updates add 1 to version on Postgres while creates set version to 1.
+- Gathered the version rules (MySQL create, update, delete; Postgres copies) into one Versions section.
+- Tombstones: stated that every copy checks for a tombstone first, so an erased user never reappears, as the brief requires.
+- Step 7: stated that reads never fail during the migration, and kept the stale-read and StaleWrite behaviour in one place. Dual write states that a Postgres failure never fails the user's request, and that repair is automatic.
+- Step 12: the 14-day rule is now written as a minimum, which is how the brief states it. Open questions: kept all items. Rewrote the rollback durability item so it covers the whole time Postgres is the source of truth, not only step 10.
+- Checked the first version line by line. Kept every requirement, limit and number (2,000 rows, 5 s lag, 250 ms sleep, 30 s lease renewal, 60 s and two-minute gates, 3-day and 14-day holds, 7-day quiet period, 10,000,000 offset, T0 + 45/50/80/120 s points, 200 ms read fallback, 5-minute erasure proposal). Dropped only the event-log rationale for the queue, whose size point is now a clause in the queue term.
+
+### Holes
+- Q4: How does the switch tooling find every web and worker instance and know the expected count? What is the 'orchestrator' that supplies the replica count? (author: The plan does not say how the switch tooling discovers every web and worker instance, or where the expected count comes from. It names an orchestrator replica count but does not define how it is read. This is recorded under open questions and must be settled before step 2.)

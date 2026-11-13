@@ -1,0 +1,53 @@
+## Review of auth-02 (junior-v7, author sonnet, natural)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Assumptions: defined 'the store', 'store CLI' and 'latest version', and noted that how pods get the orders-api-prod identity is not covered (Q1, Q2).
+- Step 3: said where APP_ENV comes from and why a wrong value cannot give a wrong key (Q3).
+- Step 3: made a failed attempt re-read all three secrets, put the 3 s timeout on the whole attempt, and put the 2 s wait after each failure; worst case 18 s (Q4).
+- Step 12: corrected 'about 6 s' to up to about 18 s, because the old figure ignored the timeouts (Q4).
+- Step 6: stated that the previous value is kept per secret until that secret's next swap, with no timer (Q5).
+- Step 7: replaced 'changed in the last refresh' with 'has a previous value'. The fallback is per secret, tried only after a 401/403 on the current value, and not sticky (Q6, Q8).
+- Step 12: explained that old and new pods run different images with their own yaml, so the loader guard does not conflict with the rollout (Q7).
+- Open questions: added the store product and pod identity mechanism as unknown.
+- Added assumption: security on-call engineers run the store CLI under their own identity via group membership (Q14).
+- Step 2: said the test call catches a mistyped key and the CLI runs under the engineer's own identity (Q11, Q14).
+- Step 3: added local mode where the secrets module reads local_secrets from config/app.local.yaml with no store call; loader guard wording now covers the loaded config file (Q16).
+- Step 3: holder now lists the previous value, empty at startup (Q9).
+- Step 4: explained that the platform probes /healthz and where maxUnavailable lives (Q13).
+- Step 5: said a call reads the value once and what the lock protects (Q15).
+- Step 6: added that a new or restarted pod has no previous value (Q9).
+- Step 7: stated the fallback limits for fresh pods and the first migration, who notices a bad write, and that the alert system is unknown (Q9-Q12).
+- Step 9: secrets module now includes the local source.
+- Step 11: local fake keys now live under local_secrets so the loader and CI guards do not flag them; make run-sandbox sets APP_ENV=dev (Q16).
+- Open questions: added alerting system and recipient (Q12).
+- Step 6: added that the refresh thread does not validate new values and named the protections (step 2 test call, step 7 fallback).
+- Step 15: stated that the security on-call engineer collects the evidence by hand and how the version ids are compared.
+- Step 3: added what a store outage does to running pods, rolling deploys and restarting pods.
+- Steps 2 and 12: added that old pods never read the store and are unaffected by the new keys.
+- Step 11: stated that dev mode uses the same secrets code as prod; only local skips the store.
+- Step 6: start condition now says the timer starts after a successful startup load, each pod has its own timer, and pods swap at different moments (Q23).
+- Step 6: stated that 'changed' means the returned version id differs from the held one (Q22).
+- Step 7: said the 401/403 retry also happens for unrelated 403s, and what is returned if the retry is also rejected (Q25).
+- Step 4 and step 12: stated that readiness proves only that keys loaded, and that a new pod's first real provider call is its first customer request, protected by the step 2 test call, step 13 and rollback (Q24).
+- Step 3: stated that the platform is expected to restart the container and the restart re-runs the full 18 s sequence (Q26).
+- Step 12: added that the deploy runner watches rollout status and that no separate stuck-rollout alert is set up (Q26).
+- Step 14: defined 'deploy tooling' as whatever performs redeploys and rollbacks, not named in the files (Q27).
+- Open questions: added 'Stuck rollout and restart behaviour' and 'Deploy tooling' as not known.
+- Restructured into summary, terms, shared rules, Part 1 (runtime) and Part 2 (build and rollout), separating how the system runs from how it is rolled out.
+- Added a short summary and a Terms section (store, version id, holder, service identity, APP_ENV, readiness probe, security on-call group, deploy tooling) from the junior's definition questions.
+- Merged the old runtime steps for startup, readiness, use, refresh, failures and local development into six runtime steps; the old memory/log rules became one shared Rules section.
+- Merged the code change and the CI guard into one rollout step (same PR) and folded the 401 fallback reasoning, the canary test and the test list into it.
+- Merged readiness and platform-probe explanation into the readiness step and the term list; removed repeated explanations of old vs new pod behaviour and of the first-migration gap (stated once in failures and once in deploy).
+- Replaced numeric cross-references (step 7, step 12 and so on) with named references to cut lookups.
+- Cut: repeated 'nothing is at risk' wording, duplicate statements that the store CLI writes never through chat, the Phase A to D headings, and long restatements of the open questions.
+- Kept every stated fact: 3 keys, paths, KMS, access rules, negative tests, 4 attempts, 2 s gaps, 3 s timeout, 18 s worst case, 5-minute refresh, 15-minute alert, masking, no disk/env/logs, core dumps, version-id logging, CI guard details, soak 1 h and 3 cycles, revoke order and 15-minute watch, rotating-later list, scheduled rotation left open.
+- Added nothing new to the plan's behaviour; open questions were kept and each now says when it must be resolved.
+
+### Holes
+- Q1: Which secret store is this (and what is the 'store CLI')? What does the app call to read a secret, and what does 'latest version' mean there? (author: The brief only says 'managed secret store' and does not name the product, its CLI or its read call. I added an assumption saying what 'store CLI' and 'latest version' mean (newest version returned when no version id is given; every write makes a new id, per the brief) and an open question to confirm the product and call before step 9.)
+- Q2: How does a pod get its 'platform-issued service identity', and how does it end up being `orders-api-prod` with the right read-only rights? (author: deploy.md checks out that all 4 prod replicas run under the service identity orders-api-prod, and step 1 gives that identity read-only on orders-api/prod/*. How the platform attaches the identity to a pod is not in the brief or the files. Added to assumptions and open questions.)
+- Q12: What is the 'alert' for three failed refresh cycles: what system raises it, how does it learn about the failures (from logs or metrics), and who gets it? (author: The brief and files do not name an alerting system or a recipient. I assume a rule on the central log service, because that is the only monitoring source in deploy.md, but this is not confirmed. Added to step 7 and to Open questions.)
+- Q26: What does the exit code of the process cause on the platform when startup load fails? Does the restarted pod retry the whole 18 s sequence again, and how long until someone is told the rollout is stuck? (author: The plan assumes the platform restarts the container, and that the restarted process runs the whole 18 s sequence again. For a rolling deploy, deploy.md only says the rollout halts and old pods keep serving. It does not say how the platform backs off between restarts, how long until a stuck rollout is noticed, or who is told. I did not invent an alert; the person running the deploy watches rollout status. Added to step 3, step 12 and the open questions.)
+- Q27: Where are the deploy.md rollback and the 'refuse images built before the migration image' rule enforced, and what is 'deploy tooling' here? (author: deploy.md does not name the deploy tooling or where rollbacks are enforced; it only says rollback is redeploying an earlier image. 'Deploy tooling' here means whatever system performs those redeploys, and where the refuse-old-images rule can be configured is unconfirmed. Added a definition in step 14 and an open question to confirm before step 14.)

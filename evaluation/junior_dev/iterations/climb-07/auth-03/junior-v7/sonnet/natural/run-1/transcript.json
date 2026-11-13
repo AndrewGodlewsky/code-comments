@@ -1,0 +1,66 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"breached list\" and where does it live? Is it a local file or an outside service, and what makes it \"unavailable\"?",
+     "about": "SUBMIT FLOW: pw on breached list? / breach check unavailable? (F3)"
+    },
+    {
+     "id": "2",
+     "text": "In F5 (DB error in reset txn) you say \"show error, link still valid\". Which page does the user see? Is it the same form again, and is their typed password kept?",
+     "about": "F5 DB error in reset txn"
+    },
+    {
+     "id": "3",
+     "text": "On the \"link has expired, request a new one\" page, how does the user get to a new request? Is there a link or form to /forgot-password there?",
+     "about": "F1 EXPIRED PAGE"
+    },
+    {
+     "id": "4",
+     "text": "Where does the worker get the address to send to and the base URL for the link? The job holds \"user email\" and \"link containing raw\". Who builds the full link, the API server or the worker?",
+     "about": "enqueue \"reset\" job {user email, link containing raw}"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief only says 'the breached-password list' and does not say whether it is a local file or an outside service, so I don't know where it lives. The design treats it as a check the API calls; 'unavailable' means that check errors or times out, and then we fail closed (no reset, form shown again, link still valid). Added an open question and a note."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The user sees the same 'choose a new password' form again with a 'something went wrong, try again' error, and the link stays valid. The typed password is not kept; the user retypes it. Reason: nothing changed in the database, so retrying is safe, and not re-filling a password field is the simplest and safest choice."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes. The expired page includes a link to the /forgot-password form. The brief says 'request a new one', so the page needs a way to do it. Added to the diagram and F1."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The API server builds the full link from a configured base URL plus /reset?token=RAW. The job holds the recipient address and the finished link, and the worker only sends it. Reason: the worker is existing and unchanged, so it should not know about reset links. Added to the diagram and a note."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The user clicks \"Forgot password?\" and enters an email. The browser sends POST /forgot-password {email} to the API server.\n2. The API trims and lowercases the email, then looks up a user by that email in Postgres (`users`). If there is no user, it skips straight to the response. Nothing is created or sent.\n3. If a user exists, the API opens a transaction and runs SELECT user FOR UPDATE. This row lock makes concurrent requests for the same account wait. The point is that two simultaneous requests cannot both pass the limit check or both leave a live link.\n4. Still inside the transaction, it counts that user's rows in `password_reset_tokens` with issued_at in the last hour. If the count is 3 or more, it rolls back and skips to the response. No link is made and no email is sent.\n5. Otherwise it generates the raw token (32 secure random bytes). It runs UPDATE ... SET used_at=now() for the user's rows where used_at IS NULL, which burns any earlier live link. It then inserts a new row: sha256(raw) as token_hash, the user_id, issued_at=now(), and expires_at=now()+30 min. Then it COMMITs. Only the hash is stored.\n6. After the commit, the API builds the link as BASE_URL + \"/reset?token=\" + raw. It enqueues a \"reset\" job holding the recipient address and the finished link. If the enqueue fails, it logs the failure and still returns the generic message. The token row still counts toward the hourly limit.\n7. The API returns 200 with \"If an account exists for that address, we've sent a link.\" The status and body are identical on every path (unknown address, rate-limited, real send), so the form cannot reveal which accounts exist. Sending is left to the worker so response times stay similar.\n8. Separately, the email worker takes the job and sends it through the mail provider. If the send fails, it retries 3 times with backoff, then logs the failure and drops the job. Nobody is notified. The user sees nothing and must request again. The failed attempt still counts toward the 3 per hour.\n9. The user clicks the emailed link. The browser sends GET /reset?token=RAW. The API selects from `password_reset_tokens` where token_hash = sha256(RAW), used_at IS NULL and expires_at > now() (database now()). This request changes nothing, so mail scanners that prefetch the link cannot burn the token.\n10. If a row comes back, the API serves the \"choose a new password\" page, with RAW kept in the form. It sends Referrer-Policy: no-referrer on this page. If no row comes back, it serves the \"this link has expired, request a new one\" page, with a link to the /forgot-password form.\n11. The user submits a new password. The browser sends POST /reset {token, new_password}. The API repeats the same token check as at page load. If it fails, the user gets the expired page.\n12. The API validates the password before burning anything. If it is under 12 characters or on the breached list, it shows the form again with the reason, and the link stays usable. If the breach check errors or times out, it refuses (fails closed). It shows the form again with \"try again\", and the link stays usable.\n13. If the password passes, the API opens a transaction. It runs UPDATE tokens SET used_at=now() WHERE token_hash AND used_at IS NULL AND expires_at > now() RETURNING user_id. If 0 rows come back, another submit won the race or the link expired meanwhile. It rolls back and shows the expired page. This conditional update is what makes the link work only once.\n14. Still in that transaction, the API sets users.password_hash to the hash of the new password. It also deletes all `sessions` rows for that user, which logs out every device, including the one doing the reset. Then it COMMITs. Because it is one transaction, a partial reset cannot happen.\n15. After the commit, the API enqueues a \"your password was changed\" email job, which goes through queue and worker. If that email is lost, it only logs, because the reset is already complete.\n16. The API responds 302 to /login. No session is created, so the user is not logged in automatically and must log in with the new password.\n17. Failures I can explain. A DB error in the forgot-password transaction causes a rollback and a log, and the user still gets the generic message. A DB error in the reset transaction rolls back the token, password and sessions, and the form is shown again with \"something went wrong, try again\" (the user retypes the password). The link stays usable.",
+   "gaps": [
+    "The document gives no clock or timing detail for 'rolling hour' beyond issued_at > now()-1h. That is probably fine and is not blocking.",
+    "How the API detects and handles a failed breach check or timeout (for example, what the timeout is) is not stated. The document says only that it fails closed, and the list's location is an open question. This does not stop the main flow.",
+    "It does not say how the password hash is computed (algorithm) or how the 'reset' email text is rendered. The worker 'sends as given', but who supplies the subject and body of the email is not stated. This is needed to explain what the user actually receives.",
+    "It does not say what the login page or the web client does with the 302, or how sessions are checked, beyond 'checked on every request'. This is not needed for the reset flow itself."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

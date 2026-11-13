@@ -1,0 +1,123 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw log\" the collector writes to? Is it a queue/stream or a file store, and who reads from it?",
+     "about": "Collector: writes them to the raw log"
+    },
+    {
+     "id": "2",
+     "text": "The archiver and the live processor both seem to consume the raw log. Do they read it independently, and what does \"consumer lag\" refer to?",
+     "about": "Archiver / Live processor / Monitoring and alerts on consumer lag"
+    },
+    {
+     "id": "3",
+     "text": "What does the collector validate, and what happens to a rejected event? Does the SDK find out, and does anyone look at the reject bucket?",
+     "about": "Collector validates events... Malformed events go to a reject bucket"
+    },
+    {
+     "id": "4",
+     "text": "When the SDK retries a batch, what does the collector do with events it already wrote? Does it respond per batch or per event?",
+     "about": "SDKs retry with backoff"
+    },
+    {
+     "id": "5",
+     "text": "What is the KV store here, how long does it keep event_ids, and what happens to dedup if it is down or an id has expired?",
+     "about": "Live processor dedups on event_id using the KV store"
+    },
+    {
+     "id": "6",
+     "text": "If the live processor crashes midway or enrichment (geo-IP, user agent) fails, how does it recover without losing or double-loading events?",
+     "about": "Live processor enriches and loads events_clean"
+    },
+    {
+     "id": "7",
+     "text": "What triggers a replay, who runs it, and how does it handle days whose archive files are past the 90-day lifecycle?",
+     "about": "Replay job rebuilds a day from the archive"
+    },
+    {
+     "id": "8",
+     "text": "While a replay swaps a day into events_clean, what happens to live events still arriving for that day, and does replay also dedup and enrich?",
+     "about": "Replay job... swaps it into events_clean"
+    },
+    {
+     "id": "9",
+     "text": "Which timestamp (client or received_at) decides the day partition in events_clean, and what happens to events arriving late?",
+     "about": "events_clean (partitioned by day)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The raw log is the existing replicated append-only log with 14-day retention. It is not a file store. Two readers consume it, the archiver and the live processor, each with its own offset. The collector writes to it before returning 202. I chose it because it is the shared durable buffer both readers need."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes, they read independently, each with its own offset, so a slow reader does not hold up the other. Consumer lag is how far a reader's offset is behind the newest log entry, measured in time. Monitoring alerts when the live processor is more than 5 minutes behind, which is the freshness target."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The collector checks that event_id and device_id are present and that the event is 32 KB or less. Rejected events are not stored. The 202 response lists each one with its reason, and the SDK never resends them. I removed the reject bucket because the brief only requires rejects to be listed in the response and names no one to read a bucket. Whether anyone should review rejects is unknown and is in Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The collector does not dedup. It stores every accepted copy, duplicates included, because the brief requires them kept for 90 days. The 202 covers the whole batch once its accepted copies are stored, and rejects are listed per event. Dedup happens later in the live processor."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It is the existing key-value store with per-key TTL. The key is the event_id and the value is the log position of its first copy. The TTL is 8 days: the brief allows retries up to 7 days after the first copy, plus one day of margin. If the KV store is down, the live processor stops without committing, so events wait in the log and nothing is dropped or loaded twice. If a key has expired, a copy arriving after expiry is loaded as a first copy. The 7-day buffer should prevent this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The offset is committed only after the load and the KV write, so a restart resumes from the last committed offset. The load deletes rows already written for the same log range before inserting. The KV value stores the first copy's log position, so a rerun treats its own earlier copies as first copies, not duplicates. A crash therefore neither loses nor doubles a row. If enrichment fails, the batch is not committed and is retried, so nothing is dropped. A persistent failure fires the lag alert."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An operator starts a replay by hand for one closed day. The brief names no automatic trigger. Before writing anything, the job checks that the archive for the day and the 7 days before it still exists. The 90-day lifecycle deletes older files, so the job refuses to run if any are missing. The 7-day lookback is needed so that dedup matches live behaviour, which drops copies of events first seen earlier."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Yes, replay also dedups and enriches. The brief says the day closes at 02:00 UTC the next day. Received_at is the server time at receipt, so no new event should belong to a closed day. Replay starts only after the live processor's offset is past 02:00 UTC, so no live row for that day can still be written. The swap replaces the whole partition atomically, so dashboards never see a half-built day."
+    },
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "The UTC day of received_at decides the partition, as the brief requires. The client timestamp is stored only as a column. A late event, such as a retry up to 7 days later, lands in the partition of the day it was received, so past partitions do not change under live traffic."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Worked example: one event, \"a user taps a button in the iOS app\".\n\n1. The app has an event to send. The SDK (client code in the app) gives it a random UUID `event_id`, plus the `device_id` and the device's own timestamp. It groups up to 100 events into a batch and sends them in one HTTPS request to the collector. The state at this point is the mobile on-device buffer. It holds events until they are acknowledged, for up to 7 days.\n\n2. The collector receives the batch and checks each event. It rejects an event that has no `event_id` or no `device_id`, or that is over 32 KB. Rejected events are not stored. They are listed one by one, with a reason, in the reply. The SDK never resends a rejected event. The rest of the batch is accepted. For each accepted event the collector stamps `received_at`, which is server time, and writes it to the replicated log. The log is partitioned by `event_id`, so copies of one event stay in order. The collector does no dedup, so duplicate copies are written too.\n\n3. The collector replies 202 (\"accepted and stored\") only after the log confirms the batch is replicated. The SDK can then drop those events from its buffer. The document doesn't say this explicitly, so that last sentence is my inference.\n\n4. If the log write fails, the collector replies 429 or 5xx. On a timeout, 429 or 5xx, the SDK resends the same batch with the same `event_id`s. It waits 1 s before the first retry, doubles the wait each time, and caps the wait at 5 minutes. Some copies from the failed attempt may already be in the log. That is why duplicates exist. Dedup removes them later. A retry can arrive up to 7 days after the first copy.\n\n5. The log is the shared state. It is ordered, append-only and replicated, entries are never changed, and entries are kept for 14 days. Two independent readers consume it. Each keeps its own offset and moves it forward only after its work is saved.\n\n6. Archiver. It reads the log from its own offset. It writes every accepted event, exactly as received and with `received_at`, into hourly files in object storage. Duplicates are kept. Each file is deleted 90 days after it is written. It moves its offset forward only after the file is written. If a write fails, it retries without moving the offset. If it falls more than 14 days behind, the unread entries are gone from the log.\n\n7. Live processor. It reads the log from its own offset, in small batches. For each record, in log order:\n   - It looks up `event_id` in the KV store. If the key holds a different log position, the record is a duplicate and is dropped. If the key is missing or holds this record's own position, the record is a first copy. A later copy of an event already seen earlier in the same batch is also dropped.\n   - It enriches each first copy with a country and city from the client IP and browser and OS fields from the user-agent.\n   - It deletes any rows already written for this log range, across every day partition the range touches. Then it inserts the new rows into the partition of each row's `received_at` UTC day. A rerun therefore replaces rows instead of adding to them.\n   - It writes the `event_id` to the KV store, with the log position as the value and an 8-day TTL, only if the key is missing. The 8 days cover the 7-day retry window plus 1 day of margin.\n   - It moves its offset forward.\n\n8. Live-processor failures:\n   - After a crash it restarts from its last committed offset. Its own rerun replaces its own rows and is not treated as a duplicate. This holds whether the crash was before or after the KV write.\n   - If enrichment fails, the batch is not committed and is retried.\n   - If the KV store is unavailable, the processor stops without committing, and events wait in the log.\n   - If a key has expired, a copy arriving after the expiry is loaded as a first copy. The 7-day retry window should prevent this.\n   - If the processor falls more than 14 days behind, unread entries are lost from the log, and the affected days must be replayed from the archive.\n\n9. Monitoring. Consumer lag is tracked for the archiver and the live processor. An alert fires when the live processor is more than 5 minutes behind. That is the freshness target for `events_clean`.\n\n10. Late retry example. If the retry of our tap event arrives 3 days later, it gets a new `received_at` and lands in today's partition. Its `event_id` key is still in the KV store, holding the first copy's log position, so the processor drops it as a duplicate. The archive still keeps it. Past partitions change only through replay.\n\n11. Replay, which is a separate path. It is used when an enrichment bug is fixed and one closed day must be rebuilt. A day closes at 02:00 UTC the following day. An operator starts it by hand for one closed day. The job first checks three preconditions and stops with the live partition unchanged if any fails. The day must be closed. The live processor's offset must be past 02:00 UTC on the following day. The archive files for the day and the 7 days before it must still exist.\n\n12. Replay rebuild. The job reads the archive for the day and the 7 days before it. It keeps the first copy of each `event_id` by `received_at` and drops later copies. It keeps only first copies whose `received_at` falls in the day. It enriches them with the current enrichment code and writes them to a staging table, on its own compute. It never touches the KV store or any reader's offset. If it fails before the swap, the live partition is unchanged and the job is rerun.\n\n13. Replay swap. In one atomic step the job replaces the day's partition in `events_clean` with the staging partition. Dashboards see either the old day or the new day, never a half-built one. If the swap fails, the old partition stays. After a successful swap, the job drops the staging table.\n\n14. The document leaves some questions open on purpose. These are bot traffic handling, whether anyone reviews rejects, and the archiver's lag alert threshold. Whether the archiver finishes a day's files before 02:00 UTC, and whether live log-order dedup agrees with replay's `received_at` order, are listed as unverified.",
+   "gaps": [
+    "The document never says explicitly what the SDK does on receiving a 202, such as dropping the events from its buffer. I inferred it.",
+    "It doesn't say what the SDK does with events listed as rejected in an otherwise successful reply, beyond \"never resends\". It also doesn't say whether anyone is told. The \"who reviews rejects\" question is open.",
+    "It doesn't say how the live processor learns the \"log range\" it deletes rows for, or how rows are identified as belonging to that range. This is needed to explain the delete-then-insert step.",
+    "It doesn't say how the live processor's \"small batches\" are sized or how often it polls the log.",
+    "It doesn't say what happens to a copy that arrives after the 8-day KV expiry, beyond \"loaded as a first copy\". It also doesn't say how the resulting duplicate row would be found or fixed later.",
+    "It doesn't say how an operator learns that the live processor fell more than 14 days behind, or that the archiver did. The archiver has no alert threshold.",
+    "It doesn't say what the live processor does with rejected-for-size or malformed records that somehow reach the log, or what \"enrichment fails\" means when the geo-IP data is missing rather than erroring.",
+    "Ordering between the archiver's hourly files and the 02:00 UTC close is unverified. I can't confirm that replay's inputs are complete.",
+    "It doesn't say how replay handles the case where the archiver lost entries (more than 14 days behind) and so the archive is missing events.",
+    "It doesn't say what replay does about live rows already written for later days that came from late retries of events from the replayed day. By the document's rules those stay in later partitions.",
+    "Bot traffic handling is undecided, so I can't say whether bot events appear in `events_clean`."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

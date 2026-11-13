@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the advisory lock, and how long is it held? If bcrypt verify is slow, do other logins for the same email just wait, and what do they see if the wait is long?",
+     "about": "Login: A->>D BEGIN, then take advisory lock keyed on email"
+    },
+    {
+     "id": "2",
+     "text": "Where is the password hash stored, and what does the `users` table hold? Who creates users, since there is no signup flow in this document?",
+     "about": "Login: Look up user by email (may be none)"
+    },
+    {
+     "id": "3",
+     "text": "If the database fails partway through a login, for example after the failure insert but before COMMIT, what does the user see and what is the state afterwards? Is the transaction rolled back?",
+     "about": "Storage failure (Decision 10) and Login sequence"
+    },
+    {
+     "id": "4",
+     "text": "After the row is returned, how does the app use user_id to build the dashboard? What does the app do with the cookie when the request is not a page, such as an API or form POST?",
+     "about": "Request for a protected page: UPDATE sessions ... RETURNING user_id"
+    },
+    {
+     "id": "5",
+     "text": "What does the locked-out user see, and how is the Retry-After value computed? Can a user tell they are locked out versus having wrong credentials on the 6th try?",
+     "about": "Rules: The 5th failure still returns 401"
+    },
+    {
+     "id": "6",
+     "text": "What actually runs the cleanup every 10 minutes on either instance (a scheduler, a timer inside the app)? What happens if it fails or one instance is down?",
+     "about": "Removing abandoned sessions (Decision 9) / Cleanup job"
+    },
+    {
+     "id": "7",
+     "text": "If a user who is already logged in submits /login again with a valid cookie, what happens to their old session and what do they get back?",
+     "about": "Session fixation (Decision 8) / Login: Delete session row matching incoming cookie"
+    },
+    {
+     "id": "8",
+     "text": "What is the \"session check\" in terms of code: middleware on every route or per-route? Which routes are public, and who decides that? You say to confirm what \"page\" means; has it been confirmed?",
+     "about": "Static assets must be exempt from the session check"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The lock is pg_advisory_xact_lock on hashtext(email). It is held until the transaction COMMITs or ROLLBACKs. Bcrypt runs inside that transaction, so yes, other logins for the same email wait behind it. The design sets no wait limit. Added a rule saying the lock is held until COMMIT or ROLLBACK, and an open question about the wait limit."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "The users table (from the brief) holds id, email (lowercase, unique) and password_hash (bcrypt). The login checks the password with bcrypt against that hash. Who creates user rows is not stated in the brief or the design, and sign-up is out of scope. Added as an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Any database error before COMMIT rolls back the whole login: no failure row, no session row, no lockout change, and the old session row is kept. The user gets a 503 and the cookie is unchanged. If the connection drops, Postgres rolls back on its own. Added this to Decision 10."
+    },
+    {
+     "id": "4",
+     "tag": "unknown",
+     "text": "The design does not say what the dashboard loads with user_id. That is outside this design and is left out of the file. Cookie handling for non-page requests: the session check runs on every request except /login, /logout and static assets, so form POSTs are checked too and get a redirect to /login when there is no session. The brief says there are no API clients. Added a Session check scope rule."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "A locked user gets a 429 login page saying Too many attempts, with Retry-After. Retry-After is the whole seconds from now until locked_until, rounded up, so at least 1. Yes, on the 6th try a user can tell lockout (429) from wrong credentials (401). That is the designed behaviour. It does not reveal whether an account exists, because unknown emails lock the same way. Added the Retry-After rule."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The design did not name a scheduler. I chose a timer inside each app process, started at boot, running every 10 minutes. Both instances run it, and the queries are idempotent. If one instance is down, the other runs it. If both are down, expired rows stay but the lookup rejects them, so only table size grows. Added this to Decision 9."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "A logged-in user who submits correct credentials to /login gets a new token in Set-Cookie, the old session row (matching the incoming cookie) is deleted, and they are redirected to /dashboard. If the credentials are wrong, nothing changes: the old session stays valid and the response is the 401 login page. Added the wrong-password line as a rule. It follows from Decision 8 and the diagram."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The check is one middleware on every route, with an allowlist: /login, /logout and static asset paths. I decided this, and it is not in the brief. /logout is allowlisted because it must work with no session. The brief does not confirm that page means HTML pages, so the static-asset exemption is not confirmed. Listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. Every page except /login needs a signed-in user. The browser holds only a random session ID in a cookie named __Host-session (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain, no Max-Age, so it is dropped when the browser closes). The server keeps the session as a row in the Postgres `sessions` table, keyed by the SHA-256 hash of the token. Both app instances share that one database, so no sticky sessions are needed.\n\n2. Login starts. The browser POSTs /login with email and password (and its cookie, if it has one). The middleware skips the session check for /login, /logout and static assets. The app instance (1 or 2, the load balancer picks) trims and lowercases the email.\n\n3. Lock and transaction. The instance opens a transaction (BEGIN) and takes a Postgres advisory lock keyed on hashtext(email). Parallel logins for the same email queue behind it. The lock is held until COMMIT or ROLLBACK, and bcrypt runs under it. It then reads the `login_lockouts` row for that email.\n\n4. Locked case. If locked_until is after now, it COMMITs without writing anything and does not check the password. The browser gets a 429 login page saying \"Too many attempts\", with a Retry-After header. Retry-After is the whole seconds until locked_until, rounded up, at least 1. Locked attempts do not add to the failure count.\n\n5. Not locked. The app looks up the user by email in `users`. If there is no user, it runs bcrypt against a dummy hash at the same cost, so timing matches.\n\n6. Success. The app deletes this email's `login_failures` rows and `login_lockouts` row. It makes a new 32-byte CSPRNG token and hashes it with SHA-256. It deletes the sessions row matching the incoming cookie, if any (fixation defence). It inserts a new session row with last_seen_at = now and absolute_expires_at = now + 12 hours, then COMMITs. The response is 302 to /dashboard with Set-Cookie carrying the raw new token. Only the hash is stored.\n\n7. Failure (unknown email or wrong password). The app inserts a `login_failures` row, then counts failures for that email in the last 10 minutes. If the count is 5 or more, it upserts a lockout with locked_until = now + 15 minutes and deletes the failure rows. It COMMITs and returns 401 \"Invalid email or password\". The 5th failure still gets 401, and attempts 6 and later during the lock get 429. Unknown emails and wrong passwords give identical responses and lock the same way. A failed login with a valid cookie leaves the old session untouched.\n\n8. Protected request. The browser sends GET /dashboard with the cookie. The middleware runs on every request except /login, /logout and static assets, form POSTs included. With no cookie, the response is 302 to /login with a clear-cookie header.\n\n9. Session check. With a cookie, the app (either instance) hashes the token and runs one UPDATE on sessions. It sets last_seen_at = now where the token hash matches, last_seen_at is within 30 minutes, and absolute_expires_at is after now, with RETURNING user_id. A returned row means the page is served with 200. This write restarts the 30-minute idle clock. The 12-hour absolute limit is never extended. All time checks use the database clock.\n\n10. Session invalid. If no row comes back (missing, unknown, idle-expired or absolute-expired), the app deletes the row for that hash if there is one. It then returns 302 to /login with a clear-cookie header that repeats the name, Path, Secure, HttpOnly and SameSite attributes. All these cases look the same to the client.\n\n11. Logout. The browser POSTs /logout. With a cookie, the app deletes the row for the token hash. If that succeeds, the response is 302 to /login with a clear-cookie header. With no cookie, the result is the same 302. If the database errors, the response is 503 \"Could not sign you out, try again\", the cookie is kept, and the row may still exist.\n\n12. Background cleanup. Each instance runs a timer from boot, every 10 minutes. It deletes expired sessions, failure rows older than 10 minutes and lockouts whose locked_until has passed. It is idempotent. If cleanup fails or both instances are down, nothing is visible, because lookups still reject expired rows and only the tables grow.\n\n13. Other failures. A database error during login rolls everything back: no failure row, no session row, no lockout change, and the old session kept. The user sees a 503 with a generic message and the cookie is unchanged. Login never fails open. A database error on a protected page gives a 503, the cookie is kept, and there is no redirect, so there is no loop.",
+   "gaps": [
+    "How the app instance reaches the 503 page for a database error in the main flow is not specified beyond the status and a 'generic message' (the body text for login 503 and protected-page 503 is not given).",
+    "The document does not say what the user sees or which page is served after a 200 on /dashboard, so I cannot say what the dashboard contains or which user_id-based data is loaded with the RETURNING user_id.",
+    "It does not say how the app identifies the user for later requests beyond the user_id returned by the UPDATE (what the app does with user_id after that is not described).",
+    "Who creates rows in `users` is explicitly unanswered, so I cannot explain how an account exists before the first login."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

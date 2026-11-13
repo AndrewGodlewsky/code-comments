@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In step 3, once dual write is on, a write succeeds in MySQL but the inline Postgres copy fails. The outbox row stays. What exactly does the relay re-read and apply, and how does Postgres end up with the right version?",
+     "about": "Write path / Relay worker"
+    },
+    {
+     "id": "2",
+     "text": "What is `version`? Who sets it on a user row, and how does it increase on each change?",
+     "about": "Write path: version rule (WHERE users.version < EXCLUDED.version)"
+    },
+    {
+     "id": "3",
+     "text": "Why is there a `users_outbox` table in both MySQL and Postgres? Which one is used when, and does the relay only read the one on the current source of truth?",
+     "about": "State locations"
+    },
+    {
+     "id": "4",
+     "text": "What is the erasure job, and what does it call? How does an erasure reach the `users` table under each source of truth?",
+     "about": "Deletes use tombstones / step 8 erasure job"
+    },
+    {
+     "id": "5",
+     "text": "Step 2 says outbox rows are written only when dual write is true, but the write path says every write inserts one. Which is right, and what happens to writes made while dual write is off?",
+     "about": "Step 2 / Repair uses a database outbox"
+    },
+    {
+     "id": "6",
+     "text": "How does each instance learn flag values, and what is the 'flag cache' and the 30 s refresh? What serves the flags?",
+     "about": "Flags (`app.flags`)"
+    },
+    {
+     "id": "7",
+     "text": "In step 6, how does `get()` choose between Postgres and the MySQL replica, and what are 'bucketed users'? What happens to reads for a user whose row is missing in Postgres?",
+     "about": "Step 6. Move reads to Postgres"
+    },
+    {
+     "id": "8",
+     "text": "In step 8, why is a writing instance guaranteed to stop writing to MySQL before the flag goes to postgres? What happens to a write already in flight when the instance sees `paused`?",
+     "about": "Step 8, Moves, in order"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The outbox row holds only (user_id, op), no row data. The relay re-reads the current row from the source-of-truth primary (not a replica) and applies it to Postgres with INSERT ... ON CONFLICT ... WHERE users.version < EXCLUDED.version. A missing row means a tombstone. So Postgres gets the latest version even if the row changed again meanwhile; an older copy is rejected by the version rule. Added to the Relay worker section."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "version is an existing INT column (users_table.md, user_repository.py). create() sets it to 1, each successful update() does version = version + 1, and the caller passes expected_version, so a mismatch raises StaleWrite. The migration reuses it to pick the newer copy; tombstones use 2147483647. Added to Terms."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Each outbox must commit in the same transaction as the change, and a transaction cannot span both databases, so the outbox lives in whichever database is the source of truth. MySQL's is used while sot=mysql, Postgres's while sot=postgres. The relay reads only the current source of truth's outbox. At each switch the old side's outbox must be empty first (step 8 gate, rollback step 2). Added to State locations."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The erasure job is the GDPR job that is the only caller of UserRepository.delete(user_id), which hard-deletes (about 2,000 per day). Under sot=mysql: delete in MySQL plus users_erased row and outbox row in one transaction, then the Postgres tombstone is applied inline or by the relay. Under sot=postgres: Postgres tombstone and outbox row are written first, then the relay deletes the MySQL row and writes users_erased in one transaction (step 9). During the step 8 pause the job's calls get a 503 and its retries (about 15 minutes) cover it. Added to Terms and the write path."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Step 2 was right and the write path was wrong. Outbox rows are written only while users_dual_write is true. Writes made while it is off get no outbox row and no copy; the step 5 comparison finds and repairs them, which is why a clean comparison is required after any period with dual write off. I fixed the write path and the Decisions text to say this."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The existing flags file says only that each instance caches all flags and refreshes them every 30 s, and that instances export app_flag_value. It does not say what serves the flags, and I do not know. The plan depends only on the 30 s refresh and the metric. Terms now define the flag cache; the unknown is listed under Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "get() calls flags.enabled_for(\"users_read_pg\", user_id), which hashes the user id into a stable bucket; users under the percentage are the bucketed users and read Postgres, others read the MySQL replica. For a bucketed user: a tombstone is a definite not found with no fallback; a Postgres error falls back to the replica; a plain missing row falls back to the replica while MySQL is still the source of truth (covers a pending repair), and is a real not found after the switch to Postgres. Added to the flags and step 6."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "An instance either sees paused after its flag refresh (at most 30 s), or, if it cannot refresh, rejects writes once its flag cache is older than 40 s (step 2 fail-closed rule, applies because dual write is on). The switch to postgres happens only after every instance reports paused in app_flag_value. A write already in flight when the instance sees paused is allowed to finish; every write has a 5 s deadline, and the switch waits 5 s after the last confirmation, then requires the MySQL outbox to be empty, which covers the copy of those last writes. Added to step 8."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point. Today every read and write of `users` goes through `UserRepository`: reads hit the MySQL replica, writes hit the MySQL primary, and the erasure job hard-deletes rows. The plan moves the table to Postgres 16 without downtime. All logic lives in `UserRepository`, so callers do not change. The lint rule `no-raw-users-sql` is extended to forbid raw SQL on `users` against Postgres outside the repository.\n\n2. Step 1, schemas. An operator runs a migration by hand. It adds only new tables. In MySQL these are `users_outbox` and `users_erased`. In Postgres these are `users` (with the tombstone columns), `users_outbox` and `migration_state`. The DDL uses `IF NOT EXISTS`, so on failure you re-run it. Nothing reads these tables yet.\n\n3. Step 2, deploy with all flags off. A normal deploy ships the new `UserRepository` with `users_sot=mysql`, `users_dual_write=false` and `users_read_pg=0`. Behaviour is the same as today, and no outbox rows are written. If the deploy fails, roll it back. Each app instance holds a flag cache that refreshes every 30 s and exports `app_flag_value{flag=...}`. The gate for step 3 is that every instance reports the `users_dual_write` metric and the number of reporters equals the instance count. That shows no old-code instance remains.\n\n4. Step 3, dual write on. An operator sets `users_dual_write=true`. The sections below describe a write after that point. The write path under `users_sot=mysql` is:\n   - (a) A caller invokes a write through `UserRepository`. For `update()`, the caller passes the `version` it read. The update fails with `StaleWrite` if that version has changed. `create()` sets version 1, and each successful update adds 1.\n   - (b) In one MySQL transaction the change is applied. A delete also writes a `users_erased` row. The resulting row is read back and a `users_outbox` row `(user_id, op)` is inserted. The outbox row holds no row data.\n   - (c) After commit, the repository applies the row snapshot to Postgres with the version rule and a 300 ms timeout. The rule is: insert if the row is missing, or replace only if the existing `version` is lower than the incoming one. A delete applies the tombstone the same way. The tombstone is a Postgres row with the same id, `deleted_at` set, `email`, `name` and `plan` NULL, and `version = 2147483647`. Every exception is caught. A circuit breaker skips the inline attempt for 10 s after repeated failures.\n   - (d) If the copy succeeds, the outbox row is deleted. If not, it stays for the relay.\n   - (e) A Postgres error is never raised to the caller.\n   - If the write cannot be made safe, it raises `WritesPaused`, which the API maps to a 503 with Retry-After. This happens when the sot is `paused`. It also happens when the flag cache is older than 40 s, but only while dual write is on or the sot is not `mysql`. Every write has a 5 s deadline.\n   - If Postgres is down, outbox rows pile up and drain after recovery.\n   - If dual write is switched off, writes made in that period get no outbox row. The step 5 comparison finds and repairs them, and a clean comparison must follow before any later step.\n\n5. Relay worker, the repair for a failed inline copy. It scans outbox rows older than 5 s, using `SKIP LOCKED` so several workers can run. For each row it re-reads the current row from the sot primary, not a replica. It applies that row to the other database with the version rule, and a missing row means a tombstone. On success it deletes the outbox row. On failure it backs off per row (capped at 5 minutes) and moves to the next row. Rows are never dead-lettered. An alert fires when the oldest outbox row is older than 2 minutes. The document uses an outbox rather than the job queue because Redis `enqueue` can raise and a job that fails 5 times goes to `jobs:dead`, which nothing processes. A crash between commit and enqueue would also lose the repair.\n\n6. Gate for step 4. The `users_dual_write` metric must show `true` on every instance, checked after the 30 s refresh. Then record the primary's `gtid_executed` as `G` and wait until the replica has applied `G` (`WAIT_FOR_EXECUTED_GTID_SET`). Without that wait, the backfill could copy a stale version and nothing would ever send the newer one.\n\n7. Step 4, backfill. An operator starts the backfill worker outside the web instances and outside the Redis queue. It takes `pg_try_advisory_lock`, so only one runs. The loop is:\n   - (a) Check `mysql_replica_lag_seconds`. If it is above 5 s or missing, sleep 5 s and re-check.\n   - (b) Read 2000 rows with `id > cursor` from the replica.\n   - (c) Apply the batch to Postgres with the version rule. In the same Postgres transaction, advance `migration_state.backfill` by compare-and-set.\n   - (d) Wait `users_backfill_pause_ms`.\n   - This takes about 19,000 batches. After a crash it continues from the stored cursor. A failed batch rolls back and is retried, and a repeated batch is harmless. A cursor mismatch means another worker advanced it, so this one stops. It is done when the select returns no rows. Rows erased during the backfill cannot come back, because the tombstone version is higher than any copy.\n\n8. Step 5, full comparison. It starts when the backfill is finished and the outbox is empty. The comparison worker walks ids in chunks of 10,000 and hashes every column of every row on both sides. It reads the replica and pauses on lag above 5 s. It re-checks any differing row against the MySQL primary and Postgres. A mismatch counts only if it persists and the id has no pending outbox row. The countable cases are:\n   - a row missing from Postgres, or with a different value;\n   - a Postgres row missing from MySQL that is not a tombstone;\n   - a tombstone whose id still exists in MySQL.\n   Each confirmed mismatch gets a repair outbox row, and the relay then fixes it. The cursor is kept in `migration_state.compare`, and a failed pass restarts from it. The gate for step 6 is one complete pass with zero confirmed mismatches and no relay backlog.\n\n9. Step 6, reads move to Postgres. An operator raises `users_read_pg` through 1%, 10%, 50% and 100%, holding each level at least 30 minutes while error rate, latency and the comparison stay healthy. `get()` calls `flags.enabled_for(\"users_read_pg\", user_id)`, which hashes the id into a stable bucket, so a given user always gets the same answer.\n   - If the answer is false, it reads the MySQL replica.\n   - If true, it reads Postgres. A tombstone counts as not found, with no fallback.\n   - On a Postgres error it falls back to the MySQL replica.\n   - While MySQL is the sot, a plain miss in Postgres also falls back to the replica. After the switch to Postgres, a miss is a real not found.\n   - To roll back, set `users_read_pg=0`. This takes effect within 30 s.\n\n10. Step 7, soak. Reads stay at 100% (confirmed by the metric) for at least 3 days. The nightly comparison and the outbox alerts keep running. Any drop below 100%, or any confirmed mismatch, resets the clock.\n\n11. Step 8, planned switch of the sot (writes paused for at most 90 s). It starts when step 7 is finished, the outbox is empty, and an operator runs the switch. T0 is the moment the flag is set.\n    - (a) At T0, `users_sot=paused`. Each instance returns a retryable 503 on writes once it refreshes (at most 30 s later), or once its cache is older than 40 s. Reads continue. The erasure job's calls fail and are retried by the job over about 15 minutes.\n    - (b) The switch continues only if all of these hold by T0+45:\n      - every instance reports `paused`;\n      - 5 s have passed since the last confirmation, so no write is still in flight;\n      - the MySQL outbox is empty;\n      - the 10,000 most recently updated rows have matching versions in both stores.\n    - (c) Run `setval` on the Postgres identity sequence to `GREATEST(MySQL AUTO_INCREMENT, max(Postgres id)) + 100000`, so new ids never collide with ids MySQL has issued.\n    - (d) Set `users_sot=postgres`. The last instance sees it by T0+75.\n    - If the gates are not met by T0+45, set `users_sot=mysql` as an abort. The pause is still under 90 s.\n\n12. Step 9, Postgres is sot, with reverse sync, for at least 14 days. A write now commits to Postgres together with a Postgres outbox row. `create()` takes its id from the Postgres sequence. The copy to MySQL goes through the same inline path and the relay, using the version rule. The relay reads only the Postgres outbox now. A MySQL failure never fails the request.\n    - An erasure writes the Postgres tombstone and an outbox row. The relay then deletes the MySQL row and writes `users_erased` in one transaction.\n    - A reverse upsert does a locking read of `users_erased` first, so it cannot bring an erased user back. Deadlocks are retried.\n    - Rollback to MySQL is allowed at any time before step 10:\n      - set `users_read_pg=0` first if reads are the cause;\n      - pause, wait for every instance, and wait for the Postgres outbox to be empty;\n      - check that MySQL's AUTO_INCREMENT is above `max(id)`;\n      - set `users_sot=mysql` by T0+45;\n      - the 14 days restart afterwards.\n    - The only writes at risk are those still in the Postgres outbox. Rollback needs Postgres to be readable or restorable.\n\n13. Step 10, Postgres-only writes. This needs at least 14 days since step 8, an empty relay backlog throughout, a last comparison with zero mismatches, and a saved MySQL backup. The MySQL read fallback is removed in a code deploy, then `users_dual_write=false`, after which MySQL is no longer updated. After this, going back to MySQL needs a fresh reverse backfill.\n\n14. Step 11, retire MySQL. After step 10 and a hold period (7 days suggested), rename `users` to `users_retired`, then drop it. Then remove the MySQL code, the relay, the outbox and the flags. Tombstones can stay. If something goes wrong in the hold period, rename the table back.",
+   "gaps": [
+    "The document does not say how the dual-write step 3 distinguishes the 'repeated failures' that trip the circuit breaker (no count or window is given), though this does not block the main flow.",
+    "It does not say how the relay chooses which op to apply to the other database, or what the `op` values in `users_outbox` are; it says only that the relay re-reads the current row and that a missing row means a tombstone.",
+    "It does not say how a caller gets from `UserRepository.update()` to the 'read the resulting row back' step when the update changes nothing, or how `StaleWrite` interacts with the outbox row (whether the outbox row is rolled back with the failed update).",
+    "It does not say how the sot switch in step 8 (2) checks that 'the MySQL outbox is empty' is stable, since the MySQL outbox could receive rows from reads-only instances; nor who or what runs the version comparison of the 10,000 recent rows."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}
