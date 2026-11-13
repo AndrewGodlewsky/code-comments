@@ -1,0 +1,52 @@
+## Review of ms-01 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Named the service and the trigger for every step. The draft gave only step names.
+- Added a claim step (Inventory) so a late success is checked against the hold. The draft's 're-reserve' note is now one check inside claim, not a separate mechanism.
+- Moved Refund to the late-success branch only. The draft drew it after every confirmation, which was wrong (Q7).
+- Added the declined branch, the duplicate-webhook branch with its dedupe key (Q6), and the failed-refund branch, which retries and is never dropped.
+- Cart is cleared only on OrderConfirmed, so any earlier failure leaves the cart unchanged, as the brief requires.
+- Defined the order statuses (Q8) in Terms, replacing the draft's note that statuses are tracked.
+- Decided that Order emails the customer, since Order owns the status. The brief does not name a sender.
+- Removed the draft's loose notes (idempotency keys, retries, dedupe, expiry) by folding each into the step it belongs to.
+- The file is about four times its first length because the brief requires every failure branch. The flow is kept in the diagram, the steps and Open questions.
+- Step 1: say Order calls Inventory right after the save, and state what a crash leaves behind (answers Q9).
+- Step 3: state the customer's view while pending, that the provider's immediate reply is ignored, and what happens after all retries fail (answers Q10, Q11).
+- Step 5: say the cancel does not wait for the release, and that a release with no hold does nothing (answers Q15).
+- Step 6: name the PaymentSucceeded event and the HTTP claim call, describe the re-reserve-and-claim in one transaction, and say a repeat claim is safe (answers Q12, Q13).
+- Step 7: the refund is now requested by Order over HTTP, Payment saves the refund row before calling the provider, and the customer's view is stated (answers Q14).
+- Terms: defined Claim, Event and Refund row so the steps can use them without explanation.
+- Diagram: the out-of-stock branch now shows Order asking Payment to refund, the refund row is saved as pending before the provider call, and the declined branch shows the hold release.
+- Open questions: added the immediate-rejection webhook question, the retry count question and the stranded pending order question.
+- Layout: every step uses the same four parts (starts, does, keeps, if it fails), and the summary is shortened to three sentences plus the main flow.
+- Step 4: Payment now hosts the webhook endpoint, finds the charge by order id, and notes that the webhook may not carry the order id (open question added).
+- Step 6: Order acknowledges PaymentSucceeded only after it has a claim result, so a crash redelivers the event; the customer-charged-but-stuck case is stated and added to Open questions.
+- Step 7: Order now says it does not wait for the provider, and the publish of OrderConfirmed is retried until it succeeds.
+- Step 8: the crash-between-save-and-publish case is stated plainly and added to Open questions.
+- Open questions: added the claim-retry and redelivery question, the stuck-after-charge question, the refund-alert owner question, and the crash-before-publish question.
+- Terms and steps: shortened several sentences to one idea each, moved the 'Payment hosts the endpoint' fact into step 4, and removed repeated wording. The diagram is unchanged.
+- Step 1: said that steps 1 to 3 run in one browser request, so the browser gets its first reply from Place order (answers Q22).
+- Step 2: the browser shows the short items on a short result, and no payment is requested (answers Q22).
+- Step 3: added when Place order replies with 'payment processing', that the browser polls Order's status until it is not pending, and that the browser shows an error if every charge retry fails (answers Q21 and Q22).
+- Step 6: said that the PaymentSucceeded event carries the order id, and what Order does when the order is already confirmed or already cancelled (answers Q23).
+- Kept the diagram and the Terms unchanged. The file grew by about 15 percent, with no new mechanism added.
+- Shortened the opening into a two-sentence summary plus one line for the main flow. Kept the intent: Order coordinates, Payment alone talks to the provider, and the cart changes only on OrderConfirmed.
+- Moved 'each service stores only its own data' up beside the terms, and kept the two diagram notes (cart changes only on OrderConfirmed; new order id per Place order) after the diagram. Removed the duplicate of the cart rule.
+- Shortened each term to one plain line and removed the repeated explanation of claim and hold that appeared in both the terms and the steps.
+- Removed step-number codes that sent readers elsewhere. Steps now name the other service or action instead of pointing to another step number, except one 'see step 4' in step 3 and 'as in step 7' in step 6, which are kept as plain references.
+- Moved the 'brief sets no retry count' and webhook-contents remarks out of steps 3 and 4 and kept them only in Open questions, so each open question appears once.
+- Merged the claim outcomes in step 6 into one list by order status (confirmed, cancelled, pending), replacing the long paragraph that mixed them.
+- Merged the confirm and refund branches in step 7 into two short claimed / not-claimed items and removed the repeated 'Order does not wait' wording.
+- Merged the open questions about claim retries and broker redelivery into one bullet, and the two questions about the claim result into one.
+- Left the diagram unchanged. Its branches already match the steps, so no diagram edit was needed.
+
+### Holes
+- Q3: When "Take payment" runs, is the call to the payment provider synchronous? What does the provider return right away, and which service owns the payment record? (author: The brief does not say what the provider returns right away. The plan does not depend on it: Payment saves the charge as pending whatever the reply, and only the webhook decides the outcome. Payment owns the payment record because the brief says only Payment talks to the provider.)
+- Q4: What does the "Payment webhook" contain, who receives it (Payment or Order service), and how does it tell Order to confirm? (author: Payment receives the webhook, because only Payment talks to the provider. It then publishes PaymentSucceeded or PaymentDeclined, and Order confirms on that event. The webhook's exact contents are not in the brief. The plan needs it to carry the order id and a unique event id, which is listed in Open questions.)
+- Q11: Order retries the charge with the same order id. How many times, and for how long? What happens to the hold and the order if every retry fails? (author: The brief gives no retry count or spacing, so the file does not set one. It is listed in Open questions. Decided: every retry reuses the order id, so the provider cannot charge twice. If every retry fails, the order stays pending and the hold lapses. If the provider did take the charge, its webhook still arrives and step 4 handles it.)
+- Q16: When Order receives PaymentSucceeded, what happens if Order crashes or its claim call to Inventory keeps failing? Does the broker redeliver the event, and how long does Order keep retrying? (author: The brief does not name the broker or its redelivery rules, so it is not known whether an unacknowledged PaymentSucceeded is redelivered. The file now says Order acknowledges the event only after it has a claim result, so a crash before that leaves the event unacknowledged. How long Order keeps retrying is not in the brief and is listed in Open questions. No retry count is invented.)
+- Q17: If every claim retry fails, what is the order's status, and has the customer already been charged? What does the customer see? (author: Yes, the customer has been charged: the webhook reported success, so the money is taken. The order stays pending and the customer sees 'payment processing'. The brief says we never keep money for an order we cannot fulfil but gives no rule for a claim that never gets an answer. The plan does not decide this; it is listed in Open questions.)
+- Q18: Order sets the order to confirmed and then publishes OrderConfirmed. If Order saves the status but the publish fails, or it crashes between the two, what happens? Does the cart ever get cleared? (author: If Order saves confirmed and the publish fails, the file now says Order retries the publish until it succeeds, as Payment does in step 4. If Order crashes between saving and publishing, OrderConfirmed is never sent, the cart is not cleared, and the order stays confirmed. The plan has no rule for this case. Fixing it needs an outbox, which the brief does not ask for, so it is listed in Open questions.)
+- Q19: How does Payment know which order and which charge a webhook belongs to, and how does the provider reach Payment? Is the order id in the webhook? (author: The brief does not say what the webhook contains, so it is not known whether it carries the order id. The file now says Payment finds the charge by the order id in the webhook and flags that the id may be missing, which is listed in Open questions. How the provider reaches Payment is decided: Payment hosts the webhook endpoint, because only Payment talks to the provider.)

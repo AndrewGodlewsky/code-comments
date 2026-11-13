@@ -1,0 +1,16 @@
+## Review of mig-02 (simplify-only, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Merged the mode list and the mode notes into one short list under the diagram, so each mode is described once.
+- Cut the 'Pieces involved' list. The terms section now defines only the parts a newcomer needs.
+- Cut the duplicate notes: 'shadow and both run both engines', the separate gate notes, and 'rollback is manual or via the monitor'. Each fact now appears once.
+- Replaced the five-line rollback sequence and the 'skipped where not needed' note with one table. Each step has what it does, its data and its failure handling. Also stated which steps are skipped from shadow and from both.
+- Merged 'steps are retryable' into the rollback steps, as a retry rule that must not double-charge.
+- Added facts the original was missing: the mismatch definition, the gate thresholds, the 2 percent automatic rollback trigger, the 35-day no-way-back limit from new_only, the no-double-charge and no-dropped-charge rule, and the gate reset after rollback.
+- Added gate and trigger labels to the diagram transitions and a transition from new_only to decommissioned after 35 days. The diagram structure and rollback steps are unchanged.
+- Moved the unknowns into one Open questions section at the end, and marked the 35-day start point as an assumption.
+
+### Holes
+- None.

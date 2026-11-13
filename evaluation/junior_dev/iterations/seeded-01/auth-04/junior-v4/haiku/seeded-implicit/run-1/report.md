@@ -1,0 +1,35 @@
+## Review of auth-04 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Changed: Replaced the one-line summary with a short explanation of how password sign-in works today, then the new flow, so a newcomer has the baseline first.
+- Changed: Added a Terms section defining sub, state, nonce, PKCE verifier and pending link, answering Q1 and Q2.
+- Changed: Added a table of where each piece of state lives, whether it is temporary or permanent, and what removes it, answering Q5 and Q7.
+- Changed: Named the pending link's Redis key, token cookie and 10-minute lifetime, answering Q5.
+- Changed: Split the flow into numbered steps with start, action, data kept and failure for each, answering Q1, Q3, Q4 and Q6.
+- Changed: In the diagram, labelled the create and match branches of Match or create account and sent only the match branch to the confirm page, answering Q4.
+- Changed: Added diagram branches for Google errors, failed exchanges, link refusals, expiry and lockout, answering Q9.
+- Changed: Stated that a changed session cannot link an account, answering Q7.
+- Changed: Replaced the vague Settings unlink note with the rule that unlink needs password_hash to be set, answering Q8.
+- Changed: Replaced the note on Google-only users with a failure table that covers each error and where the user lands, answering Q9.
+- Changed: Moved the lockout and start_session detail into the steps. Cut the duplicate 'Uses the normal session' note, since start_session is now defined in its own paragraph.
+- Changed: Added an Open questions section for the unset Google timeout and the unverified-email linking decision, so the holes are visible in the file.
+- Start now saves the next page in the oidc:state entry, and the callback uses it for the post-sign-in redirect and the pending link (Q10).
+- Added the oidc_state browser-check cookie: Start sets it, and the callback refuses when the URL state does not match it, leaving the Redis entry in place. Added it to the state table, the steps, the diagram and the failure table (Q11).
+- Confirm password now reads the token from the oidc_confirm cookie; a missing cookie is handled like an expired pending link (Q12).
+- Callback keeps purpose, user id and next page from the entry it reads, so errors go to the login page or Settings (Q13).
+- Start refuses a link attempt without a signed-in session, so the saved user id always exists.
+- Merged the two confirm-page failure rows into one row for missing cookie or expiry, and added a row for Redis down at callback.
+- Diagram: added the cookie check node and clarified the link and refusal labels.
+- Moved the terms to the top, right after the summary, and defined two more terms a newcomer needs: purpose and start_session.
+- Rewrote the summary to say how sign-in works today before the change, then how the main flow goes.
+- Merged the two notes that both said every sign-in ends in start_session into one note, and kept the diagram unchanged.
+- Corrected step 3's 'Keeps' line: a new user and its link are permanent data, not 'nothing new'. This matches the state table and the create path, so the intent is unchanged.
+- Gave every step the same four parts (starts when, what it does, keeps, when it goes wrong) and put the unlink action last as a separate step.
+- Turned the callback's inline sub-steps into a numbered order and removed the repeated 'nothing changes' wording where the failure table already says it.
+- Merged the three error-page rows about state into two, and the two start-page error rows (Google down or invalid token) into one, in the failure table.
+- Kept the state table, the failure table and both open questions with their meaning unchanged.
+
+### Holes
+- None.

@@ -1,0 +1,36 @@
+## Review of auth-03 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Rewrote the document as a full design, not a short summary, so a reader new to the project can follow it.
+- Added a Parts section that defines the browser, API server, Postgres tables, email queue, email worker and mail provider, and what each one stores or does.
+- Added the reset_tokens columns and explained that the table keeps one row per link, which is also what the rate limit counts.
+- Split the one-line flow summaries into three numbered flows (request a link, open the link, submit a new password), showing each step and what is written at that step.
+- Added a Rules section that states the brief's requirements in plain terms: token format and hashing, 30-minute single-use lifetime, replacement of older links, the rolling-hour limit, the generic reply, password rules, and the logout-everywhere step.
+- Explained why the rate-limit row lock and the conditional update on the token are needed to prevent races.
+- Added a logging rule: never log the raw token or the full link.
+- Turned the failure paths into a table covering the unknown address, rate limit, dropped email, queue failure, expired or used links, rejected passwords, expiry during form entry, double submit, and confirmation email failure.
+- Added an open gap about silent dropped emails, marked as a follow-up and not part of the design.
+- Kept the ASCII diagram in a fenced code block with notes beneath it, as the brief requires.
+- Added a short 'Terms used here' section that defines hash, SHA-256, transaction, row lock and session for a reader who does not know the stack.
+- Rewrote Flow 1 so steps 2 and 3 are explicitly one transaction, and explained in plain words how the row lock stops two simultaneous requests from both passing the hourly limit.
+- Stated that the 'no such user' and 'over the limit' paths still return the generic reply.
+- Added the revoked_at check to Flow 3 step C1, since the rules say a revoked link cannot be used.
+- Explained that the raw token returns in a hidden field on submit and is the same token from the link.
+- Clarified that step A (fast check) and step C1 (conditional update, the real guard) do different jobs.
+- Added a worked example of the rule that revoked rows still count toward the hourly limit.
+- Clarified that the queued confirmation email shares the reset transaction, and that a separate queue service can still produce the 'row written, no email' case.
+- Shortened and simplified wording throughout, and changed step-number references in the failure table to match the diagrams.
+- Added a Terms section defining conditional update, rolling hour, breached-password list, queue and worker, and hidden field, so a reader unfamiliar with the stack can follow the design.
+- Expanded the Goal to name the three flows and say the design also covers failures.
+- Clarified the Parts list: the email worker and queue are described in plain words, and each table column group is introduced with its purpose.
+- Flow 1 notes now say why the lock is on the user's row (every account has one, so locking it serializes requests for that account).
+- Flow 2 notes now state explicitly that the server looks up the hash, not the raw token.
+- Flow 3 notes now say what happens when step C1 changes 0 rows (steps 2 to 4 never run) and why step A exists alongside step C1.
+- Rules: the rate limit, replacement and after-success rules now say what is atomic (all three changes and the queued email share one transaction) and what each guard protects against.
+- Failure-path table text unchanged in meaning; the queue row now explains that a single transaction makes row and job both happen or neither does.
+- Diagrams are unchanged except that the system diagram label reads 'one row per link issued' in line with the Parts list. No design decisions were changed.
+
+### Holes
+- None.

@@ -1,0 +1,203 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does 'resolve key' mean? Is the key an API key sent by the client, and what does KeyService return (customer ID, plan, limit)?",
+     "about": "Gateway->>KeyService: resolve key"
+    },
+    {
+     "id": "2",
+     "text": "In what order do the steps run? Is the rate-limit check done before forwarding, and does the Gateway wait for KeyService before calling Redis?",
+     "about": "Gateway->>Redis: check_and_incr"
+    },
+    {
+     "id": "3",
+     "text": "What does check_and_incr take as input and return? Does it return allowed/denied plus the remaining count?",
+     "about": "check_and_incr is a Lua script"
+    },
+    {
+     "id": "4",
+     "text": "How is the counter key built, and what is the TTL value? How does the per-minute window work (fixed clock minute or sliding)?",
+     "about": "Counters are per minute / Counter keys have a TTL"
+    },
+    {
+     "id": "5",
+     "text": "Where does the customer's limit come from? Is it from KeyService, config, or the plan? What happens for Enterprise customers while the limit is TBD?",
+     "about": "Limits: Standard 100/min, Enterprise TBD (Product)"
+    },
+    {
+     "id": "6",
+     "text": "When the request is over the limit, is it blocked before reaching the Backend? Is the count still incremented, and how is Retry-After computed?",
+     "about": "Over limit: 429 + Retry-After"
+    },
+    {
+     "id": "7",
+     "text": "When Redis is slow or down, what exactly triggers fail open: a 50 ms timeout on the call? Are the rate-limit headers still sent then, and who watches the metric?",
+     "about": "Redis slow/down (50 ms): fail open, ratelimit_store_unavailable metric"
+    },
+    {
+     "id": "8",
+     "text": "What happens when KeyService fails or is slow (not a bad key)? Is Redis still called when the key is bad?",
+     "about": "Bad key: 401"
+    },
+    {
+     "id": "9",
+     "text": "Are the X-RateLimit headers on every response, including 429 and 401? Where do their values come from?",
+     "about": "X-RateLimit-Limit / X-RateLimit-Remaining headers"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The client sends its key in the X-Api-Key header. The Key Service receives the key and returns the customer ID and the plan. It does not return the limit. The limit is derived from the plan in gateway config (step 2 of the document)."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes, the steps run in order: authenticate with the Key Service, then check and count in Redis, then forward. The gateway waits for the Key Service because the counter key needs the customer ID. Requirements 3 and 4 require this order."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Input: the counter key, the limit, and the TTL. Output: allowed or denied, plus the count after the call. The gateway computes Remaining as limit minus count. A denied call returns the current count and does not change it."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The key is rl:<customer ID>:<minute>, where minute is Unix seconds divided by 60, rounded down. The TTL is 120 seconds, set on the first increment, so old keys expire. The window is a fixed clock minute, chosen for simplicity. The boundary burst (up to 2x in two seconds) is accepted for v1 and noted in the document."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The limit comes from the plan, mapped in gateway config. Standard is 100 per minute, from the brief. Enterprise is TBD. No number is chosen. Until Product sets it, Enterprise traffic cannot go live, and this is listed in Open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes, the 429 is returned before the backend is called, and the request is not forwarded. A denied request is not counted, because check_and_incr only increments when the counter is under the limit. Retry-After is the seconds left until the next clock minute, at least 1."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Fail open is triggered by a Redis error or a 50 ms timeout on the check call, measured by the gateway. Fail-open responses carry no X-RateLimit headers, because there is no count to report. Brief item 6 only covers requests that passed the check. Who watches the metric is not decided, so it is listed in Open questions."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "Redis is not called when the key is bad. The 401 returns before the check, so this is decided by step 1. What the gateway does when the Key Service fails or is slow is not in the brief, so it is unknown and listed in Open questions."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The X-RateLimit headers appear only on responses to requests that passed the check, including backend 500 responses. They are not on 401 responses. A 429 carries only Retry-After. Their values come from the check: the limit from the plan, and Remaining from limit minus count. Brief item 6 limits the headers to passed requests, and v1 keeps it simple."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "If the Key Service answer is cached for 5 minutes, what is the cache keyed on, and what happens if a key is revoked or the customer's plan changes during those 5 minutes?",
+     "about": "Authenticate: answer kept in gateway memory for 5 minutes"
+    },
+    {
+     "id": "11",
+     "text": "Each of the 6 gateway instances has its own memory. So is the cache per instance, and does an instance call the Key Service on every request or only on a cache miss?",
+     "about": "Authenticate: kept in gateway memory"
+    },
+    {
+     "id": "12",
+     "text": "Is a 401 for an unknown key also cached? And does the cache hold only valid keys?",
+     "about": "Authenticate: If the key is missing or unknown, the gateway returns 401"
+    },
+    {
+     "id": "13",
+     "text": "When the 50 ms timeout fires, has the script possibly already run in Redis and raised the counter? Is that request counted?",
+     "about": "Redis error or no answer within 50 ms"
+    },
+    {
+     "id": "14",
+     "text": "Which clock gives the minute in the counter key: each gateway instance's own clock or Redis time? What if the instances' clocks differ?",
+     "about": "Check and count: key rl:<customer ID>:<minute>"
+    },
+    {
+     "id": "15",
+     "text": "What does the TTL do when it is set only on the first increment, and why 120 seconds instead of 60?",
+     "about": "check_and_incr(counter key, limit, TTL 120 s)"
+    },
+    {
+     "id": "16",
+     "text": "Where does Redis run: one node or a cluster? What happens to counters if Redis restarts or loses data?",
+     "about": "Redis (shared store)"
+    },
+    {
+     "id": "17",
+     "text": "How is Retry-After worked out from the clock, and how does it relate to the fixed window when the client retries at that time?",
+     "about": "Reject over the limit: Retry-After"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The cache is keyed on the API key string, because that is what the request carries. A revoked key or a changed plan can keep working for up to 5 minutes, until the cache entry expires. There is no cache invalidation in v1. This is written into step 1 and the failure table."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "The cache is per instance. The brief says the gateway keeps the answer in its memory, and the 6 instances are stateless behind a load balancer, so each instance holds its own copy. An instance calls the Key Service only on a cache miss, not on every request. This is now stated in step 1 and the notes."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "A 401 is not cached. Only valid answers are cached, so a newly created key works at once. The cost is one Key Service call for each request that carries an unknown key. Step 1 now says this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, the script may have run in Redis and raised the count before the gateway's 50 ms timeout fired. The gateway cannot tell which happened. The request is forwarded anyway, so the count may be off by one request per failure. Accepted for v1. Step 3 now says this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The minute comes from each gateway instance's own clock, and instances keep their clocks in sync with NTP. A small clock difference between instances only moves a window edge by seconds. Using Redis time inside the script was not chosen, because it adds complexity that v1 does not need. Step 3 now says this."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The TTL is set on the first increment of a key. The key is only needed during its minute. The 120 seconds give margin so that a slightly late instance, whose clock lags, still finds the same key and does not start a new empty counter for a minute that is already in use. Step 3 gives this reason in one sentence."
+    },
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "The brief does not say where Redis runs or whether it is one node or a cluster, so this is unknown and is listed in Open questions. If Redis restarts or loses data, the counters start again at zero, and a customer can get up to one extra window of budget. This is accepted for v1 and is in the failure table."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Retry-After is 60 minus the current second within the minute. That gives a whole number from 1 to 60, and it equals the time until the next clock minute starts. The window is fixed, so a client that waits that long arrives in a new window with a count of zero. Step 4 now gives the formula."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one request, say a client calling the API with a valid Standard-plan key when the customer is under the limit.\n\n1. A client sends a request to the public API with an `X-Api-Key` header. It lands on the API Gateway, which is 6 stateless instances behind a load balancer. The load balancer picks one instance. The key travels in the header, and nothing is stored yet.\n\n2. Authenticate. The instance looks up the key string in its own in-memory cache. Each instance has its own cache, and entries last 5 minutes. On a hit, it uses the cached customer ID and plan. On a miss, it asks the Key Service which customer and plan the key belongs to, then caches the answer. Only valid answers are cached, so a brand-new key works immediately. State here is the per-instance cache. Failure cases:\n   - If the key is missing or unknown, the gateway returns 401. It does not call Redis, changes no counter, and sends no `X-RateLimit-*` headers.\n   - A revoked key or a changed plan can take up to 5 minutes to apply, until the cache entry expires.\n   - A Key Service error or slow response is not defined by the document.\n\n3. Pick the limit. The gateway maps the plan to a limit from its own config. Standard is 100 requests per minute. Enterprise has no number yet, so Enterprise traffic cannot go live until Product sets one. The limit lives in gateway config.\n\n4. Check and count. The gateway computes the window as its own Unix time in seconds divided by 60, rounded down. Instance clocks are synced by NTP, and a small difference only shifts a window edge by a few seconds. It then calls the `check_and_incr` Lua script in Redis. The script's arguments are the counter key `rl:<customer ID>:<minute>`, the limit, and a TTL of 120 seconds. The script reads the counter. It adds 1 only if the counter is under the limit. It returns allowed or denied plus the count. Redis runs the script as one step, so two gateway instances cannot both take the last slot. The TTL is set on the first increment. It is 120 seconds, not 60, so a slightly late instance can still use the same key. The counter lives in Redis. All of a customer's keys share one counter because the counter key uses the customer ID. If Redis returns an error or does not answer within 50 ms, the gateway fails open, covered in step 7.\n\n5. Over the limit (denied). The gateway returns 429 with `Retry-After` set to `60 - (current Unix second mod 60)`. That is 1 to 60 seconds, the time until the next clock minute. It does not forward the request, the count is not raised, and nothing else is stored. A client that waits that long arrives in a new window where the counter starts at zero. The 429 carries only `Retry-After`, with no `X-RateLimit-*` headers.\n\n6. Under the limit (allowed). The counter was already raised in step 4. The gateway forwards the request to the backend that owns the route. It returns the backend's response to the client, whatever its status, and adds `X-RateLimit-Limit` (the plan limit) and `X-RateLimit-Remaining` (the limit minus the count after this request). Because the count rose before forwarding, a backend 500 still uses budget. The backend's error goes back to the client with the headers, and the request stays counted.\n\n7. Redis failure (fail open). If Redis errors or does not answer within 50 ms, the gateway emits the `ratelimit_store_unavailable` metric. It forwards the request to the backend anyway and returns the backend's response with no `X-RateLimit-*` headers. The gateway cannot tell whether the script ran before the timeout, so this request may or may not have been counted. Each failure affects at most one request's count. If Redis restarts or loses data, counters restart at zero, and a customer can get up to one extra window of budget.\n\n8. Window behaviour. Windows are fixed clock minutes. A customer can send 100 requests in the last second of one minute and 100 in the first second of the next. The document says this is accepted for v1. Counters expire by TTL, so old windows disappear on their own.",
+   "gaps": [
+    "What the gateway does when the Key Service errors or is slow. The document says this is undecided, so I cannot explain that branch of step 2.",
+    "The Enterprise plan's limit. Product has not set it, so I cannot explain step 3 for Enterprise customers.",
+    "How the rate limit store is deployed (single node or cluster, and how it fails over). This is undecided, so I cannot say what a Redis failover looks like beyond fail open.",
+    "Who watches the `ratelimit_store_unavailable` metric and at what rate it alerts. This is undecided, so I cannot explain what happens after the gateway emits it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

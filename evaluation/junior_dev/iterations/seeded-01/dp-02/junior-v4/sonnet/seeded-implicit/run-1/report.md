@@ -1,0 +1,37 @@
+## Review of dp-02 (junior-v4, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the file in the skill's layout: summary, terms, live path, replay, failure table, open questions.
+- Defined the raw log, archive, dedup state, received_at and closed day as terms (Q1, Q2, Q8).
+- Stated that the archiver and live processor are independent consumers, and that the archiver stores events unchanged and grouped by received_at hour (Q2).
+- Added the KV dedup mechanism: set-if-absent claim with an 8-day TTL that exceeds the 7-day retry window (Q3).
+- Spelled out collector responses: 202 only after the log write is confirmed, rejected events listed, whole-batch retry only on timeout, 429 or 5xx (Q4).
+- Added reject bucket handling: not reprocessed, kept 14 days (Q5).
+- Defined consumer lag and added proposed alert thresholds, with the owner of on-call left as open (Q6).
+- Replay now has a manual trigger, a closed-day check, archive reads, its own dedup state with a 7-day look-back, and an atomic swap that leaves the old partition on failure (Q7).
+- Explained why live and replay never touch the same partition (Q7).
+- Used received_at as the partition key in the live processor step (Q8).
+- Made the bot-handling question an open question and left it undecided, as the brief requires.
+- Added a short crash-recovery note for the live processor: restart from the last committed offset, and repair a claimed-but-unloaded event through replay.
+- Live processor: claim now stores the log offset; same-offset claim is reprocessed, different-offset claim is dropped (fixes missing events after a crash).
+- Live processor: offset commits only after load; enrichment failure means no commit and retry; accepted possible duplicate row until replay.
+- Terms: Dedup state records the offset; added log offset; Closed day notes the cut-off is fixed by the brief.
+- Replay step 1: also requires the archiver to have committed past the end of the day.
+- Replay step 5: row count is compared with the number kept after dedup; a mismatch fails the job.
+- Replay: added a paragraph saying earlier days are not touched and need their own replay.
+- Failure table: added enrichment failure row, archiver crash row, and row-count mismatch; live processor row mentions possible duplicates.
+- Open questions: added geo-IP and user-agent lookup inputs and latency as unknown.
+- Gave each live step the same parts: what starts it, what it does, which part keeps its data, and what happens on failure
+- Moved the failure handling for the SDK, collector, archiver and live processor into their steps, and cut the repeated failure lines from the failure table
+- Merged the crash row and the slow-enrichment row of the failure table into one row
+- Merged the monitoring and lag definitions, and moved the lag definition into Terms
+- Split the replay into five named steps (check, deduplicate, enrich, swap, failure) and merged the old read-the-archive and own-state steps into one
+- Cut the closed-day sentence about why the cut-off exists, and cut the repeated 'Lag alerts fire if this takes too long' wording
+- Added the opening note that replay never reads the raw log or the live dedup state, to replace the repeated mentions
+- Renamed the Live path and Replay headings to 'How it runs', and kept all open questions unchanged at the end
+
+### Holes
+- Q10: Why does a day only count as closed after 02:00 UTC the next day, and not at midnight? What could still be arriving in those 2 hours? (author: The 02:00 cut-off comes from the brief and the brief gives no reason. Likely it leaves time for the live processor and archiver to finish the day, but I do not know that. The file now says the brief fixes it. Replay also now checks the archiver has caught up, so it does not rely on the 2 hours alone.)
+- Q14: What do geo-IP and user agent enrichment use as input and where do they look things up? What happens to an event if enrichment fails or is slow? (author: The brief does not say what the lookups use as input or where the databases live. I assume geo-IP needs the client IP and user agent needs the user-agent string, but that is not confirmed, so I put it in Open questions. On failure or slowness I decided the simplest handling: the processor does not commit its offset and retries the batch, and lag alerts fire. The same-offset rule from Q9 makes the retry safe.)

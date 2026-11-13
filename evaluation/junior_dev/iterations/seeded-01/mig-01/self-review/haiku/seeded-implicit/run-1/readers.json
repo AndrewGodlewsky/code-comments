@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "MySQL commits first, with a pending row in the same transaction, then the request copies to Postgres. If Postgres fails, the user's request still succeeds and the pending row stays.",
+  "q2": "Only if no row exists, or the existing row's version is lower than the incoming version. Equal or lower versions never overwrite. Tombstoned ids are skipped.",
+  "q3": "Every instance must show write_mode dual_mysql_primary on app_flag_value before backfill starts; the job checks this itself. Instances can disagree for up to 30 seconds after a flag change.",
+  "q4": "It reads 2,000-row batches from the replica, not the primary, and waits whenever replica lag exceeds 5 seconds before checking again.",
+  "q5": "Reads: a clean comparer pass, then read_from_pg raised 1, 10, 50, 100 with a clean pass after each. Source of truth: 3 days at 100%, latest comparer pass clean, MySQL pending empty.",
+  "q6": "The pending row, kept in the source-of-truth database (MySQL) and written in the same transaction as the change. The repair sweeper copies it to Postgres under the version rule, then deletes it.",
+  "q7": "Tombstones exist in both databases. Every Postgres insert or update checks the tombstone table in the same transaction and skips tombstoned ids, so erased users never return.",
+  "q8": "In Postgres backfill_progress, one row holding the last completed id. It commits in the same transaction as the batch copy, so they stay consistent. It stops when a read returns no rows.",
+  "q9": "The comparer job finds missing, stale or differing, and extra Postgres rows, skipping pending ids. It rechecks against MySQL primary; persistent ones are repaired (missing or stale copied, extra deleted from Postgres).",
+  "q10": "Writes are paused with a 503 and the write_mode key is the single shared setting. If the pause reaches 75 seconds before step d, pause goes off and the switch stops. After step d, finish step e.",
+  "q11": "Postgres assigns ids after the switch, from a sequence set to MySQL AUTO_INCREMENT plus 1,000,000. After rollback, MySQL's AUTO_INCREMENT is set above the highest id Postgres issued.",
+  "q12": "Sweeper and comparer copy Postgres to MySQL for 14 days. Rollback sets reads to MySQL, pauses writes, drains Postgres pending, sets AUTO_INCREMENT, sets dual_mysql_primary, then unpauses. It ends when step 9 starts, at least 14 days after step 7."
+ },
+ "sonnet": {
+  "q1": "MySQL first: one MySQL transaction changes the row, bumps version and upserts the pending row. After commit, the request copies the row to Postgres (short timeout). If the Postgres copy fails, the pending row stays and the request still succeeds; the caller sees no failure.",
+  "q2": "Only if the incoming version is higher than the row's version (or the row is missing). Equal or lower versions never overwrite. (Tombstoned ids are also skipped.)",
+  "q3": "Step 3 must show write_mode dual_mysql_primary on every instance (app_flag_value metric); the backfill job checks this itself and refuses to start otherwise. Instances can disagree for up to 30 seconds after a flag change.",
+  "q4": "Before each batch it checks replica lag (mysql_replica_lag_seconds) and waits if above 5 seconds; it reads from the replica, not the primary, in batches of 2,000 rows.",
+  "q5": "Reads: step 5 comparer is clean, and before each increase (1, 10, 50, 100%) a clean pass that finishes after the previous change. Source of truth: step 6 at 100% for 3 days, latest comparer pass clean, and MySQL pending table empty.",
+  "q6": "The pending row (user id and latest version to copy), written in the same MySQL transaction as the change, in the source-of-truth (MySQL) database's pending table. The repair sweeper copies it to Postgres under the version rule and deletes the pending row if the version is unchanged.",
+  "q7": "Tombstones in both databases: every Postgres insert/update checks the tombstone table in the same transaction and skips tombstoned ids (the backfill also skips them). Erasure inserts a tombstone, so a late copy cannot bring the user back.",
+  "q8": "In the Postgres backfill_progress table (one row with last completed id). Each batch's copy and the saved last id commit in one Postgres transaction, so both happen or neither. It stops when a read from the replica returns no rows.",
+  "q9": "The comparer. It reports missing rows in Postgres, rows with differing version/fields, and rows in Postgres not in MySQL; it skips ids with pending rows, rechecks against the MySQL primary, and persistent mismatches are repaired: missing and stale rows copied under the version rule, extra rows deleted from Postgres.",
+  "q10": "The write_pause in the Redis write state key (takes effect in about a second, writes get 503), used instead of flags; pause, drain pending, set sequence, set write_mode to dual_pg_primary, unpause. Pause must last at most 90 seconds total; if 75 seconds pass and step d has not happened, set write_pause off and stop (nothing moved). After step d, do not stop; finish step e, then roll back via step 8 if needed.",
+  "q11": "Postgres assigns ids from its sequence, set to MySQL's AUTO_INCREMENT plus a 1,000,000 margin. On rollback, MySQL's AUTO_INCREMENT is set above the highest id Postgres has issued so it never reuses one.",
+  "q12": "The sweeper and comparer run from Postgres to MySQL (Postgres pending rows copied under the version rule) for 14 days. Rollback reverses step 7: read_from_pg to 0; pause writes, drain Postgres pending until empty; set MySQL AUTO_INCREMENT above highest Postgres id; write_mode to dual_mysql_primary; unpause (same 90s limit and stop rule). The option ends when step 9 (pg_only, backup, drop MySQL table) happens, possible at least 14 days after step 7."
+ }
+}

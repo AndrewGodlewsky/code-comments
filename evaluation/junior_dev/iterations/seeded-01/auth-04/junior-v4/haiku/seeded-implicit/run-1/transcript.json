@@ -1,0 +1,165 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does the Start endpoint do besides saving state, nonce and verifier? Where are they saved (the Redis entries?), how does the Callback find the right ones, and what happens if they have expired or are missing?",
+     "about": "Start endpoint / Notes: saves state, nonce and the PKCE verifier"
+    },
+    {
+     "id": "2",
+     "text": "What is a 'Known identity' exactly? What do you look up in user_identities, and with which value from Google?",
+     "about": "Known identity? decision"
+    },
+    {
+     "id": "3",
+     "text": "For an unknown identity, how does 'Match or create account' decide between matching an existing account and creating a new one? What does it match on?",
+     "about": "Match or create account"
+    },
+    {
+     "id": "4",
+     "text": "In the diagram, F goes to both Confirm password page and start_session. Which case sends the user to each? Does a newly created account skip confirmation?",
+     "about": "Match or create account -> Confirm password page / start_session"
+    },
+    {
+     "id": "5",
+     "text": "On the Confirm password page, what is held in the meantime (which Redis entries, and for how long)? And what does 'the usual lockout applies' mean here: which counter, and what happens when it is hit?",
+     "about": "Confirm password page / Existing accounts are linked after a password confirmation"
+    },
+    {
+     "id": "6",
+     "text": "What is start_session and what does 'the normal session' consist of? Is it the same as a password login?",
+     "about": "start_session / Uses the normal session"
+    },
+    {
+     "id": "7",
+     "text": "When Settings starts Link Google, how does the callback know this is a link for the logged-in user and not a login? What if the Google account is already linked to a different user?",
+     "about": "Settings has its own Link Google button"
+    },
+    {
+     "id": "8",
+     "text": "How does a Google-only user with no password unlink, given that unlinking needs a password? What stops them locking themselves out?",
+     "about": "Settings can also unlink, which needs a password / Google-only users have no password"
+    },
+    {
+     "id": "9",
+     "text": "'Errors show a message and change nothing': which errors are covered (Google failure, bad state, slow or unreachable Google), and where is the user left afterwards?",
+     "about": "Errors show a message and change nothing"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The Start endpoint builds the state, nonce and PKCE verifier, saves them in Redis under oidc:state:<state> for 10 minutes with the purpose (login or link) and, for linking, the signed-in user id, then redirects to Google with scopes openid email profile. The Callback reads and deletes that entry by the state value in one step. If the entry is missing, expired or already used, it shows an error page and changes nothing. Reason: this follows the brief's one-use state and 10-minute round trip."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Known identity means a row in user_identities whose google_sub equals the sub from the validated ID token. We look up by sub only and never use email. Reason: the brief says accounts are identified by sub, so an email change at Google does not break the link."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "For an unlinked sub, the callback first refuses if email_verified is false. Otherwise it compares the lowercased verified email with users.email. A match goes to the confirm-password path. No match creates a new account. Reason: the brief allows matching only on a verified email, and users.email is unique and lowercased."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Only the match branch goes to the Confirm password page. The create branch goes straight to start_session, so a newly created account skips confirmation. Reason: the account is new, so no existing password needs proving, and the verified Google email already shows the person controls that address. The diagram now labels each branch."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The pending link is a Redis entry oidc:confirm:<token> holding the sub, the user id and the next page. The token is in an HttpOnly cookie. It lasts 10 minutes and is deleted on success, on lockout or on expiry. The lockout is the existing users.failed_logins and users.locked_until counters from auth_flow.md: each wrong password adds 1, and the fifth sets locked_until to now plus 15 minutes and resets the counter to 0. On lockout the pending link is also deleted, so the half-finished link is discarded. Checked against existing/auth_flow.md."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "start_session(user_id) is the existing function in auth_flow.md. It deletes the old sessions row if the browser sent a sid cookie, inserts a new sessions row, sets the sid cookie (HttpOnly, Secure, SameSite=Lax) and redirects to the next parameter or /home. The normal session is that sessions row plus that cookie. Google sign-in calls the same function, so the result is identical to a password login. Checked against existing/auth_flow.md and schema.sql."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The Start endpoint saves purpose=link and the signed-in user id in the Redis attempt entry. The callback refuses unless the sid cookie resolves to that same user id, so a changed session cannot link to another account. It also refuses if the Google sub is already linked to anyone, or if this user already has a Google account. Reason: the brief says to refuse for a Google account linked to someone else and allows only one Google account per user."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "A Google-only user cannot unlink, because the brief allows unlinking only when the user has a password. The Settings page refuses and points to the reset email, which sets a password_hash and marks the email verified, as in auth_flow.md. The brief says only that the user must have a password, so the password does not have to be typed again to unlink. This prevents lockout because the last login method cannot be removed."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Covered cases: unknown, expired or used state; Google sending an error such as Cancel; a failed, timed-out or unreachable code exchange; an invalid ID token; email_verified false; lockout; expired pending link; Google account linked elsewhere; and a changed session during link. State errors show an error page. Google, token and sign-in errors return to the start page, which is login or Settings, with a message. Nothing new is written except the existing lockout counter and deleting temporary entries. The timeout length is not set and is listed under Open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Where does the next page come from when Start runs, and is it saved in the oidc:state entry? The pending link holds a next page, but the state entry list does not mention one.",
+     "about": "Start / Callback: State"
+    },
+    {
+     "id": "11",
+     "text": "For a login, does anything tie the callback to the same browser that clicked Sign in, such as a cookie? Or does any browser that arrives with a valid state value get signed in?",
+     "about": "Callback: reads and deletes oidc:state:<state>"
+    },
+    {
+     "id": "12",
+     "text": "On each password submit, how does the server find the pending link and the user? Does it read the token from the HttpOnly cookie? What does the user see if the cookie is missing?",
+     "about": "Confirm password: pending link and cookie"
+    },
+    {
+     "id": "13",
+     "text": "When the callback returns to the start page after a Google error or a bad token, how does it know whether that is the login page or Settings? Is it kept in the state entry?",
+     "about": "Start page, error message"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Start saves the next page in the oidc:state entry. It is the next query parameter, kept only if it is a relative path on our site, the same check start_session makes. The callback reads it in the same step that deletes the entry, and uses it for the redirect after sign-in and as the next page stored in the pending link. Reason: the callback needs a destination, and the attempt entry is the only data it has from Start."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Before this change, nothing tied the callback to the browser that clicked Sign in, so any browser holding a valid state could finish the sign-in. That allows login CSRF: an attacker starts a flow with their own Google account and sends a victim's browser to the callback. The fix is an HttpOnly cookie oidc_state set at Start with the same value as state. The callback requires the URL state to match it. A mismatch shows an error page and leaves the Redis entry for the real browser. Reason: the brief does not spell this out, but state exists to bind a callback to its start. This adds one cookie and is the only new mechanism here; it is a judgment the owner should confirm."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. Each confirm-password submit reads the token only from the HttpOnly oidc_confirm cookie, then loads oidc:confirm:<token> to find the sub and user id. The form carries no token. A missing cookie is treated like an expired pending link: error page, start again, nothing changes. Reason: keeping the token in a cookie stops it being exposed to page code or the form."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The purpose is in the oidc:state entry. The callback reads it in the same step that deletes the entry, so it still has the purpose and next page for the rest of the request. Purpose login returns to the login page; purpose link returns to Settings. If the entry is missing, the callback has no purpose, so it shows the error page from the state branch, which does not need a page choice. Reason: this needs no extra storage."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough, following one request: a user clicks \"Sign in with Google\" on the login page, and Google's email matches an existing password account that has no Google link yet. This is the longest path, so it touches the most parts. I note where the other paths split off.\n\n1. **Start (what starts it).** The user clicks \"Sign in with Google\" on the login page (purpose = login). Settings has a \"Link Google\" button that uses the same Start endpoint with purpose = link. Link requires a signed-in user, otherwise Start refuses.\n   - The Start endpoint creates three random secrets: a state, a nonce and a PKCE verifier.\n   - It writes them to Redis under `oidc:state:<state>`, along with the purpose, the user id (link only) and the next page. The next page is the `next` query parameter, kept only if it is a relative path on our site. The entry lasts 10 minutes.\n   - It sets an HttpOnly cookie `oidc_state` holding the state value, also for 10 minutes.\n   - It redirects the browser to Google with scopes `openid email profile`. The hash of the verifier goes to Google. The nonce goes to Google too.\n   - If Redis is down, the user sees an error page and nothing changes.\n\n2. **Google and back (what moves).** The user authenticates at Google. Google redirects the browser to our callback with `state` and a code in the URL. Nothing of ours is stored during this hop. The state is held in the Redis entry and in the browser cookie.\n\n3. **Callback, browser check.** The callback compares the `state` in the URL to the `oidc_state` cookie.\n   - If they differ or the cookie is missing, it shows an error page and changes nothing. It deliberately leaves the Redis entry alone, so the real browser can still finish.\n\n4. **Callback, load the attempt.** It reads and deletes `oidc:state:<state>` in one step, which makes the state usable once. It keeps the purpose, user id and next page in memory for the rest of the request, and clears the `oidc_state` cookie.\n   - If the entry is missing (unknown, expired or already used) or Redis is down, it shows an error page and changes nothing.\n\n5. **Callback, Google error or token exchange.**\n   - If Google sent an `error` (for example the user pressed Cancel), the user goes back to the start page with a neutral message. That page is the login page for login and Settings for link. Nothing new is stored.\n   - Otherwise it exchanges the code, sending the actual verifier. It then checks the ID token's signature, issuer, audience, expiry and nonce, and reads `sub`, `email` and `email_verified`.\n   - If the exchange fails or times out, or the token is invalid, the user goes back to the start page with an error message. Nothing new is stored.\n\n6. **Branch on purpose.** The stored purpose decides what happens next.\n   - Link purpose goes to step 12.\n   - Login purpose continues below.\n\n7. **Login, look up the sub.** The callback looks for `sub` in `user_identities`.\n   - If found, it goes straight to start session (step 11). Linked users are found by `sub`, never by email.\n\n8. **Login, unlinked sub, check email.**\n   - If `email_verified` is false, the user is sent to the login page with a message to use email and password. Nothing is created.\n   - If the verified email matches no user, a user is created with no password (`password_hash` is nullable) and a verified email, and the link row is inserted. Then it goes to start session. If the insert hits the unique email constraint, the user sees an error page and nothing changes. The document says the same applies when two sign-ins for the same email arrive at once.\n   - If the verified email matches a user who already has a different Google account, the user is sent to the login page with a refusal and nothing changes.\n   - Otherwise, which is our example, it saves a pending link in Redis at `oidc:confirm:<token>` holding `sub`, user id and next page. It sets the HttpOnly cookie `oidc_confirm` with the token and shows the confirm password page.\n\n9. **Confirm password, entry checks.** The user submits a password. Each submit reads the token from the `oidc_confirm` cookie and loads the pending link from Redis.\n   - If the cookie is missing or the pending link has expired (10 minutes), the user sees an error page saying to start again. Nothing changes.\n\n10. **Confirm password, outcomes.**\n   - If `users.locked_until` is in the future, the user sees \"Account temporarily locked\". The pending link is deleted and the cookie cleared. The password is not checked.\n   - If the password is wrong, `failed_logins` goes up by 1 and the confirm page is shown again with an error. On the 5th failure, `locked_until` is set to now plus 15 minutes, `failed_logins` is reset to 0, the pending link is deleted, and the locked message is shown.\n   - If the password is right, `failed_logins` is set to 0, the `user_identities` row (user_id, google_sub) is inserted, the pending link is deleted, the cookie cleared, and start session is called.\n   - The password is checked with bcrypt, per the existing password login.\n\n11. **Start session.** This is the existing `start_session(user_id)`, the same call password login makes. It deletes any old `sessions` row for the cookie, inserts a new one, sets the `sid` cookie, and redirects to the next page or `/home`. This is the end of the main flow.\n\n12. **Link from Settings (other branch).** This happens after step 6 when the purpose is link.\n   - The `sid` cookie must belong to the user id saved in the attempt. If not, it refuses.\n   - It also refuses if the `sub` is already linked to anyone, or if this user already has a Google account.\n   - Otherwise it inserts the `user_identities` row and returns to Settings. No password is asked and the emails need not match.\n   - A refusal is shown in Settings and nothing changes.\n\n13. **Unlink.** In Settings, if `password_hash` is NULL the user is refused and told to set a password via the reset email. Otherwise the user's `user_identities` row is deleted, with no password asked.\n\nState summary: the Redis state entry and the `oidc_state` cookie cover a sign-in attempt. The Redis confirm entry and the `oidc_confirm` cookie cover a pending link. The `user_identities` table holds the permanent Google link. The `users` table holds the lockout counters. The `sessions` table plus the `sid` cookie hold the session. Google's tokens are never stored, and `users.email` is never changed.",
+   "gaps": [
+    "The document says the confirm-password page shows an error on a wrong password, but not whether `oidc_confirm` and the pending link are kept (they appear to be) or how the page re-renders. This is minor.",
+    "It does not say what the login-page 'refusal' or 'use email and password' messages look like or how they are carried (flash message, query parameter). It also does not say how the page distinguishes 'neutral' from 'error' messages.",
+    "It does not say how the callback learns the user's session identity in the link case (it only says the `sid` cookie must belong to the saved user id) or what happens if there is no `sid` at all. The failure table covers only 'session user has changed'.",
+    "It does not say what the code exchange and ID token validation use for client credentials or endpoints (client id and secret, discovery and JWKS). I did not need these to explain the flow order, but the exchange step cannot be fully described without them.",
+    "It does not say what happens if the user_identities insert in the confirm-password success path fails (for example the sub got linked elsewhere in the meantime), or how the user is told.",
+    "It does not say what happens to an existing, still-valid `oidc_confirm` pending link if the user starts Google sign-in again. It does not say whether the pending link is bound to the state cookie either."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

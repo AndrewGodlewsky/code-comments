@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is in the sid cookie: a random ID that is looked up in the sessions table, or something else? What columns does a session row hold?",
+     "about": "Server-side sessions in Postgres, cookie `sid`"
+    },
+    {
+     "id": "2",
+     "text": "What happens when login_locks shows the account is locked? What does the user see, and does the app skip the password check?",
+     "about": "A->>DB: check login_locks"
+    },
+    {
+     "id": "3",
+     "text": "Where are login_failures written, and what is the lock keyed on: username, IP, or both? What creates the row in login_locks?",
+     "about": "Lockout: 5 fails / 10 min, 15 min lock"
+    },
+    {
+     "id": "4",
+     "text": "What does 'validate session' check on each page request, and how are the 30 min idle and 12 h max timeouts tracked? Does each request extend the session?",
+     "about": "A->>DB: validate session; Timeouts: 30 min idle, 12 h max"
+    },
+    {
+     "id": "5",
+     "text": "What does the page request do when the cookie is missing, unknown or expired? Is the expired row deleted then or only by the cleanup job?",
+     "about": "A-->>B: page or redirect to /login"
+    },
+    {
+     "id": "6",
+     "text": "What does 'New session ID on each login' mean here? If the browser already has an old sid, is that old session deleted or reused?",
+     "about": "New session ID on each login"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Handle DB errors' mean in practice? If Postgres is down or slow during login or page validation, what does the user get, and is the user treated as logged in or out?",
+     "about": "Handle DB errors"
+    },
+    {
+     "id": "8",
+     "text": "What is the cleanup job, how often does it run, what runs it, and which tables does it clean?",
+     "about": "Cleanup job for expired rows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The cookie holds only a random 32-byte base64url ID that is the primary key of the sessions table. Columns: id, user_id, created_at, last_seen_at. Now stated in Terms."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The app returns HTTP 429 with the login page and a 'Too many attempts, try later' message, and skips the password check (brief requirement 3). The lock applies to any email, so it reveals nothing. Now shown in the diagram."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Failures are inserted into login_failures by the login handler after an unknown email or wrong password. The lock is keyed on lowercase email only; IP is left out because the brief defines the limit per email. The same handler creates the login_locks row when it sees 5 or more failures in the last 10 minutes."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Validate loads the session by sid and rejects it if now - last_seen_at > 30 min or now - created_at > 12 h. Each valid request sets last_seen_at = now (brief requirement 6); created_at is fixed. Now in Rules."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It clears the cookie and redirects to /login (brief requirement 7). If an expired row exists it is deleted right then; the cleanup job catches abandoned rows that are never presented again. Now in the diagram and Rules."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The old session named by the incoming cookie is deleted and never reused, then a new ID is issued (brief requirement 4). Now in the diagram and Rules."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Concretely: login, page and logout return a 503 page, and the user is treated as not signed in (fail closed). On page and logout failures the cookie is kept so a retry still works. This is the simplest handling, with no retry queue or fallback store. Now a table in the file."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "It is one idempotent SQL delete run hourly by a timer inside each app instance. It cleans sessions (expired), login_failures (older than 10 min) and login_locks (locked_until passed). Running on both instances is harmless, so no coordination is needed. Now in Rules."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point. Every page except /login needs a signed-in user. The browser holds only a cookie called sid, which is a random 32-byte ID (base64url). It carries no user data. All state lives in Postgres, in three tables: sessions (id = sid, user_id, created_at, last_seen_at), login_failures (email, failed_at) and login_locks (email, locked_until). The cookie is HttpOnly, Secure, SameSite=Lax.\n\n2. Login request. The user submits email and password with POST /login. The app lowercases the email and asks Postgres whether a login_locks row exists for it with locked_until in the future.\n\n3. If locked. The app returns 429 and the login page with \"Too many attempts, try later\". It does not check the password, and it records no failure.\n\n4. If not locked. The app looks up the user by lowercase email and runs a bcrypt check. If there is no such user, it runs the check against a dummy hash. That way unknown and known emails look the same.\n\n5. Failed login (unknown email or wrong password). The app inserts a login_failures row. It then checks for 5 or more failures in the last 10 minutes. If so, it upserts a login_locks row with locked_until = now + 15 min. It returns 401 and the login page with \"Invalid email or password\".\n\n6. Successful login. The app deletes the old session named by the incoming cookie, even if that session belongs to another user. It deletes this email's failures and lock, and inserts a new session row with a fresh random ID. It sends Set-Cookie sid=<new ID> and a 302 to /dashboard.\n\n7. Protected page request. The browser sends GET with the sid cookie. The app loads the session by sid from Postgres.\n\n8. Invalid session. If the cookie is missing, the ID is unknown, or the session is expired, the app deletes the row if it exists. It clears the cookie and sends 302 to /login. A session is expired if now - last_seen_at > 30 min or now - created_at > 12 h.\n\n9. Valid session. The app sets last_seen_at = now and returns the page. created_at never changes, so the 12 h cap is absolute.\n\n10. Logout. POST /logout deletes the session if there is one. The app clears the cookie and sends 302 to /login.\n\n11. Cleanup. Each of the two app instances runs one idempotent delete hourly. It removes expired sessions, failures older than 10 minutes, and locks whose locked_until has passed. This is housekeeping only. Correctness comes from the expiry check at request time.\n\n12. Failure handling. If Postgres fails or is slow, nobody is let through.\n- Login returns a 503 page \"Something went wrong, try again\" and issues no session.\n- A protected page returns a 503 page and keeps the cookie, because the session may still be valid.\n- Logout returns a 503 page and keeps the cookie so the user can retry.",
+   "gaps": [
+    "The document does not say what the 'slow' threshold is, such as a timeout value, that turns a slow Postgres into the 503 case.",
+    "It does not say how a login attempt for a known email whose user row exists is tied to user_id or what the password hash column or storage looks like. This matters little for the flow but the lookup result is not described.",
+    "It does not say what happens to the cookie on a 429 or 401 login response, or whether an incoming old cookie is touched on a failed login. Only a successful login deletes the old session.",
+    "It does not say how the 'last 10 min' failure count interacts with the cleanup job timing. Failures can be up to an hour old until cleanup runs, but the count query presumably filters by time. The document implies this but never states it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

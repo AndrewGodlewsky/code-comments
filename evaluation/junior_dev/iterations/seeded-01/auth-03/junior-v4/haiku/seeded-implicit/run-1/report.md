@@ -1,0 +1,36 @@
+## Review of auth-03 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a short summary and a terms list above the diagram.
+- Replaced the flat diagram labels with three numbered steps, each showing its checks and writes.
+- Added a table giving, for each step, what starts it, which data it keeps and what happens when it fails.
+- Stated that the rate-limit counter is the reset_tokens rows, so no separate counter is needed.
+- Stated that opening a link never uses it, and that the save, use-up and session deletion happen in one transaction.
+- Stated that the token check runs before the password check, so a rejected password keeps the link usable.
+- Moved the explanation of the generic message and the API reply timing into notes under the diagram.
+- Added open questions: the breached-list source, worker backoff delays, the raw token in the queue job, concurrent requests passing the limit, and silent send failure.
+- The file is longer than the original because the brief requires the failure paths. The diagram and terms are kept short to limit growth.
+- Fixed the note that said step 1 finds the user from the hash. Steps 2 and 3 do this, and step 1 finds the user by email.
+- Rewrote the limit as 3 or more rows stops the request. The count runs before the insert, so the 4th request in an hour is refused. This fixes the earlier 'over 3' wording and matches the brief.
+- The form now posts back to the same link address, so the token stays only in the link, as the brief requires. This answers how the token gets from the link to the submit.
+- Added a note that at most one link is unused at a time, because each new link revokes the older ones.
+- Stated that a failed 'password changed' email does not undo the reset or stop the redirect, and added that row to the failure list in step 3.
+- Merged the two raw-token open questions into one and added whether the logs keep a copy of the job.
+- Moved the summary and terms to the top, merged the send-email failure text into step 4, and removed the repeated 'after the email is sent' sentence. The file is shorter than before.
+- Added a short 'What this is' paragraph that first says how the existing email queue works today, then what the change adds.
+- Added a 'Generic message' term so the message is defined once instead of described in a note.
+- Cut the note 'Opening a link never uses it', which step 2 already says ('Nothing is changed').
+- Cut the note 'At most one link is unused at a time', which step 1 already does by revoking older rows.
+- Cut the note 'The API replies after queueing the email', which step 1 already states.
+- Cut the note 'The generic message is the same for...', which the Generic message term now covers.
+- Moved the limit detail (the count includes revoked and used rows, and runs before the new row is added) from the notes into step 1, where the count happens.
+- Moved the 'form posts back to the same link address' note into step 3's start line, where it applies.
+- Removed the separate failure table. Each step's 'If it goes wrong' line now holds the failure handling, so nothing is stated twice.
+- Shortened step wording and clarified step 1 to revoke the 'older' unused rows, matching the brief and the diagram.
+- Merged the two open questions about the raw token in queue and worker logs into one question, and kept its substance.
+
+### Holes
+- Q9: In 'Set password', if the password fails the check (too short or in the breached list), is the token still usable? Where does the breached-list check get its data? (author: Yes, the token stays usable after a rejected password. The brief says the link works until it expires, and the token check runs before the password check, so a rejected password uses nothing. The source of the breached-password list is not stated in the brief or the existing system, so it is unknown. It is listed as an open question.)
+- Q14: What does the worker do with the raw token in a job once the email is sent or the job is dropped? Is the job removed from the queue at that point? (author: The brief implies a sent job is removed, and a dropped job is removed after the last failed try. It does not say how the queue or the worker logs keep or delete the job data after that. It is not known whether a copy of the raw token stays in queue storage or logs. This is listed under open questions, together with the question of keeping the link out of logs.)

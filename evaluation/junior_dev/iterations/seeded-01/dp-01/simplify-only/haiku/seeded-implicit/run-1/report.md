@@ -1,0 +1,19 @@
+## Review of dp-01 (simplify-only, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Cut the five-bullet list under the diagram. Its points now sit in the terms and in the steps, so nothing is said twice.
+- Connected every node in the diagram. In the first draft, the watermark, runs, reconciliation, deadline check and alerts had no edges.
+- Added the staging step and the merge rule: latest version wins, and an older copy never replaces a newer one. This makes a rerun harmless.
+- Moved the HWM update into the same transaction as the merge, so the HWM advances only when the data commits.
+- Spelled out the retry timing: three attempts, 15 minutes apart, then page on-call after the third failure.
+- Specified the 06:00 check. It posts a staleness alert if no committed run exists, and dashboards read only fact_orders, so they never see a partial night.
+- Spelled out the Sunday reconciliation: its scope, the comparison, the per-day reload path and the rule for a failed night load.
+- Replaced a separate failure table with per-step failure handling, so each step says what happens when it goes wrong.
+- Added open questions for the gaps in the brief.
+- Decided, not in the brief: the HWM is the largest updated_at in the committed batch, and reconciliation is skipped on a Sunday whose night load did not commit.
+- Length is above 1.5 times the first draft. The brief requires the failure paths and where state lives, which the first draft did not have.
+
+### Holes
+- None.

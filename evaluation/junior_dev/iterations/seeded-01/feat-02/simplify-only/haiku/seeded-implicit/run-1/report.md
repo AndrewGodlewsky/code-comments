@@ -1,0 +1,18 @@
+## Review of feat-02 (simplify-only, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Restructured the document in the required order: a short summary of the existing system and the main flow, then terms, then the Mermaid sequence diagram, then numbered steps, a failure table and open questions.
+- Added the terms a newcomer needs (customer, plan, window, counter, check_and_incr, fail open), each defined in one line.
+- Merged the draft's separate notes on limits, the 401 path, the 429 path, the Lua script and the TTL into the numbered steps, so each rule is stated once.
+- Cut the draft's bare note list and replaced it with per-step detail: what starts each step, what it does, what it keeps and what happens when it goes wrong.
+- Added the rules the draft did not state: 401 touches no counter, 429 requests are not counted, backend failures are counted, Retry-After calculation, fail-open responses carry no X-RateLimit headers, and headers appear only on requests that passed the check.
+- Added a failure table covering the 401, 429, backend failure and counter-store failure cases.
+- Moved the Enterprise limit to step 2 and into the open questions, and kept it visibly TBD (Product) without inventing a number.
+- Added a note that plan changes take up to 5 minutes because of the cache, and a note that fixed windows allow bursts across a minute boundary.
+- Added an open question about Key Service outages, which the brief does not cover.
+- Did not add any new mechanism such as a lock, lease, retry queue or takeover rule.
+
+### Holes
+- None.

@@ -1,0 +1,176 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw log\" that the collector writes to? Is it a queue/stream or a file store, and who owns it?",
+     "about": "2. Collector"
+    },
+    {
+     "id": "2",
+     "text": "How do the Archiver and the Live processor each get events from the raw log? Do they both read the same log independently?",
+     "about": "3. Archiver / 4. Live processor"
+    },
+    {
+     "id": "3",
+     "text": "When the SDK retries a batch, what does the collector do with events it has already accepted? Where do duplicates get removed, and is it only in the Live processor?",
+     "about": "1. SDKs retry with backoff / 4. dedups on event_id"
+    },
+    {
+     "id": "4",
+     "text": "What does the collector check to call an event malformed? Who looks at the reject bucket, and does the SDK learn that events were rejected?",
+     "about": "2. Collector validates events / reject bucket"
+    },
+    {
+     "id": "5",
+     "text": "What is the KV store here, what does it hold for dedup, and how long are event_ids kept? What happens if the KV store is down or slow?",
+     "about": "4. Live processor dedups on event_id using the KV store"
+    },
+    {
+     "id": "6",
+     "text": "What does the Live processor do when enrichment fails (geo-IP or user agent lookup fails) or the load into events_clean fails?",
+     "about": "4. Live processor enriches and loads events_clean"
+    },
+    {
+     "id": "7",
+     "text": "What triggers the Replay job and who decides which day to rebuild? Does it dedup and enrich the same way as the Live processor, and what happens to live events arriving for that day during the swap?",
+     "about": "5. Replay job"
+    },
+    {
+     "id": "8",
+     "text": "What is \"consumer lag\" measured on, which consumers, and what happens when an alert fires?",
+     "about": "6. Monitoring and alerts on consumer lag"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The raw log is the existing replicated, append-only log with 14-day retention, from the brief. The collector writes to it, and it returns 202 only after the log confirms the write. Its owner is not stated in the brief, so it is listed under open questions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. The live processor and the archiver each have their own consumer group and committed offset, so they read the same log independently and do not affect each other. Log retention is 14 days, so the archiver must not fall behind by that much, which is why it has a lag alert."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The collector does not dedup. On a retry it writes every accepted copy to the raw log, and the archiver keeps all of them, because the brief requires duplicates to be kept as received. Duplicates are removed only in the live processor (against the dedup store) and in the replay job (against the archive). The first copy wins."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The brief defines malformed as missing event_id, missing device_id, or over 32 KB. The collector checks only those rules. Rejected events go to the reject bucket with a reason. The SDK learns of rejections from the response, which lists each rejected event by batch position and reason, and it never resends them. Who reviews the reject bucket is not stated, so it is an open question."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The dedup store is the existing key-value store with per-key TTL. Each key is an event_id, written only after the event is loaded, with an 8-day TTL. A retry can arrive up to 7 days after the first copy, so 8 days leaves a day of margin. If the store is down or slow, the live processor stops and does not commit, so events wait in the raw log for up to 14 days. A slow store can also breach the 5-minute target, which the lag alert covers."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "If an enrichment lookup errors, the event still loads with empty enrichment fields and enrich_status = failed, and replay fixes it later. If the load fails, the processor does not write the dedup key or commit, and it retries the batch. A crash after the load but before the dedup write can load the event twice; whether the warehouse can merge on event_id to prevent this is unknown, so it is an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An operator starts the replay for one day, and it refuses any day that is not closed or that the live processor has not finished. The replay does the same dedup as live, but from the archive: it keeps the earliest copy of each event_id from 8 days before the day through the end of that day, and keeps it only if it falls on that day. It uses the same enrichment code as live, with the fixed version. It never touches the dedup store. Live events are stamped with their arrival day, so none are written into a closed day, and the swap replaces that partition atomically, so dashboards never see a half-rebuilt day."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Consumer lag is measured as the newest raw log offset minus each consumer group's committed offset, shown as message count and as the age of the oldest unprocessed event. It is watched for the live processor and the archiver. The live alert fires at 3 minutes so there is time to act before the 5-minute target. The archiver alert fires at 1 day, because the log keeps only 14 days. Who responds to an alert and what they do is not known, so it is an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The processor checks the dedup store per event but only writes the key after the load. If two copies of the same event_id are in one batch, or arrive before the first copy's key is written, does the dedup catch the second one?",
+     "about": "4. Live processor, steps 1, 3 and 4 (check, load, write dedup)"
+    },
+    {
+     "id": "10",
+     "text": "What is a 'batch' for the live processor, meaning how many events it loads before it writes dedup keys and commits? Is the dedup write one call per event or per batch?",
+     "about": "4. Live processor, steps 3 to 5 and the 'Load into events_clean fails' row"
+    },
+    {
+     "id": "11",
+     "text": "How does the replay job know the live processor has finished day D? Does it compare the committed offset to something, and who checks this?",
+     "about": "5. Replay job: refuses to run unless D is closed and the live processor has finished D"
+    },
+    {
+     "id": "12",
+     "text": "Why is a day closed at 02:00 UTC the next day and not at midnight? What does the 2 hours cover?",
+     "about": "Terms: Closed day"
+    },
+    {
+     "id": "13",
+     "text": "When the replay says it keeps the earliest copy of each event_id, earliest by what, received_at or position in the archive? And how does that match which copy the live processor loaded first?",
+     "about": "5. Replay job, step 2 (keeps the earliest copy)"
+    },
+    {
+     "id": "14",
+     "text": "Events loaded with enrich_status = failed get fixed by replay. Does anything find those days and start a replay, or does an operator have to notice? How long can they stay unfixed?",
+     "about": "What happens when things fail: Geo-IP or user-agent lookup errors"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Batches run one after another, and each batch writes its keys (step 4.4) before the next batch is checked, so a copy in a later batch sees them. Copies inside the same batch are dropped in memory (step 4.1). Two copies in different partitions, or processed in parallel, are not covered; this is an open question in the file, since the brief does not say how the log is partitioned."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "A batch is the set of raw log entries read in one pass. Keys are written once per batch, after the whole batch has loaded, so a failed load writes no keys. The batch size is a code detail and is left out of the plan. Whether the store takes one write call per batch or per event is also a code detail, answered here only. The wider window for duplicates after a crash is covered by the existing open question."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The replay job checks by itself when started, and refuses to run otherwise. It compares the live processor's committed offset with the offset of the first raw log entry appended after 02:00 UTC on D+1. The committed offset moves only after a batch has loaded, so passing this check means every entry for D is loaded. The check holds only if collector writes finish well inside the 2-hour gap, which is an open question."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The 02:00 close comes from the brief. I chose the 2-hour gap as slack. A request stamped just before midnight can still be writing to the raw log, and the live processor can lag by several minutes. The brief does not give a reason, so this is my reasoning, and the plan now states it. Whether a collector write can take 2 hours is not known; it is an open question."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Earliest means lowest raw log offset, not received_at. The live processor handles entries in offset order, so the lowest offset is the copy live loaded first. The archiver keeps each entry's offset so the replay can use the same order. This assumes one order across the log; if the log has several partitions, that needs its own rule, which is an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing in the plan found them before. I added a daily check that counts failed-enrichment events per closed day and alerts (step 7). Replay still starts only when an operator runs it. A day can be fixed until about 82 days after it ends, because replay of D reads archive entries from D-8 and the archive keeps 90 days (8 + 90 - 8 = 82 days after D). Who responds to the alert is an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. SDK sends. The app has events, so the SDK sends them over HTTPS in batches of up to 100. Unacknowledged events stay in an on-device buffer for up to 7 days. If the request times out or gets 429 or 5xx, it resends the same batch with the same event_ids, backing off from 1 s to 5 minutes. It never resends events the collector rejected.\n\n2. Collector. A batch arrives. For each event it checks for event_id, device_id and size (max 32 KB). Malformed events are rejected one at a time and written to the reject bucket with a reason. The rest are stamped with received_at (server time) and written to the raw log. It does not dedup. It returns 202 only after the raw log confirms the write, and the response lists rejected events by batch position and reason. If the raw log write or the reject bucket write fails, it returns 5xx and the SDK resends. Events already in the raw log become duplicates, which are kept.\n\n3. Raw log. This is the shared append-only log. Each entry has an offset. It holds every accepted event, duplicates included, for 14 days. Two independent readers follow it, each with its own consumer group and committed offset.\n\n4. Archiver. New raw log entries start it. It writes every entry unchanged, with its offset, duplicates included, into the hourly archive file, then commits its offset. The archive keeps files for 90 days. If it falls behind, it resumes from its committed offset and the lag alert fires.\n\n5. Live processor. New raw log entries start it. It takes one batch at a time, in log order, and does these things:\n   a. It drops an event if its event_id is already in the dedup store, or if an earlier event in the same batch has that id. The first copy wins. If the dedup store is down or slow, it stops without loading or committing. Events wait in the raw log for up to 14 days, and the lag alert fires.\n   b. It adds geo-IP and user-agent fields. If a lookup errors, it keeps the event with empty fields and sets enrich_status = failed.\n   c. It loads the remaining events into the events_clean partition for each event's received_at day. If the load fails, it writes no keys, does not commit, and retries the batch.\n   d. It writes the loaded event_ids to the dedup store with an 8-day TTL, once for the whole batch. If this write fails, the document says it behaves like a crash after load, so events may load twice.\n   e. It commits its offset.\n   The target is that events reach events_clean within 5 minutes.\n\n6. Replay (operator-started, for one day D). The job first refuses to run if D is not closed (the next day has reached 02:00 UTC) or if the live processor has not finished D. It checks the second condition by finding, by time, the first raw log entry appended after 02:00 UTC on the day after D, and confirming the live processor's committed offset is at or past it. If it refuses, you try again later. Otherwise it:\n   a. Reads archive entries with received_at from 8 days before D through the end of D.\n   b. For each event_id, keeps the copy with the lowest raw log offset, and only if its received_at falls on D. This matches the copy live loaded.\n   c. Applies the current enrichment code.\n   d. Writes the result to a staging table.\n   e. Atomically replaces partition D of events_clean with the staging table, so dashboards see the old day or the new day, never a mix.\n   It never touches the dedup store. If it fails before the swap, events_clean is unchanged and you rerun it.\n\n7. Monitoring. Lag is the newest raw log offset minus each consumer group's committed offset, tracked as a message count and as the age of the oldest unprocessed event. The live processor alerts when its oldest unprocessed event is over 3 minutes old. The archiver alerts when it is more than 1 day behind. Separately, once a day a check counts events with enrich_status = failed for each closed day and alerts if any day has some. The fix is to replay that day. A replay of D reads archive entries from D-8 and the archive keeps 90 days, so a day can be fixed until about 82 days after it ends.",
+   "gaps": [
+    "How the live processor's batch is formed (size, or how many raw log entries or what time window make up one pass) is not stated, and I need it to explain step 5.",
+    "Whether the raw log is one partition or several is undecided (open question), so I cannot say what order the live processor reads in or what lowest offset means across partitions.",
+    "Whether the warehouse load can merge on event_id is unknown, so I cannot say what happens to rows when a batch is retried or the dedup key write fails after the load. Whether a duplicate row is overwritten or doubled is unexplained.",
+    "Who reviews the reject bucket, what happens to rejected events afterwards, and who owns the raw log and reject bucket are not stated.",
+    "How the operator starts a replay (interface or command) and how they know which days need one is not described. Who responds to the lag and failed-enrichment alerts, and the runbook, are also not described.",
+    "The document does not say what the collector does if some events are rejected and the raw log write succeeds for the rest. It implies 202 with a rejection list, but it does not say whether the SDK is expected to read the list.",
+    "How the live processor detects that a dedup-store lookup is 'slow' (timeout threshold) is not given."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,199 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What do the new tables hold? What are tombstones, pending, and backfill progress for, and which rows live in which database?",
+     "about": "Create the new tables in Postgres and MySQL (users, tombstones, pending, backfill progress)"
+    },
+    {
+     "id": "2",
+     "text": "What does a dual write do when the MySQL write succeeds and the Postgres write fails, or the reverse? Which write is the source of truth at that stage?",
+     "about": "Turn on dual writes via `users.write_mode`"
+    },
+    {
+     "id": "3",
+     "text": "What are the values of `users.write_mode`, and where is the flag stored and changed?",
+     "about": "users.write_mode"
+    },
+    {
+     "id": "4",
+     "text": "What do the sweepers do, when do they run, and what do they act on?",
+     "about": "Deploy the updated UserRepository, sweepers and comparer"
+    },
+    {
+     "id": "5",
+     "text": "How does the backfill handle a user row that is changed by a live dual write while the backfill is copying it? And what does the backfill do when replica lag is too high?",
+     "about": "Run the backfill from the replica (2k batches, respect replica lag)"
+    },
+    {
+     "id": "6",
+     "text": "What does the comparer compare, how often does it run, and what counts as 'clean'? What happens to the differences it finds?",
+     "about": "Run the comparer until it's clean"
+    },
+    {
+     "id": "7",
+     "text": "What does `users.read_from_pg` do at each percentage? Is it per request or per user? What do you watch to decide to move to the next step, and how do you go back?",
+     "about": "Ramp `users.read_from_pg` 1/10/50/100"
+    },
+    {
+     "id": "8",
+     "text": "Why do writes need to be frozen and the Postgres id sequence restarted? Where does the sequence restart to, and how long is the freeze? What happens to write requests during it?",
+     "about": "Freeze writes, restart the Postgres id sequence, switch `write_mode` to Postgres primary"
+    },
+    {
+     "id": "9",
+     "text": "How would you roll back during the 14 days? What do you do to MySQL and to the flags, and how are writes that only reached Postgres handled?",
+     "about": "Keep MySQL in sync for 14 days (rollback still possible)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Postgres holds the copy of `users`, plus `tombstones` and `pending`. MySQL keeps its `users` table and also holds `tombstones`, `pending`, `backfill_progress` (one row per job with `last_id` and a heartbeat) and `migration_state` (the time reads reached 100%). A tombstone records an erased id and is kept in both databases. A pending row is one per user id whose copy to the other database is not confirmed; it lives in the source database. The Terms section now defines each of these."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "While MySQL is the source, the MySQL write commits first, with its pending row in the same transaction. If Postgres then fails, the user's request still succeeds, and the sweep copies the row later. The reverse cannot happen in dual mode, because Postgres is only ever written after MySQL commits. If the MySQL write fails, the request fails as it does today and nothing is copied. MySQL stays the source of truth until step 7."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The values are a decision: mysql, dual, paused, pg_primary and pg_only. The existing docs do not say where the flag is stored or who changes it, so I cannot answer that part. It is listed under Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The sweep copies each pending row from the source database to the other one, and deletes the pending row once the copy succeeds. An erase is copied as a tombstone. It runs every minute. The comparer is separate: it compares the tables and repairs differences only through the copy rule. The scheduler that runs the sweep is not described in the existing docs, so that is an open question."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The backfill takes no row locks. The copy rule settles races: a live write's newer version is never overwritten by an older backfill copy, and an older copy is replaced when the live write arrives. If a row was erased during the copy, the Postgres tombstone check stops it from coming back. When replica lag is above 5 seconds, the job waits and rechecks every 10 seconds before it reads the next batch. It never skips a batch."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The comparer compares each id's fields and version between the replica and Postgres, in batches of 2,000 ids. Each mismatch is re-read from the MySQL primary. If it still differs, the copy rule is applied and the mismatch is counted. A clean pass is one full pass with zero mismatches and no pending rows in MySQL. Passes run back to back until one is clean, and the comparison is run again in the Postgres-to-MySQL direction during the 14-day window."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The read flag applies per user. `enabled_for` buckets by key, so the same key always gets the same answer (checked in flags_and_jobs.md), and the key is the user id. Before each step up, I watch that the comparer is clean, that there are no Postgres read errors, and that every instance shows the new value in `app_flag_value`. Each step holds for 24 hours; that hold time is my choice, not something the brief sets. To go back, lower the percentage; reads return to MySQL within 30 seconds, and the 100% time is cleared."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Writes pause so that MySQL and Postgres cannot both issue the same id. Once every instance has stopped writing to MySQL, the MySQL max id is final, so the Postgres sequence can be set above it. The sequence is set to the larger of the two tables' max ids, plus 1,000,000. The pause lasts until every instance shows `pg_primary`. It takes at least the 30-second flag refresh twice, so the target is under 90 seconds, and if not every instance has switched within 75 seconds the step goes back to `dual`. Write requests get a retryable 503 during the pause. The 10-second in-flight wait is an assumption; it is listed under Open questions."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "To roll back before step 9, set writes to `paused`, then run the sweep until no Postgres pending rows remain, so every write that reached only Postgres is copied into MySQL with its id. Next, set MySQL `AUTO_INCREMENT` above both tables' max ids, then set `write_mode` to `dual`. `read_from_pg` is left as it is, since Postgres holds every write. The migration-state time is cleared, so the 3-day wait starts again. Once step 9 has started, rollback is no longer possible."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "What is `version` on a user row? Who sets it, and does it go up on every create, update and erase?",
+     "about": "Copy rule: 'If the target's row has a lower `version`'"
+    },
+    {
+     "id": "11",
+     "text": "Does the Postgres copy run inside the user's request, before the response is sent, or in the background? What timeout counts as 'times out'?",
+     "about": "Turn on dual writes: 'Then the copy rule runs in Postgres with the committed row'"
+    },
+    {
+     "id": "12",
+     "text": "How does the sweep know a newer version was written? What happens to that pending row, and what does the sweep copy: the row as it was, or the current row?",
+     "about": "Sweep: 'deletes the pending row, unless a newer version has been written since'"
+    },
+    {
+     "id": "13",
+     "text": "On an erase in dual mode, what exactly happens in MySQL and in Postgres to the user row and the tombstone? Is the pending row for an erase different from other pending rows?",
+     "about": "Erase and tombstone"
+    },
+    {
+     "id": "14",
+     "text": "How does the backfill or comparer job first get started in step 4 and step 5, and what does 'dead-lettered' mean here? What job system runs them?",
+     "about": "Backfill: 'The sweep also restarts it if its heartbeat is more than 10 minutes old'"
+    },
+    {
+     "id": "15",
+     "text": "In dual mode pending rows only live in MySQL, so why would Postgres have pending rows at this step? Also, who runs step 7's substeps: a person or a script?",
+     "about": "7. Make Postgres the source: 'Run the sweep until pending is empty in both databases'"
+    },
+    {
+     "id": "16",
+     "text": "If a read from Postgres misses a pending write, what does the user see (stale row, missing row, or an error)? Can that happen for the user's own just-made change?",
+     "about": "Step 6 Known gap and Step 5 Clean"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "In user_repository.py, `create` sets version to 1, and each successful `update` adds 1 (`version = version + 1`). `delete` does not touch version, and a deleted row has no version, so the tombstone decides an erased id. Terms now define version this way."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The Postgres copy runs inside the user's request, after the MySQL commit and before the response is sent, with a short timeout. Any error or timeout still returns success, and the pending row stays for the sweep. The exact timeout value is an implementation detail, so the plan leaves it out. Running inline means the user's own change is usually already in Postgres when the response returns."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The pending row stores the user id, the version it was written for, and an erased flag. Each write replaces it in the same transaction, so a newer write changes its version. The sweep reads the current row from the source (not a snapshot), copies it with the copy rule, then deletes the pending row only where its version still matches the copied version. If a newer write changed it, the delete matches nothing and the next sweep copies again. The sweep copies the current row, not the old one."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "In MySQL, an erase runs in one transaction: delete the users row, insert the tombstone, and write a pending row with erased set and the last version. In Postgres (inline, as in step 3), one transaction writes the tombstone and deletes the Postgres row. The pending row is stored the same way as any other, with an erased flag; the difference is in what the copy does (tombstone and delete, not insert or replace). The sweep deletes it on success, like other pending rows."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Backfill and comparer run as jobs on `app.jobs` (a Redis queue with separate workers, per flags_and_jobs.md). An operator enqueues backfill once every instance shows dual, and enqueues comparer once backfill is done. Each batch saves progress and the heartbeat. Dead-lettered means the job system gave up after 5 retries (about 15 minutes) and moved the job to jobs:dead, where nothing restarts it. So the sweep checks the heartbeat each minute and enqueues a new run if the job is not done and the heartbeat is over 10 minutes old. The sweep's own scheduler is still unknown and stays in Open questions."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Pending rows are written only in the source database, and Postgres is not the source until step 7. So Postgres has no pending rows in dual mode, and the check in step 7 substep 3 is a guard. The check that matters is MySQL pending. Step 7 is run by a person, by hand, as the plan already said; the brief does not ask for a script, and no script is named."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "If a Postgres read happens while a copy is still pending, an update shows the old row and a create shows no row. The read does not error. This can hit the user's own change, because the inline copy in step 3 may have failed. The gap lasts until the next sweep, about a minute. Step 6 now says this, and Open questions asks whether the product accepts it. Clean (step 5) means one full pass with zero mismatches and no pending rows in MySQL."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one user update through the plan, starting in dual mode (step 3), and then show how the write path changes at each later step.\n\nSetup (steps 1-2)\n1. A one-time migration run creates the new tables. Postgres gets `users` (primary key `id`, no sequence yet), `tombstones` and `pending`. MySQL gets `tombstones`, `pending`, the job progress table and `migration_state`. If this fails, the new tables are dropped, because nothing reads them yet.\n2. A normal deploy ships the new `UserRepository`, the sweep and the comparer, with `users.write_mode` still `mysql`. Writes go only to MySQL. An erase also writes a MySQL tombstone. The sweep is scheduled every minute. If this fails, the deploy is rolled back and no data has moved.\n\nFollowing one write in dual mode (step 3)\n3. An operator sets the string flag `users.write_mode` to `dual` in `app.flags`. Each instance refreshes flags every 30 seconds. The step waits until the metric `app_flag_value{flag=...}` shows `dual` on every instance.\n4. A client updates a user. `UserRepository` opens a MySQL transaction. It changes the user row and adds 1 to `version`. In the same transaction it writes a `pending` row holding the user id, the new `version` and `erased=false`. A newer write replaces an older pending row for the same user id. MySQL commits, and MySQL is the source of truth at this point.\n5. In the same request and before the response, the copy rule runs in Postgres with a short timeout. In one transaction it locks the user id in Postgres, then does the following:\n   - If Postgres has a tombstone for the id, it does nothing.\n   - If there is no row, it inserts the row.\n   - If the row has a lower `version`, it replaces the row.\n   - Otherwise it does nothing.\n6. If the copy succeeded, the request deletes the MySQL pending row, but only if the pending `version` is unchanged. Then the response goes back.\n7. Failure cases in this flow:\n   - If MySQL fails, the request fails as it does today and nothing is copied.\n   - If Postgres fails or times out, the request still succeeds and the pending row stays.\n   - If the process dies after the MySQL commit, the pending row is already committed, so the sweep handles it.\n8. Creates work the same way, with `version` set to 1. An erase deletes the user row in MySQL, writes a tombstone and writes a pending row with `erased` set. Its Postgres copy writes the tombstone and deletes the Postgres row in one transaction. Erase does not change `version`, and tombstones are never removed.\n9. The sweep runs every minute. For each pending row it copies the current source row to the other database. For an erased row it copies the tombstone and removes the row there. Then it deletes the pending row only if the `version` still matches what it copied. If a newer write changed the pending row, the delete does nothing and the next sweep copies again.\n\nBackfill and compare (steps 4-5)\n10. Once every instance shows `dual`, an operator enqueues the backfill job. Each batch works like this:\n    - It waits while `mysql_replica_lag_seconds` is above 5, rechecking every 10 seconds.\n    - It reads up to 2,000 rows from the replica with `id` above `last_id`.\n    - On the MySQL primary, it finds which of those ids have a pending or tombstone row and skips them.\n    - It applies the copy rule to the rest.\n    - In one MySQL transaction it sets `last_id` to the batch's highest id and updates the heartbeat.\n    - An empty batch stops the job and sets `done`.\n\n    If the job crashes, the next run continues from `last_id`, and a repeated batch is harmless. If Postgres fails, `last_id` is not saved and the batch is retried. If the job is dead-lettered, the sweep enqueues a new run when backfill is not `done` and its heartbeat is more than 10 minutes old.\n11. Once backfill is `done`, an operator enqueues the comparer. It compares both tables id by id, 2,000 ids per batch, with the same lag wait. For each id that differs, it re-reads the row from the MySQL primary. If the row still differs, it applies the copy rule and counts a mismatch. An id missing on both sides, or tombstoned in Postgres, is not a mismatch. A pass is clean when it has zero mismatches and there are no pending rows in MySQL. Passes run back to back until one is clean. Progress is kept in the comparer progress row in MySQL, and the sweep restarts the comparer by the same heartbeat rule.\n\nReads move to Postgres (step 6)\n12. After a clean comparison, `read_from_pg` is raised to 1%, 10%, 50% and 100%. Each step waits 24 hours, the comparer must stay clean and there must be no Postgres read errors.\n13. A read request calls `enabled_for(\"users.read_from_pg\", user_id)`. If true, the read goes to Postgres. If not, it goes to the MySQL replica. The same user always gets the same answer. A Postgres read error falls back to the replica.\n14. Known gap that the document accepts: if a write's Postgres copy failed, a Postgres read can show the old row, or no row, for up to about a minute until the sweep copies it. This includes the user's own change.\n15. At 100%, the time is written to the MySQL `migration_state` row. To back out, lower the percentage. Reads move back within 30 seconds, and the time in migration state is cleared.\n\nSwitching the source of truth (step 7)\n16. After reads have been at 100% for at least 3 days and the comparer is clean, a person does this by hand, and no script runs it. The pause must stay under 90 seconds. The sequence is:\n    - Set `write_mode` to `paused`, and wait until every instance shows it. Writes get a retryable 503.\n    - Wait 10 seconds for in-flight writes to finish.\n    - Run the sweep and wait until pending is empty in MySQL, and check Postgres pending too.\n    - Set the Postgres id sequence to the larger of the two tables' max ids, plus 1,000,000.\n    - Set `write_mode` to `pg_primary`, and wait until every instance shows it.\n\n    If not every instance shows `pg_primary` within 75 seconds of substep 1, set `write_mode` back to `dual`. MySQL is complete, so nothing is lost.\n\nWrites after the switch (steps 8-10)\n17. With `pg_primary`, a write commits in Postgres with its pending row in the same transaction. The copy rule then runs in MySQL in the same request, and on success the pending row is deleted. New ids come from the Postgres sequence. Copies to MySQL keep the ids they were given. If the MySQL copy fails, the request still succeeds and the sweep retries it. If Postgres fails, the request fails with a retryable 503. The comparer runs in the Postgres-to-MySQL direction, started by an operator, and must stay clean. This runs for at least 14 days.\n18. After at least 14 days, a clean comparison in both directions and a manual flag change, `write_mode` is set to `pg_only`, and the step waits until every instance shows it. Writes stop reaching MySQL. Once this starts, there is no rollback. Instances that still copy to MySQL do no harm.\n19. When every instance shows `pg_only`, the MySQL `users` table is backed up, its row count is checked against Postgres, and then it is dropped. If the backup or the check fails, it is not dropped.\n\nRollback (only before step 9)\n20. A manual decision starts the rollback, and the pause must stay under 90 seconds. The sequence is:\n    - Set `write_mode` to `paused`.\n    - Run the sweep until Postgres pending is empty, which copies every Postgres-only write into MySQL with its id.\n    - Set MySQL `AUTO_INCREMENT` to the larger of the two tables' max ids, plus 1,000,000.\n    - Set `write_mode` to `dual`.\n    - Clear the time in migration state. Reads stay on Postgres, and if reads misbehave, `read_from_pg` goes to 0.\n\n    If `dual` is not shown on every instance within 75 seconds of substep 1, set `write_mode` to `pg_primary`.",
+   "gaps": [
+    "The document does not say which scheduler runs the sweep every minute. Its trigger is undefined, so I cannot say what starts step 9 of the main flow.",
+    "The document does not say who or which tool changes `users.write_mode`. I cannot say how the flag change that starts steps 3, 7 and 9 and the rollback is actually made.",
+    "The document does not say how a request knows which database is the source in each mode. It does not say what `pg_only` writes do, since the step only says writes stop reaching MySQL. The `UserRepository` routing logic is not described.",
+    "In the sweep, the document does not say how it decides the direction for a pending row (MySQL to Postgres, or the reverse), or in which database it looks for pending rows after step 7. Nor does it say how the pending-row delete is made safe, since the pending row lives in the source database.",
+    "The comparer's reads are not described precisely. It says it compares both tables id by id but not how it knows when a pass ends. It does not say how the Postgres-to-MySQL direction in step 8 differs.",
+    "The document does not describe what the 503 'retryable' means for clients, or who retries it.",
+    "A unique email clash in a copy is not resolved. The plan only retries, which may never clear, and the document says so.",
+    "Whether backfill can resurrect an erased user is left as an open question. The document does not say whether this is accepted or what check will be added.",
+    "The document does not say how long the longest write takes. Step 7 substep 2 assumes 10 seconds, and it is unknown whether step 7 can fit under 90 seconds.",
+    "How long a full comparison takes over about 38 million rows is not known, so I cannot say how long step 5 lasts."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

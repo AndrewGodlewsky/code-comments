@@ -1,0 +1,239 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What counts as a 'small' versus 'large' report, and who or what decides which path a request takes?",
+     "about": "3. Small reports / 4. Large reports"
+    },
+    {
+     "id": "2",
+     "text": "What does the `report_exports` table store? Which columns, and is it the single source of truth for status?",
+     "about": "1. Add a `report_exports` table"
+    },
+    {
+     "id": "3",
+     "text": "What does the POST return to the caller in the large-report case, and how does the page know which export to poll?",
+     "about": "2. POST /api/reports/{report_id}/exports / 6. Page"
+    },
+    {
+     "id": "4",
+     "text": "How does the job update status (queued/running/done/failed), and what does the poll endpoint look like and how often does the page call it?",
+     "about": "6. Page: show the export status and poll for updates"
+    },
+    {
+     "id": "5",
+     "text": "What does 'prevent duplicate exports' mean here: same user, same report, same filters? What happens to a second request: rejected, or given the existing export?",
+     "about": "7. Prevent duplicate exports"
+    },
+    {
+     "id": "6",
+     "text": "What is the job queue, and how many retries and what delay does it use? Does a retry restart the whole export from the beginning?",
+     "about": "8. rely on the job queue's retries"
+    },
+    {
+     "id": "7",
+     "text": "When is the failure email sent: after each failed attempt or only after the last retry? And who sets the export status to failed?",
+     "about": "8. send a failure email at the end"
+    },
+    {
+     "id": "8",
+     "text": "What is `send_email` and what does the signed link contain: who can open it and for how long?",
+     "about": "5. email a signed link with `send_email`"
+    },
+    {
+     "id": "9",
+     "text": "What is the replica, and what if it lags behind the primary? What is a batch, and how does reading in batches keep the rows consistent?",
+     "about": "5. read rows from the replica in batches"
+    },
+    {
+     "id": "10",
+     "text": "Which rule does the bucket lifecycle apply (age, which prefix)? Does it also affect the export record and the signed link expiry?",
+     "about": "9. Cleanup is handled by the bucket lifecycle rule"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The API decides at click time: reports.row_count above 10,000 means the job path, otherwise the CSV streams in the response. row_count is the unfiltered total, so a filtered export of a big report still uses the job. This is the brief's rule; it is now stated in Terms and step 1."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "report_exports stores id, report_id, user_id, filters, cols, status, job_id, object_key, created_at, finished_at. It is the single source of truth for status, and a partial unique index on (user_id, report_id) for queued/running enforces one active export. Added a table section."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "In the large case the POST returns the export record (id and status) immediately; for a duplicate click it returns the existing active record. The page keeps the id and also polls a 'latest export for this report' endpoint, so it also works when the user returns later."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The job writes status on the record: running at the start of each attempt, done at the end, failed in on_final_failure. The page polls GET /api/reports/{report_id}/exports/latest (same permission check) every 5 seconds while queued or running. The interval is a plain choice, not a measured one."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Duplicate means the same user and the same report, whatever the filters, as the brief says a given report. A second click is not rejected; it gets the existing queued or running export back. Enforced by the unique index, so a double-click race is safe."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The queue is jobs.py: at most 3 attempts in total, waits of 60 s then 300 s, 30 minute attempt timeout. A retry restarts the handler from the beginning with the same payload; no progress is kept. So each attempt starts a fresh multipart upload. The file's key is the same each time and complete_multipart replaces any existing object. Added to Terms and step 8."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The failure email is sent only once, from on_final_failure after the last attempt fails, not after each attempt. The same on_final_failure handler sets the record to failed. Between attempts the status stays running. Stated in step 8."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "send_email(user_id, template, params) exists per the brief, but I have not seen its code or templates. I assumed two templates, report_export_ready with the link and report_export_failed; their names are my choice. The signed link is a bearer URL from signed_url, valid 24 hours (the maximum allowed), so anyone holding it can download. It goes only to the requesting user by email."
+    },
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "The replica is the read copy of the database that the page already uses; the existing docs say report data must never be read from the primary. Replica lag is accepted exactly as on the page. A batch is a keyset page of 5,000 rows by row_id, not a transaction snapshot. So rows are not guaranteed to be a single point in time, which is now an open question about the nightly rebuild."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "From storage.py: every object in the exports bucket is deleted 7 days after creation, with no prefix filter, and a multipart upload not completed within 24 hours is discarded. It does not touch the export record, and the signed link expires separately after 24 hours. What the page shows after the file is gone is an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "When the page shows `done`, how does the user actually get the file? Does the page show a download link, or is the emailed link the only way?",
+     "about": "4. Page shows status"
+    },
+    {
+     "id": "12",
+     "text": "In step 7 the email is sent before the record is set to `done`. If the email succeeds but setting `done` fails, what happens: does the retry send a second email and replace the file?",
+     "about": "7. Job finishes"
+    },
+    {
+     "id": "13",
+     "text": "A worker dies or an attempt times out, so the handler never gets to abort. What does the record show during the wait before the retry, and does the active-export index keep blocking new clicks in that time?",
+     "about": "8. Failure"
+    },
+    {
+     "id": "14",
+     "text": "If enqueue succeeds but saving the `job_id` on the record then fails, what happens to the record and the job?",
+     "about": "3. Large path: create the record"
+    },
+    {
+     "id": "15",
+     "text": "On a retry, the earlier attempt may have already set `running` and the record has no progress. Does the page show anything different between the first attempt and a retry, or just `running`?",
+     "about": "5. Job attempt starts"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The emailed link is the only way to get the file, as the brief says. The page now says the link was emailed when status is done. A page download button or fresh link is not in the brief; added to open questions with the expiry item."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes: if the email succeeds but the done write fails, the attempt fails, the retry rebuilds, replaces the file at the same key and sends a second email. I kept email before done because a duplicate email is better than a user never getting a link, and the queue already allows duplicate runs. Both links point to the same key. Stated in step 7 and the failure table."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "The record stays running during the backoff, since only on_final_failure sets failed. The unique index therefore keeps blocking a second export, and a click returns the existing one, which is right because a retry is coming. The unfinished upload is never visible and the bucket discards it. Added to step 8 with the worst-case time to final failure (about 1.5 hours)."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing uses job_id, so I removed the column and the save step. The record stays queued and the job runs normally from export_id, so this failure cannot occur. A different gap remains: if the API dies between insert and enqueue, the record stays queued and blocks clicks. Added to open questions; no reaper added."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The page shows only running for a first attempt and for a retry, because the record keeps no attempt count or progress and the brief only asks for four states. Stated in step 4."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "The same POST returns either a CSV stream or an export record. How does the page tell which one it got?",
+     "about": "1. Click / 2. Small path / 3. Large path"
+    },
+    {
+     "id": "17",
+     "text": "The page remembers the returned id but polls `/exports/latest`. If an older done export exists and the user just clicked again, can the first poll show the old export's status instead of the new one?",
+     "about": "4. Page shows status"
+    },
+    {
+     "id": "18",
+     "text": "What is `on_final_failure`? Does the queue call it by itself after attempt 3, and what does it receive to find the record?",
+     "about": "8. Failure (on_final_failure)"
+    },
+    {
+     "id": "19",
+     "text": "If the record is already `failed` or the export row is missing when the job starts, what does the job do?",
+     "about": "5. Job attempt starts"
+    },
+    {
+     "id": "20",
+     "text": "What does the page show between `complete_multipart` and the `done` write, and what does the user see if the email was sent but the page still shows running?",
+     "about": "7. Job finishes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The page tells them apart by status code: 200 with Content-Type text/csv is the small CSV, 202 with a JSON export record is the large path. A status code is the simplest signal and needs no extra field. Added to step 1."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "No. The record is inserted before the POST returns, so it exists at the first poll. Only one export per user and report can be queued or running, and any older exports are done or failed, so the active export is always the newest. A duplicate click returns that active record, which is also the newest. Stated in step 4."
+    },
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "From jobs.py: on_final_failure(ctx, payload, error) is registered with the job decorator, and the queue calls it once itself after the last attempt fails. The payload is the same one enqueued, which holds the export_id, so it loads the record by that id. Added to the job queue term and step 8."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "If the record is missing, or its status is anything but queued or running (done from a repeated delivery, or failed), the job stops and does nothing. There is nothing to build or report, and a failed export should not be revived by a stray delivery. Added to step 5 and the failure table."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The page shows running until the done write lands, which is a short moment after the email is sent. The user may receive the email while the page still says running; the emailed link already works. If the done write fails, the attempt is retried and the page stays running until it succeeds or the export finally fails. Stated in step 7."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Click. The user clicks Download CSV on /reports/{report_id}. The page POSTs to /api/reports/{report_id}/exports with the filters and columns it holds from its own URL. The API returns 403 if the user lacks report.view. Otherwise it reads reports.row_count, the unfiltered total, and picks a path. A bad request or 403 goes back to the page, which shows the error, and nothing is stored. The page tells the two paths apart by status code: 200 with text/csv is the small path, and 202 with a JSON export record is the large path.\n\n2. Small path (row_count 10,000 or fewer). The API answers the POST itself with a 200 text/csv response and a download header. It writes the header row, then reads rows from the read replica 500 at a time by row_id (keyset) and streams them out. No record, job or stored file exists. If the stream breaks, the browser shows a broken download and the user clicks again. The document does not say what the browser or page does with the 200 response beyond \"download\".\n\n3. Large path, create the record (row_count above 10,000, even if the export is filtered). The API inserts a report_exports row with status queued. It copies in the report_id, user_id, filters and cols. The unique index on (user_id, report_id) for queued or running rows allows only one active export per user per report. If the insert is rejected, the API returns the user's existing active record. Otherwise it enqueues a report_export job whose payload is just the export_id, then returns 202 with the record, including id and status. If the enqueue fails, the record is marked failed and an error is returned, so the user is not blocked.\n\n4. Page shows status. On load, and every 5 seconds while the status is queued or running, the page calls GET /api/reports/{report_id}/exports/latest. This returns the caller's newest export for that report, with the same permission check. The status comes from the database record, so it still works if the user leaves and returns. The page shows queued, running, done or failed. When the status is done it says the link was emailed; it has no download button. A failed poll is ignored until the next tick.\n\n5. Job attempt starts. A worker (512 MB) runs the job handler, and the handler loads the record by export_id. If the record is missing or its status is not queued or running, the job stops and does nothing. This covers a repeated delivery after done, and a failed export. Otherwise it sets the status to running and starts a multipart upload to the exports bucket at exports/{export_id}.csv.\n\n6. Build the file. The job reads from the replica by row_id, 5,000 rows at a time, using the stored filters and cols. It writes the header first. It fills one buffer of about 8 MB and uploads each full buffer as a part, so memory stays small. The largest report, about 900 MB, needs about 110 parts. The read is a keyset scan and not a snapshot, so rows changed during the read may show up inconsistently. The document names the nightly rebuild as a known unguarded risk.\n\n7. Finish. The job calls complete_multipart, and the file becomes visible at that moment. It builds signed_url(exports, key, 86400), a link anyone holding it can use for 24 hours. It calls send_email(user_id, \"report_export_ready\", {link}), and only then sets the record to done and stores object_key. Until that last write the page still shows running, so the email can arrive before the page says done. The email deliberately comes first. If the final write fails, the retry may send a second email and replace the file, but the user always gets a link.\n\n8. Failure and retry. If an attempt raises, times out (30 minutes) or loses its worker, the queue retries it, up to 3 attempts, waiting 60 s and then 300 s. The retry restarts from step 5 with a new upload. When the handler raises, it first aborts its multipart upload. If the worker dies or times out, nothing aborts, but the unfinished upload is never visible and the bucket discards it. While retries are pending the record stays running, so a new click returns the same export. After the last attempt fails, at worst about 1.5 hours after the click, the queue calls on_final_failure(ctx, payload, error) once. It uses the export_id to set the record to failed and sends the \"report_export_failed\" email. The page then shows failed, and the user can click again. An email failure or a failed final done write fails the attempt, so the whole export is retried.\n\n9. Cleanup. The bucket deletes objects after 7 days, the link dies after 24 hours, and export records are kept forever. The document lists these as unresolved: whether 30 minutes is enough for 2 million rows, the page still showing done after the link and file have expired, and a record stuck at queued if the API dies between the insert and the enqueue, with no reaper planned.",
+   "gaps": [
+    "How the page handles the 200 text/csv response to trigger the actual file download, and what the page shows right after a 202 beyond polling.",
+    "What happens to the user's POST on the small path if the 60 s API kill hits mid-stream. The document gives the stream-break behaviour but not the timeout case.",
+    "Whether the report_export job's 'running' status updates on a retry go through the same unique-index constraint safely. Not stated, though it likely does."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}
