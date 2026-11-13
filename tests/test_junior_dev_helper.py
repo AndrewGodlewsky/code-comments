@@ -147,6 +147,21 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(s.state["phase"], "asking")
         self.assertEqual(s.state["teachbacks"][-1]["verdict"], "wrong")
 
+    def test_repeated_wrong_teachbacks_end_loop(self):
+        # A junior with no questions and an author who keeps rejecting the teach-back would
+        # otherwise cycle forever, because no question round ever advances the round counter.
+        def runner(argv, prompt):
+            teach = "teachback-prompt.md" in argv[argv.index("--system-prompt-file") + 1]
+            return teachback_output("Misread.") if teach else questions_output(done=True)
+
+        s = self.session(runner, rounds=6)
+        for _ in range(junior.MAX_TEACHBACKS):
+            self.assertIn("NO MORE QUESTIONS", s.ask())
+            s.teachback()
+            s.verdict(False, "still misread")
+        self.assertEqual(s.state["phase"], "done")
+        self.assertEqual(s.state["end_reason"], "cap")
+
     def test_correct_teachback_finishes(self):
         runner = FakeRunner(questions_output(done=True), teachback_output("Step by step..."))
         s = self.session(runner)

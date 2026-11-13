@@ -32,6 +32,7 @@ REFERENCES = HERE.parent / "skills" / "junior-dev" / "references"
 JUNIOR_PROMPT = REFERENCES / "junior-prompt.md"
 TEACHBACK_PROMPT = REFERENCES / "teachback-prompt.md"
 TURN_BUDGET_USD = 0.25
+MAX_TEACHBACKS = 3  # wrong teach-backs allowed before the loop ends; question rounds alone cannot bound it
 TIMEOUT_S = 300.0
 
 QUESTIONS_SCHEMA = {
@@ -353,9 +354,10 @@ class JuniorSession:
         if not s["teachbacks"] or s["teachbacks"][-1]["verdict"] is not None:
             raise JuniorError("there is no teach-back waiting for a verdict")
         s["teachbacks"][-1].update(verdict="correct" if correct else "wrong", notes=notes.strip())
+        wrong = sum(t["verdict"] == "wrong" for t in s["teachbacks"])
         if correct:
             s["phase"], s["end_reason"] = "done", "teachback-correct"
-        elif s["round"] >= s["rounds_cap"]:
+        elif s["round"] >= s["rounds_cap"] or wrong >= MAX_TEACHBACKS:
             s["phase"], s["end_reason"] = "done", "cap"
         else:
             s["phase"] = "asking"

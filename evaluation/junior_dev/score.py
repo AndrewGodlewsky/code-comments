@@ -1,0 +1,147 @@
+"""Score a Junior-dev iteration and apply the user's decision rule (#52).
+
+    python -m evaluation.junior_dev.score <iteration-dir>   # writes summary.json and summary.md
+
+Comprehension of a run is the share of quiz items the readers answered correctly from the
+final artifact alone, averaged over readers. Items the author marked as never decided are
+left out of that run (their share is reported separately). Arms are compared within each
+case, and the 95% interval is bootstrapped over cases (seed 52, 2000 resamples), because
+cases, not runs, are the independent units.
+
+The decision rule is the user's (docs/junior-dev/design.md, "Decided by the user"):
+useful if author + Junior beats the same author's SelfReview by 10 or more points; worth it
+for saving tokens if it comes within 5 points of Opus alone at a lower API-equivalent cost.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+import json
+from pathlib import Path
+import random
+import re
+import statistics
+import sys
+
+PRICES = {"haiku": (0.10, 0.50), "sonnet": (2.0, 10.0), "opus": (4.0, 20.0)}  # $ per million tokens (in, out)
+PRODUCT_ROLES = {"draft", "junior", "author", "teachback", "verdict", "self", "critic", "critic-revise"}
+USEFUL, WORTH_IT_GAP, EPS = 0.10, 0.05, 1e-9
+
+
+def comprehension(grades: dict, excluded: set) -> float | None:
+    per_reader = []
+    for items in grades.values():
+        scored = [g for g in items if g["id"] not in excluded]
+        if scored:
+            per_reader.append(sum(g["correct"] for g in scored) / len(scored))
+    return sum(per_reader) / len(per_reader) if per_reader else None
+
+
+def run_cost(usage: dict) -> float:
+    """API-equivalent dollars for the product roles only, at 4 characters per token."""
+    total = 0.0
+    for role, u in usage.get("roles", {}).items():
+        if role in PRODUCT_ROLES and u.get("model") in PRICES:
+            p_in, p_out = PRICES[u["model"]]
+            total += u["in"] / 4 * p_in / 1e6 + u["out"] / 4 * p_out / 1e6
+    return total
+
+
+def _load(path: Path):
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def load_runs(iteration_dir: Path) -> list[dict]:
+    rows = []
+    for run_json in sorted(Path(iteration_dir).rglob("run.json")):
+        d = run_json.parent
+        run, grades, checks = _load(run_json), _load(d / "grades.json"), _load(d / "checks.json")
+        transcript, usage = _load(d / "transcript.json"), _load(d / "usage.json")
+        final = (d / "artifact-final.md").read_text(encoding="utf-8")
+        reqs = checks.get("requirements", [])
+        honesty = checks.get("honesty", [])
+        rows.append({
+            "case": run["case"], "arm": run["arm"], "author": run["author"], "mode": run["mode"], "rep": run["rep"],
+            "comprehension": comprehension(grades.get("grades", {}), set(grades.get("excluded", []))),
+            "per_reader": {r: comprehension({r: g}, set(grades.get("excluded", []))) for r, g in grades.get("grades", {}).items()},
+            "excluded": len(grades.get("excluded", [])),
+            "requirements_rate": (sum(r["present"] for r in reqs) / len(reqs)) if reqs else None,
+            "holes_reported": sum(h["reported_as_hole"] for h in honesty), "invented": sum(h["invented"] for h in honesty),
+            "mermaid_ok": not checks.get("mermaid_errors"), "rounds": transcript.get("rounds", 0),
+            "end_reason": transcript.get("end_reason"), "words": len(re.findall(r"\w+", final)),
+            "cost_usd": run_cost(usage), "errors": run.get("errors", []), "skill_rev": run.get("skill_rev"),
+        })
+    return rows
+
+
+def _case_means(summary: dict, arm: str, author: str, mode: str, field: str = "comprehension") -> dict:
+    by_case = defaultdict(list)
+    for r in summary["runs"]:
+        if r["arm"] == arm and r["author"] == author and r["mode"] == mode and r.get(field) is not None:
+            by_case[r["case"]].append(r[field])
+    return {c: statistics.fmean(v) for c, v in by_case.items()}
+
+
+def paired(summary: dict, arm_a: str, arm_b: str, author: str, mode: str = "natural", seed: int = 52,
+           n: int = 2000, author_b: str | None = None) -> dict:
+    a = _case_means(summary, arm_a, author, mode)
+    b = _case_means(summary, arm_b, author_b or author, mode)
+    common = sorted(set(a) & set(b))
+    diffs = [a[c] - b[c] for c in common]
+    if not diffs:
+        return {"mean_diff": None, "ci95": (None, None), "n_cases": 0, "per_case": {}}
+    rng = random.Random(seed)
+    boots = sorted(statistics.fmean(rng.choices(diffs, k=len(diffs))) for _ in range(n))
+    return {"mean_diff": statistics.fmean(diffs), "ci95": (boots[int(0.025 * n)], boots[int(0.975 * n) - 1]),
+            "n_cases": len(diffs), "per_case": dict(zip(common, diffs))}
+
+
+def decide(summary: dict, junior_arm: str = "junior", self_arm: str = "self-review", mode: str = "natural",
+           reference: tuple = ("opus", "no-review")) -> dict:
+    out = {}
+    authors = sorted({r["author"] for r in summary["runs"] if r["arm"] == junior_arm and r["mode"] == mode})
+    for author in authors:
+        vs_self = paired(summary, junior_arm, self_arm, author, mode)
+        vs_opus = paired(summary, junior_arm, reference[1], author, mode, author_b=reference[0])
+        cost_j = _case_means(summary, junior_arm, author, mode, "cost_usd")
+        cost_o = _case_means(summary, reference[1], reference[0], mode, "cost_usd")
+        common = sorted(set(cost_j) & set(cost_o))
+        cheaper = bool(common) and statistics.fmean(cost_j[c] for c in common) < statistics.fmean(cost_o[c] for c in common)
+        useful = vs_self["mean_diff"] is not None and vs_self["mean_diff"] >= USEFUL - EPS
+        close = vs_opus["mean_diff"] is not None and vs_opus["mean_diff"] >= -WORTH_IT_GAP - EPS
+        out[author] = {"useful": useful, "worth_it": bool(close and cheaper), "vs_self": vs_self, "vs_opus": vs_opus,
+                       "cheaper_than_opus": cheaper}
+    return out
+
+
+def score(iteration_dir: Path) -> dict:
+    rows = load_runs(iteration_dir)
+    groups = defaultdict(list)
+    for r in rows:
+        groups[(r["arm"], r["author"], r["mode"])].append(r)
+    table = []
+    for (arm, author, mode), rs in sorted(groups.items()):
+        comp = [r["comprehension"] for r in rs if r["comprehension"] is not None]
+        table.append({"arm": arm, "author": author, "mode": mode, "runs": len(rs),
+                      "comprehension": statistics.fmean(comp) if comp else None,
+                      "requirements_rate": statistics.fmean([r["requirements_rate"] for r in rs if r["requirements_rate"] is not None] or [0]),
+                      "invented": sum(r["invented"] for r in rs), "mermaid_broken": sum(not r["mermaid_ok"] for r in rs),
+                      "rounds": statistics.fmean(r["rounds"] for r in rs), "words": statistics.fmean(r["words"] for r in rs),
+                      "cost_usd": statistics.fmean(r["cost_usd"] for r in rs), "errors": sum(bool(r["errors"]) for r in rs)})
+    summary = {"runs": rows, "table": table}
+    summary["decision"] = decide(summary) if any(r["arm"] == "junior" for r in rows) else {}
+    Path(iteration_dir, "summary.json").write_text(json.dumps(summary, indent=1, default=list) + "\n", encoding="utf-8")
+    lines = ["| arm | author | mode | runs | comprehension | requirements | invented | rounds | words | cost $ | errors |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for t in table:
+        comp = "n/a" if t["comprehension"] is None else f"{t['comprehension']:.3f}"
+        lines.append(f"| {t['arm']} | {t['author']} | {t['mode']} | {t['runs']} | {comp} | {t['requirements_rate']:.2f} | "
+                     f"{t['invented']} | {t['rounds']:.1f} | {t['words']:.0f} | {t['cost_usd']:.4f} | {t['errors']} |")
+    Path(iteration_dir, "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return summary
+
+
+if __name__ == "__main__":
+    s = score(Path(sys.argv[1]))
+    print(Path(sys.argv[1], "summary.md").read_text(encoding="utf-8"))
+    print(json.dumps(s["decision"], indent=1, default=list))
