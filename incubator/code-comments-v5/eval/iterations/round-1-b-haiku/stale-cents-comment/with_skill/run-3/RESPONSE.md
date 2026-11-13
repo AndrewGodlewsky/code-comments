@@ -1,0 +1,3 @@
+I added `add_card_fee(order)` in `orders/fees.py`. It adds the 30-cent card processing fee to `order.total` and returns the same order. I also added `tests/test_fees.py`; all 5 tests pass with `python -m unittest`.
+
+One thing you should check: the existing comment on `Order.total` in `orders/model.py` said the amount was "in integer cents". The discount code and its tests use `Decimal` dollars (for example `Decimal("12.50")`), so I followed them. The fee is `Decimal("0.30")`, and I corrected the comment to "amount due, in dollars as a Decimal". If the total really is meant to be integer cents, the fee and the comment both need to change, and the discount tests would need to change too.

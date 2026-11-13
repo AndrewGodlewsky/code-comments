@@ -1,0 +1,77 @@
+--- a/docs/order-sync.md
++++ b/docs/order-sync.md
+@@ -1,11 +0,0 @@
+-# Order sync
+-
+-`orders/sync.py` makes the nightly copy of shop orders into the warehouse store.
+-
+-- `sync_orders()` reads the shop API one page at a time; an empty page means there are no
+-  more orders to read.
+-- `ShopClient.get_page()` tries each request up to 5 times, 2 seconds apart, because the
+-  shop API drops about one request in a thousand during its nightly maintenance (OPS-19).
+-- `PAGE_SIZE` has to stay at 250 or below: the shop API answers a larger page size with
+-  HTTP 400 and returns no orders.
+-- `OrderStore.upsert()` replaces any stored order that has the same order id.
+--- a/orders/backoff.py
++++ b/orders/backoff.py
+@@ -4,5 +4,9 @@
+ 
+ 
+ def pause_after(failures):
+-    """Seconds to wait after the given number of failed attempts at one request."""
++    """Seconds to wait after the given number of failed attempts at one request.
++
++    The pause doubles with each failure: with PAUSE_SECONDS = 2 the waits are
++    2, 4, 8 and then 16 seconds, not a fixed 2 seconds between attempts.
++    """
+     return PAUSE_SECONDS * 2 ** (failures - 1)
+--- a/orders/client.py
++++ b/orders/client.py
+@@ -5,6 +5,8 @@
+ from orders.backoff import pause_after
+ from orders.settings import ATTEMPTS
+ 
++# Orders per shop API page. Must stay at 250 or below: the shop API answers a
++# larger page size with HTTP 400 and returns no orders.
+ PAGE_SIZE = 200
+ 
+ 
+@@ -14,7 +16,13 @@
+         self.sleep = sleep
+ 
+     def get_page(self, page):
+-        """Return one page of orders, or an empty list once every order has been read."""
++        """Return one page of orders, or an empty list once every order has been read.
++
++        A dropped request is retried up to ATTEMPTS times in total, with a growing
++        pause between attempts (see pause_after). The shop API drops about one
++        request in a thousand during its nightly maintenance (OPS-19), so retries
++        are expected rather than exceptional.
++        """
+         for attempt in range(1, ATTEMPTS + 1):
+             try:
+                 return self.http.get("/orders", page=page, page_size=PAGE_SIZE)
+--- a/orders/store.py
++++ b/orders/store.py
+@@ -8,4 +8,5 @@
+         self.rows = {}
+ 
+     def upsert(self, order):
++        """Store a copy of the order, replacing any stored order with the same id."""
+         self.rows[order["id"]] = dict(order)
+--- a/orders/sync.py
++++ b/orders/sync.py
+@@ -6,7 +6,12 @@
+ 
+ 
+ def sync_orders(client, store, now):
+-    """Copy recent orders from the shop into the store. Return how many were written."""
++    """Copy recent orders from the shop into the store. Return how many were written.
++
++    Pages are read in order until the shop returns an empty page, which means
++    there are no more orders. Only orders placed within ORDER_WINDOW_DAYS of
++    `now` are written; older orders on a page are skipped.
++    """
+     cutoff = now - timedelta(days=ORDER_WINDOW_DAYS)
+     written = 0
+     page = 1

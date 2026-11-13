@@ -1,0 +1,55 @@
+--- a/ledger/nightly.py
++++ b/ledger/nightly.py
+@@ -7,8 +7,10 @@
+ 
+ 
+ def export(conn, fh):
+-    """Write every ledger row to fh as CSV."""
+-    write_rows(fetch_rows(conn), fh)
++    """Write every ledger row to fh as CSV, in ascending id order."""
++    # The bank's matching service rejects an upload whose entry ids do not
++    # ascend (see ops/nightly.sh), so the order is fixed here, not in fetch_rows.
++    write_rows(sorted(fetch_rows(conn), key=lambda row: row.id), fh)
+ 
+ 
+ def main(argv=None):
+--- a/ledger/rows.py
++++ b/ledger/rows.py
+@@ -7,6 +7,4 @@
+ def fetch_rows(conn):
+     """Return the ledger rows."""
+     cursor = conn.execute("SELECT id, account, amount_pence, memo FROM entries")
+-    rows = [Row(*record) for record in cursor.fetchall()]
+-    rows.sort(key=lambda row: row.id)
+-    return rows
++    return [Row(*record) for record in cursor.fetchall()]
+--- a/ops/nightly.sh
++++ b/ops/nightly.sh
+@@ -3,8 +3,8 @@
+ #
+ # The bank matches our file against its own statement in a single pass and
+ # rejects the upload unless the entry ids ascend. The file goes up exactly as
+-# ledger.nightly writes it, in the order fetch_rows returns the rows, so this
+-# relies on fetch_rows returning them sorted by id.
++# ledger.nightly writes it, and ledger.nightly.export writes rows in ascending
++# id order, so this relies on that sort.
+ set -eu
+ 
+ spool=/var/spool/ledger
+--- a/tests/test_nightly.py
++++ b/tests/test_nightly.py
+@@ -17,6 +17,14 @@
+         self.assertEqual({tuple(line) for line in lines[1:]},
+                          {("E-0001", "4100", "1.20", "coffee"), ("E-0002", "4000", "5.00", "rent")})
+ 
++    def test_rows_are_written_in_id_order(self):
++        conn = connect()
++        add_entries(conn, [("E-0002", "4000", 500, "rent"), ("E-0001", "4100", 120, "coffee")])
++        buf = io.StringIO()
++        export(conn, buf)
++        lines = list(csv.reader(io.StringIO(buf.getvalue())))
++        self.assertEqual([line[0] for line in lines[1:]], ["E-0001", "E-0002"])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

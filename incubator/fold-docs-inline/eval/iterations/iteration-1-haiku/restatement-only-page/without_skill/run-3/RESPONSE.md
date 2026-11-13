@@ -1,0 +1,5 @@
+I retired docs/ingest.md. Its content only restated what the code already says, so the one thing worth moving was the is_blank behaviour, which had no docstring. I added it to ingest/rows.py: "Return True when every value in the row is empty or only whitespace." The other functions already have docstrings covering their behaviour (read_rows, parse_price, clean), and the "standard library csv only" note is visible from the imports, so I did not copy it anywhere.
+
+Nothing else referenced docs/ingest.md (README.md and docs/deploy.md do not link to it), so deleting it breaks no links. docs/deploy.md is operational (host and schedule), not ingest documentation, so I left it in place. The unit tests pass (3 of 3) after the change.
+
+One thing I noticed but did not change: parse_price replaces every comma with a dot, so a thousands-separated value such as "1,234.50" parses to 123 cents rather than 123450. The old page did not mention thousands separators, so this is a code issue, not a documentation one. It is worth a test and a fix if such values can appear in supplier files.

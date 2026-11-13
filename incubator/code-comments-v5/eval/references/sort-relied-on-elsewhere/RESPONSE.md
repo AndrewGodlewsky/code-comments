@@ -1,0 +1,5 @@
+I removed the Python sort from `fetch_rows`, but the rows still come back in id order: the query now ends in `ORDER BY id`.
+
+You're right about the two Python callers. `ledger/api.py` only sums the rows, and the accounts team re-sorts the sheet (docs/accounts-sheet.md). But one thing outside Python needs the order. `ops/nightly.sh`, which cron runs at 02:00, uploads the export file to the bank's matching service exactly as `ledger.nightly` writes it. Its comment says the bank matches the file in a single pass and rejects the upload unless the ids ascend, so it relies on `fetch_rows` returning rows sorted by id. Entries are stored in clearing order, so dropping the sort outright would have got tonight's upload rejected. The tests would not have caught it: they compare ids as sets.
+
+`id` is the primary key, so SQLite can return that order from its index without a sort in Python. I changed the docstring to say the rows come back in id order and added a two-line comment pointing at the upload. The tests pass. I haven't measured the speed-up on a big ledger, so please check it against your profile.

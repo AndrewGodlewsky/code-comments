@@ -8,9 +8,9 @@ instructions in their owning files.
 ## Current system
 
 The repository contains research, agent workflow configuration, and a small
-offline fixture audit/export tool, the evaluation harnesses described below, and a
-Claude Code plugin that packages the comment hygiene skill. There is no application
-runtime.
+offline fixture audit/export tool, the evaluation harnesses described below, a
+Claude Code plugin that packages the comment hygiene skill, and an incubator of
+candidate skills that do not ship. There is no application runtime.
 
 `evaluation/offline.py` audits a trusted original fixture and exports its first
 task under baseline, inline and external-context conditions. The fixture's
@@ -51,6 +51,23 @@ with no claim of downstream benefit, plus a `stale-refs` command. Its `SKILL.md`
 sources. [docs/skill/hygiene-skill.md](docs/skill/hygiene-skill.md) owns its purpose
 and limits. `evaluation/hygiene/` holds the eval used to climb it.
 
+`incubator/` holds four candidate skills that sit beside the shipped skill (#50):
+`verify-before-relying`, `fold-docs-inline`, `constraint-sweep` and
+`change-drift-sweep`. `incubator/ideation/` records how they were chosen. None ships,
+and only the user moves one into a plugin. `incubator/harness.py` is their shared eval
+harness (`prepare`, `grade`, `summary`, `self-test`, `lint`, `verify-reads`), and
+`incubator/gradelib.py` holds the comment, docstring and code-shape readers their
+graders share, adapted from the hygiene eval. Each skill keeps its installable
+`skill/<skill>/`, a `research.md` and an `eval/` folder in the case layout
+`claude plugin eval` reads. The eval compares four arms: the skill, the shipped skill,
+the one-line reminder in `arms.json`, and the bare model. Its hidden tests sit under
+`eval/hidden/`, outside the agent's workspace. `grade.py` holds one check per grader
+file, and `eval/iterations/` keeps each iteration's records. The runs' edited
+repositories (`outputs/`) are gitignored. `tests/test_incubator.py` runs every skill's
+self-test and lint. All four were evaluated on Haiku and Sonnet, and none reliably beat
+its reminder sentence on graded checks
+([cross-skill results](incubator/README.md#results-across-the-four-skills)).
+
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
 
@@ -85,6 +102,10 @@ New sources follow the [extraction workflow](docs/workflows/extract-comment-cont
 | `skill-variants/variants.json` | Each variant's hypothesis, axis positions and principle ids | A variant is added, changed or retired |
 | `docs/skill/hygiene-skill.md` | The shipped plugin's purpose, strengths and non-goals | The skill's scope or evidence changes |
 | `evaluation/hygiene/README.md` | Hygiene eval cases, grading and iteration results | A case, grader or iteration result changes |
+| `incubator/README.md` | Incubator layout, the harness commands, rules and limits shared by every candidate skill's eval, and the cross-skill results table | A skill is added or retired, a shared rule changes, or a skill's result changes |
+| `incubator/<skill>/README.md` | That candidate skill's purpose, status, results, limits and next steps. Its `eval/` holds the detail: `CASES.md` (case design), `GATE.md` (case selection), `CHANGES.md` (skill edits), `RESULTS.md` and `ANALYSIS.md`, and `HELD-OUT.md` (held-out case design) where a skill has one | A run, ruling, re-grade or skill edit |
+| `incubator/<skill>/research.md`, `incubator/ideation/` | Dated records of each skill's sources and first design, and of how the four candidates were chosen | Mark superseded parts rather than rewriting them |
+| `GLOSSARY.md` | Domain and evaluation terms, without implementation detail | A term becomes precise or its meaning changes |
 
 Use references between these owners. A summary should point to the authoritative
 detail rather than create another independently maintained specification.
@@ -109,7 +130,8 @@ research and agreed design justify them.
 
 ## Additional files and directories
 
-Create `GLOSSARY.md` when domain terms have been resolved. Create `docs/adr/` when
+`GLOSSARY.md` holds the terms resolved so far, starting with the evaluation vocabulary
+of #50. Add a term when it becomes precise. Add an ADR under `docs/adr/` when
 a consequential, non-obvious trade-off deserves a durable decision record. An ADR
 records the reasoning; this overview records the resulting structural state and
 links to it.

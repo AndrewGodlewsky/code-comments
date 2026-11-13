@@ -1,0 +1,13 @@
+# Ingest
+
+`read_rows(path)` opens a supplier CSV file and returns its rows as dictionaries, keyed by
+the column names in the header row.
+
+`is_blank(row)` is true when every value in the row is empty or only whitespace.
+
+`parse_price(text)` turns a price such as "12.50" into 1250 cents. A comma also works as
+the decimal separator, so "12,50" gives the same result.
+
+`clean(rows)` removes blank rows and replaces each row's price with its value in cents.
+
+The module only uses the standard library's `csv` module.

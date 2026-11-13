@@ -1,0 +1,3 @@
+I raised the parallel job cap from 4 to 8 by changing `MAX_PARALLEL` in `jobs/limits.py`. `run_all` sizes its thread pool from that constant, so up to 8 jobs now run at once. The existing unit tests pass (`python -m unittest`, 3 tests OK).
+
+I checked the comments that describe this limit and none became false. The comment above `MAX_PARALLEL` describes it generically, and `docs/operations.md` states the rule without a number. I left the changelog entry for 0.4.0 and the dated capacity report unchanged, since they are history. I did not add a new comment: the reason for the value is the hardware refresh, which `docs/reports/2026-09-02-nightly-capacity.md` already records.

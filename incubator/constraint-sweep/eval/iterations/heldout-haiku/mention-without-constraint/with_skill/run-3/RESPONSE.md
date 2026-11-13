@@ -1,0 +1,5 @@
+I added an optional `currency` argument to `round_price` in `pricing/rounding.py`. With `"CHF"` it rounds to the nearest 0.05 (halves round up); with no currency it does exactly what it did before, so every existing caller is unaffected. I added tests for both paths in `tests/test_rounding.py`, and all 8 tests pass.
+
+Constraint sweep: `round_price` is named in `invoices/lines.py`, `pricing/tax.py`, `shop/labels.py`, `shop/reports.py`, the README and the tests. Four comments state constraints that depend on the default cent rounding: `line_total` (rounded once, not per unit), `add_vat` (rounded once), `price_label` (never shows a fraction of a cent) and `daily_total` (matches the invoice lines to the cent). All four stay true because the default path is unchanged and none of those callers pass a currency. No constraint was stale, so I changed no other file.
+
+One decision to check: any currency other than `"CHF"` falls back to cent rounding, the same as no currency. If you would rather an unknown currency raise an error, that is a one-line change.
