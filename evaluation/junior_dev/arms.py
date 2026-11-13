@@ -32,6 +32,7 @@ class Arm:
     # end: step 7 after the teach-back | before_teachback: rewrite (step 6, prompts/author_rewrite.md), then the
     # teach-back checks it. A simplify-only arm runs no loop; there the setting only picks the rewrite prompt.
     simplify_at: str = "end"
+    first_version: bool = False       # the rewrite also sees the first version (v6 checks it line by line)
 
     def __post_init__(self):
         if self.review not in REVIEWS:

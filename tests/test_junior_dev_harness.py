@@ -130,6 +130,15 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertNotIn("teachback", roles)
         self.assertEqual(dry["result"]["runs"][0]["end_reason"], "cap")
 
+    def test_rewrite_sees_the_first_version_only_when_the_arm_asks(self):
+        # v6 checks the rewrite against the first version line by line; the plugin keeps it in the state folder.
+        with_first = self._dry(arms.Arm(name="junior-v6", review="junior", simplify_at="before_teachback",
+                                        first_version=True), "v6")
+        without = self._dry(arms.Arm(name="junior-v5b", review="junior", simplify_at="before_teachback"), "v5b")
+        rewrite = lambda dry: next(p["prompt"] for p in dry["prompts"] if p["role"] == "simplify")
+        self.assertIn("# The first version of your document\n\nDRAFT for fx-01", rewrite(with_first))
+        self.assertNotIn("# The first version of your document", rewrite(without))
+
     def test_arm_rejects_an_unknown_simplify_point(self):
         with self.assertRaises(ValueError):
             arms.Arm(name="x", review="junior", simplify_at="middle")

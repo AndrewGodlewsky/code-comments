@@ -111,8 +111,9 @@ async function simplifyPass(run, c, arm, art, transcript) {
   const qa = transcript && transcript.length ? '\n# The junior\'s questions and your answers\n\n' + renderTranscript(transcript) : ''
   // The rewrite-before-teach-back skill numbers this step 6 (v5); the original order numbers it 7.
   const lead = arm.simplify_at === 'before_teachback' ? P.author_rewrite : P.author_simplify
+  const first = arm.first_version ? '\n# The first version of your document\n\n' + run.artifact_initial.trim() + '\n' : ''
   const s = await call(run, 'simplify', lead + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
-    '\n# Your document\n\n' + art.trim() + '\n' + qa, { model: run.author, schema: REVISE_SCHEMA })
+    first + '\n# Your document\n\n' + art.trim() + '\n' + qa, { model: run.author, schema: REVISE_SCHEMA })
   if (!s) return art
   run.changes.push(...(s.changes || []).map(String))
   return accept(run, 'simplify', art, s.artifact)
