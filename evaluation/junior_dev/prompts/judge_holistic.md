@@ -1,0 +1,1 @@
+Two documents, A and B, describe designs for the same request. You are a smart, technical engineer who does not know this project or its stack, and you need to understand how this system works. Which of the two would you rather be handed? Answer `A`, `B` or `tie`, with one sentence of reason. Use no tools.

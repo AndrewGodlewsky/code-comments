@@ -17,7 +17,7 @@ async function judgeOne(p) {
     : winner === 'B' ? (p.order === 'ab' ? p.arm_b : p.arm_a) : null
   return { pair_id: p.pair_id, case: p.case, author: p.author, mode: p.mode, rep: p.rep, arm_a: p.arm_a, arm_b: p.arm_b,
     order: p.order, winner, winner_arm: arm, reason: out ? out.reason : null, words_a: p.words_a, words_b: p.words_b,
-    judge_model: DATA.judge_model }
+    judge_model: DATA.judge_model, judge_prompt: DATA.judge_prompt || 'judge' }
 }
 
 phase('Judge')

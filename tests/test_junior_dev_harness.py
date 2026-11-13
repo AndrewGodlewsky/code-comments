@@ -210,6 +210,35 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertEqual(score.judge_summary(it, judge_model="sonnet")[("j", "s", "haiku", "natural")]["win_rate"], 0.5)
         self.assertEqual(score.judge_summary(it)[("j", "s", "haiku", "natural")]["judgments"], 4)
 
+    def test_holistic_judge_batch_uses_its_own_prompt_and_tags_judgments(self):
+        out = self.tmp / "wf-output-judge-h.json"
+        out.write_text(json.dumps({"result": self.dry["result"]}), encoding="utf-8")
+        it = self.tmp / "iteration-judge-h"
+        collect.collect(out, it)
+        files = build.build_judge_batch(it, [("junior", "self-review")], self.tmp / "built-judge-h", "holistic",
+                                        prompt_name="judge_holistic")
+        data = build.embedded_data(files[0])
+        prompts = build.load_prompts()
+        self.assertEqual(data["prompt"], prompts["judge_holistic"])
+        self.assertNotEqual(prompts["judge_holistic"], prompts["judge"])
+        self.assertNotIn("where state lives", prompts["judge_holistic"])   # no rubric shared with skill step 7
+        dry = build.dry_run(files[0])
+        self.assertEqual({j["judge_prompt"] for j in dry["result"]["judgments"]}, {"judge_holistic"})
+
+    def test_judge_summary_keeps_judge_prompts_apart(self):
+        it = self.tmp / "iteration-judge-prompts"
+        (it / "judgments").mkdir(parents=True)
+        base = {"case": "c", "author": "haiku", "mode": "natural", "rep": 1, "arm_a": "j", "arm_b": "s",
+                "words_a": 1, "words_b": 2, "judge_model": "opus"}
+        rows = [dict(base, order="ab", winner="A", winner_arm="j"),                     # older rows: no tag
+                dict(base, order="ba", winner="B", winner_arm="j"),
+                dict(base, order="ab", winner="B", winner_arm="s", judge_prompt="judge_holistic"),
+                dict(base, order="ba", winner="A", winner_arm="s", judge_prompt="judge_holistic")]
+        (it / "judgments" / "x.json").write_text(json.dumps(rows), encoding="utf-8")
+        key = ("j", "s", "haiku", "natural")
+        self.assertEqual(score.judge_summary(it, judge_model="opus")[key]["win_rate"], 1.0)
+        self.assertEqual(score.judge_summary(it, judge_model="opus", judge_prompt="judge_holistic")[key]["win_rate"], 0.0)
+
     def test_collect_writes_tree_and_refuses_overwrite(self):
         out = self.tmp / "wf-output.json"
         out.write_text(json.dumps({"summary": "x", "result": self.dry["result"]}), encoding="utf-8")

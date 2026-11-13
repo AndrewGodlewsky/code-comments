@@ -171,12 +171,15 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
 
 
 def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir: Path, label: str,
-                      judge_model: str = "opus", baseline_dir: Path | None = None) -> list[Path]:
+                      judge_model: str = "opus", baseline_dir: Path | None = None,
+                      prompt_name: str = "judge") -> list[Path]:
     """Blind pairwise clarity judgments for every (case, author, mode, rep) where both arms of a pair ran.
 
     Each pair is judged in both orders; the judge sees only the two final artifacts. `baseline_dir`
     supplies arms that this iteration did not rerun (a climb iteration judged against the pilot's
-    SelfReview, say); an arm present in `iteration_dir` always wins over the baseline's."""
+    SelfReview, say); an arm present in `iteration_dir` always wins over the baseline's.
+    `prompt_name` picks the judge prompt: "judge" (the clarity rubric) or "judge_holistic" (no criteria,
+    a check that the rubric does not simply reward the layout skill step 7 asks for)."""
     import re as _re
     finals = {}
     for source in [d for d in (baseline_dir, iteration_dir) if d]:
@@ -203,7 +206,7 @@ def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir
     meta = ("export const meta = {\n  name: 'junior-dev-judge',\n"
             "  description: 'Junior-dev blind pairwise clarity judge: which of two documents a newcomer understands faster',\n"
             "  phases: [{ title: 'Judge' }],\n}\n")
-    prompt = load_prompts()["judge"]
+    prompt = load_prompts()[prompt_name]
     template = (TEMPLATES / "judge.js").read_text(encoding="utf-8")
     by_id = {doc_id(k): v for k, v in finals.items()}
     out_dir = Path(out_dir)
@@ -213,7 +216,8 @@ def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir
     def emit(chunk: list[dict], name: str) -> None:
         # Each document is embedded once per file; pairs refer to it by id.
         docs = {i: by_id[i] for p in chunk for i in (p["doc_a"], p["doc_b"])}
-        data = {"label": name, "prompt": prompt, "judge_model": judge_model, "docs": docs, "pairs": chunk}
+        data = {"label": name, "prompt": prompt, "judge_prompt": prompt_name, "judge_model": judge_model,
+                "docs": docs, "pairs": chunk}
         text = meta + "const DATA = " + json.dumps(data, ensure_ascii=False) + "\n\n" + template
         if len(text.encode("utf-8")) >= MAX_BYTES and len(chunk) > 2:
             half = (len(chunk) // 4) * 2 or 2   # keep both orders of a pair together

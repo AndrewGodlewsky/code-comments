@@ -188,13 +188,15 @@ def validation_gates(summary: dict, agreement: float) -> dict:
     return gates
 
 
-def judge_summary(iteration_dir: Path, judge_model: str | None = None) -> dict:
+def judge_summary(iteration_dir: Path, judge_model: str | None = None, judge_prompt: str = "judge") -> dict:
     """Per (arm_a, arm_b, author, mode): arm_a's preference over arm_b (+1 win, -1 loss, 0 tie, mean over both
     orders), how often both orders agree, and whether the judge simply preferred the longer document.
-    `judge_model` keeps one judge's verdicts when an iteration was judged by more than one."""
+    `judge_model` keeps one judge's verdicts when an iteration was judged by more than one; `judge_prompt`
+    keeps one prompt's ("judge", the clarity rubric, for rows written before prompts were tagged)."""
     rows = []
     for path in sorted(Path(iteration_dir, "judgments").glob("*.json")):
         rows += json.loads(path.read_text(encoding="utf-8"))
+    rows = [j for j in rows if j.get("judge_prompt", "judge") == judge_prompt]
     if judge_model:
         rows = [j for j in rows if j.get("judge_model") == judge_model]
     groups = defaultdict(lambda: defaultdict(list))
