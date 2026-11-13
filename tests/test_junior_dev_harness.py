@@ -161,6 +161,24 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertIn("position_consistency", row)
         self.assertTrue(judged.is_file())
 
+    def test_judge_batch_pairs_against_a_baseline_iteration(self):
+        out = self.tmp / "wf-output-judge-b.json"
+        out.write_text(json.dumps({"result": self.dry["result"]}), encoding="utf-8")
+        base = self.tmp / "iteration-base"
+        collect.collect(out, base)
+        climb = self.tmp / "iteration-climb"
+        for run in (r for r in self.dry["result"]["runs"] if r["arm"] == "junior"):
+            src = base / run["case"] / "junior" / run["author"] / run["mode"] / f"run-{run['rep']}"
+            dst = climb / run["case"] / "junior-v1" / run["author"] / run["mode"] / f"run-{run['rep']}"
+            shutil.copytree(src, dst)
+            meta = json.loads((dst / "run.json").read_text(encoding="utf-8"))
+            (dst / "run.json").write_text(json.dumps(dict(meta, arm="junior-v1")), encoding="utf-8")
+        files = build.build_judge_batch(climb, [("junior-v1", "self-review")], self.tmp / "built-judge-b", "cross",
+                                        baseline_dir=base)
+        pairs = build.embedded_data(files[0])["pairs"]
+        self.assertEqual(len(pairs), 4)
+        self.assertEqual({p["arm_a"] for p in pairs}, {"junior-v1"})
+
     def test_collect_writes_tree_and_refuses_overwrite(self):
         out = self.tmp / "wf-output.json"
         out.write_text(json.dumps({"summary": "x", "result": self.dry["result"]}), encoding="utf-8")

@@ -41,25 +41,32 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
    python "${CLAUDE_PLUGIN_ROOT}/scripts/junior.py" ask "<state>"
    ```
 
-3. **Revise the file first.** Go through each question and ask yourself:
-   - Is the answer already in the file? If not, the file is missing it. Put it in.
-   - Could this part be simpler: fewer steps, fewer parts, plainer names?
-   - Does the file say what starts each step, what information moves, which part holds
-     the state, and what happens when a step fails?
-   - Would another structure show it better? For example a sequence diagram instead of a
-     flowchart, a table, numbered steps, or splitting one diagram in two.
+3. **Revise the file first, and make it simpler, not longer.** Each question shows you
+   where a newcomer got stuck. For each one, ask yourself:
+   - Was the answer already there? Then that part is hard to find or hard to read. Make it
+     plainer or move it where a reader would look. Do not say it twice.
+   - Does a reader need the answer to follow the main flow? Then put it in, at the step it
+     belongs to, and cut something less important if you can.
+   - Is it a detail the plan does not need yet, such as an exact format, a library choice
+     or a rare edge case? Then answer it in your answers file only, and leave it out of the
+     file.
+   - Could this part be simpler: fewer steps, fewer parts, plainer names? Would another
+     structure show it better, such as numbered steps, a table, a sequence diagram instead of
+     a flowchart, or one diagram split in two?
 
-   Everything the junior had to ask about must end up in the file itself, because the final
-   check reads only the file. Do not pad: a longer file is not a clearer one. If a question
-   shows that part of the plan is actually wrong, fix it.
+   Keep the file short. Aim to keep it within about one and a half times its first length.
+   A longer file is not a clearer one. What a reader needs to follow the main flow has to be
+   in the file itself, because the final check reads only the file. If a question shows that
+   part of the plan is actually wrong, fix it.
 4. **Write your answers** to `<state>/answers.md`, with one line per question in exactly
    this form:
    - `Q<n> [checked]: <answer>` when you verified it in the code, the docs or the files.
    - `Q<n> [decided]: <answer and the reason>` when it is a design decision you made and can
      defend.
    - `Q<n> [unknown]: <what is not known>` when you do not know, or have no reason you can
-     defend. Say so plainly. **Never invent a reason.** Mark the point in the file as an
-     open question instead of guessing.
+     defend. Say so plainly. **Never invent a reason.** If it matters to the plan, add one
+     short line for it under an "Open questions" heading at the end of the file, instead of
+     guessing.
 
    After the answers, add one line per change you made: `Changed: <what changed and why>`.
 5. **Submit**, then go back to step 2.
@@ -75,10 +82,12 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
    python "${CLAUDE_PLUGIN_ROOT}/scripts/junior.py" teachback "<state>"
    ```
 
-   Compare that explanation with what you intended.
-   - If any step is wrong, missing, or listed as something it could not explain, the file is
-     still unclear at that point. Fix the file there, write the misreadings to
-     `<state>/notes.md`, run this, then go back to step 2:
+   Compare that explanation with what you intended, for the main flow and its main failure
+   cases. Judge the explanation, not its list of gaps: a gap about a detail the plan does not
+   need to decide is not a misreading. Do not add it to the file.
+   - If the explanation gets a step of the main flow wrong, leaves one out, or cannot explain
+     one, the file is still unclear at that point. Fix the file there, simply, write the
+     misreadings to `<state>/notes.md`, run this, then go back to step 2:
 
      ```
      python "${CLAUDE_PLUGIN_ROOT}/scripts/junior.py" verdict "<state>" wrong --notes "<state>/notes.md"

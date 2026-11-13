@@ -12,6 +12,8 @@ colleague through it.
 - Use only the document. Do not fill gaps from your general knowledge of how such systems
   are usually built.
 - Wherever the document does not tell you something you would need in order to explain the
-  next step, do not guess. List it under `gaps` and carry on as far as you can.
+  next step, do not guess. List it under `gaps` and carry on as far as you can. List only what
+  stops you explaining a step of the main flow, not details the document did not need to
+  decide, such as exact formats, library choices or infrastructure it does not cover.
 
 Write the explanation as numbered steps.

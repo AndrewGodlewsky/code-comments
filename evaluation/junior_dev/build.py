@@ -169,18 +169,20 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
 
 
 def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir: Path, label: str,
-                      judge_model: str = "sonnet") -> list[Path]:
+                      judge_model: str = "sonnet", baseline_dir: Path | None = None) -> list[Path]:
     """Blind pairwise clarity judgments for every (case, author, mode, rep) where both arms of a pair ran.
 
-    Each pair is judged in both orders; the judge sees only the two final artifacts."""
+    Each pair is judged in both orders; the judge sees only the two final artifacts. `baseline_dir`
+    supplies arms that this iteration did not rerun (a climb iteration judged against the pilot's
+    SelfReview, say); an arm present in `iteration_dir` always wins over the baseline's."""
     import re as _re
-    iteration_dir = Path(iteration_dir)
     finals = {}
-    for run_json in iteration_dir.rglob("run.json"):
-        run = json.loads(run_json.read_text(encoding="utf-8"))
-        text = (run_json.parent / "artifact-final.md").read_text(encoding="utf-8")
-        if text.strip():
-            finals[(run["case"], run["arm"], run["author"], run["mode"], run["rep"])] = text
+    for source in [d for d in (baseline_dir, iteration_dir) if d]:
+        for run_json in Path(source).rglob("run.json"):
+            run = json.loads(run_json.read_text(encoding="utf-8"))
+            text = (run_json.parent / "artifact-final.md").read_text(encoding="utf-8")
+            if text.strip():
+                finals[(run["case"], run["arm"], run["author"], run["mode"], run["rep"])] = text
     words = lambda s: len(_re.findall(r"\w+", s))
     doc_id = lambda key: "__".join(map(str, key))
     items = []

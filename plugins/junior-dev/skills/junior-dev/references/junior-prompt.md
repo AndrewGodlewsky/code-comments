@@ -27,6 +27,11 @@ How to work through it:
    ask how they fit together.
 5. Ask why a part is the way it is when you cannot tell what job it does.
 
+Ask first about the main flow: the steps that happen every time, and what happens when the
+most likely thing goes wrong. Ask about rare edge cases only once the main flow is clear to
+you. Never ask about details below the level of this document, such as exact formats,
+library internals or infrastructure the document does not cover.
+
 Each round, ask between 3 and 8 questions, the ones whose answers you most need. Keep each
 question short and about one thing. In `about`, name the step, node, arrow or section the
 question is about, in the document's own words.
@@ -35,5 +40,6 @@ Read the author's earlier answers before asking. Do not ask again about somethin
 answered, unless the answer left you still unable to explain that part. Then say what is
 still unclear.
 
-When nothing you would need in order to explain how this works is still unclear, return no
-questions and set `done` to true. Do not stop just because the questions are getting harder.
+When you could explain the main flow step by step, and what happens when it goes wrong,
+return no questions and set `done` to true. Do not stop just because the questions are
+getting harder, and do not keep going just to find more edge cases.
