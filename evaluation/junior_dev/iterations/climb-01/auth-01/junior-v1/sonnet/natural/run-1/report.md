@@ -1,0 +1,16 @@
+## Review of auth-01 (junior-v1, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Fixed a bug in the D2 lockout rule: it now uses the newest 5 failures from the last 25 minutes (5 within 10 minutes of each other, locked until newest + 15 minutes). The old count over the last 10 minutes and the 5th-newest timestamp could end the lockout early.
+- Stated that the lockout check runs before the current failure is recorded: the 5th wrong password gets 401, the next attempt gets 429. 429 attempts record nothing.
+- D1: said explicitly that the cookie holds the raw token, the server hashes it per request, and the raw token is never stored.
+- Added a Responses rule describing the 401 and 429 login pages; 429 gives no countdown.
+- D4: lazy cleanup now deletes only an expired row and ignores errors. The sweep is now a per-instance timer, with failure behaviour stated.
+- D5: added the case where the DB fails mid-transaction on login (rollback, 503, old session kept). Also added a rollback note to the COMMIT step.
+- Protected routes: said what the middleware does with user_id and that static assets are not checked. Added an Open questions section for the unmonitored sweep and the static-asset decision.
+- Updated the diagram and its notes to match the new lockout query and cleanup behaviour.
+
+### Holes
+- None.

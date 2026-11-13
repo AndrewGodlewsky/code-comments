@@ -1,0 +1,115 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "A lock lasts 15 minutes but only failures from the last 10 minutes count. After the lock ends, do the old failure rows still count? Can one more wrong password re-lock the email straight away?",
+     "about": "Rules 3 and 4, sliding 10-minute window and lock check"
+    },
+    {
+     "id": "2",
+     "text": "On the fifth wrong password, the lock row is written but the diagram shows a 401. Does the user only see 429 from the sixth attempt?",
+     "about": "Login sequence, the fifth failed attempt"
+    },
+    {
+     "id": "3",
+     "text": "What does pg_advisory_xact_lock do here, and when is it released? What happens to a second login for the same email that arrives while bcrypt is running?",
+     "about": "Rule 5, per-email serialization with pg_advisory_xact_lock"
+    },
+    {
+     "id": "4",
+     "text": "On login, how does the app get the incoming cookie hash? Is it the SHA-256 of the cookie value the browser sent? What if that browser has no cookie or an invalid one?",
+     "about": "Rule 8, session fixation and Session ID / Stored session key"
+    },
+    {
+     "id": "5",
+     "text": "After the UPDATE returns a user_id, how does the app turn that into the logged-in user? Is there another query for the user, and where does it happen?",
+     "about": "Protected page GET /dashboard, UPDATE ... RETURNING"
+    },
+    {
+     "id": "6",
+     "text": "If the user closes the browser, the cookie goes away but the session row stays. What ends that row, and can an old cookie ever be reused?",
+     "about": "Cookie with no Max-Age (browser-session cookie) and expires_at"
+    },
+    {
+     "id": "7",
+     "text": "If Postgres fails or times out partway through a login transaction, for example after the password matches but before COMMIT, what does the user see? Is anything left half-done?",
+     "about": "Storage failure table, Login row"
+    },
+    {
+     "id": "8",
+     "text": "The document says the brief requires server-side destruction before replying. What is the brief, and where does the app learn the user's intent to log out, given there is no CSRF token?",
+     "about": "Logout row of Storage failure and Rule 11"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Old failures do not count after the lock ends. The lock lasts 15 minutes, longer than the 10-minute window, so every failure that triggered the lock is outside the window when it expires. One wrong password then starts a new count at 1 and cannot re-lock the email straight away. Rule 3 now states this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. The fifth wrong password gets the normal 401, and the lock row is written at that point. The sixth attempt, with any password, gets 429. The brief says lock after 5 failures and refuse logins for the locked period, so the refusal applies to later attempts. Rule 3 now says this. Returning 429 on the fifth attempt is possible but is not the plan."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "pg_advisory_xact_lock takes a lock keyed on the hash of the normalized email. It is released automatically at COMMIT or ROLLBACK. A second login for the same email waits at that line while the first runs bcrypt, then reads the committed rows under READ COMMITTED. The wait is capped by the 2-second DB timeout; past it, the second attempt gets 503. Rule 5 now says this."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Yes. The app reads the __Host-sid value from the request, hashes it with SHA-256, and deletes the row with that hash in the same transaction as the insert. With no cookie, or a cookie that matches no row, the delete removes nothing and login continues. Rule 8 now says this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "No second query is needed for the check. The UPDATE returns user_id, which is all the rule requires. A page that shows user details runs its own query by user_id after the check passes. Rule 10 says this. The schema now has a foreign key to users with ON DELETE CASCADE, so a deleted user cannot keep a live session."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Closing the browser does not end the server row. The cookie is browser-session, so the browser normally drops it, but the row stays until expires_at passes, logout deletes it, or a new login replaces it. Cleanup removes expired rows later. A cookie the browser restores, or that someone copied, still works until expires_at. Whether browsers restore cookies is not verified; it is listed under Open questions. The session lifetime note now says this."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Nothing is left half-done. All login writes are in one transaction. A failure before COMMIT rolls everything back, and the user gets 503 with no cookie. If the connection fails during COMMIT, the outcome is unknown. The app still returns 503 and sets no cookie, so any committed row is never used and expires through cleanup. The notes now cover both cases."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The brief is requirement 8: destroy the server session before replying, then clear the cookie and redirect. The app learns the logout intent from the POST /logout request itself. There is no CSRF token, so SameSite=Lax is what protects logout: cross-site POSTs do not carry the cookie, so a forged logout destroys nothing. Same-site attackers are not covered. Rule 11 now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Login request starts. The browser sends POST /login with an email and password. It may also carry an old __Host-sid cookie. An app instance (there are two) handles it. Postgres holds all the state.\n\n2. Normalise and serialise. The app turns the email into lower(trim(input)). It opens a transaction and takes a Postgres advisory lock keyed on that email. A second attempt for the same email waits at this line until the first finishes. The wait is capped by the 2-second DB timeout, and after that the waiting attempt gets 503. Different emails do not wait on each other. The lock is released when the transaction commits or rolls back.\n\n3. Lock check. The app looks in login_locks for a row for this email where locked_until is after now() (Postgres's clock). If one exists, the password is not checked and no failure row is written. The app commits with no changes and returns 429 with Retry-After and the login page. Unknown emails get the same 429.\n\n4. Look up the user and check the password. If there is no lock, the app selects the user by email. It runs bcrypt against the user's hash. If there is no user, it runs bcrypt against a fixed dummy hash so the timing looks the same.\n\n5. Wrong password or no user. The app inserts a login_failures row (email, now). It counts that email's failures in the last 10 minutes. If the count is 5 or more, it upserts login_locks with locked_until = now() + 15 minutes. It commits and returns 401 with \"Invalid email or password\". The fifth wrong password still gets this 401, and the lock then makes the sixth attempt get 429. The 15-minute lock outlasts the 10-minute window, so the failures that caused it have aged out when it ends. The next wrong password then counts as 1.\n\n6. Correct password. In one transaction the app does the following:\n   - It deletes that email's login_failures and login_locks rows.\n   - It generates a new session ID: 32 bytes from a CSPRNG, base64url encoded.\n   - It inserts a sessions row keyed by the SHA-256 of that ID. The row has created_at, last_seen_at, absolute_expires_at = created_at + 12h, and expires_at.\n   - It deletes any session row matching the hash of the incoming cookie. If there is no cookie or no match, nothing is deleted and login continues.\n   - It commits.\n   \n   The response is 303 to /dashboard with Set-Cookie __Host-sid holding the raw new ID. The cookie is HttpOnly, Secure, SameSite=Lax, Path=/, with no Domain and no Max-Age. The raw ID is never stored.\n\n7. Login failure partway. If Postgres fails or times out before COMMIT, everything rolls back and the user gets 503. No session, failure row, lock change or cookie results. If the connection fails during COMMIT, the outcome is unknown. The app still returns 503 with no cookie, and any committed session row expires through cleanup. If Postgres is down at the start, login returns 503 with no password check. Storage failures write no failure rows.\n\n8. Protected page. The browser requests GET /dashboard with the cookie. If the cookie is missing, the app returns 302 to /login and clears the cookie. Otherwise it hashes the cookie value and runs one atomic UPDATE on sessions. The UPDATE matches id_hash and requires expires_at > now(). It sets last_seen_at = now() and expires_at = least(now() + 30 min, absolute_expires_at), and returns user_id.\n\n9. Result of the check. If one row comes back, the page is served with 200. A page that needs more user data, such as a name, runs its own query by user_id. If zero rows come back (unknown or expired), the app returns 302 to /login and clears the cookie. If the database fails, the app returns 503 with Retry-After and keeps the cookie, because a redirect to /login would loop (the login page also needs the database). Only /login (GET and POST) and its static assets are public.\n\n10. Session lifetime. A session ends at min(last request + 30 min, created + 12h). Each protected request refreshes the idle part, and the 12h cap is never extended. Closing the browser does not end the server-side session.\n\n11. Logout. The browser sends POST /logout, with or without a cookie. The app deletes the sessions row for the cookie's hash, where zero rows is fine. It returns 303 to /login and clears the cookie (the same attributes with Max-Age=0). The response is identical whether or not a session existed. On a storage failure it returns 503 \"We couldn't sign you out. Try again.\" and keeps the cookie so the user can retry.\n\n12. Cleanup. A scheduled job runs every 5 minutes on either instance. It deletes sessions with expires_at <= now(), login_failures older than 10 minutes, and login_locks with locked_until <= now(). Deletes are idempotent, so no leader election is needed. Correctness does not depend on cleanup. If a run fails, it is logged and retried on the next run.",
+   "gaps": [
+    "The document does not say what /dashboard (or the next page) does after the 303, beyond the session check. It also does not say how a protected page decides who the user is beyond user_id.",
+    "The sessions table definition does not show how expires_at is set when the session is first inserted at login. The 30-minute initial value is implied but not stated.",
+    "It does not say how the app picks which of the two instances gets a request (load balancing). It also does not say how the browser reaches them."
+   ],
+   "verdict": "wrong",
+   "notes": "Login step 6 (insert): the explanation lists expires_at among the sessions row fields but cannot say its starting value. The file defines expires_at only as recomputed on each request, so the 30-minute idle expiry from the moment of login is not stated at the insert step. Fixed by stating the insert value in the schema notes and the diagram's insert line.; Not a misreading, and not changed: how the browser reaches the two instances and how the load balancer picks one. The brief fixes the LB with no sticky sessions, and the design does not depend on routing, so this is outside the decisions the document must make.; Not a misreading, and not changed: what /dashboard renders after the 303 and how it gets user details beyond user_id. The document already says the check yields only user_id and that any richer page queries by user_id. The page content is out of scope."
+  },
+  {
+   "text": "1. A user submits the login form. The browser sends POST /login with an email and password. /login (GET and POST) is public. The browser may also send an old __Host-sid cookie.\n2. The app instance lowercases and trims the email. That normalized email is used for every lookup and count.\n3. The app opens a Postgres transaction and immediately takes an advisory lock keyed on the email: pg_advisory_xact_lock(hashtextextended(email, 0)). Postgres holds that lock state. A second attempt for the same email, on either instance, waits at this line until the first transaction commits or rolls back. The wait is bounded by the 2-second DB timeout, and on timeout that attempt gets 503. Attempts for other emails do not wait.\n4. Lock check. The app looks in login_locks for a row for this email with locked_until later than now() (Postgres time). If one exists, it never checks the password and writes no failure rows. It commits with no changes and returns 429 with Retry-After and the login page. An unknown email that is locked gets the same 429.\n5. If there is no lock, the app selects the user by email. It runs a bcrypt compare. If no user exists, it compares against a fixed dummy hash so the timing does not reveal whether the account exists.\n6. Wrong password or no such user. The app inserts a login_failures row (email, failed_at = now) and counts rows for that email in the last 10 minutes. If the count is 5 or more, it upserts login_locks with locked_until = now + 15 minutes. It commits and returns 401 \"Invalid email or password\". The fifth bad attempt still gets 401. The sixth attempt, with any password, gets 429. When the lock ends (after 15 minutes), the earlier failures are already older than 10 minutes, so the next wrong password counts as 1.\n7. Correct password. In the same transaction the app deletes that email's login_failures and login_locks rows. It generates a new session ID (32 CSPRNG bytes, base64url) and inserts a sessions row. The row's key is the SHA-256 of that ID, so the raw ID is never stored. The row holds user_id, created_at, last_seen_at, absolute_expires_at = created + 12h, and expires_at = now + 30 min. It also reads the incoming cookie, if any, hashes it and deletes the sessions row with that hash. If there is no cookie or no match, the delete does nothing and login continues. This stops session fixation. It commits, then replies 303 to /dashboard with Set-Cookie __Host-sid=<new raw ID>. The cookie is HttpOnly, Secure, SameSite=Lax, Path=/, with no Domain and no Max-Age.\n8. The browser follows the redirect with GET /dashboard and the cookie. Every route except /login and its static assets needs a session. If the cookie is missing, the app replies 302 to /login and clears the cookie.\n9. With a cookie, the app hashes the value and runs one atomic UPDATE on sessions. It sets last_seen_at = now and expires_at = least(now + 30 min, absolute_expires_at). The WHERE clause matches id_hash and expires_at > now. It uses RETURNING user_id. Postgres's now() is used, not the app server's clock. If one row comes back, the session is valid and the 30-minute idle window is extended. The 12-hour cap is never extended. The app serves the 200 page. A page that needs more user data, such as a name, runs a separate query by user_id. If zero rows come back (unknown or expired), the app replies 302 to /login and clears the cookie (the clear repeats all attributes with Max-Age=0).\n10. Logout. The browser sends POST /logout, with or without a cookie. The app deletes the sessions row for the cookie's hash. Zero rows deleted is fine. It replies 303 to /login with a cleared cookie, whether or not a session existed. There is no CSRF token. SameSite=Lax means a cross-site forged POST arrives without the cookie and so destroys nothing.\n11. Cleanup. Every 5 minutes, either instance runs three deletes: expired sessions, login_failures older than 10 minutes, and expired login_locks. The deletes are idempotent, so no leader election is needed. Correctness does not depend on cleanup, because every check uses expires_at > now() or the lock time.\n12. Failures. All DB calls time out at about 2 seconds, and everything fails closed.\n - Login: 503 with \"We can't sign you in right now...\". The transaction rolls back and nothing is kept: no session, no failure row, no lock change, no cookie. Storage failures do not count toward a lock.\n - If the connection fails during COMMIT, the outcome is unknown. The app still returns 503 with no cookie, and any committed session row expires through cleanup.\n - Protected page: 503 with Retry-After, and the cookie is kept. It does not redirect to /login, because that page also needs the DB and the user would loop.\n - Logout: 503 \"We couldn't sign you out\", and the cookie is kept so the user can retry.\n - Cleanup job: no user impact. It is logged and retried on the next run.\n13. Closing the browser normally drops the cookie, but the server row stays until expires_at passes, logout deletes it, or a new login replaces it. A restored or copied cookie still works until expires_at.",
+   "gaps": [
+    "The document says the cookie sent with the login request is hashed and its session row deleted, but not whether that cookie is read before or after the password check, or what happens to the old session if login fails. Step 8 of the rules places the delete in the success transaction, so I assume a failed login leaves it alone, but the document does not say so.",
+    "The document does not say what the login 'Retry-After' value is, or how the app computes it from locked_until. The lock-check query selects the lock row, but the document does not say how the remaining time is derived.",
+    "The document does not say how the app finds out the cookie's session on /logout when the DB fails mid-delete beyond returning 503. It also does not say what the 503 Retry-After value on protected pages is."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Status lives in a new `report_exports` table on the primary database (status queued/running/done/failed, plus job_id, attempt, error, timestamps). The page learns of changes by calling GET /api/reports/{report_id}/exports/latest on page load, after a 202 from the click, and on a 5-second poll while queued or running. Reopening later just does the page-load lookup, so the row is the single source of truth. It reads the primary rather than the replica so lag can't hide a fresh row.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "It streams. The job fetches 5,000-row keyset pages from the replica, encodes each into an in-memory buffer, uploads the buffer as a multipart part when it reaches 8 MiB, then empties it. Peak memory is roughly 8 MiB buffer plus one ~2.3 MB page plus the etag list, about 20 MB, against 512 MB. The whole report (~900 MB) is never held.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Data already uploaded as parts is invisible at the key, so no one can download it. On an exception the job calls abort_multipart and re-raises. If the worker dies, the abort can't run and the bucket rule discards the incomplete upload after 24 hours. The queue keeps no progress, so the next attempt restarts from the beginning: row_id 0, a fresh start_multipart, and the header row. Nothing is resumed.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The page sends the raw filters and cols from its URL in the POST body, since the server stores nothing about the view. They are validated, then stored as text in the `filters` and `cols` columns of the report_exports row. They are also included in the enqueue payload (with export_id, user_id, report_id), which is well under 64 KB. The job re-parses them with the rows API's parser.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A partial unique index on report_exports (user_id, report_id) WHERE status IN ('queued','running'), in the primary database. The click does INSERT ... ON CONFLICT DO NOTHING. Of two simultaneous requests, one insert wins and enqueues. The other is skipped, selects the existing row and returns it as 202, so only one export and one job exist. Done and failed rows fall out of the index.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "complete_multipart must have succeeded and the row must be marked done with file_key. Only then is the signed URL generated and send_email called, followed by setting emailed_at. On a rerun the handler loads the row: if failed, it returns. If done with emailed_at set, it returns (no rebuild, no second email). If done with emailed_at NULL, it skips the rebuild and only resends the email. A crash between sending and writing emailed_at can send a duplicate email, which is accepted.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The CSV is fully built in memory before any bytes are sent, so a failure gives a 500 with no file, never a partial download. Nothing is stored and no job or export row exists. The user simply clicks again. If the request passes the 60-second kill, they also get an error.",
+  "decided": true
+ }
+}

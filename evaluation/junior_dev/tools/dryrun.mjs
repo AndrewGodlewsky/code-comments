@@ -40,7 +40,7 @@ function canned(role, run, prompt) {
     }
     case 'author': return { artifact: `REVISED for ${caseOf(run)}\n1. A step.\n2. Clarified.\n`, answers: [{ id: 'Q1', tag: 'checked', text: 'ans one' }, { id: 'Q2', tag: 'unknown', text: 'not decided' }], changes: ['clarified step 2'] }
     case 'teachback': return { explanation: 'Step 1 happens, then step 2.', gaps: [] }
-    case 'verdict': return { correct: true, misreadings: [], artifact: '' }
+    case 'verdict': return { correct: true, misreadings: [], artifact: 'Unchanged: the document as given above.' }
     case 'key': return { answers: ids(8).slice(4).map((id, i) => ({ id, answer: `author answer ${id}`, decided: i < 3 })) }
     case 'reader': return { answers: ids(8).map(id => ({ id, answer: `reader answer ${id}` })) }
     case 'grader': return { grades: ['haiku-low', 'sonnet'].flatMap(reader => ids(8).map((id, i) => ({ reader, id, correct: i % 2 === 0 }))) }

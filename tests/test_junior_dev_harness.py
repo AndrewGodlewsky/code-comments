@@ -83,6 +83,11 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertIn("A1 [checked]: ans one", second)
         self.assertNotIn("(no answer)", second)
 
+    def test_placeholder_artifacts_never_replace_the_document(self):
+        # climb-01 lost mig-02's whole plan when a correct verdict returned "Unchanged: ..." as the artifact.
+        for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("junior", "junior-same")):
+            self.assertTrue(run["artifact_final"].startswith("REVISED for"), run["artifact_final"][:60])
+
     def test_embedded_prompts_match_plugin(self):
         data = build.embedded_data(self.files[0])
         refs = PLUGIN / "skills" / "junior-dev" / "references"

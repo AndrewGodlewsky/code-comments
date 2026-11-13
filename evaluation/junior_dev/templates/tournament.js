@@ -43,6 +43,20 @@ function context(c) {
   return out
 }
 
+// The tournament's authors return whole documents, unlike the plugin's, which edit a file on disk.
+// A model can return a placeholder ("Unchanged: the document as given above") or a fragment instead;
+// accepting it would silently replace the plan, as happened once in climb-01. Keep the current
+// document unless the new one is at least 30% of its length.
+function accept(run, role, current, proposed) {
+  const words = s => (String(s || '').match(/\w+/g) || []).length
+  if (!proposed || !proposed.trim()) return current
+  if (words(current) > 100 && words(proposed) < 0.3 * words(current)) {
+    run.errors.push(`${role}: rejected a ${words(proposed)}-word artifact that would replace ${words(current)} words`)
+    return current
+  }
+  return proposed
+}
+
 function questionList(items) {
   return items.map(q => `Q${q.id} (about: ${q.about}): ${q.text}`).join('\n')
 }
@@ -63,7 +77,7 @@ async function selfReview(run, c, arm, art) {
     const s = await call(run, 'self', P.selfreview + '\n\n' + context(c) + '\n# Your document\n\n' + art, { model: run.author, schema: REVISE_SCHEMA })
     if (!s) break
     run.rounds = pass
-    if (s.artifact && s.artifact.trim()) art = s.artifact
+    art = accept(run, 'self', art, s.artifact)
     run.changes.push(...(s.changes || []).map(String))
     if (!(s.changes || []).length) break
   }
@@ -79,7 +93,7 @@ async function critic(run, c, arm, art) {
     const points = k.critiques.map((x, i) => `${i + 1}. ${x}`).join('\n')
     const v = await call(run, 'critic-revise', P.critic_revise + '\n\n' + context(c) + '\n# Your document\n\n' + art + '\n\n# The reviewer\'s points\n\n' + points, { model: run.author, schema: REVISE_SCHEMA })
     if (!v) { run.end_reason = 'error'; break }
-    if (v.artifact && v.artifact.trim()) art = v.artifact
+    art = accept(run, 'critic-revise', art, v.artifact)
     run.changes.push(...(v.changes || []).map(String))
   }
   run.end_reason = run.end_reason || 'cap'
@@ -121,7 +135,7 @@ async function juniorLoop(run, c, arm, art) {
       run.transcript.push({ round, questions: numbered, answers })
       for (const x of answers) if (x.tag === 'unknown') run.holes.push(`Q${x.id}: ${numbered.find(q => q.id === x.id).text} (author: ${x.text})`)
       run.changes.push(...(a.changes || []).map(String))
-      if (a.artifact && a.artifact.trim()) art = a.artifact
+      art = accept(run, 'author', art, a.artifact)
     } else {
       const message = arm.teachback === 'same' ? renderTeachbackSame(art, run.transcript) : renderTeachback(art)
       const t = await call(run, 'teachback', ROLE(arm.teachback_text) + message, { model: arm.junior_model, schema: TEACHBACK_SCHEMA })
@@ -132,7 +146,7 @@ async function juniorLoop(run, c, arm, art) {
         (gaps.length ? '\n\nThey could not explain:\n' + gaps.map(g => '- ' + g).join('\n') : ''), { model: run.author, schema: VERDICT_SCHEMA })
       if (!v) { run.end_reason = 'error'; break }
       run.teachbacks.push({ text: t.explanation, gaps, verdict: v.correct ? 'correct' : 'wrong', notes: (v.misreadings || []).join('; ') })
-      if (v.artifact && v.artifact.trim()) art = v.artifact
+      if (!v.correct) art = accept(run, 'verdict', art, v.artifact)
       if (v.correct) { run.end_reason = 'teachback-correct'; break }
       wrong += 1
       if (wrong >= DATA.max_teachbacks) { run.end_reason = 'teachbacks'; break }

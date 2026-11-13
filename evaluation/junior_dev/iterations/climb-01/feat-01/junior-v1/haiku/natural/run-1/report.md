@@ -1,0 +1,30 @@
+## Review of feat-01 (junior-v1, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Overview: a single click now covers both paths; the page follows the 409 from step 3 into step 4 automatically (Q1).
+- Terms: added the queue ctx, the dead attempt, the first-page rule for keyset paging, and the rule that every write sets updated_at (Q2, Q3, Q5, Q8).
+- Step 2: the reader's filters and cols come from the caller (URL or export row), and the first page has no row_id condition (Q5).
+- Step 4: stale active rows are marked failed before the insert, because the partial unique index would otherwise block the insert (found while answering Q8); the job_id save and the early start are explained (Q4).
+- Step 5: the decision list is restated, and the reason a row stays running after a dead attempt is explained (Q3).
+- Steps 6 and 7: one failure rule now covers both steps, including the best-effort abort and the queued status on attempts 1 and 2 (Q3); a zero-row completion update now exits without email.
+- Step 8: the email step never changes status, and the duplicate-email case under at-least-once delivery is stated (Q7 context).
+- Step 9: the final failure hook aborts the saved upload_id, and it sends the failure email only when the status update changed a row (Q7).
+- Step 10: the page finds the export through GET /exports/latest, and a click always goes through step 3 first (Q9).
+- Step 11: added state tests for the stale-row-before-insert order and for the hook sending no email when it changes nothing.
+- Open question 8: the 7-day rule is identified as already existing in existing/storage.py and outside this plan (Q6).
+- Overview: added what the page does when step 4 returns an error (Try again, no automatic retry).
+- Terms: the attempt definition now says a dead worker counts as a failed attempt and the queue schedules the next one.
+- Step 4: the 202 response is now stated as the page's starting point for polling.
+- Step 5: explained what an equal or higher attempt number means and how a dead copy is finished by the next attempt or step 9.
+- Step 5: stated that a running row with a lower attempt is a dead attempt, and that a raising attempt leaves the row queued.
+- Step 6: stated that every attempt starts from the first page and never reuses etags, and that the etags are lost when an attempt ends.
+- Step 7: the failure rule's status update is now conditional on attempt = ctx.attempt, so an older attempt cannot overwrite a newer one.
+- Step 7: stated the two leftover cases (completed upload with no done row, and no update at all) and what the next attempt or step 9 does.
+- Step 8 and step 10: stated that the page download is independent of the email and does not check email_sent_at.
+- Step 10: fixed the retry label to attempt + 1 when queued, and stated the polling source and its behaviour on a failed poll.
+- Step 10: 'Starts' now includes the 202 from step 4 as a trigger for polling.
+
+### Holes
+- None.

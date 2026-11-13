@@ -1,0 +1,36 @@
+## Review of ms-01 (junior-v1, author sonnet, natural)
+
+Rounds: 5. Ended: teachback-correct.
+
+### What changed
+- Added what the relay does, and what happens when it or the broker is down, in How to read this (Q3).
+- Added a line saying the customer sees progress only by polling GET /orders/{id}, with email only on confirmation and out-of-stock (Q6).
+- Defined cart version and what Cart does when the POST fails, in step 1 (Q1, Q2).
+- Explained the 10-minute hold against the 30-minute webhook gap in steps 3 and 4 (Q4).
+- Step 5 and the diagram labels on O3 and O4 now say the customer sees the result on the polling screen, with no email (Q6).
+- Step 6 now says Order checks its status on PaymentSucceeded and sends RefundRequested directly if the order is not waiting for payment; removed the duplicate edge-case bullet (Q7).
+- Defined how available stock changes on reserve, claim, expire and release in the Inventory table, and what free means in step 6 (Q8).
+- Moved the open question into an Open questions section and added two holes: no handling for a missing webhook, and two in-flight orders from one cart (Q1, Q5).
+- Step 1: Order returns the order id in its reply; Cart saves it and the screen polls with it (Q9).
+- Step 6: rewrote the claim outcomes as three clear cases (HELD valid, EXPIRED re-take, anything else including RELEASED or missing reservation) (Q10).
+- Step 6: stated that a RefundRequested from a non-AWAITING_PAYMENT order changes no status and sends no email (Q11).
+- Step 8: stated that RefundSucceeded only updates Order's refund status, with no change to order status, polling screen or emails (Q11, Q12).
+- Step 1 and edge cases: the request key only matches a live or confirmed order; if the earlier order with the key was cancelled, Order creates a new one (fixes the retry-after-failure contradiction).
+- Order table row: Order stores the request key (cart id and version) so it can do that match.
+- Step 3, step 4 and diagram P2: charge reference is the order id and the webhook carries it, so Payment finds the payment by order id.
+- Step 5 and diagram I7: release only acts on a HELD hold; expired, released or missing is a no-op that does not affect the order.
+- Open questions: added the assumption that the provider echoes our reference in webhooks.
+- Step 1: said that a lost reply leaves Cart with no id, and that the retry returns the existing order and Cart then saves its id and shows the polling screen (Q16).
+- Step 4: stated that Order is not told about hold expiry and stays AWAITING_PAYMENT until a payment result arrives (Q17).
+- Step 6 and Inventory table: fixed the lapsed-hold re-take. It goes EXPIRED to CLAIMED, on hand and available both drop, and unchanged available applies only to claiming a HELD hold (Q18).
+- How to read this: added what the polling screen shows per status and when polling stops; poll interval added to Open questions (Q19).
+- Step 5: stated that a declined order is final and a retry means a new order with a new charge key (Q20).
+- Edge cases: added that Order applies each event only in the status it expects and ignores it otherwise (Q21).
+- Step 7: stated that Cart receives OrderConfirmed from the broker and ignores it if the order id does not match (Q22).
+- Step 3 and diagram: added the case where the provider rejects a charge outright; Payment treats it as a decline and publishes PaymentDeclined; added a P1 to P6 arrow and adjusted the P6 label (Q23).
+- Step 6: stated that the free-stock check and decrease are atomic per item, so two orders cannot both take the last unit (Q24).
+- Steps 1 and 2: stated that the HTTP reply returns with the order PLACED, that OrderPlaced is saved with the order via the outbox and drives Inventory, and that repeats find the existing reservation (Q25).
+- How to read this: added that an outbox event cannot be lost.
+
+### Holes
+- Q5: What happens if the charge request never gets a clear answer, or the provider never sends a webhook? Does the order stay AWAITING_PAYMENT forever, and does the hold just expire? (author: The plan defines nothing for a charge with no clear answer beyond resending the same request (safe by idempotency key), and nothing for a webhook that never comes. The order would stay AWAITING_PAYMENT and the hold would expire, with no automatic cleanup. Whether Payment should poll the provider after a timeout is not decided. Added to Open questions.)
