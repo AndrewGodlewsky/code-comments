@@ -8,9 +8,9 @@ left out of that run (their share is reported separately). Arms are compared wit
 case, and the 95% interval is bootstrapped over cases (seed 52, 2000 resamples), because
 cases, not runs, are the independent units.
 
-The decision rule is the user's (docs/junior-dev/design.md, "Decided by the user"):
-useful if author + Junior beats the same author's SelfReview by 10 or more points; worth it
-for saving tokens if it comes within 5 points of Opus alone at a lower API-equivalent cost.
+The decision rule is the user's, revised on 2026-11-13 (docs/junior-dev/design.md, "Decided by
+the user"). Comprehension sits near its ceiling for first drafts and cannot see layout, so the
+blind pairwise clarity judge decides, and comprehension and length are guardrails. See decide().
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import sys
 
 PRICES = {"haiku": (0.10, 0.50), "sonnet": (2.0, 10.0), "opus": (4.0, 20.0)}  # $ per million tokens (in, out)
 PRODUCT_ROLES = {"draft", "junior", "author", "teachback", "verdict", "self", "critic", "critic-revise"}
-USEFUL, WORTH_IT_GAP, EPS = 0.10, 0.05, 1e-9
+JUDGE_WIN, COMP_TOLERANCE, OPUS_WIN, WORTH_IT_GAP, EPS = 0.65, 0.03, 0.45, 0.05, 1e-9
 
 
 def comprehension(grades: dict, excluded: set) -> float | None:
@@ -96,21 +96,44 @@ def paired(summary: dict, arm_a: str, arm_b: str, author: str, mode: str = "natu
             "n_cases": len(diffs), "per_case": dict(zip(common, diffs))}
 
 
-def decide(summary: dict, junior_arm: str = "junior", self_arm: str = "self-review", mode: str = "natural",
-           reference: tuple = ("opus", "no-review")) -> dict:
+def _mean_over_common(a: dict, b: dict) -> tuple[float | None, float | None]:
+    common = sorted(set(a) & set(b))
+    if not common:
+        return None, None
+    return statistics.fmean(a[c] for c in common), statistics.fmean(b[c] for c in common)
+
+
+def decide(summary: dict, judges: dict | None = None, junior_arm: str = "junior", self_arm: str = "self-review",
+           mode: str = "natural", reference: tuple = ("opus", "no-review")) -> dict:
+    """The user's revised rule (2026-11-13; docs/junior-dev/design.md, "Decided by the user").
+
+    useful:   >= 65% blind clarity wins against the same author's SelfReview (both orders), comprehension
+              within 3 points of SelfReview, and length within 1.5x SelfReview's.
+    worth_it: >= 45% blind wins against Opus alone, comprehension within 5 points of it, at a lower cost.
+    `judges` is judge_summary() output; the Opus pair is keyed (junior_arm, "no-review@opus", author, mode)."""
+    judges = judges or {}
+    ref_author, ref_arm = reference
     out = {}
     authors = sorted({r["author"] for r in summary["runs"] if r["arm"] == junior_arm and r["mode"] == mode})
     for author in authors:
         vs_self = paired(summary, junior_arm, self_arm, author, mode)
-        vs_opus = paired(summary, junior_arm, reference[1], author, mode, author_b=reference[0])
-        cost_j = _case_means(summary, junior_arm, author, mode, "cost_usd")
-        cost_o = _case_means(summary, reference[1], reference[0], mode, "cost_usd")
-        common = sorted(set(cost_j) & set(cost_o))
-        cheaper = bool(common) and statistics.fmean(cost_j[c] for c in common) < statistics.fmean(cost_o[c] for c in common)
-        useful = vs_self["mean_diff"] is not None and vs_self["mean_diff"] >= USEFUL - EPS
-        close = vs_opus["mean_diff"] is not None and vs_opus["mean_diff"] >= -WORTH_IT_GAP - EPS
-        out[author] = {"useful": useful, "worth_it": bool(close and cheaper), "vs_self": vs_self, "vs_opus": vs_opus,
-                       "cheaper_than_opus": cheaper}
+        vs_opus = paired(summary, junior_arm, ref_arm, author, mode, author_b=ref_author)
+        words_j, words_s = _mean_over_common(_case_means(summary, junior_arm, author, mode, "words"),
+                                             _case_means(summary, self_arm, author, mode, "words"))
+        cost_j, cost_o = _mean_over_common(_case_means(summary, junior_arm, author, mode, "cost_usd"),
+                                           _case_means(summary, ref_arm, ref_author, mode, "cost_usd"))
+        win_self = (judges.get((junior_arm, self_arm, author, mode)) or {}).get("win_rate")
+        win_opus = (judges.get((junior_arm, f"{ref_arm}@{ref_author}", author, mode)) or {}).get("win_rate")
+        length_ok = words_j is not None and words_s and words_j <= 1.5 * words_s + EPS
+        useful = (win_self is not None and win_self >= JUDGE_WIN - EPS and vs_self["mean_diff"] is not None
+                  and vs_self["mean_diff"] >= -COMP_TOLERANCE - EPS and bool(length_ok))
+        cheaper = cost_j is not None and cost_j < cost_o
+        worth_it = (win_opus is not None and win_opus >= OPUS_WIN - EPS and vs_opus["mean_diff"] is not None
+                    and vs_opus["mean_diff"] >= -WORTH_IT_GAP - EPS and cheaper)
+        out[author] = {"useful": bool(useful), "worth_it": bool(worth_it), "win_vs_self": win_self,
+                       "win_vs_opus": win_opus, "vs_self": vs_self, "vs_opus": vs_opus,
+                       "length_ratio": (words_j / words_s) if words_j is not None and words_s else None,
+                       "cheaper_than_opus": bool(cheaper)}
     return out
 
 
@@ -208,7 +231,9 @@ def score(iteration_dir: Path) -> dict:
                       "rounds": statistics.fmean(r["rounds"] for r in rs), "words": statistics.fmean(r["words"] for r in rs),
                       "cost_usd": statistics.fmean(r["cost_usd"] for r in rs), "errors": sum(bool(r["errors"]) for r in rs)})
     summary = {"runs": rows, "table": table}
-    summary["decision"] = decide(summary) if any(r["arm"] == "junior" for r in rows) else {}
+    judges = judge_summary(iteration_dir)
+    summary["judges"] = {" | ".join(k): v for k, v in judges.items()}
+    summary["decision"] = decide(summary, judges) if any(r["arm"] == "junior" for r in rows) else {}
     Path(iteration_dir, "summary.json").write_text(json.dumps(summary, indent=1, default=list) + "\n", encoding="utf-8",
                                                    newline="\n")
     lines = ["| arm | author | mode | runs | comprehension | requirements | invented | rounds | words | cost $ | errors |",

@@ -242,12 +242,33 @@ class ScoreTest(unittest.TestCase):
         self.assertGreaterEqual(result["ci95"][1], 0.12)
         self.assertEqual(result["n_cases"], 12)
 
-    def test_decide_thresholds(self):
-        self.assertTrue(score.decide(self._summary(0.10))["haiku"]["useful"])
-        self.assertFalse(score.decide(self._summary(0.09))["haiku"]["useful"])
-        self.assertTrue(score.decide(self._summary(0.10, opus_gap=0.05))["haiku"]["worth_it"])
-        self.assertFalse(score.decide(self._summary(0.10, opus_gap=0.06))["haiku"]["worth_it"])
-        self.assertFalse(score.decide(self._summary(0.10, cheaper=False))["haiku"]["worth_it"])
+    def _judges(self, vs_self=0.70, vs_opus=0.50):
+        return {("junior", "self-review", "haiku", "natural"): {"win_rate": vs_self},
+                ("junior", "no-review@opus", "haiku", "natural"): {"win_rate": vs_opus}}
+
+    def _with_words(self, summary, junior_words=1400):
+        for r in summary["runs"]:
+            r["words"] = junior_words if r["arm"] == "junior" else 1000
+        return summary
+
+    def test_decide_useful_needs_judge_wins_and_guardrails(self):
+        # The user's revised rule (2026-11-13): >= 65% blind wins against SelfReview,
+        # comprehension within 3 points, length within 1.5x.
+        decide = lambda diff=0.0, words=1400, **j: score.decide(self._with_words(self._summary(diff), words),
+                                                                self._judges(**j))["haiku"]
+        self.assertTrue(decide(vs_self=0.65)["useful"])
+        self.assertFalse(decide(vs_self=0.60)["useful"])
+        self.assertTrue(decide(diff=-0.03)["useful"])
+        self.assertFalse(decide(diff=-0.04)["useful"])
+        self.assertFalse(decide(words=1600)["useful"])
+
+    def test_decide_worth_it_against_opus(self):
+        decide = lambda gap=0.0, cheaper=True, **j: score.decide(
+            self._with_words(self._summary(0.0, opus_gap=gap, cheaper=cheaper)), self._judges(**j))["haiku"]
+        self.assertTrue(decide(vs_opus=0.45, gap=0.05)["worth_it"])
+        self.assertFalse(decide(vs_opus=0.40)["worth_it"])
+        self.assertFalse(decide(gap=0.06)["worth_it"])
+        self.assertFalse(decide(cheaper=False)["worth_it"])
 
     def test_run_comprehension_excludes_undecided_items(self):
         grades = {"haiku-low": [{"id": "q1", "correct": True}, {"id": "q2", "correct": False}],

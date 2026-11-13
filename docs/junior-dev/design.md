@@ -390,11 +390,21 @@ intervals are bootstrapped over cases. This is fixed in advance. **our call**
 
 The builder check on 2026-11-12 left three questions for the user. Their answers:
 
-1. **What counts as useful.** **user**
-   - Junior-dev is *useful* for an author model if that model plus Junior-dev beats the
-     same model's SelfReview by 10 or more comprehension points.
-   - It is *worth it for saving tokens* if Haiku or Sonnet plus Junior-dev comes within
-     about 5 points of Opus alone while costing less.
+1. **What counts as useful.** **user** (revised on 2026-11-13, after the pilot)
+   - Junior-dev is *useful* for an author model if, against the same model's SelfReview:
+     - it wins at least 65% of the blind clarity judgments, with each pair judged in both
+       orders;
+     - its comprehension stays within 3 points;
+     - its length stays within about 1.5 times SelfReview's.
+   - It is *worth it for saving tokens* if Haiku or Sonnet plus Junior-dev is judged at least
+     as clear as Opus alone, at a lower cost. Our call on "at least as clear": it wins at least
+     45% of the judgments against Opus alone, and its comprehension is within 5 points.
+   - *Why it changed:* the original rule needed 10 or more comprehension points over
+     SelfReview. In the pilot, first drafts already scored 0.86 to 0.93 on the quiz and
+     SelfReview 0.95 to 0.98, so that rule could not be met even by an excellent skill. The
+     grader validation also showed the quiz cannot see layout. The user accepted the
+     judge-based rule. The user also said to go with the designing agent's recommendations and
+     try them, rather than ask about each one.
    - Cost is measured as tokens priced at API list rates, as a stand-in for spend. Raw
      tokens are reported as well. The rates come from the claude-api skill's table cached
      on 2026-10-06, in dollars per million tokens (input / output):
