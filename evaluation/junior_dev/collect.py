@@ -68,6 +68,19 @@ def collect(output_file: Path, iteration_dir: Path) -> list[Path]:
     return written
 
 
+def collect_judgments(output_file: Path, iteration_dir: Path, result: dict | None = None) -> Path:
+    """Store a judge batch's judgments under <iteration>/judgments/<label>.json (never overwritten)."""
+    if result is None:
+        data = json.loads(Path(output_file).read_text(encoding="utf-8"))
+        result = data.get("result", data)
+    target = Path(iteration_dir) / "judgments" / f"{result['label']}.json"
+    if target.exists():
+        raise FileExistsError(f"refusing to overwrite {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _dump(target, [j for j in result["judgments"] if j])
+    return target
+
+
 if __name__ == "__main__":
     paths = collect(Path(sys.argv[1]), Path(sys.argv[2]))
     print(f"wrote {len(paths)} runs")

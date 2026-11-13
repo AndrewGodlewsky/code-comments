@@ -22,30 +22,33 @@ if (process.argv[2] === '--render') {
 const source = fs.readFileSync(process.argv[2], 'utf8').replace(/^export const meta/m, 'const meta')
 const dataLine = source.split('\n').find(l => l.startsWith('const DATA = '))
 const DATA = JSON.parse(dataLine.slice('const DATA = '.length))
-const armOf = Object.fromEntries(DATA.runs.map(r => [r.run_id, r.arm]))
+const armOf = Object.fromEntries((DATA.runs || []).map(r => [r.run_id, r.arm]))
 const prompts = []
 const juniorCalls = {}
 const ids = (n, prefix = 'q') => Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`)
+// Canned artifacts carry only the case id, never the run id (which names the arm), so blind-judge tests mean something.
+const caseOf = run => String(run).split('__')[0]
 
 function canned(role, run, prompt) {
   switch (role) {
-    case 'draft': return { artifact: `DRAFT for ${run}\n1. A step.\n` }
+    case 'draft': return { artifact: `DRAFT for ${caseOf(run)}\n1. A step.\n` }
     case 'junior': {
       juniorCalls[run] = (juniorCalls[run] || 0) + 1
       return juniorCalls[run] === 1
         ? { questions: [{ id: 'q1', text: 'STUB-QUESTION one?', about: 'step 1' }, { id: 'q2', text: 'STUB-QUESTION two?', about: 'step 2' }], done: false }
         : { questions: [], done: true }
     }
-    case 'author': return { artifact: `REVISED for ${run}\n1. A step.\n2. Clarified.\n`, answers: [{ id: '1', tag: 'checked', text: 'ans one' }, { id: '2', tag: 'unknown', text: 'not decided' }], changes: ['clarified step 2'] }
+    case 'author': return { artifact: `REVISED for ${caseOf(run)}\n1. A step.\n2. Clarified.\n`, answers: [{ id: '1', tag: 'checked', text: 'ans one' }, { id: '2', tag: 'unknown', text: 'not decided' }], changes: ['clarified step 2'] }
     case 'teachback': return { explanation: 'Step 1 happens, then step 2.', gaps: [] }
     case 'verdict': return { correct: true, misreadings: [], artifact: '' }
     case 'key': return { answers: ids(8).slice(4).map((id, i) => ({ id, answer: `author answer ${id}`, decided: i < 3 })) }
     case 'reader': return { answers: ids(8).map(id => ({ id, answer: `reader answer ${id}` })) }
     case 'grader': return { grades: ['haiku-low', 'sonnet'].flatMap(reader => ids(8).map((id, i) => ({ reader, id, correct: i % 2 === 0 }))) }
     case 'checker': return { requirements: ids(4, 'r').map(id => ({ id, present: true })), honesty: [{ point: 'session length', reported_as_hole: true, invented: false }] }
-    case 'self': return { artifact: `SELF for ${run}\n1. A step.\n`, changes: [] }
+    case 'self': return { artifact: `SELF for ${caseOf(run)}\n1. A step.\n`, changes: [] }
     case 'critic': return { critiques: [], done: true }
-    case 'critic-revise': return { artifact: `CRITIC-REVISED for ${run}\n`, changes: ['x'] }
+    case 'critic-revise': return { artifact: `CRITIC-REVISED for ${caseOf(run)}\n`, changes: ['x'] }
+    case 'judge': return { winner: 'A', reason: 'stub' }
     default: throw new Error(`no canned result for role ${role}`)
   }
 }

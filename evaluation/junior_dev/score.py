@@ -164,6 +164,35 @@ def validation_gates(summary: dict, agreement: float) -> dict:
     return gates
 
 
+def judge_summary(iteration_dir: Path) -> dict:
+    """Per (arm_a, arm_b, author, mode): arm_a's preference over arm_b (+1 win, -1 loss, 0 tie, mean over both
+    orders), how often both orders agree, and whether the judge simply preferred the longer document."""
+    rows = []
+    for path in sorted(Path(iteration_dir, "judgments").glob("*.json")):
+        rows += json.loads(path.read_text(encoding="utf-8"))
+    groups = defaultdict(lambda: defaultdict(list))
+    for j in rows:
+        if j.get("winner_arm") is None:
+            continue
+        groups[(j["arm_a"], j["arm_b"], j["author"], j["mode"])][(j["case"], j["rep"])].append(j)
+    out = {}
+    for key, pairs in groups.items():
+        arm_a = key[0]
+        scores, consistent, longer = [], 0, []
+        for js in pairs.values():
+            vals = [1 if j["winner_arm"] == arm_a else 0 if j["winner_arm"] == "tie" else -1 for j in js]
+            scores += vals
+            consistent += len(js) == 2 and vals[0] == vals[1]
+            for j in js:
+                if j["winner"] in ("A", "B") and j["words_a"] != j["words_b"]:
+                    longer.append((j["winner"] == "A") == (j["words_a"] > j["words_b"]))
+        out[key] = {"pairs": len(pairs), "judgments": len(scores), "preference": statistics.fmean(scores) if scores else None,
+                    "win_rate": sum(v == 1 for v in scores) / len(scores) if scores else None,
+                    "position_consistency": consistent / len(pairs) if pairs else None,
+                    "longer_wins": sum(longer) / len(longer) if longer else None}
+    return out
+
+
 def score(iteration_dir: Path) -> dict:
     rows = load_runs(iteration_dir)
     groups = defaultdict(list)

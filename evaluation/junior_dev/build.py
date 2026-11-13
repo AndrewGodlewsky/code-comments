@@ -168,6 +168,47 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
     return files
 
 
+def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir: Path, label: str,
+                      judge_model: str = "sonnet") -> list[Path]:
+    """Blind pairwise clarity judgments for every (case, author, mode, rep) where both arms of a pair ran.
+
+    Each pair is judged in both orders; the judge sees only the two final artifacts."""
+    import re as _re
+    iteration_dir = Path(iteration_dir)
+    finals = {}
+    for run_json in iteration_dir.rglob("run.json"):
+        run = json.loads(run_json.read_text(encoding="utf-8"))
+        text = (run_json.parent / "artifact-final.md").read_text(encoding="utf-8")
+        if text.strip():
+            finals[(run["case"], run["arm"], run["author"], run["mode"], run["rep"])] = text
+    items = []
+    for arm_a, arm_b in pairs:
+        for (case, arm, author, mode, rep), doc_a in sorted(finals.items()):
+            if arm != arm_a or (case, arm_b, author, mode, rep) not in finals:
+                continue
+            doc_b = finals[(case, arm_b, author, mode, rep)]
+            words = lambda s: len(_re.findall(r"\w+", s))
+            pair_id = f"{case}__{arm_a}__vs__{arm_b}__{author}__{mode}__r{rep}"
+            base = {"pair_id": pair_id, "case": case, "author": author, "mode": mode, "rep": rep, "arm_a": arm_a, "arm_b": arm_b}
+            items.append(dict(base, order="ab", doc_a=doc_a, doc_b=doc_b, words_a=words(doc_a), words_b=words(doc_b)))
+            items.append(dict(base, order="ba", doc_a=doc_b, doc_b=doc_a, words_a=words(doc_b), words_b=words(doc_a)))
+    meta = ("export const meta = {\n  name: 'junior-dev-judge',\n"
+            "  description: 'Junior-dev blind pairwise clarity judge: which of two documents a newcomer understands faster',\n"
+            "  phases: [{ title: 'Judge' }],\n}\n")
+    prompt = load_prompts()["judge"]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files = []
+    for k in range(0, len(items), 2 * MAX_RUNS):
+        chunk = items[k:k + 2 * MAX_RUNS]
+        data = {"label": f"{label}-{k // (2 * MAX_RUNS) + 1:02d}", "prompt": prompt, "judge_model": judge_model, "pairs": chunk}
+        path = out_dir / f"{data['label']}.js"
+        path.write_text(meta + "const DATA = " + json.dumps(data, ensure_ascii=False) + "\n\n"
+                        + (TEMPLATES / "judge.js").read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+        files.append(path)
+    return files
+
+
 def embedded_data(path: Path) -> dict:
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if line.startswith("const DATA = "):

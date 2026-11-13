@@ -127,6 +127,28 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertEqual(build.js_render("junior", artifact, transcript), junior.build_junior_message(artifact, transcript))
         self.assertEqual(build.js_render("teachback", artifact, []), junior.build_teachback_message(artifact))
 
+    def test_judge_batch_is_blind_and_order_swapped(self):
+        out = self.tmp / "wf-output-judge.json"
+        out.write_text(json.dumps({"result": self.dry["result"]}), encoding="utf-8")
+        it = self.tmp / "iteration-judge"
+        collect.collect(out, it)
+        files = build.build_judge_batch(it, [("junior", "self-review")], self.tmp / "built-judge", "judge-test")
+        data = build.embedded_data(files[0])
+        self.assertEqual(len(data["pairs"]), 2 * 2)          # 2 cases x 1 author x 1 rep x 2 orders
+        self.assertEqual({p["order"] for p in data["pairs"]}, {"ab", "ba"})
+        dry = build.dry_run(files[0])
+        for p in dry["prompts"]:
+            self.assertEqual(p["role"], "judge")
+            for name in ("junior", "self-review", "Junior", "SelfReview"):
+                self.assertNotIn(name, p["prompt"].split("# Document A", 1)[1])
+        judged = collect.collect_judgments(self.tmp / "judge-out.json", it, result=dry["result"])
+        summary = score.judge_summary(it)
+        row = summary[("junior", "self-review", "haiku", "natural")]
+        self.assertEqual(row["pairs"], 2)
+        self.assertIn("preference", row)
+        self.assertIn("position_consistency", row)
+        self.assertTrue(judged.is_file())
+
     def test_collect_writes_tree_and_refuses_overwrite(self):
         out = self.tmp / "wf-output.json"
         out.write_text(json.dumps({"summary": "x", "result": self.dry["result"]}), encoding="utf-8")
