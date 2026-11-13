@@ -87,8 +87,9 @@ final report must be able to show any of them.
      diagram file that gets written and tells the agent to run Junior-dev on it once the
      artifact is finished, before using it. A Stop hook is the backstop for a recorded
      artifact that was never reviewed. **our call**
-   - **What it runs on:** artifacts the agent created or substantially rewrote in this
-     session. It runs once per artifact per session, unless the artifact changes
+   - **What it runs on:** plan and diagram *files*, not plans given only in a chat reply,
+     and not tiny ones (see "Decided by the user after the builder check"). **user** Only
+     artifacts the agent created or substantially rewrote in this session count. It runs once per artifact per session, unless the artifact changes
      substantially again afterwards. The loop's own edits do not trigger it again. It
      does not restructure a document a person wrote that the agent only touched lightly.
      **our call**
@@ -374,15 +375,41 @@ intervals are bootstrapped over cases. This is fixed in advance. **our call**
 - `intent.md`, `architecture.md`, `README.md` and the research index updated to point to
   Junior-dev.
 
-## Open for the user
+## Decided by the user after the builder check
 
-The builder check on 2026-11-12 left three questions that only the user can answer:
+The builder check on 2026-11-12 left three questions for the user. Their answers:
 
-1. **What result counts as useful, and what extra cost is acceptable?** This sets the rule
-   that turns the data into a verdict and a shipped default.
-2. **Does a plan given only in the chat reply count, or only plans and diagrams written to
-   files?** And should it run on every artifact, or only above some size?
-3. **How much of the subscription may the in-session tournament use?**
+1. **What counts as useful.** **user**
+   - Junior-dev is *useful* for an author model if that model plus Junior-dev beats the
+     same model's SelfReview by 10 or more comprehension points.
+   - It is *worth it for saving tokens* if Haiku or Sonnet plus Junior-dev comes within
+     about 5 points of Opus alone while costing less.
+   - Cost is measured as tokens priced at API list rates, as a stand-in for spend. Raw
+     tokens are reported as well. The rates come from the claude-api skill's table cached
+     on 2026-10-06, in dollars per million tokens (input / output):
+     - Haiku 5.5: $0.10 / $0.50
+     - Sonnet 5.5: $2 / $10
+     - Opus 5.5: $4 / $20
+
+   The user's framing: their intuition says it will work, and the data has to show what it
+   actually helps with.
+2. **Files only.** Plans and diagrams written to files count. A plan given only in a chat
+   reply does not, in this version. Tiny artifacts, such as a five-line checklist, are
+   skipped. The activation eval sets the size threshold. **user**
+3. **Tournament usage.** The tournament runs on the user's subscription with no fixed
+   ceiling. **user**, who expects Haiku and Sonnet runs to cost little. Our estimate, in
+   API-equivalent dollars (not billed on the subscription, but drawing on its limits),
+   assuming about 13 agent calls for a full Junior run of 3 rounds:
+   - Haiku throughout: about $0.03 per run.
+   - Haiku author with a Sonnet junior and readers: about $0.25.
+   - Sonnet throughout: about $0.50.
+   - The baseline arms cost far less.
+
+   About 1,500 runs across screening, the climb and confirmation would come to roughly
+   $200 to $500 equivalent, mostly from Sonnet. The pilot replaces this guess with
+   measured tokens. Usage is reported after the pilot and again after screening. Opus is
+   kept to case writing, the reference arms and a small confirmation slice. Haiku plays
+   any role where it holds up. **our call**
 
 ## Left to the builder
 
