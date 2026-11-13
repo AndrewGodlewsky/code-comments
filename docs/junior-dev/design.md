@@ -81,10 +81,34 @@ final report must be able to show any of them.
    **user** The research gives reason to doubt the description alone: in this repo, Haiku
    loaded the code-comments skill in 0 of 18 runs where it should have (M1), and plugin
    hooks fire whether or not a skill loads (M2).
+   - **When it runs:** once the artifact is finished and before the agent acts on it, for
+     example before implementing it or handing it on. A clarified plan cannot improve work
+     that has already been done. With hooks, a PostToolUse hook records each plan or
+     diagram file that gets written and tells the agent to run Junior-dev on it once the
+     artifact is finished, before using it. A Stop hook is the backstop for a recorded
+     artifact that was never reviewed. **our call**
+   - **What it runs on:** artifacts the agent created or substantially rewrote in this
+     session. It runs once per artifact per session, unless the artifact changes
+     substantially again afterwards. The loop's own edits do not trigger it again. It
+     does not restructure a document a person wrote that the agent only touched lightly.
+     **our call**
+   - **Artifacts written by subagents** are out of scope for this version, since a
+     subagent is not expected to be able to start the junior itself (the spike confirms
+     this). The README states the limitation. The script-based junior below may lift it.
+     **our call**
 2. **Input to the junior.** The artifact text and nothing else: no repository, no
    conversation, no task description and no tools. The artifact has to carry its full
    intent on its own. **user** It also omits any wording such as "this plan is complete"
    (A4). **our call**
+   - **Isolation is as strict as the subscription allows.** Even with no tools, an
+     in-session subagent receives the project's CLAUDE.md, environment details such as the
+     working directory and git status, and the skill listing. The spike compares two
+     options. One is a plugin subagent. The other is a helper script that runs the junior
+     with `claude -p` from an empty temporary directory, with project and user settings
+     excluded. The strictest option that works on the user's subscription ships. Whatever
+     context still leaks is recorded in the README. The eval's junior gets exactly the same
+     isolation as the shipped one, so the Junior-against-JuniorFull comparison stays valid.
+     **our call**
 3. **Questions.** The junior asks batches of questions, in rounds, about what it does not
    understand, as a junior developer would. Each question points to the step, node or
    edge it is about. **user** (the pointing is **our call**). The junior's exact procedure
@@ -114,6 +138,12 @@ final report must be able to show any of them.
 8. **Report to the user.** At the end the user gets two lists: what changed and why, and
    the holes, meaning the questions the author could not answer or is unsure about. The
    loop never pauses to ask the user. **user**
+9. **A loop a weaker model can follow.** A helper script holds the loop's state: the
+   transcript, the round count and the done signal. Each round, the main agent's job is
+   then small and the same every time: get the questions, answer them, edit the artifact,
+   ask for the next round. This is meant to make the loop workable for Haiku. The fidelity
+   runs check whether it does. If Haiku still drifts, the split between script and skill
+   text is revised, and any remaining failure is reported. **our call**
 
 ## Plugin layout
 
@@ -170,10 +200,21 @@ Each case has:
   the skill never see. Two kinds of question:
   - questions the brief settles, graded against a fixed key;
   - questions about the author's own design choices, graded against the author's own
-    answers. The author records those answers, with full context, before any reader sees
-    the artifact. A valid design that differs from the case writer's design is therefore
-    not penalised. **our call**
-- **an optional starting artifact**, for the seeded mode below.
+    answers. A valid design that differs from the case writer's design is therefore not
+    penalised. **our call**, with these details:
+    - The case writer fixes these questions in advance, the same for every arm. They are
+      worded so that any valid design can answer them, for example "Where is the refresh
+      token stored, and what protects it?"
+    - The author answers them in a separate, sealed call after the loop has finished, with
+      its full context. The answers never go back into the loop.
+    - An item the author marks as undecided is left out of that run's comprehension score.
+      The share of items decided is reported next to it as a separate measure, so deciding
+      less cannot quietly make the quiz easier.
+    - In seeded and null modes, the case writer's key is used.
+- **an optional starting artifact**, for the seeded mode below;
+- **for about a third of the cases, a small folder describing the existing system** (code
+  or docs) that the author can read and the junior never sees. This tests answers grounded
+  in a real source against made-up ones. **our call**
 
 Three modes:
 
@@ -181,6 +222,15 @@ Three modes:
 - **Seeded:** the author starts from a given artifact that is correct but unclear. This
   isolates the questioning step.
 - **Null:** the starting artifact is already clear, so little should change.
+
+Natural mode is the primary one. It runs for every case and drives both the hill climb's
+keep-or-drop rule and the headline. Seeded and null modes run on a subset as secondary
+checks, and the null cases act as a guardrail. **our call**
+
+Seeded artifacts come in two kinds, reported separately. One holds all the information but
+lays it out badly, which is purely a presentation problem. The other leaves relationships
+implicit or scattered, which is closer to the user's complaint that the logic is not
+fleshed out. **our call**
 
 A few briefs leave one point deliberately undecided, to test whether the author reports it
 as a hole or invents an answer.
@@ -195,6 +245,13 @@ family kept on one side. **our call**
   being trained to the test. Score: the share of items answered correctly, averaged
   over at least two readers (Haiku and Sonnet). An answer of "not stated" counts as wrong.
   **our call**, implementing the user's test.
+  - **Reading quickly.** A reader with unlimited time can often dig the answers out of a
+    badly laid-out artifact, so a quiz alone can miss the clarity the user means. One
+    reader is therefore Haiku at low effort with a short answer budget. Weak, hurried
+    readers are where layout matters most. **our call**
+  - **Does the teach-back signal clarity?** The teach-back is also scored against the key,
+    to test whether a correct teach-back really predicts that readers will understand the
+    artifact. **our call**
 - **Secondary: blind clarity comparison.** A judge sees two artifacts for the same brief,
   without knowing which arm produced either. It is asked which one a capable newcomer would
   understand faster and more correctly. It is told explicitly that length is not a merit,
@@ -229,7 +286,8 @@ The readers are blind to the arm and use several Claude models. The user will be
   new to the stack could follow it.
 - **Critic:** a generic reviewer that sees only the artifact.
 - **Junior:** the treatment, in variants.
-  - teach-back style: none, the same junior, a fresh junior;
+  - who gives the teach-back: no one, the same junior, or a fresh junior;
+  - the teach-back's form: a free narrative, or tracing one concrete scenario;
   - the junior's model: Haiku, Sonnet or Opus;
   - the round cap: 2, 4 or 6;
   - the batch size;
@@ -246,6 +304,18 @@ The comparisons that decide the question are:
 - Haiku or Sonnet plus Junior against Opus alone: on clarity, and on cost.
 
 Beating NoReview alone proves nothing (L7, L12).
+
+JuniorPrompt and the reference points run in natural mode only.
+
+**Not a full factorial.** The variants are screened one factor at a time from a default, on
+the development set, with Haiku and Sonnet as authors, and each winner carries forward.
+Opus appears as a junior or an author only in the reference arms and in a small
+confirmation slice. **our call**
+
+**One skill for every author model.** A change is kept if it helps on average across Haiku
+and Sonnet authors and hurts neither by more than run-to-run noise. If the best junior
+model differs by author, the skill picks the junior's model from the main agent's model.
+**our call**
 
 ### Two layers of runs
 
@@ -265,6 +335,10 @@ Beating NoReview alone proves nothing (L7, L12).
      teach-back ran, and the report lists the changes and the holes. Graded from the
      transcripts.
 
+Activation runs stop once the trigger has been observed, by capping their turns, so that
+most of the $10 goes to full-loop fidelity runs. If the pilot shows that $10 cannot buy a
+sample big enough to judge, the user is told before anything more is spent. **our call**
+
 Actual cost is reported against the estimate, as `intent.md` requires.
 
 ### Analysis
@@ -277,6 +351,10 @@ intervals are bootstrapped over cases. This is fixed in advance. **our call**
 - A gain of 10 points or more in comprehension counts as worth having.
 - With 18 to 24 cases, only effects of roughly 15 points can be detected reliably (E2).
   The report says so.
+- **The headline comes from a fresh confirmation set.** After the climb, Opus generates a
+  new set of cases that the climb never saw, and the headline result is taken from that
+  set. Development-set scores are inflated by selection, and the report labels them as
+  development results. **our call**
 
 ### Keeping the test honest
 
@@ -295,6 +373,16 @@ intervals are bootstrapped over cases. This is fixed in advance. **our call**
   default configuration;
 - `intent.md`, `architecture.md`, `README.md` and the research index updated to point to
   Junior-dev.
+
+## Open for the user
+
+The builder check on 2026-11-12 left three questions that only the user can answer:
+
+1. **What result counts as useful, and what extra cost is acceptable?** This sets the rule
+   that turns the data into a verdict and a shipped default.
+2. **Does a plan given only in the chat reply count, or only plans and diagrams written to
+   files?** And should it run on every artifact, or only above some size?
+3. **How much of the subscription may the in-session tournament use?**
 
 ## Left to the builder
 
