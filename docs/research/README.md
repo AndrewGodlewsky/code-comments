@@ -55,6 +55,7 @@ new experiments or changes to the evaluation protocol.
 | [Long-horizon degradation](long-horizon-degradation.md) | R5 (#35): agent code measurably erodes over successive edits; no evidence weaker models erode faster; no test of comments as the remedy |
 | [Planner-executor split](planner-executor-split.md) | R6 (#36): a strong model's plan closed about 40% of a cheap model's gap; implementation holds real design decisions; hybrids that keep the strong model involved during execution work best; task-specific context helps, general repo context did not |
 | [Skill portability](skill-portability.md) | Verified documentation and local tool evidence for eventual distribution across Orca, Codex, Claude Code, and Copilot |
+| [Junior-dev evidence review](../junior-dev/research-2026-11-12.md) | Separate product (#52): whether a novice questioner improves an agent's plans and diagrams. The premise holds (LLM diagrams get relationships wrong); the mechanism is untested and weakest where the author's answers go unchecked; proposed eval with same-budget controls |
 
 The literature reports contain citations and separate findings from our
 interpretations. These are targeted reviews, not an exhaustive systematic review.
