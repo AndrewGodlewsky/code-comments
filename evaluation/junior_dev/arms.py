@@ -29,10 +29,15 @@ class Arm:
     self_passes: int = 3              # SelfReview's revision passes, matched to Junior's mean rounds after the pilot
     final_simplify: bool = True       # skill step 7 (climb iteration 2): one simplify pass after the loop
     skill_variant: str = ""           # a SKILL.md variant file to run instead of the shipped one (climb screening)
+    # end: step 7 after the teach-back | before_teachback: rewrite (step 6, prompts/author_rewrite.md), then the
+    # teach-back checks it. A simplify-only arm runs no loop; there the setting only picks the rewrite prompt.
+    simplify_at: str = "end"
 
     def __post_init__(self):
         if self.review not in REVIEWS:
             raise ValueError(f"{self.name}: unknown review {self.review!r}")
+        if self.simplify_at not in {"end", "before_teachback"}:
+            raise ValueError(f"{self.name}: unknown simplify point {self.simplify_at!r}")
         if self.junior_model not in MODELS:
             raise ValueError(f"{self.name}: unknown junior model {self.junior_model!r}")
         if self.teachback not in {"none", "same", "fresh"} or self.teachback_form not in {"scenario", "free"}:

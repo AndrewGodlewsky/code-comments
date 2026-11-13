@@ -105,10 +105,14 @@ async function critic(run, c, arm, art) {
   return art
 }
 
-// Skill step 7: one simplify pass over the whole file.
-async function simplifyPass(run, c, arm, art) {
-  const s = await call(run, 'simplify', P.author_simplify + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
-    '\n# Your document\n\n' + art.trim() + '\n', { model: run.author, schema: REVISE_SCHEMA })
+// Skill step 7: one simplify pass over the whole file. Given the transcript (the rewrite-before-teach-back
+// order), the author also sees every question and answer, to use as its checklist.
+async function simplifyPass(run, c, arm, art, transcript) {
+  const qa = transcript && transcript.length ? '\n# The junior\'s questions and your answers\n\n' + renderTranscript(transcript) : ''
+  // The rewrite-before-teach-back skill numbers this step 6 (v5); the original order numbers it 7.
+  const lead = arm.simplify_at === 'before_teachback' ? P.author_rewrite : P.author_simplify
+  const s = await call(run, 'simplify', lead + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
+    '\n# Your document\n\n' + art.trim() + '\n' + qa, { model: run.author, schema: REVISE_SCHEMA })
   if (!s) return art
   run.changes.push(...(s.changes || []).map(String))
   return accept(run, 'simplify', art, s.artifact)
@@ -122,8 +126,13 @@ function authorPrompt(c, arm, art, transcript, numbered) {
 }
 
 async function juniorLoop(run, c, arm, art) {
-  let round = 0, nextId = 1, phase = 'asking', wrong = 0
+  let round = 0, nextId = 1, phase = 'asking', wrong = 0, rewritten = false
+  const early = arm.final_simplify && arm.simplify_at === 'before_teachback'
   for (let guard = 0; guard < 50; guard++) {
+    if (phase === 'teachback' && early && !rewritten) {
+      art = await simplifyPass(run, c, arm, art, run.transcript)
+      rewritten = true
+    }
     if (phase === 'asking') {
       if (round >= arm.rounds) { run.end_reason = 'cap'; break }
       const brief = arm.review === 'junior_full' ? DATA.framing.brief_header + c.brief.trim() + '\n\n' : ''
@@ -168,6 +177,8 @@ async function juniorLoop(run, c, arm, art) {
       phase = 'asking'
     }
   }
+  // A loop that ended without reaching a teach-back (round cap, error) still gets its one rewrite.
+  if (early && !rewritten) art = await simplifyPass(run, c, arm, art, run.transcript)
   run.rounds = round
   return art
 }
@@ -203,7 +214,7 @@ async function runOne(spec) {
   else if (arm.review === 'critic') art = await critic(run, c, arm, art)
   else if (arm.review === 'junior' || arm.review === 'junior_full') {
     art = await juniorLoop(run, c, arm, art)
-    if (arm.final_simplify) art = await simplifyPass(run, c, arm, art)
+    if (arm.final_simplify && arm.simplify_at === 'end') art = await simplifyPass(run, c, arm, art)
   }
   else if (arm.review === 'simplify') {
     // Control: the skill's final pass (step 7) on the first draft, with no junior loop. It isolates

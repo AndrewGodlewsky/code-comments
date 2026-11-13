@@ -100,6 +100,40 @@ class BuildAndDryRunTest(unittest.TestCase):
         for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("no-review", "self-review", "critic")):
             self.assertNotIn("simplify", [p["role"] for p in self.dry["prompts"] if p["run"] == run["run_id"]])
 
+    def _dry(self, arm, name):
+        files = build.build_batch(["fx-01"], [arm], ["haiku"], 1, "natural", self.tmp / name, name,
+                                  cases_root=self.case_root)
+        return build.dry_run(files[0])
+
+    def test_rewrite_before_teachback_lets_the_teachback_check_the_final_file(self):
+        # The user's design ends the loop with a correct teach-back, so the file that ships must be the one
+        # the teach-back read: the simplify rewrite comes first and sees the questions as its checklist.
+        dry = self._dry(arms.Arm(name="junior-v5", review="junior", simplify_at="before_teachback"), "v5")
+        roles = [p["role"] for p in dry["prompts"]]
+        self.assertEqual(roles.count("simplify"), 1)
+        self.assertLess(roles.index("simplify"), roles.index("teachback"))
+        simplify = next(p["prompt"] for p in dry["prompts"] if p["role"] == "simplify")
+        prompts = build.load_prompts()
+        self.assertTrue(simplify.startswith(prompts["author_rewrite"]))      # v5 numbers the rewrite step 6
+        v4 = next(p["prompt"] for p in self.dry["prompts"] if p["role"] == "simplify" and p["arm"] == "junior")
+        self.assertTrue(v4.startswith(prompts["author_simplify"]))
+        self.assertIn("STUB-QUESTION one?", simplify)
+        self.assertIn("ans one", simplify)
+        teachback = next(p["prompt"] for p in dry["prompts"] if p["role"] == "teachback")
+        self.assertIn("SIMPLIFIED for fx-01", teachback)
+        self.assertTrue(dry["result"]["runs"][0]["artifact_final"].startswith("SIMPLIFIED for fx-01"))
+
+    def test_rewrite_before_teachback_still_rewrites_when_the_round_cap_ends_the_loop(self):
+        dry = self._dry(arms.Arm(name="junior-v5c", review="junior", simplify_at="before_teachback", rounds=1), "v5c")
+        roles = [p["role"] for p in dry["prompts"]]
+        self.assertEqual(roles.count("simplify"), 1)
+        self.assertNotIn("teachback", roles)
+        self.assertEqual(dry["result"]["runs"][0]["end_reason"], "cap")
+
+    def test_arm_rejects_an_unknown_simplify_point(self):
+        with self.assertRaises(ValueError):
+            arms.Arm(name="x", review="junior", simplify_at="middle")
+
     def test_embedded_prompts_match_plugin(self):
         data = build.embedded_data(self.files[0])
         refs = PLUGIN / "skills" / "junior-dev" / "references"
