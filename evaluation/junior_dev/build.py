@@ -98,12 +98,13 @@ def framing() -> dict:
             "brief_header": BRIEF_HEADER}
 
 
-def _case_payload(case) -> dict:
+def _case_payload(case, mode: str) -> dict:
     return {"id": case.id, "format": case.format, "brief": case.brief, "existing": case.existing,
             "quiz": [{"id": q["id"], "kind": q["kind"], "question": q["question"], "key": q["key"]} for q in case.quiz],
             "requirements": case.requirements, "undecided": case.undecided,
-            "start": {"seeded-presentation": case.seeded_presentation, "seeded-implicit": case.seeded_implicit,
-                      "null": case.reference, "padded": case.reference.rstrip() + FILLER}}
+            "start": {k: v for k, v in {"seeded-presentation": case.seeded_presentation,
+                                        "seeded-implicit": case.seeded_implicit, "null": case.reference,
+                                        "padded": case.reference.rstrip() + FILLER}.items() if k == mode}}
 
 
 def _render(data: dict, label: str) -> str:
@@ -151,7 +152,7 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
 
     def emit(chunk: list[dict], index: int) -> list[Path]:
         used = sorted({r["case"] for r in chunk})
-        data = dict(common, label=f"{label}-{index:02d}", cases={cid: _case_payload(by_id[cid]) for cid in used},
+        data = dict(common, label=f"{label}-{index:02d}", cases={cid: _case_payload(by_id[cid], mode) for cid in used},
                     arms={n: arm_cfg[n] for n in sorted({r["arm"] for r in chunk})}, runs=chunk)
         text = _render(data, data["label"])
         if len(text.encode("utf-8")) >= MAX_BYTES and len(chunk) > 1:
