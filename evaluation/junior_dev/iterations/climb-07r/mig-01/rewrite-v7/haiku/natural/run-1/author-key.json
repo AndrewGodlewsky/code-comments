@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The outbox row, inserted in the same MySQL transaction as the change, records that Postgres is behind, and it lives in MySQL `users_outbox`, so a crash after the commit leaves it in place. The repair worker (1.4) re-reads the current row from the primary, applies the copy rule to Postgres, and only then deletes the outbox row, retrying with backoff capped at 5 minutes and never dead-lettering. Alerts fire when the oldest outbox row is over 10 minutes old or the table holds more than 10,000 rows.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The copy rule takes a per-user lock, skips any id that has a tombstone, and inserts or replaces a row only when its version is lower, so a late copy cannot recreate a user whose tombstone has already reached the target. The gap is not closed: a copy that read the user from the replica before the erasure can insert them into Postgres before the tombstone or delete arrives there, and the repair removes the row only later. I left open whether to accept that window or check MySQL tombstones on the primary before inserting, so the brief's \"never reappear\" is not yet met.",
+  "decided": false
+ },
+ "q8": {
+  "answer": "Progress (`last_id`, lease owner and lease expiry) lives in Postgres table `users_migration_state`, and each batch's rows and its `last_id` checkpoint commit in one Postgres transaction, with `last_id` advancing only while this worker still holds the lease. A crash, lost lease or Postgres error rolls the batch back, and the next run resumes after the last committed `last_id`. The backfill stops when a read returns an empty batch, at which point it is marked done.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The compare pass (2.1) scans the replica and Postgres together in id order, in batches of 2,000 with the same replica-lag pause, and flags differing rows and ids that exist only in Postgres. Each mismatch is re-read from the MySQL primary after a brief wait (I did not fix that wait's length); confirmed differences are repaired with the copy rule, or get a tombstone and a delete if the primary no longer has the row, and passes repeat until one finds zero confirmed mismatches. After the switch, step 5.3 runs the same check Postgres-to-MySQL at least daily and before any rollback.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Every change between `mysql` and `postgres` goes through `paused`, and the flip to `postgres` (4.4) happens only after every instance reports `paused` in `app_flag_value`, so no instance can write to the old side once the new side is authoritative. If the switch runs long, the 4.5 abort sets the flag back to `mysql`, and instances resume MySQL-first writes within about 30 seconds, so the pause ends by about 85 seconds at worst. The metric check depends on every instance exporting its flag, which the plan handles only through the 35-second abort.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns new ids from its identity column after the switch, and before the switch the counter is set with `setval` to at least MySQL's `AUTO_INCREMENT` plus a 1,000,000 margin while writes are paused. While MySQL is a mirror, explicitly inserted mirrored ids advance its own `AUTO_INCREMENT`, so MySQL stays ahead of them for rollback. After a rollback, a later re-switch uses `GREATEST(...)` in `setval`, so the counter never moves backwards and ids do not collide.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "MySQL stays complete through the inline mirror copy and the mirror repair worker that drains the Postgres outbox, plus the daily Postgres-to-MySQL compare pass. A rollback pauses writes, drains the Postgres outbox to zero, checks id ranges, then sets the flag to `mysql` (Phase 6), and the option ends when step 7.1 sets `postgres_only` after the 14-day gate in 5.4. The gap is that 5.3 requires a compare pass before any rollback, but Phase 6 checks only `max(id)` in 6.4, so the rollback checklist does not enforce a compare.",
+  "decided": true
+ }
+}

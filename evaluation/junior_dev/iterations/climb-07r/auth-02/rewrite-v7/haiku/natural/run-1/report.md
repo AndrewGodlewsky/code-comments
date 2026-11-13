@@ -1,0 +1,21 @@
+## Review of auth-02 (rewrite-v7, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a three-sentence summary of what the plan does, why it is shaped this way, and the rollout order, in place of the longer scope section.
+- Added a one-line-per-term glossary for names a newcomer would not know: provider, secret store, version id, KMS key, workload identity, APP_ENV, pod, readiness and liveness probes, rolling deploy with maxUnavailable 0, atomic reference, jitter, secret accessor, SecretValue, revoke, CI gate, migration log.
+- Added a short 'Today' paragraph to Part A saying how config loading works now, as the layout requires for a change to an existing system.
+- Replaced the R1-R7 and P1-P9 codes with plain names and numbered steps, and wrote cross-references by name (for example 'Part A step 4') so no reader has to look up a code.
+- Kept the scope assumptions as a short list of four facts the steps rely on, dropping the longer restatements of the brief.
+- Merged the runtime logging rules (R6) and shutdown (R7) into one list of rules for Part A, placed before its steps, since they apply to several steps.
+- Moved the integration test that fails on leaked key values from the runtime section into the rollout merge step (Part B step 4), because it is a build check, not runtime behaviour.
+- Each rollout step now states its start condition, what it does, where its state lives, and what happens on failure. The separate failure table was dropped and its content kept per step, so each fact appears once.
+- Stated explicitly in Part A step 4 that a new value failing the non-empty and well-formed check is not swapped in and the last good value stays. This is inferred from the rule to keep the last good value, not stated separately in the first version.
+- Added a clause to Part B step 3 saying why the dev-key change is needed (today make run uses live keys), taken from the existing deploy notes.
+- Kept all ten open questions, with the same substance, reworded without codes. The rotation cadence question is kept as required by the brief.
+- Kept all stated requirements from the brief and the first version, including the 2-second retry gap, the 5-minute refresh, the prod-only write rule, the 30-day log retention, the 5-minute wait before revoke, and the rule that old keys are revoked only after every instance is confirmed on new keys. Nothing was cut for length.
+- Moved the rotation procedure into a single paragraph after the rollout, referencing the steps by name.
+
+### Holes
+- None.

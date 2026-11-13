@@ -1,0 +1,21 @@
+## Review of auth-03 (rewrite-v7, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- No junior questions or answers were shown, so this rewrite was driven only by the newcomer pass in step 6; no question-driven fix was made.
+- Moved the summary to the top and cut it to a few sentences. Added a sentence on how the system works today, before the design.
+- Added a Terms section defining the names a newcomer would not know: Postgres, users, password hash, sessions, email queue and worker, token, SHA-256 hash, burn, revoke, rolling hour, row lock, breached-password list.
+- Kept the diagram verbatim, placed after the terms and before the steps.
+- Replaced the note list with numbered steps. Each step says what starts it, what it does, and what it keeps. Each reason (row lock, link and job in one transaction, hash before the transaction) appears once, in the step where it applies.
+- Merged the duplicated 'token first, then password' statements, the 'email send is never on the request path' statements, and the burn-atomic statements into single places.
+- Put the outcome of every failure in one table, and kept all 10 rows from the first version. Steps give only the mechanism, so failure outcomes are not repeated.
+- Grouped the cross-step rules (token format, link and job transaction, timing, breached-list loading and matching, browser referrer and URL handling, logout everywhere) into one section, each stated once.
+- Separated how the system runs (Summary, Data, Steps, Rules) from build notes (schema, cleanup job, breached list at startup).
+- Replaced note numbers and codes with plain references, so each step stands alone.
+- Kept all stated facts from the brief and the first version, including the exact generic message and expired-page wording, the 12-character minimum, the 3-per-hour cap, the 32-byte token, the 30-minute expiry, and the 3-retry worker behaviour.
+- Added one open question, 'Password-changed email address', because the first version did not say where the notice job gets the user's address. This is a new open point, not a decision.
+- Did not change the plan's behaviour. Kept the four open questions from the first version and the unanswered items they cover.
+
+### Holes
+- None.

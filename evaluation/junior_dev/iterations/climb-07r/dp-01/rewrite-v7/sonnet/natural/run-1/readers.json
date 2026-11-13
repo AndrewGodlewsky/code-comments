@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The 02:00 UTC nightly trigger (or a 15-minute retry trigger) starts it. It extracts replica rows with updated_at > window_lo and <= window_hi, including soft-deleted rows.",
+  "q2": "Bulk-import transactions can stay open up to 90 minutes, and updated_at is stamped at write time, not commit time. So a row can become visible up to 90 minutes after its updated_at.",
+  "q3": "Its new updated_at falls after the next night's window_lo (HWM minus 2h), so the next nightly extract picks it up and the guarded MERGE updates the warehouse row.",
+  "q4": "The app sets deleted_at, a write that updates updated_at. The load sets is_deleted to true via the MERGE. The row stays in the warehouse; nothing is hard-deleted.",
+  "q5": "The attempt is marked failed in etl.runs and the merge rolls back, so target and HWM are unchanged. If fewer than 3 attempts were used, it retries 15 minutes later with the same window; the third failure pages on-call.",
+  "q6": "Dashboards show last night's complete state. A staleness alert is posted to #data-alerts when no succeeded nightly run exists for today's run_date at the 06:00 UTC check.",
+  "q7": "The Sunday reconciliation. It compares per-creation-day counts and checksums over the last 30 days between replica and warehouse, then reloads mismatched days through dedupe and guarded MERGE.",
+  "q8": "Dedupe keeps the row with the highest updated_at per order_id. The guarded MERGE updates a matched row only if staged updated_at is greater than or equal to the target's, so older copies never overwrite newer ones.",
+  "q9": "Stored only in etl.pipeline_state, row orders_nightly, column high_water_mark. It is set to GREATEST(current HWM, window_hi) inside the merge transaction, at COMMIT, only after the load succeeds.",
+  "q10": "The single warehouse transaction: guarded MERGE, HWM advance and run status succeeded commit together or roll back together. Staging is hidden from dashboards, which refresh at 06:00 UTC.",
+  "q11": "Each attempt truncates staging first, so the failed attempt's staged data is replaced and never read. The retry reuses the stored window_lo and window_hi from etl.runs, so it extracts the same window.",
+  "q12": "It re-reads all rows of the mismatched creation days from the replica, loads them into staging, dedupes, and applies them with a guarded MERGE in one transaction. It does not move the nightly HWM."
+ },
+ "sonnet": {
+  "q1": "The scheduler's 02:00 UTC nightly trigger (retries via the retry trigger) starts it. It extracts replica rows with updated_at > window_lo AND updated_at <= window_hi, where window_lo = HWM - 2h and window_hi = the replica's now() at the start of attempt 1. This includes soft-deleted rows.",
+  "q2": "Bulk-import transactions can stay open up to 90 minutes, and updated_at is stamped at write time, not commit time. So a row can become visible up to 90 minutes after its updated_at.",
+  "q3": "The edit sets a new updated_at, so the next nightly run's window (updated_at > HWM - 2h and <= window_hi) picks it up. It is staged, deduped, and applied by the guarded MERGE, which updates the matched target row if staged updated_at >= target's.",
+  "q4": "The app soft-deletes (sets deleted_at), which is a write that bumps updated_at. The nightly extract picks it up and the guarded MERGE updates the row with is_deleted = true (deleted_at is not null). The row stays in the warehouse; nothing is hard-deleted.",
+  "q5": "The attempt is marked failed in etl.runs. If it failed in the merge, the transaction rolls back so target and HWM are unchanged. If fewer than 3 attempts have been used, the scheduler retries the whole run 15 minutes later with the same stored window. After the third failure, on-call is paged and the run stops. HWM is unchanged, so the next night's window widens.",
+  "q6": "Dashboards show last night's complete state, never a partial night. The 06:00 UTC freshness check finds no succeeded nightly run for today's run_date and posts a staleness alert to #data-alerts.",
+  "q7": "The Sunday reconciliation. It compares count and checksum of order_id + updated_at per creation day over the last 30 days, between replica and warehouse. For days that differ, it reloads all rows of those days with dedupe and the guarded MERGE.",
+  "q8": "Two mechanisms. First, dedupe in staging keeps only the row with the highest updated_at per order_id. Second, the guarded MERGE updates a matched target row only if staged updated_at >= target updated_at, so an older version never overwrites a newer one. Re-runs rewrite identical data or nothing.",
+  "q9": "It is stored only in the warehouse, in etl.pipeline_state (row orders_nightly, column high_water_mark). The value written is GREATEST(current HWM, window_hi). It is written inside the single merge transaction, at commit, together with the data merge and the run being marked succeeded.",
+  "q10": "Data is loaded into a private staging table in the etl schema that dashboards cannot read. The merge into analytics.orders, the HWM update and the status update happen in one warehouse transaction, so the whole night is visible at commit or not at all. Dashboards refresh at 06:00 and see a fully committed night.",
+  "q11": "The retry truncates staging first, so whatever the failed attempt staged is replaced. The retry reuses the stored window_lo and window_hi from etl.runs, so it extracts exactly the same window.",
+  "q12": "It re-reads all rows of the mismatched creation days from the replica (a snapshot). It loads them into staging, dedupes, and applies them with the guarded MERGE in one transaction. It does not touch the nightly HWM. It has its own etl.runs row with kind = recon."
+ }
+}

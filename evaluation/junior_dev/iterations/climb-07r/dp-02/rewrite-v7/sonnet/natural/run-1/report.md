@@ -1,0 +1,18 @@
+## Review of dp-02 (rewrite-v7, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Restructured into: short summary, terms, shared rules, live steps, replay steps, failure table, monitoring, testing, open questions.
+- Cut the separate Decisions section and moved each decision to the step it applies to: order and received_at into step 3, the 8-day TTL into step 5, the 90-day archive into step 4, warehouse concurrency into open questions.
+- Added a terms section defining collector, log, offset, consumer group, received_at, KV store, archive, control table, closed day, staging table and atomic partition replace.
+- Added shared rules for first-copy-wins, 90-day retention, the 7-day retry window and replay isolation, so they are stated once.
+- Merged the old replay request, gate and archive-reach checks into one step 10. Merged the separate rollback and retries step into step 16 and the failure table.
+- Merged Part C into Monitoring and Testing sections, keeping every item. Kept 80-day replay-request metric and 82-day limit.
+- Added a failure table covering each step. Added one short line in step 5 that a KV error stops and retries the consumer rather than skipping the check.
+- Added the 14-day backup retention to step 15 and removed the repeated 'keep the old copy' sentence.
+- Removed the dedicated bot-handling step text duplicated in open questions, keeping a one-line step 7 plus the full open question.
+- Folded the Summary's repeated description of the pipeline into three sentences; no requirement or number from the original was dropped.
+
+### Holes
+- None.

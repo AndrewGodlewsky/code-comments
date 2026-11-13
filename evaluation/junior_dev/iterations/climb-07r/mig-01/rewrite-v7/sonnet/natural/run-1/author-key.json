@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The write transaction on the source (MySQL) inserts an outbox row (user_id, kind) in `users_sync_outbox` in MySQL, atomically with the user row. If the inline Postgres copy fails or the app dies after commit, the row stays. The `sync-relay` worker claims outbox rows (FOR UPDATE SKIP LOCKED), re-reads the current row from the MySQL primary, applies it to Postgres through the copy function, then deletes the outbox row, retrying forever. A reconciler backstops it.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "All copies go through one copy function. In Postgres it takes pg_advisory_xact_lock(id) and checks `user_tombstones`. If the id is there it does nothing. Otherwise it does the version-guarded upsert. The delete path takes the same lock, inserts the tombstone and deletes the row, so a late or stale copy loses whichever order they run in. Ids are never reused, so tombstones stay valid.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is `migration_state(name, last_id, done)` in Postgres. last_id is updated in the same Postgres transaction that copies each batch, so a batch is either fully applied with progress recorded or not at all. After a crash it resumes from last_id. It reads the replica with id > last_id in id order, 2,000 rows max, pausing while replica lag is over 5 s. It stops when a read returns no rows and it sets done=true.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The reconciler scans both tables in id order, MySQL from the replica, comparing all columns including rows present on one side only. A difference counts only if it persists after re-reading both primaries and no outbox row is pending. Each confirmed mismatch gets an outbox row, and the relay repairs it through the copy function (version rule, tombstone), with a mismatch_count metric per pass. A full zero-mismatch pass gates the read ramp. Persistent mismatches across passes are treated as bugs and investigated.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A per-database `users_fence` table. Each write transaction reads its own database's fence FOR SHARE and gets a retryable 503 unless the fence is open for that database. The switch script closes the MySQL fence, drains the MySQL outbox, sets the id sequence, then opens the Postgres fence. Only one database accepts writes at any moment, so stale flag caches cannot produce split writes (they get 503 until refreshed, at most about 30 s). If the switch runs long, the script aborts at 60 s (inside the 90 s budget) and reopens the MySQL fence, provided it has not yet opened the Postgres fence. After that step it must finish or roll back.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids via the sequence `users_id_seq`. At the switch it is set with setval to max(MAX(id) in MySQL, AUTO_INCREMENT-1) + 1000, then id gets default nextval. On rollback, MySQL AUTO_INCREMENT is raised, if below, to max id + 1 across both stores, before MySQL reopens. The 1000 gap covers ids issued but unused.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, writes commit to Postgres with a Postgres outbox row. The relay copies them to MySQL through the version-guarded copy, with dual_write staying true, and the reconciler runs in both directions. Rollback (step 12) closes the Postgres fence (a pause of at most 90 s), drains the Postgres outbox to zero, raises MySQL AUTO_INCREMENT, then reopens the MySQL fence and sets source=mysql and read_pg_pct=0. The option ends at step 14, when dual_write is set false (no sooner than 14 days after the switch, with zero-mismatch checks). Once MySQL stops receiving writes, plain rollback is gone, and the MySQL table is dropped after that.",
+  "decided": true
+ }
+}

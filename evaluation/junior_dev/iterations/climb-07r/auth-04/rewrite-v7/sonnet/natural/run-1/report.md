@@ -1,0 +1,18 @@
+## Review of auth-04 (rewrite-v7, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the opening as a short summary that first states how sign-in works today, then why Google reuses start_session.
+- Merged the Orientation section into a new Terms section; added one-line definitions of OIDC/ID token, sub, PKCE, state, nonce, mode, origin and GETDEL; kept session and lockout explanations.
+- Moved the 'back to origin' definition into the Terms as Origin and removed it from the failures intro.
+- Added a short 'Notes on the steps' section (what starts each step, what it writes) after the diagram, saying only what the diagram cannot show.
+- Kept the flowchart, routes, SQL, state tables and failure table unchanged in content; tightened a few failure-table cells to avoid repeating the diagram.
+- Moved the facts 'linked user's Google email change keeps the same account' and 'Google never changes stored email' into the permanent state bullets (they were implied only in the diagram).
+- Added a short separate Rollout section (migration first, Redis version check, deploy code together) to keep running vs building apart; this is new and rests on the NULL-hash reasoning.
+- Moved the unresolved lockout-on-linked-path choice into Open questions at the end while keeping it in Decisions.
+- Dropped the repeated sentence that 'every Google success path ends in start_session' from two places, saying it once under Session.
+- Added a missing 'link mode' clarification to the Notes that the signed-in user must equal the stored user_id, to explain why that check exists.
+
+### Holes
+- None.

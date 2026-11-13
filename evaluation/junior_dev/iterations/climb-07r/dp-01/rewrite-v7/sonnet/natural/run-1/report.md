@@ -1,0 +1,18 @@
+## Review of dp-01 (rewrite-v7, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Reordered to the skill layout: short summary (with how things work today), terms, flowchart then notes, steps, failure table, open questions. The summary was previously a long bullet list that retold the steps.
+- Added a Terms section: read replica, HWM, window, lookback (with the 90-minute reason), staging, target, etl.runs, scheduler, guarded MERGE. The old file used these without defining them.
+- Merged the design-summary bullets for trigger, source, state, window, staging, dedupe and merge into one numbered nightly-run section that only adds what the diagram cannot show; the diagram carries the flow.
+- Merged the 'Reading the diagram' failure bullet, the failure-and-retry bullet and the scattered rollback remarks into one failure table, which now also lists the hung-run and skipped-reconciliation cases.
+- Removed the codes R1 to R4 from diagram labels (node IDs only) and made each text step stand alone.
+- Moved single-flight and the 'why window_hi is a safe HWM' reason next to the steps they explain, and moved the staleness check and Sunday reconciliation into their own sections.
+- Added in one line each: the reconciliation snapshot step to the diagram; the shared-staging reason for single-flight; the 'today there is no pipeline' context.
+- Added an open question that was implicit: how a hung run stops being 'running', since single-flight depends on it. Nothing in the brief decides it.
+- Kept every stated requirement and number: 02:00 and 06:00 UTC, replica read only, soft deletes, 90-minute transactions, 2-hour lookback, one row per order_id, idempotent reruns, HWM only after successful load, 3 attempts 15 minutes apart, #data-alerts, 30-day reconciliation with count and checksum, epoch backfill.
+- Cut the repeated statements of the same rules (HWM untouched on failure, dashboards never see a half load, no hard deletes) so each appears once.
+
+### Holes
+- None.

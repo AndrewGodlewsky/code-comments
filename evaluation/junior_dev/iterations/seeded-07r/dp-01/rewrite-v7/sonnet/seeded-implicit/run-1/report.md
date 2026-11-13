@@ -1,0 +1,15 @@
+## Review of dp-01 (rewrite-v7, author sonnet, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a two-sentence summary and a terms list (replica, updated_at, deleted_at, high-water mark, lookback, stg_orders, fact_orders, etl_runs), including why the 2h lookback exists (90 minute bulk transactions).
+- Replaced the unconnected box diagram with a full flowchart showing triggers, data movement, where state lives (etl_watermark, etl_runs, stg_orders, fact_orders), retry loop, paging, 06:00 check and Sunday reconciliation.
+- Merged the bullet list into numbered steps, each stating trigger, action, data location and failure behaviour.
+- Added decisions the brief left to me: staging emptied per attempt; dedupe to latest updated_at per order_id; upsert only when staged updated_at is at least the stored one; new mark is the max extracted updated_at, advanced in the same transaction as the merge and the etl_runs ok status; 06:00 check reads etl_runs; one etl_runs row per attempt.
+- Added a failure table and an open-questions section; reconciliation reload reuses the same staging and merge and does not move the mark.
+- Kept every brief fact: 02:00 UTC, replica only, no write access, soft deletes kept as is_deleted, 90 minute transactions, 2h lookback, one row per order_id, idempotent reruns, retry twice at 15 minutes then page, 06:00 dashboards and #data-alerts alert, Sunday reconciliation over 30 creation days with count and checksum of order_id + updated_at.
+- Nothing cut except the original terse bullets, which are now folded into the steps. The file grew well beyond 1.5 times the original because the original omitted most required facts.
+
+### Holes
+- None.

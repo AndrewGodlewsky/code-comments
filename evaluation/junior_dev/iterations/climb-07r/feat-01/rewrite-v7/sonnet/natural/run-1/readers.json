@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "If reports.row_count is 10,000 or fewer, the click returns the CSV directly (200 text/csv). Above that, it returns 202 with an export id and status, and the job emails a 24-hour link.",
+  "q2": "No new export starts. The endpoint returns 202 with the existing export's id and status, ignoring the new filters, and the UI says an export is already in progress.",
+  "q3": "The link works for at most 24 hours (86,400 s). The bucket's lifecycle rule deletes the file 7 days after creation; no cleanup code is built.",
+  "q4": "Up to three attempts, with waits of 60 s and 300 s before attempts 2 and 3. After the last failure, the row is set failed, the page shows failed, and a failure email is sent.",
+  "q5": "Report rows are read from the read replica only. The primary database holds only the report_exports bookkeeping table, and the status endpoint reads the primary.",
+  "q6": "In the report_exports table in the primary database. The page polls the status endpoint on load and every 5 s while queued or running, so reopening it shows the stored state.",
+  "q7": "It reads the replica in 5,000-row keyset pages, encodes each page as CSV, and uploads 16 MB parts via multipart upload. Memory holds about one buffer plus one page, never the whole result.",
+  "q8": "The failed attempt's upload is aborted, or left to expire after 24 hours if the worker died. Nothing is visible at the object key, and the next attempt restarts from row 1.",
+  "q9": "They are stored as raw strings in the filters and cols columns of report_exports, copied at click time. The job payload carries only the export id, and the job reads filters and cols from the table.",
+  "q10": "A partial unique index on (report_id, user_id) WHERE status is queued or running, combined with INSERT ON CONFLICT DO NOTHING, makes the database enforce it.",
+  "q11": "The file must be complete and the row marked done first. On a rerun after done, the job skips the rebuild, goes to the email step, and skips the email if emailed_at is already set.",
+  "q12": "Nothing is sent. A query error or the 45 s limit returns 503 with a retry message, the page shows the error, and the user clicks again. No partial CSV is sent."
+ },
+ "sonnet": {
+  "q1": "Click validates, then reads reports.row_count from the replica. 10,000 rows or fewer: small path, the response to the click is the CSV (200 text/csv attachment), nothing stored. Above 10,000 (or a stale count found while reading): large path, an export record is created, a background job is queued, and the user gets 202 {export_id, status}, then later an email with a 24-hour download link.",
+  "q2": "No second export starts. The insert hits the partial unique index and does nothing; the endpoint selects the existing row and returns 202 with its id and status, even if the filters differ. The UI says \"An export of this report is already in progress.\" (If the existing row vanished because it finished meanwhile, the insert is repeated once.)",
+  "q3": "The link works 24 hours (signed_url max 86,400 s, from when it is created). The stored object is deleted by the bucket's lifecycle rule 7 days after creation; no code of ours does it. Uncompleted multipart uploads are discarded after 24 hours.",
+  "q4": "At most 3 attempts (waits of 60 s before attempt 2 and 300 s before attempt 3). After the last fails, on_final_failure sets the row to failed (with error, finished_at), frees the unique slot, aborts any stored upload, and sends a report_export_failed email. The page shows the failed state. If the export was already done and only the email failed, it stays done and the failure is only logged.",
+  "q5": "Report rows are read only from the read replica, never the primary, including the small path and the worker. (The primary is used only for report_exports bookkeeping.)",
+  "q6": "In the report_exports table's status column (queued, running, done, failed) in the primary database. The page polls GET /api/reports/{report_id}/export on load and every 5 s while queued or running, stopping at done or failed. Because state is in the table, reopening /reports/{report_id} later shows it. A failed poll keeps the last state and retries.",
+  "q7": "It streams: reads the replica by keyset in pages of 5,000 rows, encodes with the shared CSV writer into an in-memory buffer, and uploads each 16 MB as a multipart part, then clears the buffer. Memory stays about one 16 MB buffer plus one 5,000-row page (about 57 parts for 900 MB). Parts are finalized with complete_multipart at the end.",
+  "q8": "On an exception the worker tries abort_multipart and re-raises. A killed or dead worker leaves an orphaned upload, which the next attempt aborts (step 6) or storage discards after 24 hours. Nothing is visible at object_key until complete_multipart, so no half-written file is downloadable. The next attempt starts over from the beginning (row 1) with a new upload; no progress is saved. Also, past 1700 s the worker aborts and raises.",
+  "q9": "The page sends filters and cols from its URL in the POST body; they are stored verbatim as raw strings in the filters and cols columns of the report_exports row. The job payload contains only {export_id}; the job loads the row and reads filters, cols and user from the table.",
+  "q10": "The database: a partial unique index on report_exports (report_id, user_id) WHERE status IN ('queued','running'), used with INSERT ... ON CONFLICT DO NOTHING. Only one insert succeeds.",
+  "q11": "The export must be marked done (complete_multipart succeeded and status updated to done). Then the email step skips if emailed_at is set; otherwise it makes the signed URL, sends the email and sets emailed_at. If the queue reruns the job: failed status returns immediately; done status jumps straight to the email step (no rebuild), which is skipped if emailed_at is set. A rare duplicate email is accepted.",
+  "q12": "Nothing partial is sent, since the CSV is held fully in memory first. A query error or the 45 s limit returns 503 with a retry message; the page shows the error and the user clicks again. No job runs and nothing is stored."
+ }
+}
