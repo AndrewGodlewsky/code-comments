@@ -1,0 +1,109 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly does start_session(user_id) do, and what are the sid cookie and the `next` handling? How does `next` relate to return_to, given a successful login redirects to return_to?",
+     "about": "S1: Clear gflow. start_session(linked user), redirect to return_to"
+    },
+    {
+     "id": "2",
+     "text": "The flowchart has no branch for a passwordless (password_hash NULL) account matched by email, but assumption 4 says it is refused with a pointer to the reset email. Where in the flow does that happen? As drawn, that user would reach the password form.",
+     "about": "L6 / P0 / Assumption 4"
+    },
+    {
+     "id": "3",
+     "text": "What does the gflow cookie protect against in practice? Why must the query state equal the cookie, and why is the flow record left unconsumed on a mismatch?",
+     "about": "Q1: Query state equals gflow cookie and a flow record exists in Redis?"
+    },
+    {
+     "id": "4",
+     "text": "What are failed_logins and locked_until, and where are they stored and reset? Are they the same counters /login uses, so wrong passwords in the confirm step and in /login add up together?",
+     "about": "Password confirmation loop"
+    },
+    {
+     "id": "5",
+     "text": "When a new user is created from Google, what do they have for a password, and how do they later sign in without Google? Does a Google-created user have any way to log in by password before a reset?",
+     "about": "L5: create user (password_hash NULL, email_verified_at = now)"
+    },
+    {
+     "id": "6",
+     "text": "In the link flow, how does the callback know which signed-in user started it? It checks that sid still maps to the flow's user id, but where does it read sid from, and what if the user signed out or is a different user?",
+     "about": "K1: Session sid still maps to the flow's user id?"
+    },
+    {
+     "id": "7",
+     "text": "The login branch matches on a lowercased email, but users.email is never written from Google. What is the exact email comparison, and how is it kept case-insensitive against stored emails?",
+     "about": "L4: Does a user have this lowercased email?"
+    },
+    {
+     "id": "8",
+     "text": "After the unique violation at L5 the flow goes back to L4. What happens on that second pass, and what stops this from looping forever?",
+     "about": "L5 -> L4 on unique violation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "start_session (auth_flow.md) deletes the existing sessions row if a sid cookie is present, inserts a new sessions row 14 days ahead, sets sid (HttpOnly, Secure, SameSite=Lax), then redirects to next if it is a relative path on our site, otherwise to /home. A successful login therefore never redirects to return_to. return_to was only a failure destination, and it is now removed: failures go to the start page for the intent. The success path now calls start_session, so Google login ends where password login ends."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "No branch existed in the first version. I added one (L7) after the email-match check and before the confirm form, so a user with password_hash NULL is refused with a pointer to the reset email. Under the current rules I could not find a path that creates an unlinked passwordless user, because creation always links and unlink needs a password. The guard is therefore defensive and is listed as an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "gflow stops login CSRF. Without it, an attacker starts a flow with their own Google account and gets a callback URL with their code and state. If the victim's browser opens that URL, the victim is signed in as the attacker's account, or in the link flow the attacker's Google account is linked to the victim's account. With the cookie, the victim's browser has no matching state, so the callback fails. The flow record is left unconsumed on a mismatch so that a stray or forged callback cannot burn the real user's flow."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "failed_logins and locked_until are columns on users (schema.sql). Password login and the confirm step use the same columns and rules (auth_flow.md), so wrong passwords in either place add together. A correct password sets failed_logins to 0. At 5 wrong tries the account gets locked_until = now + 15 min and failed_logins = 0. locked_until is read only as in the future, so an expired value is not cleared explicitly."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "A Google-created user has password_hash NULL. Per the brief, POST /login treats NULL as the generic invalid-login message and does not run bcrypt. Such a user cannot sign in by password until they set one through POST /forgot, which sets password_hash and marks the email verified. Until then, Google is their only way in. The reset email reaches them because their email is already verified through Google."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The start request stores the user id in the flow record. At the callback, the browser sends the sid cookie with the top-level GET, which SameSite=Lax allows. The server looks up sessions by that sid, requires an unexpired row, and compares its user_id with the flow's user id. No cookie, a signed-out sid (row deleted), an expired row or a different user means refused, and the user is sent to /login."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "schema.sql says users.email is lowercased on every write. The match lowercases the Google email and then compares it with email = $1. Because every stored value is lowercase, the comparison is case-insensitive in effect. I do not trim or normalise the value beyond lowercasing; that is a decision, and it is kept simple on purpose."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The first version looped back to the email lookup. That was unbounded and wrong for a same-sub race, where the first request linked the Google account. On a unique violation, the flow now runs the linked-sub check again, once. This is one retry per request, and the loop cannot repeat. A second violation is an error page. The retry normally reaches the link or login branch, since the row now exists."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a user clicks \"Sign in with Google\" on the login page, and Google's email matches an existing password account.\n\n1. The user clicks the button on the login page. The browser calls `GET /auth/google/start`, with an optional `next` path. The server makes a random state, nonce and PKCE verifier. It writes a flow record to Redis, keyed `gauth:flow:{state}`. The record holds state, nonce, verifier, intent (`login`) and `next`. It expires after 600 seconds. The server sets a `gflow` cookie holding the state (HttpOnly, Secure, SameSite=Lax, Max-Age 600). It redirects the browser to Google's authorize URL. That URL carries scope `openid email profile`, the state, the nonce and the hash of the verifier (the S256 challenge). The nonce and verifier stay only in Redis. (Settings \"Link Google\" starts the same flow via `POST /settings/google/link`, with a CSRF token and intent `link`, and also stores the user id.)\n\n2. Google handles the sign-in and redirects the browser to `GET /auth/google/callback`. The server compares the query state with the `gflow` cookie. If they differ, it shows an error page and leaves the flow record alone. This stops login CSRF and stops a forged callback from using up the real user's flow. If they match, the server looks for the flow record. If it is missing (unknown, expired or reused), it shows an error page and changes nothing. If it exists, the server does GETDEL on it, so only one request gets it, and clears `gflow`.\n\n3. If Google sent an error parameter, such as Cancel, the server redirects to the start page for the intent. It shows a neutral \"cancelled\" message. Nothing changes.\n\n4. The server posts the code and the PKCE verifier to Google's token endpoint. If that fails (network error, timeout or non-200), the user goes to the start page with \"try again\". The flow record is already gone, so a retry starts a new flow. If it succeeds, the server checks the ID token's signature, `iss`, `aud`, `exp` and `nonce`. A bad token gets the same \"try again\" message. The server keeps `sub`, `email` and `email_verified` in memory for this request only. No Google token is ever stored.\n\n5. The server reads the intent from the flow record. For `link`, it needs a `sid` cookie that maps to an unexpired session row for the flow's user id. Without one, it sends the user to `/login`. It then checks in order: sub already linked to this user (say \"already linked\"); sub linked to another user (refuse); `email_verified` false (ask to verify); user already has a different Google link (ask to unlink first). Otherwise it inserts a `user_identities` row. No password is asked for, and the emails need not match. The session is unchanged. A unique violation is refused like \"linked to another user\". Any other DB error gives an error page and a rollback.\n\n6. For `login`, the server looks up whether this sub is linked to a user. If it is, and that user's `locked_until` is in the future, the login page says \"Account temporarily locked\". Otherwise it calls `start_session(linked user)`. Matching on sub means a changed Google email still reaches the same account.\n\n7. If the sub is not linked and `email_verified` is false, the server refuses and points the user to email and password. Nothing is created. If it is true, the server lowercases the Google email and looks it up in `users.email`.\n   - No match: in one transaction it creates a user (`password_hash` NULL, `email_verified_at` = now) and inserts the identity row. It then calls `start_session`. On a unique violation it reruns the step 6 check once. A second violation, or any other DB error, gives an error page with no session.\n   - Match (my example): go to step 8.\n\n8. If the matched account has a different Google sub, the server refuses. If its `password_hash` is NULL, the server points the user to the reset email (`POST /forgot`). Otherwise the server creates a confirm record in Redis. It holds the sub, target user id and `next`, and expires after 600 seconds. It sets a `gconf` cookie holding the record id (Max-Age 600) and shows a password form for that account.\n\n9. The user submits the password to `POST /auth/google/confirm`. If `gconf` has no live confirm record, the server shows an error page and the user must start again. If the target's `locked_until` is in the future, the server deletes the record, clears `gconf` and shows \"Account temporarily locked\". The password is not checked. Otherwise it checks the password with bcrypt.\n   - Wrong: `failed_logins` goes up by 1. This is the same counter as `/login`. At 5, `locked_until` is set to now + 15 minutes and `failed_logins` goes to 0. The record and cookie are removed and the lock message is shown. Below 5, the form shows again with \"Incorrect password\". The record is not extended, so it still expires 10 minutes after the callback.\n   - Right: `failed_logins` goes to 0, and the server GETDELs the confirm record and clears `gconf`. It rechecks that the sub is still unlinked and that the user still has no Google link. If either changed, it refuses. Otherwise it inserts the `user_identities` row. A unique violation is refused. Any other DB error gives an error page and a rollback.\n\n10. Every successful Google login ends in `start_session(user_id)`. It deletes the old session row if the browser sent a `sid`, inserts a new `sessions` row that expires in 14 days, and sets the `sid` cookie (HttpOnly, Secure, SameSite=Lax). It redirects to `next` if that is a relative path on our site, and to `/home` otherwise. `next` comes from the flow record, or from the confirm record after the password step.\n\n11. Later, `POST /settings/google/unlink` deletes the identity row only if the user has a password. Otherwise the user is told to set one first with `POST /forgot`. Sessions are not ended.\n\nIf Redis is unavailable or restarted, this is treated as missing state. The user gets an error page and starts again.",
+   "gaps": [
+    "The document does not say what the wrong-password lock check does when the `failed_logins` threshold is reached in a flow that started from a linked-sub login. It is only described for the confirm step and `/login`.",
+    "It does not say how the server gets from the callback's top-level browser request to the user's `next` value being validated. 'Relative path on our site' is not defined, for example how `//evil.com` is handled.",
+    "It does not say what the 'start page for the intent' is for the link intent beyond `/settings`, or whether a Google error in the link flow shows the neutral message on `/settings`.",
+    "It does not say how the server finds the flow record for the callback when the state check passes but the `gflow` cookie has expired (Max-Age 600 and TTL 600 are the same, so which one wins is not stated).",
+    "It does not say what 'error page' shows or whether the user can navigate from it, or how the confirm password form is protected from CSRF.",
+    "It does not say how the 'is sub linked' lookup and the 'user has a different Google link' lookup are done (for example what is read from `user_identities`), beyond the table definition.",
+    "It does not say which part of the system handles the lock check for an expired lock in the confirm step. It says an expired lock is ignored and not cleared only for the linked-sub login."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

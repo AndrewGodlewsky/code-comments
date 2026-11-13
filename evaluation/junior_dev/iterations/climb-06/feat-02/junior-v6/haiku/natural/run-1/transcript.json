@@ -1,0 +1,172 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The diagram says \"Fail open\" on store error or no reply within 50 ms. How does the gateway tell a timed-out call from a real answer, and what happens to the reply if it arrives late?",
+     "about": "alt store error or no reply within 50 ms"
+    },
+    {
+     "id": "2",
+     "text": "Does the gateway or Redis supply 'now' when computing windowIndex = floor(now / 60 s)? Notes say Redis's clock is used for Retry-After. If the gateway computes the key, how does that fit?",
+     "about": "Window"
+    },
+    {
+     "id": "3",
+     "text": "If the backend times out or the gateway can't reach it after the counter was incremented, what does the client get? Does that request still count?",
+     "about": "under limit: G->>B: forward request"
+    },
+    {
+     "id": "4",
+     "text": "What does the gateway do with the allowed/denied result array from the script? Which fields does it read, and where does the 'n' in X-RateLimit-Remaining come from?",
+     "about": "R-->>G: allowed, new count n"
+    },
+    {
+     "id": "5",
+     "text": "What is the Key Service, and what does the gateway do today when it is down or slow on a cache miss? The notes say 'confirm with existing behaviour'. Can I assume a 401, a 5xx, or a pass-through?",
+     "about": "Key Service failure"
+    },
+    {
+     "id": "6",
+     "text": "The cache holds customerId and plan for 5 minutes. If a customer changes plan or a key is revoked, which limit applies during that time? Is 'unknown' cached too?",
+     "about": "look up key in in-memory cache (5 min TTL)"
+    },
+    {
+     "id": "7",
+     "text": "In the Enterprise branch, what is the metric's name, is it emitted on every request, and how does the gateway decide the limit is 'not set' (the ENTERPRISE_LIMIT_PER_MIN config)?",
+     "about": "plan is Enterprise"
+    },
+    {
+     "id": "8",
+     "text": "Where does the 429 path read Retry-After from when PTTL returns a special value (key with no expiry, or already expired)? What does the client see then?",
+     "about": "Retry-After"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The gateway puts a 50 ms deadline on the whole store call. If the call errors, or has no reply by the deadline, it counts as a failure and the gateway fails open. A reply that arrives after the deadline is ignored. The script may still run on Redis and count the request; accepted for v1. The file now says this in the fail-open note."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The gateway computes windowIndex and the milliseconds left in the window from its own clock. It sets the key to expire at the end of its window. Retry-After is still the store's PTTL for that key. The old file was inconsistent: it said Redis's clock was used, and the key expired 60 s after its first request, not at window end. Both are fixed. Small clock skew between gateway instances can move a window boundary by that amount; accepted."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the request still counts, because the count goes up before forwarding (requirement 5). If the backend times out or cannot be reached, the client gets the gateway's existing error for that case. The brief does not name that status, so the exact code is an open item."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The script returns three values: allowed (1) or denied (0), the count n, and the PTTL of the window key. The gateway reads the first to choose between 429 and forwarding, and the third for Retry-After on a denial. On an allowed request, n is the count after this request, so X-RateLimit-Remaining is 100 minus n. On a denial, n is at the limit and is not used for the Remaining header, except the optional 429 Remaining 0."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "Neither the brief nor the old file says what the gateway does today when the Key Service is down or slow on a cache miss. I did not assume a 401, a 5xx or a pass-through. It is listed as an open item."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "A plan change or a revoked key keeps its old limit until the 5-minute cache entry expires; that is how the existing cache works. Whether an \"unknown\" answer is cached at all is not stated, so I do not know. It is listed as an open item."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The metric is named ratelimit_enterprise_unlimited. The gateway emits it on every Enterprise request while the limit is unset, so the gap stays visible. The gateway treats ENTERPRISE_LIMIT_PER_MIN as not set when it is empty or absent. Enterprise responses carry no X-RateLimit headers while unlimited, because there is no number to report."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The script denies only when the key already exists, so the PTTL is positive in normal operation. If it is ever not positive, the gateway sends Retry-After: 60. The client always gets a whole number of seconds, minimum 1, on a 429."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The Lua script uses GET then INCR, and PEXPIRE only when n == 1. If the gateway gives up at 50 ms but the script ran, or the key somehow exists without an expiry, what stops the key from living forever? Who sets the expiry in that case?",
+     "about": "Store and atomicity (Lua script, PEXPIRE when n == 1)"
+    },
+    {
+     "id": "10",
+     "text": "When the cache has the key, the gateway skips the Key Service. What exactly does the cached entry contain, and is it per key or per customer? How does that fit with all of a customer's keys sharing one budget?",
+     "about": "look up key in in-memory cache (5 min TTL)"
+    },
+    {
+     "id": "11",
+     "text": "Each of the 6 gateway instances has its own cache. Does a plan change reach all instances at the same time, or can different instances apply different plans for up to 5 minutes?",
+     "about": "look up key in in-memory cache (5 min TTL)"
+    },
+    {
+     "id": "12",
+     "text": "On an allowed request, where does the gateway get the 'ms until window end' it passes to the script, and what does Retry-After mean for the client relative to the next window?",
+     "about": "G->>R: EVAL check-and-increment on key rl-customerId-windowIndex, limit 100, ms until window end"
+    },
+    {
+     "id": "13",
+     "text": "What does the metrics counter for 429s per plan look like, and who watches the alert on ratelimit_store_unavailable? What is the threshold for the alert?",
+     "about": "Metrics"
+    },
+    {
+     "id": "14",
+     "text": "When the gateway fails open, does it try the Redis call again on the next request, or is there any circuit breaker? If Redis is slow for minutes, does every request wait the full 50 ms?",
+     "about": "Fail open"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "The script sets the expiry in the same atomic step as the first INCR (the n == 1 branch runs inside the same EVAL). So no key created by this script exists without an expiry, and that holds whether or not the gateway waited for the reply. The gateway giving up does not change this, because the script still runs fully on Redis. The Store note now says this. No extra mechanism is added."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The cache is keyed by API key. Each entry holds the customer ID and plan that the key resolved to. It is per key in storage, but the counter uses the customer ID, so all keys of one customer share one budget. The Customer note now says this."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "The brief says the cache is in memory, so each of the 6 instances has its own copy. A plan change therefore reaches instances at different times. Instances can apply the new plan at different moments within the same 5-minute window. This is the existing cache behaviour, accepted for v1. The plan-change open item now says this."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "The gateway computes the milliseconds left in the window from its own clock on every call, and passes them to the script. The script uses them only when it creates the key, so the key expires at window end. Retry-After is the PTTL of that key, rounded up to whole seconds. That is the time until the window ends, which is when the next window starts and a new count begins. The Window and Retry-After notes now say this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The 429 counter is named ratelimit_denied, with the plan as a label. The brief asks for a 429 counter per plan, and the name is my choice. The file does not yet say who watches the ratelimit_store_unavailable alert or what its threshold is. The brief does not decide either, so that is recorded as an open item rather than guessed."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "There is no circuit breaker in v1. Each request tries the store again, so if Redis is slow for minutes, every request waits up to the 50 ms deadline before it is forwarded. The brief does not require a breaker, and adding one would be a new mechanism, so I left it out. The Fail open note states the cost, and it is accepted for v1."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a public API request with an X-Api-Key header. The load balancer hands it to any one of 6 stateless gateway instances.\n\n2. The gateway looks the key up in its own in-memory key cache. Each instance has its own cache, and entries last 5 minutes. On a miss, the gateway asks the Key Service to resolve the key. The Key Service answers with a customer ID and a plan (Standard or Enterprise), or with \"unknown\". The answer goes into the cache. The state here is the per-instance cache, with the Key Service as the source of truth.\n\n3. If the key is missing or unknown, the gateway returns 401 Unauthorized. No counter is read or changed, so bad keys never use budget.\n\n4. If the plan is Enterprise, no limit applies yet, because ENTERPRISE_LIMIT_PER_MIN is unset (empty or absent). The gateway emits the metric ratelimit_enterprise_unlimited and forwards the request to the backend that owns the route. It returns the backend's response with no X-RateLimit headers. Once the setting has a number, Enterprise uses the same check as Standard, with that number.\n\n5. If the plan is Standard, the gateway computes windowIndex (whole minutes since the Unix epoch) and the milliseconds left in the current minute, using its own clock. It builds the counter key rl-customerId-windowIndex. The key uses the customer ID, not the API key, so all of a customer's keys share one budget. The gateway sends a Lua script (EVAL) to the shared Redis counter store. It passes the key, the limit (100) and the milliseconds left in the window. The whole store call, including waiting for a pooled connection, has a 50 ms deadline.\n\n6. Inside Redis the script runs as one step. It reads the current count, treating a missing key as 0. If the count is already 100 or more, it returns {0, n, PTTL} and changes nothing. Otherwise it increments the key. If the new count is 1, it sets the key to expire after the milliseconds left in the window. It returns {1, n, PTTL}. The counts live only in Redis, and each key disappears when its window ends.\n\n7. Failure at the store (error, or no reply within 50 ms): the gateway stops waiting and ignores any late reply. It emits ratelimit_store_unavailable and forwards the request anyway (fail open). It returns the backend's response with no X-RateLimit headers. The script may still have run and counted the request. There is no circuit breaker, so every request tries the store again and may wait up to 50 ms.\n\n8. If the script denied the request (count already at 100), the gateway returns 429 Too Many Requests with a Retry-After header. Retry-After is the PTTL of the counter key, rounded up to whole seconds, with a minimum of 1. If the PTTL is not positive, it sends 60. The request is not forwarded and the denial does not use budget. The denial is counted in the ratelimit_denied metric, labelled with the plan. The 429 may also carry X-RateLimit-Limit and X-RateLimit-Remaining: 0, but that is optional.\n\n9. If the script allowed the request, the count has already gone up. The gateway forwards the request to the backend. If the backend answers with any status, including 500, the gateway returns that response with X-RateLimit-Limit: 100 and X-RateLimit-Remaining: 100 minus n. The request counted either way.\n\n10. If the backend times out or cannot be reached, the gateway returns its existing error for that case. The request still counts.\n\n11. When the minute ends, the counter key expires. The next request in the new window gets a new key with a new windowIndex and starts again at 1.",
+   "gaps": [
+    "What the gateway does when the Key Service errors or is slow on a cache miss. The document says this is not defined.",
+    "Whether an \"unknown\" answer from the Key Service is cached. I cannot say whether a repeated bad key goes to the Key Service every time.",
+    "Which status or body the client sees when the backend times out or cannot be reached. The document only says \"the gateway's existing error\" without naming it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

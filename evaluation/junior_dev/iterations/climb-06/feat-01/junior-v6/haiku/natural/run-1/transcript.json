@@ -1,0 +1,110 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In Step 6, branch 2 says to skip to Step 10 when status is done. But Step 9 says that on retry 'finished is already true, so Step 6 goes straight to completing the upload'. Step 6 has no branch that checks finished. Where does that check happen, and what status is the row in at that point?",
+     "about": "Step 6 vs Step 9 'On failure: Complete raises'"
+    },
+    {
+     "id": "2",
+     "text": "When does the handler call enqueue in Step 5 relative to saving job_id? And what stops the queue from running the job before the job_id is saved, given Step 6 step 6 also writes job_id?",
+     "about": "Step 5. Queue the job"
+    },
+    {
+     "id": "3",
+     "text": "Step 6 says 'Nothing has been uploaded yet, so the retry starts from the checkpoint'. But a database error in Step 6 could happen on a later attempt after parts exist. What does this sentence mean, and what does the retry actually do?",
+     "about": "Step 6 'On failure'"
+    },
+    {
+     "id": "4",
+     "text": "In Step 7, how are part boundaries identical on a retry when the buffer is flushed at 16 MB but the checkpoint is a row_id? If a crash happens after upload_part but before the transaction, the retry restarts from next_row_id. What is the part_number for the re-upload, and how is it derived?",
+     "about": "Step 7 'Part boundaries' and 'Part numbers'"
+    },
+    {
+     "id": "5",
+     "text": "In Step 7, the checkpoint transaction is applied 'only if status = running'. What happens in the handler if that condition is false and zero rows are updated (for example the export was marked failed by the stale guard)? Does the handler stop?",
+     "about": "Step 7. Stream rows into committed parts"
+    },
+    {
+     "id": "6",
+     "text": "Step 8 says the extra enqueue 'starts with fresh attempts'. How does the new job relate to the old job's job_id and attempt on the row, and what if the old job's retries are still pending (e.g. enqueue succeeded, then the old handler crashed before returning)?",
+     "about": "Step 8. Time budget: continue in a new job"
+    },
+    {
+     "id": "7",
+     "text": "In Step 9, how does the handler find the resume state when `finished` is true, and what does the retry do if complete_multipart succeeded but the write of status = done failed?",
+     "about": "Step 9. Finish: complete the upload"
+    },
+    {
+     "id": "8",
+     "text": "In Step 3, where does the small-path request get the 'Cap' of 10,000 rows relative to the row-count read in Step 2, and the 'same 202 response' when it falls back to Step 4? Does the 202 reflect filters and an export row created at that moment?",
+     "about": "Step 3 'Cap'"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Verified in the plan: Step 6 had no check on `finished`, so Step 9's claim was unsupported. Step 6 now has check 7: an attempt with an upload that is under 20 hours old and `finished = true` goes straight to Step 9, using the stored etags. No rows are reread. The row is `status = running` at that point, because `done` is written only after `complete_multipart` succeeds. Step 6, check 8 also now resets `finished` and `next_row_id`."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "`enqueue` returns the job_id (jobs.py), so the save happens after enqueue returns. The job may start before the save finishes. That is safe, because Step 6 writes the same job_id, so either order leaves the same value. If the save fails after a successful enqueue, Step 4 marks the row failed, and the job then reads `failed` at Step 6 and returns."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The old sentence was wrong for later attempts. A failure in Step 6 happens before the attempt uploads anything. Parts committed by earlier attempts stay. The retry re-reads the row and continues from `next_row_id`. The file now says this, and it also notes the orphaned upload when the save after `start_multipart` fails."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Cuts depend only on the checkpoint and the data. The buffer starts empty at each checkpoint, a cut happens after a full row once the buffer reaches 16 MB, and rows after the cut start the next buffer. So a retry from the same `next_row_id` reproduces the same cuts. The part number is 1 plus the count of committed `export_parts` rows, read from the database. A part uploaded before a crash, and never committed, therefore gets the same number on the retry and replaces the old upload."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes, the handler stops. When the conditional write changes zero rows, the run returns normally. It does not retry, and it does not call `complete_multipart`. A late part upload from a stale run either fails or is discarded with the aborted upload. Step 7, Step 9 and Step 4 now say this."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The attempt returns normally after `enqueue` (jobs.py retries only failed attempts), so the old job has no retry pending. The one gap is a worker death between `enqueue` and the return. That causes a retry, which runs beside the new job. Both upload identical parts, and the Step 7 conditional write lets one advance and stops the other. The new job's attempt starts at 1, and the row's `attempt` shows the last run that started. Step 8 now also saves the new job_id."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "In Step 9, `finished = true` with an upload under 20 hours old goes straight to `complete_multipart`, using the etags from `export_parts`. If completion fails, the handler clears `upload_id`, and the next attempt restarts from scratch. The storage helpers cannot tell 'already completed' from 'upload gone', so restarting is the only safe choice, at the cost of a full re-export. If the `done` write fails after completion, the retry's completion fails, so the export restarts and may end `failed` although the object exists. That gap is open question 7."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The cap counts the filtered rows that Step 3 actually reads, not `row_count`, and reading stops at the 10,001st row. The 202 is built by Step 4 at the moment of fallback. That step inserts a row (or returns the active export), and it uses the normalised filters from the request. So the 202 reflects an export row created then."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Click and checks (Step 1). The user clicks Download CSV and the page calls GET /api/reports/{id}/export?filters=...&cols=... with the same values as the page URL. The server finds the report (unknown gives 404). It then checks report.view on the report's workspace (missing gives 403). It then validates filters and cols with the same validator the rows API uses (bad values give 400). Only URL parameters move, and no state is stored.\n\n2. Size choice (Step 2). The server reads reports.row_count from the read replica. This is the unfiltered total. At 10,000 or fewer it takes the small path. Above 10,000 it takes the large path. If the replica is unreachable it returns 503 and never falls back to the primary.\n\n3. Small path (Step 3). In the same request, the server reads report_rows from the replica in keyset pages of 500, with the filters applied. It writes a header row, then one CSV line per row in URL column order, all buffered in API-server memory. If it reads a 10,001st matching row, it drops the buffer and goes to Step 4, because the count was stale. Otherwise it returns 200 with text/csv and a Content-Disposition attachment header. The body is sent only when complete. Nothing is stored, no export row is created and no job is queued. On a database error or the 60-second API limit, the user gets an error with no body and clicks again.\n\n4. Large path, creating the export (Step 4). The server inserts one export_jobs row on the primary with status queued and the normalised filters and cols. A partial unique index allows only one queued or running export per user and report. If the insert conflicts, the server returns the existing active export, including its filters, so the page can say which view it covers. If that row's updated_at is more than 6 hours old, the server aborts its upload_id if it has one, marks the row failed with the error \"stalled\", and inserts a new row. If that insert conflicts again, it returns the active export. Otherwise the response is 202 with {export_id, status, filters}, and the page starts polling. If the insert fails the server returns 500 with no row. If queueing fails (Step 5), the row is marked failed with the error \"could not queue\" and the server returns 503.\n\n5. Queueing (Step 5). The server calls enqueue(\"csv_export\", {\"export_id\": ...}) and saves the returned job_id on the row. The job reads filters and cols from the row, not from the payload. The job may start before the job_id save finishes, which is safe because Step 6 writes the same job_id. If enqueue raises, or the job_id save fails, Step 4 marks the row failed. A job that then starts reads failed in Step 6 and returns.\n\n6. Attempt start (Step 6). The queue calls the handler with ctx.attempt (1 to 3) and the export_id. The handler reads the row from the primary and applies these checks in order, stopping at the first that applies.\n   - Row missing: return.\n   - done with email_sent_at empty: go to Step 10.\n   - done with email_sent_at set: return, because it is a duplicate delivery.\n   - failed: return.\n   - The user lost report.view, or the report was deleted: set failed with the error \"no access\" or \"report not found\", send the failure email, and return normally so the queue does not retry.\n   - Otherwise set status running, attempt, job_id and updated_at.\n   - If upload_id is set and upload_started_at is under 20 hours old, resume. If finished is true, go to Step 9. Otherwise continue from next_row_id, or from the start if it is null.\n   - Otherwise abort any old upload and delete this export's export_parts rows. Reset next_row_id to null and finished to false. Call start_multipart, save the new upload_id and upload_started_at, and start from the beginning.\n   A database or permission-lookup error raises, and the queue retries after 60 s, then 300 s. Committed parts are kept.\n\n7. Streaming parts (Step 7). In a loop, the handler reads 5,000 rows from the replica with row_id > checkpoint, in row_id order, with the row's filters and columns. It formats them as CSV lines into a byte buffer, and part 1 starts with the header. When the buffer reaches 16 MB after a complete row, it cuts a part. The part number is 1 plus the count of committed parts in export_parts. It calls upload_part and gets an etag. In one primary transaction it inserts the export_parts row (export_id, part_number, etag, last_row_id) and sets next_row_id and updated_at. That update is conditional on status running and next_row_id still holding the value this run read. If it changes no rows, or the part number is taken, another run got ahead, so this one stops and returns normally. Then it checks the time budget. Because cuts depend only on the checkpoint and the data, a retry reproduces the same parts. A crash before upload loses the buffer, and the retry regenerates it. A crash after upload but before the transaction leaves an uncommitted part that the retry overwrites with the same part number. A replica query error is retried up to 3 times within the attempt, then the attempt fails. A storage error on upload_part fails the attempt, and the retry resumes from the checkpoint. Memory stays at one page plus one 16 MB buffer.\n\n8. Handover (Step 8). After each committed part, if the attempt has run for 20 minutes, it starts no new part. If rows remain, it enqueues a new csv_export job, saves the new job_id, and returns normally. The new job starts at attempt 1 and resumes from the checkpoint. The row stays running. If enqueue raises, the attempt fails and the retry resumes from the same checkpoint. If a worker dies in the gap between enqueue and return, the old job's retry runs beside the new job. The conditional write lets only one advance, so the result is wasted work and not a wrong file.\n\n9. Finishing (Step 9). When the query finds no rows after the checkpoint, or Step 6 sees finished is true, the handler flushes the last buffer as the final part, which may be under 5 MB. In one conditional transaction it saves that part's row and sets finished to true. It then calls complete_multipart with the etags sorted by part_number from export_parts, and the object appears at storage_key. Then, conditionally on status running, it sets status done, storage_key, object_created_at and updated_at. If zero rows change, it stops and returns. If complete_multipart raises, the handler tries abort_multipart and clears upload_id, and the attempt fails. The next attempt finds no upload and restarts from scratch. If the done write fails after completion succeeded, the next attempt's complete_multipart fails and clears upload_id, and a later run restarts from scratch. The export can end failed although the object exists.\n\n10. Ready email (Step 10). With status done and email_sent_at empty, the handler makes a signed URL with ttl = min(86400, object_created_at + 7 days - now). It calls send_email(user_id, \"export_ready\", {report_id, report_name, download_url, expires_at}) and then sets email_sent_at. If the send raises, the attempt fails. The retry goes through Step 6 check 2 and only resends the email. If all attempts fail, the export stays done.\n\n11. Page status (Step 11). While an export is queued or running, the page polls GET /api/reports/{id}/exports/latest every 5 seconds. It stops at done or failed. The endpoint checks report.view and returns only the caller's most recent export for that report. It returns status, filters, created_at, attempt, error and, if done and not expired, a freshly signed download_url, which is capped at the object's remaining life. If the ttl is zero or less, the page shows \"This export has expired. Export again.\" A poll error shows \"Export status unavailable\" and polling continues. Clicking the button while an export is active returns that export through Step 4.\n\n12. Final failure (Step 12). An ordinary attempt failure (a raise, a timeout or a worker death) is retried after 60 s, then 300 s. The status stays running and the page shows the attempt number. After the 3rd failure the queue calls on_final_failure. It reloads the row and changes nothing if the status is done. Otherwise it sets failed with a short error, aborts the upload if there is one, and sends the export_failed email. If that send fails it only logs. If the handler itself fails, the row stays running until the 6-hour stale guard clears it.\n\n13. Cleanup (Step 13). The bucket deletes objects 7 days after creation. It discards uncompleted multipart uploads after 24 hours. The export_jobs and export_parts rows are kept, with no cleanup job.",
+   "gaps": [
+    "The document never says how the Step 5 job_id save and the Step 6 'job_id = ctx.job_id' write are protected against a stale or competing job overwriting job_id after a Step 8 handover, so which job 'owns' the export is only loosely defined.",
+    "It does not say how the handler gets the row's report_name for the emails, or what retry_hint contains.",
+    "Step 8 says the handover enqueue 'saves the returned job_id as in Step 5', but it does not say how the old handler avoids racing with the new job's own Step 6 write beyond the conditional part write.",
+    "Step 3 says the over-cap request goes to Step 4 and 'the user gets the same 202 response', but it does not say whether the stale guard and active-export logic run identically in that case. I assumed they do.",
+    "The document does not say how 'the time this attempt has run' is measured, or where the 20-minute figure is configured. It is only said to come from the pre-coding measurement.",
+    "In Step 9 the final-part flush is described as saving a part and setting finished, but the document does not say what happens when the report has zero matching rows after the checkpoint on a brand-new export. Does a header-only part 1 get uploaded, and is the 5 MB minimum waived because it is the last part?",
+    "The document does not say what the on_final_failure handler does about status 'done' with a missing email, beyond leaving it done. It also does not say whether the page then shows that no email was sent.",
+    "How the existence of an object at storage_key is told apart from an upload that is gone is explicitly unresolved (open question 7), so the restart-from-scratch path after a failed done write is incomplete."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The record is a row in the MySQL `users_outbox` table, inserted in the same transaction as the write, so it commits atomically with it and survives an app crash. It holds the op and the full row. The inline copy deletes it on success. If the copy fails, the MySQL-to-Postgres relay applies it later with retries and backoff, using the version rule. No manual step. This applies only while dual_write is on.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Deletes insert a tombstone in `users_erased` (in each database) with no personal data. Every copy, whether inline, relay, backfill or comparator repair, runs in a transaction that first takes a per-id lock (Postgres advisory stripe lock, MySQL FOR SHARE on the tombstone row) and then checks `users_erased`. If the id is there, the copy is skipped. The delete path inserts the tombstone and deletes the row under the same lock. So whatever order a delete and an in-flight copy arrive in, the row cannot come back. Ids are never reused. The backfill also skips ids in users_erased, and waits 10 minutes after the dual-write gate so the replica has caught up with earlier deletes.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is `last_completed_id` in the Postgres table `users_backfill_progress`. It is updated in the same Postgres transaction that upserts the batch, so a crash rolls back both and the two stay consistent. On restart it resumes after `last_completed_id`. Batches read from the MySQL replica in id order, at most 2,000 rows, pausing while replica lag is above 5 seconds. It stops when a batch returns fewer than 2,000 rows, which marks the backfill complete. A single worker holds a Postgres advisory lease. The progress is reset to 0 if dual_write was turned off and back on.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The comparator walks the id space in 2,000-id chunks, comparing row checksums on the MySQL replica and Postgres, and it runs nightly until MySQL is dropped. Each mismatch is rechecked after 60 seconds against the MySQL primary. Ids that still have an outbox row are skipped and rechecked on a later pass. Persistent ones are handled this way. Missing or older in Postgres: copy_to_pg. In Postgres but absent in MySQL and not tombstoned: delete from Postgres and add a tombstone. Newer version in Postgres than MySQL: this should be impossible, so it pages a human and stops. Any repair makes that pass non-clean, so it reruns until a pass has zero mismatches and zero repairs.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each database has a `users_control` row with `accepting_writes`, and every write transaction takes FOR SHARE on it, in the database it writes to. The switch first closes MySQL, which waits for in-flight writers and blocks new ones, and sets writer=postgres. It waits for `users_outbox` to drain. Only then does it open Postgres. Both fences are closed in between, so an instance with a stale flag gets a retryable 503 from whichever fence it hits, and never a write. If the switch runs long, a watchdog aborts at T+45 if Postgres is not open: it re-opens MySQL and sets the flag back to mysql, and Postgres never accepted a write. Instances with the new flag cached get a 503 for up to 30 more seconds, so the pause ends by about T+75, under the 90-second limit. A stuck outbox row stays in place for the 5-minute alert and an operator to fix before retrying.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids from `users_id_seq`. At the switch, after the drain and before opening Postgres, the script sets it with setval to GREATEST(MySQL AUTO_INCREMENT, max id in Postgres, current value) + 1,000,000, so new ids cannot collide with existing ones. The mirror copy inserts the Postgres-assigned id explicitly into MySQL, which raises MySQL's AUTO_INCREMENT counter. A rollback to MySQL therefore continues above every id Postgres issued and cannot reuse one. Ids of erased users are never reused either.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch each write commits to Postgres with a `pg_outbox` row in the same transaction, then tries an inline copy to MySQL (300 ms timeout, errors swallowed) and deletes the row on success. Otherwise the reverse relay applies it, using the version rule and MySQL tombstones, with the same version value. Deletes are mirrored too. The comparator also runs, and the outbox age is alerted at 5 minutes. A rollback is the step 10 procedure mirrored: close Postgres, set writer=mysql, drain `pg_outbox` to MySQL, open MySQL, all within 90 seconds. It needs pg_outbox age to be small first. The option ends at step 13: at least 14 days after Postgres became the source of truth (or the last switch), a clean comparator, an empty pg_outbox and explicit sign-off. Then mirror_to_mysql is set to false, the reverse relay stops and write grants are revoked. The MySQL table is dropped only after that, in step 14.",
+  "decided": true
+ }
+}

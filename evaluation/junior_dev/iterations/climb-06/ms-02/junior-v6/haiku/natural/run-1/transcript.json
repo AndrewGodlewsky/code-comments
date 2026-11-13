@@ -1,0 +1,232 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is MailRelay and what does it do with idempotency_key? Does it only remember keys for 24 h and silently drop repeat sends, and what does the caller get back on a dropped repeat?",
+     "about": "Core design: MailRelay"
+    },
+    {
+     "id": "2",
+     "text": "Where do the notifications.route.<type> flags live, who reads them, and how often? What are the '5 s poll' and '10 s propagation' that the plan mentions?",
+     "about": "Core design: Routing flags"
+    },
+    {
+     "id": "3",
+     "text": "In the relay, the intent commit of owner='service' happens before publish. After publish confirms, what exactly sets published_at, and does the same row get picked up again by the retry query while it is in flight?",
+     "about": "Step 3: Monolith relay"
+    },
+    {
+     "id": "4",
+     "text": "Where do rows get created in the first place (enqueue_notification), and what does the monolith worker do with a row whose type routes to service and owner is NULL? Does it skip it until the relay claims it?",
+     "about": "Step 2: claim rules"
+    },
+    {
+     "id": "5",
+     "text": "How does a status event get from the service outbox to the monolith row? Who publishes the outbox, and which topic does it use? What does the monolith do if the event arrives while the row is not pending?",
+     "about": "Step 5: Events"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'page intent' and the 'pager job'? How does a failed row get from 'failed' to someone being paged?",
+     "about": "Step 5: Outcome"
+    },
+    {
+     "id": "7",
+     "text": "What does the existing worker do today when MailRelay returns an error (not a timeout)? How does it decide retry timing and when a row is 'failed' in the monolith?",
+     "about": "Step 1: Key and per-row commit"
+    },
+    {
+     "id": "8",
+     "text": "After flipping the flag back to monolith, what happens to a row that is owner='service' but the service itself is broken and cannot send? Is there any way for the monolith to take it back?",
+     "about": "Step 7: Rollback"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "MailRelay is the external email service. Its send() takes an optional idempotency_key. If it has already accepted a send with that key in the last 24 hours, it drops the new send and returns success. A dropped repeat therefore looks the same to the caller as a fresh accept. Stated in the Terms section. We pass no key today; rollout step 1 adds it."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Routing flags are read with flags.get(name) in the monolith only; the service never reads them. The brief does not name the flag store behind flags.get. The 5 s is the monolith loop interval (the relay runs every 5 s, and the worker sleeps 5 s between batches). The 10 s is how long a flag change takes to reach every monolith instance. So a flip takes effect within about 15 s, inside the one-minute rollback target. Added to Terms."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "published_at is set by a separate short update after the broker confirms it stored the message. The retry query (owner = 'service' AND published_at IS NULL) can pick up a row whose confirmation has not come back yet, so the broker can get two copies. I accept this: the service dedupes by id, and the cost is one extra broker message. A lease on the retry would add a mechanism the brief does not need. Stated in send step 3."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "enqueue_notification inserts the row with owner NULL inside the caller's transaction. The worker's claim rule takes only NULL rows whose type routes to monolith. So the worker skips a NULL row of a service-routed type and leaves it alone until the relay claims it. Stated in send step 2 and send step 3."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The service writes a status event to its outbox in the same transaction as the state change. The service's outbox relay publishes it to the status topic, and the monolith's status consumer subscribes to that topic. The brief does not name the topic, so the plan calls it the status topic and it needs a name in the build. If the event arrives when the monolith row is not pending, the UPDATE matches nothing and is a no-op. The monolith acks after commit, the same rule as the service ingest (decided)."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "A page intent is a row in the service database. It is written in the same transaction that marks the row failed, so a failed row always has an intent. The pager job is a periodic service job. It reads unsent intents, pages on-call with the same paging call the monolith uses today, and marks each intent sent. A crash between paging and marking can page twice, which the brief accepts. The brief does not say how the service reaches the paging system; that is a build question."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Today the worker catches mailrelay.Error, which includes timeouts, so an error and a timeout take the same path. It adds 1 to attempts. At attempt 5 it sets the row to failed and pages on-call. Otherwise it sets next_attempt_at to now plus 1, 2, 4 or 8 minutes, for attempts 2 to 5. The row is failed in the monolith on the 5th failed attempt. Hole: the code catches only mailrelay.Error, so any other exception is not handled by this code, and the first draft does not say what happens to it."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The plan has no way for the monolith to take back a service-owned row. Ownership is sticky so that no row is sent by both sides; a takeover is exactly what could cause a duplicate. If the service is broken, owned rows wait for the service, and the 20 h guard fails and pages them without re-sending. The rollback rule also keeps the service from scaling to zero until those rows finish. A takeover that re-sends with the same key inside 24 h is a possible option, but it is a new decision for the team and is listed as open question 5."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Send step 5 says it starts when a row is queued and due. What actually triggers it: a polling loop, or ingest handing the row over? How often does it run, and does it run on every service instance?",
+     "about": "Service claim"
+    },
+    {
+     "id": "10",
+     "text": "The UPDATE sets 'status = ...'. Which fields does it copy from the status event onto the monolith row (status, accepted_at, attempts)? Does the monolith do anything else on a 'failed' event, such as paging?",
+     "about": "Monolith status consumer"
+    },
+    {
+     "id": "11",
+     "text": "For a monolith-owned row, where is 'owner = monolith' committed if the send transaction rolls back on a crash? You say the row returns to NULL. What then decides who sends it next, if the flag has since flipped to service?",
+     "about": "Send step 2: Monolith claim"
+    },
+    {
+     "id": "12",
+     "text": "If one instance's flag read fails and falls back to monolith while others see service, can that instance's worker claim a NULL row of a service-routed type, and what stops the relay on another instance from claiming it too?",
+     "about": "Failure table: Flag read fails"
+    },
+    {
+     "id": "13",
+     "text": "The gate says 'every committed row reaches a terminal state, confirmed by reconciliation'. What is the reconciliation: what does it compare, and who runs it?",
+     "about": "Step 6: Staging rehearsal"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The service claim is a polling loop on every service instance, every 5 s, the same interval as the monolith loops. Ingest does not hand rows over. It commits each row as queued with next_attempt_at = now(), and the loop claims it. FOR UPDATE SKIP LOCKED makes several instances safe. The 5 s interval is my choice: the simplest option, matching the monolith. The brief does not set it. Added to send step 5."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The consumer copies status and attempts from the event. It does not copy accepted_at: the monolith table has no such column, and the latency gate reads accepted_at from the service database. The monolith does nothing else on failed. It does not page, because the service's pager job has already paged from the page intent written in the same transaction as the failed state. The draft's UPDATE set only status, so attempts is now set too. Changed in send step 8."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. owner is set in the same transaction as the send. If that transaction rolls back, owner returns to NULL and attempts does not move. The next claim decides by the flag it reads then. If the flag still says monolith, the monolith sends it again. If it says service, the relay publishes it and the service sends it. Either way the same key is used, so MailRelay drops a send it already accepted within 24 h. Stated in send step 2."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Yes. An instance that falls back to monolith claims NULL rows of a service-routed type, because its claim uses the value it read. The relay on another instance cannot also claim the same row. The claim is a row lock (FOR UPDATE SKIP LOCKED) that sets owner in the same transaction, and each claim selects only rows whose owner allows it. After one side commits owner, the other side's select no longer matches. So each row has one owner, but during the fallback the monolith may send a row whose flag reads service. Kept as is: the brief says the monolith can always send. Added to the failure table."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Reconciliation joins the monolith notifications table to the service notifications table on id. It checks that every committed monolith row has a terminal state on the side that owns it, and that no id has more than one accepted send at MailRelay. In staging it runs at the end of each fault-injection test. Who runs it, and who signs off, is not set by the brief, so it is open question 6. Defined in Terms and in rollout step 6."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "The relay's intent step needs a service-routed type with owner NULL. After a flag flip, a row of that type was already inserted before the flip as NULL. Does it go to the relay (new flag) rather than finishing under the old routing? The summary says rows in progress finish where they started, so which is it for NULL rows?",
+     "about": "Summary / Relay: intent, then publish"
+    },
+    {
+     "id": "15",
+     "text": "What does the status consumer do when the monolith row is owner='service' and the event arrives but the row's status is already 'pending' only until then? In particular, can a status event ever be lost before the row is published (event arrives before published_at is set)? How do the two interleave?",
+     "about": "Monolith status consumer"
+    },
+    {
+     "id": "16",
+     "text": "When the service sends a row that was claimed by the monolith crash-rollback path, the service has no knowledge of the monolith's attempts count. Does the service start attempts at 0 for each ingested row, even if the monolith had already tried it (before owner was rolled back)?",
+     "about": "Service ingest / Service claim"
+    },
+    {
+     "id": "17",
+     "text": "The 20 h guard uses first_attempt_at. On the service side, who sets first_attempt_at for a row that sat queued a long time, and what is measured from for a row stuck in the monolith before publishing (e.g. broker down)? Is the clock the service's first claim, not enqueue time?",
+     "about": "Service claim: Guard"
+    },
+    {
+     "id": "18",
+     "text": "How does the service build the email: the message carries type, email and payload, and the templates are copied into the service. How are template changes kept in sync with the monolith afterwards, and what happens if the service gets a schema_version or type it does not know?",
+     "about": "Service send and outcome: Render"
+    },
+    {
+     "id": "19",
+     "text": "Who consumes the page intents for a monolith-owned failed row, and does the monolith's existing paging still fire at attempt 5 for rows it owns? Is there any case where both the monolith and service page for the same row?",
+     "about": "Service outbox and pager"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No. A NULL row has not been sent by anyone, so it is not in progress. The rule that rows already in progress finish where they started applies to rows that already have an owner. An unclaimed NULL row follows the flag at the moment it is claimed: the relay takes it if its type routes to the service, and the monolith claim takes it if the type routes to the monolith. Reason: if NULL rows stayed on the old side, the monolith would keep sending after the flip and the cutover would not happen. Either side can take a NULL row safely, because the claim sets owner in the same transaction that locks the row. The summary and the monolith claim and relay steps now say this."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "No event can arrive before owner is service. The service produces a status event only after it ingests a message, and the monolith publishes that message only after it commits owner service. The status consumer updates status and attempts and never touches published_at, so the event and the published_at update can land in either order without loss. If the event lands first, the row is terminal, and the retry query skips it because it now also requires status pending. If the event lands after the retry has read the row but before the publish, the service ingest does nothing for the repeat message. Changed: the retry query now requires status pending, and the status consumer step explains the ordering."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "No, the service does not start at 0. The message now carries attempts and first_attempt_at, and ingest copies them, so the 5 attempts count across both sides. A monolith attempt before the handover is possible only for rows the old worker sent during rollout step 2, because that worker does not write owner. A monolith claim that rolls back restores attempts too, so it adds nothing. Reason: the 5-attempt limit is per notification, not per side. Changed: the relay message, the ingest step and rollout step 2 now carry or describe attempts."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, the clock is the first MailRelay send attempt, wherever it happened, not enqueue time. The service sets first_attempt_at at its first claim if it is NULL, and the monolith sets it at its claim. A row that waits in the broker, the service queue or the monolith before any send has no clock and no guard, because MailRelay has no key for it yet, so no 24 h window applies. The one exception is a row the old worker sent during rollout step 2 that has attempts but no first_attempt_at. The relay sends created_at for it, which starts the clock early, and that is safe. Changed: the service claim step has the clock rule, and the relay step has the created_at fallback."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The message carries type, email, payload and schema_version. The service renders from its own copy of the templates. Keeping them in sync: the golden test in rollout step 5 renders both copies in CI and fails if they differ, and until the monolith worker is removed in step 11, a template change goes into both copies in the same release. If the service gets an unknown type or schema_version, it cannot render the row, so ingest stores the row as failed, writes a page intent and a failed event in one transaction, and sends nothing. A render error during a send counts as a failed attempt, so the backoff and failure path apply and the path is bounded. Reason: retries are cheap, and this is the simplest path that always ends in a page. How the template sync is run is a build detail that is not in the brief, so it needs confirming. Changed: the ingest step, the send step and the failure table now cover these cases."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "The monolith keeps its own paging. For rows it owns, it pages at attempt 5 as today, with alerts.page_oncall called in the same transaction as the failed status. The service pager job reads only page intents that the service wrote, and those come only from service-owned rows, so the monolith never reads them. Each row has one owner, and only that owner's side writes its failure, so no row is paged by both sides. A monolith crash after paging and before its commit can page twice, which is today's behavior and is unchanged. Changed: the monolith claim step and a new paging paragraph after the failure table state this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Enqueue. Business code (checkout, a carrier webhook, password reset) calls enqueue_notification(tx, ...) inside its own database transaction. That inserts a row into the monolith's notifications table with status pending, owner NULL and attempts 0. If the caller's transaction rolls back, no row exists and nothing is sent. The monolith table is the first record of every notification.\n\n2. Which side sends. Each row has one sender, recorded in its owner column. NULL means nobody has claimed it. The routing flag notifications.route.<type> (monolith or service, default monolith) decides who claims a NULL row. The flag is read at the moment of the claim. Flag changes reach every monolith instance within 10 s.\n\n3. Path A, monolith-routed type. Every 5 s each monolith instance selects up to 50 pending rows that are due (next_attempt_at <= now()) and are either owner monolith or owner NULL with a monolith-routed type. For each row, in its own transaction, it sets owner to monolith and sets first_attempt_at if unset. It renders the template, calls MailRelay with idempotency_key = id, and records the result. On success the row's status is updated and committed. On a MailRelay error it adds 1 to attempts. At attempt 5 it sets the row to failed and pages on-call in the same transaction. Otherwise it sets next_attempt_at to now plus 1, 2, 4 or 8 minutes. A crash mid-send rolls the transaction back, so owner returns to NULL. The next claim re-decides by the flag, and the same key lets MailRelay drop a send it already accepted within 24 h.\n\n4. Path B, service-routed type: relay intent. Every 5 s each monolith instance runs the relay. It claims up to 50 NULL-owner rows of service-routed types with FOR UPDATE SKIP LOCKED, sets owner to service, and commits. This commit happens before any publish, so the monolith can never send these rows.\n\n5. Relay publish. The relay publishes {id, type, email, payload, created_at, schema_version, attempts, first_attempt_at} to the notification topic on the broker. If attempts is above 0 and first_attempt_at is NULL, it sends created_at in its place. When the broker confirms storage, a separate short update sets published_at. Rows with owner service, published_at NULL and status pending are published again, whatever the flag says, so a crash before the confirmation only causes a duplicate message. If the broker is down, rows stay owner service and unpublished, and the monolith sends nothing.\n\n6. Service ingest. The service consumer receives the message and inserts it into the service's own notifications table with ON CONFLICT (id) DO NOTHING. It stores the row as queued with next_attempt_at = now() and copies attempts and first_attempt_at. It acks only after the commit. Redelivered or duplicate messages become no-ops that are still acked. If the type or schema version is unknown, the row is inserted as failed, with a page intent and a failed outbox event written in the same transaction. Nothing is sent.\n\n7. Service claim. Every 5 s a polling loop on each service instance finds queued rows that are due, or sending rows whose lease has expired. It locks them with FOR UPDATE SKIP LOCKED. For each row it checks three things in order. (1) If first_attempt_at is over 20 hours old and the row is not terminal, set it failed with a page intent and do not send. (2) If attempts is already 5, set it failed with a page intent and do not send. (3) Otherwise set status sending, add 1 to attempts, set first_attempt_at if unset, and set a lease. This commits before the send. A crash therefore uses up an attempt.\n\n8. Service send and outcome. The service renders from its own copy of the templates and calls MailRelay with idempotency_key = id. On success one transaction sets status sent, sets accepted_at, and writes a sent event to the outbox. On failure (MailRelay error, timeout or render error), if attempts >= 5 it sets failed, writes a failed event and writes a page intent. Otherwise the row returns to queued with next_attempt_at = now + [1,2,4,8][attempts-1] minutes. If the service crashes mid-send, the row stays sending until the lease expires and is then claimed again with the same key.\n\n9. Outbox and pager. An outbox loop publishes status events {id, status, accepted_at, attempts} to the status topic. A scheduled pager job reads unsent page intents, pages on-call, and marks them sent. If the broker is down, events and intents wait in their outboxes. A crash between paging and marking can page twice, which the document accepts.\n\n10. Monolith status consumer. On a status event the monolith runs UPDATE notifications SET status, attempts WHERE id = ? AND owner = 'service' AND status = 'pending'. It acks after the commit. It does not copy accepted_at and does not page. A repeat or late event matches nothing, because terminal states are set once. The row shows pending on the monolith until the event arrives.\n\n11. Rollback and rollout. Setting a flag back to monolith only affects unclaimed NULL rows. Rows already owned by the service are not moved and drain on the service. The relay keeps running until none remain unpublished. Types move in order shipping_update, order_confirmed, password_reset, with holds and gates. Rollout steps 1 to 6 are the old worker getting keys and per-row commits, the ownership columns, a dark relay, a dark status consumer, the service built with no traffic, and a staging fault-injection gate. Step 11 decommissions the old worker.",
+   "gaps": [
+    "The document does not say what the monolith claim does with an exception that is not a MailRelay error (open question 7). I cannot explain that branch of step 3.",
+    "The document does not say how the monolith takes back or re-sends rows already owned by a broken service after a rollback. They only wait for the service or the 20-hour guard (open question 5).",
+    "The document does not say how the service's status event for a failed row relates to paging on the monolith side beyond 'service pages'. This is clear enough, so there is no real gap here.",
+    "The document does not name the store behind flags.get, the topic names, or how the service reaches the paging system (open questions 8 to 10). These affect how I would trace the flag read and the page call, though not the order of the steps.",
+    "The document does not say who runs reconciliation, or what actually happens when it finds a row that is not terminal (open question 6).",
+    "The document does not say how long the lease lasts or how long the pager job's schedule interval is, which I would need to say when a stuck sending row becomes claimable again."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

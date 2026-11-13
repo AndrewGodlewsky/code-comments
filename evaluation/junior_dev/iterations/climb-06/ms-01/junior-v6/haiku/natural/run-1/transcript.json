@@ -1,0 +1,214 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "After the customer presses Place order, does the browser's request stay open until the saga finishes, or does it return right away? How does the browser later learn the order is confirmed or declined, given the webhook can take up to 30 minutes?",
+     "about": "Presses Place order / Insert order PLACING"
+    },
+    {
+     "id": "2",
+     "text": "What drives the saga forward after each step? If the Order service crashes after reserving stock but before asking Payment to charge, what picks the order up again?",
+     "about": "Insert order PLACING / Order service runs the saga"
+    },
+    {
+     "id": "3",
+     "text": "What does the charge request to Payment contain, and where does the amount come from? Does Payment's HTTP charge call return immediately, or only when the provider answers?",
+     "about": "Status AWAITING_PAYMENT, ask Payment to charge"
+    },
+    {
+     "id": "4",
+     "text": "How does Payment know which order a webhook belongs to? What happens if the signature check fails?",
+     "about": "Webhook received, verify signature"
+    },
+    {
+     "id": "5",
+     "text": "What does Order do with the ReservationExpired event, and what is the hold_expired flag used for later? Does the order status change when the hold expires?",
+     "about": "Hold expired while waiting, set hold_expired flag, keep waiting"
+    },
+    {
+     "id": "6",
+     "text": "How do events travel between services: what carries them, and how does an outbox row get from Payment's database to Order? What is the broker here?",
+     "about": "Publish PaymentSucceeded or PaymentDeclined"
+    },
+    {
+     "id": "7",
+     "text": "If the release or claim HTTP call to Inventory fails or times out, what does Order do?",
+     "about": "Status PAYMENT_DECLINED, ask Inventory to release"
+    },
+    {
+     "id": "8",
+     "text": "Who consumes RefundCompleted, and does the order status or the customer see anything change when the refund finishes?",
+     "about": "Provider accepted refund / Refund SUCCEEDED, publish RefundCompleted"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The browser's POST returns at once with the order id and does not wait for the saga. The browser then polls the order status until it is final. A 30-minute webhook wait cannot be held open in one request. The brief does not say how the browser learns the outcome, so this is my choice and it is open question 6."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Order's status in its own database drives the saga. A recovery job finds orders stuck in PLACING, AWAITING_PAYMENT or with an unclaimed payment outcome, and repeats the current step. Each step is safe to repeat: one reservation per order id, an idempotent charge, and an idempotent claim or release. If Order crashes after reserving but before charging, the recovery job repeats the reserve call and then charges. The case where the hold expired before recovery is open question 8."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The charge request carries the order id, which is the idempotency key, and the amount. The amount is the total of the order lines Order stored at Place order. Payment does not read Order's tables. The HTTP charge call returns once the provider has accepted the request. It does not wait for the money outcome, which arrives by webhook."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The charge was keyed by the order id, so Payment finds the charge from the order id the provider sends back with the webhook. A webhook that fails the signature check is rejected and nothing is written. I assume the provider retries a rejected webhook. Both assumptions are open question 7 and need checking against the provider's documentation."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Order receives ReservationExpired, sets the hold expired flag and keeps waiting. The order status does not change. The flag is read only by the waiting screen so it can warn the customer. It does not decide the outcome. The claim decides, because a claim on an EXPIRED hold is refused."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Each service writes its event to its outbox in the same transaction as the state change. A relay process reads unsent outbox rows and publishes them to the broker. Order subscribes to the events and ignores repeats by event id. The brief does not name the broker, so its name is open question 4."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Order retries a failed release or claim with the same order id until Inventory answers. Both calls are safe to repeat. A failed release is backstopped by the 10-minute expiry, so the stock still goes back on sale. A claim that keeps failing until the hold expires is refused, and the late-success path runs. Order stores pending calls so a restart does not lose them."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Order records RefundCompleted in the order's status history. The order status stays CANCELLED_OUT_OF_STOCK, and the customer sees no change, because the out-of-stock email already said a refund had started. Whether the customer should get a refund-complete message is open question 9."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The POST returns at once with the order id. What actually triggers and runs the reserve call afterwards: the same request after responding, a background worker, or the recovery job? And what does the browser's poll show while the order is PLACING?",
+     "about": "Insert order PLACING / Reserve stock (Order to Inventory)"
+    },
+    {
+     "id": "10",
+     "text": "The charge request carries the payment details the customer entered. Where do those details live between Place order and the charge, and where does Order get them when the recovery job repeats the charge?",
+     "about": "Request payment (Order to Payment)"
+    },
+    {
+     "id": "11",
+     "text": "Does Order get the reserve result in the HTTP response, or by event? If Inventory reserved but the response was lost, what does the repeated reserve call return?",
+     "about": "Reserve result"
+    },
+    {
+     "id": "12",
+     "text": "If Payment's charge call fails before the provider accepts it (not just times out), does the order stay AWAITING_PAYMENT until recovery repeats it? How soon does recovery run, and does the 10-minute hold keep running meanwhile?",
+     "about": "Status AWAITING_PAYMENT, ask Payment to charge"
+    },
+    {
+     "id": "13",
+     "text": "What is the saved payment outcome and when is it written relative to the claim call? If PaymentSucceeded arrives while the order is already CANCELLED_OUT_OF_STOCK or CONFIRMED, what happens?",
+     "about": "Saved payment outcome, Ask Inventory to claim reservation"
+    },
+    {
+     "id": "14",
+     "text": "If the provider polling answer says the charge is still pending after 45 minutes, or a decline arrives after the order already ended up cancelled, what happens to the order and the charge?",
+     "about": "Charge still PENDING after 45 min / Webhook"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "After the POST returns, a background worker in Order picks up the PLACING order and runs the reserve call. I chose a worker over the same request so the browser's POST returns at once. The recovery job is the backstop if the worker fails. While the order is PLACING, the browser's poll shows a placing state. Step 1 now says this."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The design does not say where the customer's payment details are held between Place order and the charge, or how recovery repeats the charge without them. The brief does not set this. Added as open question 10."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "The reserve result comes back in Inventory's HTTP response (step 2). If that response is lost, Order repeats the call with the same order id. Inventory allows one reservation per order id, so a repeat returns the existing reservation. After a short answer nothing was written, so a repeat checks stock again. Added to step 2."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Order stays AWAITING_PAYMENT, and Payment retries the provider call with the same order id key, as it does for a timeout. The 10-minute hold runs on Inventory's own timer, so it keeps running meanwhile. If the hold expires first, the late success path covers any charge that later succeeds. How soon recovery runs is not set, so that is open question 11."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "The saved payment outcome is Order's record of PaymentSucceeded. Order writes it before the claim call (step 5), so recovery can repeat the claim after a crash. A repeat PaymentSucceeded on a CONFIRMED or CANCELLED_OUT_OF_STOCK order is ignored, because step 5 says Order ignores events for orders in a final state. For a cancelled order, the refund was already requested when the claim was refused. Added to step 5 and the terms."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "If the poll says the charge is still pending, Payment changes nothing and polls again later. It does not call a pending charge failed, because that could refund or cancel a charge that later succeeds. A decline that arrives after the order was cancelled cannot change the order. A cancellation only follows a success, and a charge is set only once, so a conflicting later result is logged and changes nothing. The pending wait has no end yet, so open question 12 remains."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "When the provider call fails before accepting, what does Payment's HTTP response to Order say, and what makes Payment retry: a background job in Payment, or Order repeating the request?",
+     "about": "Request payment (Order to Payment) / Call provider charge"
+    },
+    {
+     "id": "16",
+     "text": "When the customer retries after a decline, what makes the new order id: a new client request id from the browser, or something Order generates? How is that different from a double-click?",
+     "about": "Retry with the same key after a decline / Status PAYMENT_DECLINED"
+    },
+    {
+     "id": "17",
+     "text": "How often does the expiry timer in Inventory run? If a claim arrives after expires_at but before the sweep marks it EXPIRED, is it accepted or refused?",
+     "about": "Claim while HELD and not expired / Expiry sweep"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Payment's HTTP response to Order is the charge answer: it returns once the provider has accepted, and it returns an error if the provider call fails before accepting. Order does not resend. Payment retries the provider call itself, in the background, with the same order id key, because the charge row is already PENDING and the key is already stored. Order's recovery job (step 11) is the backstop if Payment itself stops. Both retries are safe to repeat, because the provider returns the same result for the same key. Step 3 and the failure table now say this."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The browser makes a new client request id for each press of Place order. A double-click is one press, so the browser resends the same id, and the order insert returns the first order. A retry after a decline is a new press, so it has a new client request id and Order inserts a new order with a new order id. Order generates the order id at insert. Reusing the old order id would reuse the old charge key and get the old declined answer. Step 1, step 5 and the double-click row now say this."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The expiry sweep only changes the stored status, so the sweep interval is not set and does not change the outcome. A claim is accepted only while the reservation is HELD and expires_at is in the future, and the claim's one conditional update checks both. So a claim after expires_at is refused even before the sweep runs. Reserve also counts only unexpired HELD reservations as holding stock, so an expired hold does not block other customers before the sweep. Without that rule, stock would stay blocked past 10 minutes. The interval is not written into the file, because the plan does not need it."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one order from the Place order press to its end. I cover the main path first, then the branches.\n\n1. **Place order.** The customer presses Place order. The browser makes a client request id for that press. A resend of the same press, such as a double-click, carries the same id. The browser sends HTTP POST /orders to the Order service.\n\n2. **Snapshot.** Order asks Cart for a read-only snapshot of the cart's lines and prices over HTTP. Cart's database holds the carts. If this call fails, no order is created, the browser shows an error, and the cart is unchanged.\n\n3. **Insert the order.** Order inserts a row with status PLACING in its own orders database. It generates the order id and copies the lines and prices into order lines, which never change afterwards. The insert is keyed on the client request id. A resent press therefore returns the first order and creates no second one.\n\n4. **Return to the browser.** The request returns at once with the order id and does not wait for the saga. The browser shows a \"placing\" state and polls the order status until it reaches a final state.\n\n5. **Reserve stock.** A background worker in Order picks up the PLACING order. It sends Inventory the order id and the lines over HTTP.\n   - Inventory checks every line in one transaction. It counts only reservations that are HELD and not yet past expires_at as holding stock.\n   - If every line has enough stock, Inventory writes one HELD reservation for the order id. It sets expires_at to now plus 10 minutes, and the answer comes back in the HTTP response.\n   - If any line is short, Inventory writes nothing and returns the short items.\n   - If the call fails or times out, the order stays PLACING and Order repeats the call with the same order id.\n\n6. **Short stock.** Order sets REJECTED_SHORT_STOCK and stores the short items. The customer sees them. No payment is requested and the cart is unchanged.\n\n7. **Request payment.** If stock is reserved, Order sets AWAITING_PAYMENT. It sends Payment a charge request carrying the order id, the amount (the total of the stored order lines) and the customer's payment details. Payment inserts a charge row, PENDING and unique on order id, in its own database. It then calls the provider with the order id as the Idempotency-Key. Payment's response to Order returns once the provider has accepted the request, not when the money moves. The order waits.\n   - If the provider call times out, Payment retries it with the same key.\n   - If the provider fails before accepting, Payment answers Order with an error. It keeps retrying the provider call in the background with the same key. Order does not resend, and the hold keeps running.\n\n8. **Hold expiry while waiting.** If 10 minutes pass with no claim, Inventory's timer marks the reservation EXPIRED and the stock goes back on sale. Inventory publishes ReservationExpired. Order sets the hold expired flag and keeps waiting. The status does not change and the flag does not change the outcome. It only lets the waiting screen explain what happens if the stock is gone.\n\n9. **Webhook.** The provider sends a webhook with the charge outcome, which can take seconds up to 30 minutes. Payment verifies the signature and rejects the webhook, writing nothing, if the check fails. Payment finds the charge by the order id the provider sent back. It checks the provider event id against its webhook log.\n   - If the id is already there, it returns 200 and changes nothing.\n   - If the id is new, one transaction logs the event id, sets the charge SUCCEEDED or DECLINED, and writes the event to Payment's outbox. A charge is set only once, and a later conflicting result is logged and changes nothing.\n   - A relay publishes PaymentSucceeded or PaymentDeclined to the broker. Consumers ignore repeats by event id.\n\n10. **No webhook.** After 45 minutes Payment polls the provider and treats the answer like a webhook. If the provider says the charge is still pending, Payment changes nothing and polls again later.\n\n11. **Order receives the payment event.** Order ignores events for orders already in a final state.\n    - **Declined.** Order sets PAYMENT_DECLINED, which is final. It asks Inventory to release the reservation, so the stock goes back on sale at once. The customer sees the decline and the cart is unchanged. A retry is a new press with a new client request id and so a new order id.\n    - **Succeeded.** Order saves the payment outcome first, so recovery can repeat the claim after a crash. It then asks Inventory to claim the reservation. The status stays AWAITING_PAYMENT until Inventory answers.\n\n12. **Claim.** Inventory runs one conditional update. The claim works only if the reservation is HELD and not past expires_at.\n    - **Accepted.** The reservation becomes CLAIMED, and Order sets CONFIRMED. Order writes OrderConfirmed to its outbox. Cart empties the cart when it receives that event. The customer sees the order confirmed. This is the only time the cart is written.\n    - **Refused** (the reservation is EXPIRED or RELEASED). This is the late-success case. Order sets CANCELLED_OUT_OF_STOCK and writes RefundRequested to its outbox. It emails the customer that the item is out of stock. The cart is unchanged.\n\n13. **Refund.** When Payment gets RefundRequested, it first inserts a refund row, PENDING and unique on order id. It then calls the provider for a full refund, with the key `refund:` plus the order id.\n    - If the provider accepts, the row becomes SUCCEEDED and Payment publishes RefundCompleted.\n    - If the call fails or gets no answer, the row stays open and retries with backoff. After the attempt limit the row becomes FAILED_NEEDS_ATTENTION, ops are paged, and retries continue. The row is never deleted. A daily reconciliation compares the provider's refunds with the open rows.\n\n14. **Refund completed.** Order records RefundCompleted in the status history. The status stays CANCELLED_OUT_OF_STOCK and the customer is sent nothing.\n\n15. **Release and claim retries.** Order retries a release or a claim with the same order id until Inventory answers. It stores each pending call, so a restart does not lose it. If releases never succeed, the hold still expires after 10 minutes. If a claim never succeeds and the hold expires, the claim is refused and the late-success path runs.\n\n16. **Crash recovery.** A recovery job in Order finds orders stuck part-way and repeats the current step.\n    - A PLACING order gets the reserve call again.\n    - An AWAITING_PAYMENT order gets the charge request again with the same key.\n    - An order with a saved payment outcome that is not yet claimed gets the claim again.\n\n17. **Broker down.** Outbox rows wait and are published when the broker returns.",
+   "gaps": [
+    "How the customer's payment details travel and where they are held so that recovery or a background retry can repeat the charge without asking the customer again. The document says this is not set.",
+    "How soon recovery or the background retry repeats a charge that the provider did not accept, and what ends the wait if the provider never accepts it. The order can sit in AWAITING_PAYMENT with no end state.",
+    "What ends the wait if the provider keeps reporting the charge as pending after 45 minutes. Polling has no end, so the order may never get an outcome.",
+    "What the reserve call returns when a PLACING order is recovered after its hold has already expired.",
+    "The refund attempt limit, the backoff schedule and the ops alert route are not set, so I cannot say when a refund becomes FAILED_NEEDS_ATTENTION.",
+    "How the poll step reaches the provider and how a poll answer maps to the charge. The poll is treated 'like a webhook', but the document does not say how the order id is obtained from a poll answer.",
+    "The broker's name and how events are routed to each consumer. Only at-least-once delivery is stated.",
+    "Which component sends the out-of-stock email and how. The document says Order sends it but leaves open whether a notifications service exists."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

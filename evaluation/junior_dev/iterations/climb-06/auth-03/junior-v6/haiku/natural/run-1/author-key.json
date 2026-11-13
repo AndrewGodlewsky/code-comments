@@ -1,0 +1,26 @@
+{
+ "q7": {
+  "answer": "The raw token is generated once, as 32 random bytes encoded as base64url, and is put only into the reset job in email_jobs (with the user id and recipient address). The worker reads the raw token from that job, builds https://<app>/reset#<token> from the app base URL, and sends it. The database keeps only the SHA-256 hash in password_reset_tokens. The raw token stays in email_jobs until the job is sent or dropped, which conflicts with the brief and is open question 2.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The reset page script reads the token from the URL fragment and posts it in the body to /check. The server hashes the token with SHA-256 and looks up password_reset_tokens by token_hash, which has a unique index. It then applies the live test (used_at IS NULL, superseded_at IS NULL, expires_at > now()) and returns valid true or false. The check is read-only and burns nothing, and the page script decides whether to show the form or the expired page.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "There is no separate counter. The count is a query over password_reset_tokens: the number of rows for that user_id with created_at in the last 60 minutes, in any state, covered by the (user_id, created_at) index. Old requests drop out simply because their created_at ages past the 60-minute window. The 24-hour scheduled delete removes old rows later, but the rate limit does not depend on it.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "When a new link is issued, in the request flow's step 3, the API marks every live link for that user with superseded_at = now(). This happens inside the same transaction as the new token row and reset job insert, under the user row lock, so the old link dies in the same commit that creates the new one. If the transaction rolls back, the old link stays live. The worker also re-checks liveness before sending, so a superseded link's pending email is dropped.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "At /complete, inside one transaction and in this order: the conditional UPDATE sets used_at on the token, the UPDATE sets the new password_hash on users, the DELETE removes all sessions rows for the user, and the INSERT queues the 'password changed' job in email_jobs. Then COMMIT, and only after that does the API return 303 to /login. The confirmation email is queued inside the transaction, so it exists only if the commit succeeds. The worker sends it later, asynchronously, after the commit.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The guard is the single conditional UPDATE ... SET used_at = now() WHERE the token is live, RETURNING user_id, run inside a transaction. The first submit's update takes the row write lock on the token row. A second concurrent submit waits on that lock and, once the first commits, sees used_at set, so its update matches zero rows. It then rolls back and returns 410. Only the submit that gets one row back proceeds to change the password. The earlier read on /complete is only a fast exit and is not what prevents the race. The design does not spell out the isolation level, so this relies on Postgres's standard row-write behaviour.",
+  "decided": true
+ }
+}

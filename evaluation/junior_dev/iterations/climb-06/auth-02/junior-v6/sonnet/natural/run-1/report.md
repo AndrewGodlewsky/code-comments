@@ -1,0 +1,26 @@
+## Review of auth-02 (junior-v6, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a summary paragraph and a terms section (store, KMS key, service identity, version id, APP_ENV, readiness probe, security on-call, old/new key), replacing the old scope list while keeping every stated rule and limit.
+- Step 2: added a non-prod identity with read-only dev access and a check that a real prod pod can authenticate to the store (Q1, Q3).
+- Step 5: said why old pods still hold their keys (immutable older images). Step 6 and the terms: APP_ENV is set per environment in the deploy configuration, and the app exits non-zero if it is missing (Q2).
+- Step 7: defined the non-prod pre-deploy as APP_ENV=dev under its own identity, instead of the unclear orders-api/<env> (Q3).
+- Step 8: rewrote the confirmation rule to use the latest secret loaded line per pod and name, match the store's current version, and require no later refresh warning, across exactly the 4 expected pods (Q5).
+- Step 9: added the reason the old key is kept until step 8 passes (Q7).
+- Step 13: stated that a provider authentication error is returned as an ordinary error with no retry, and that a mid-flight swap is safe because both keys are valid (Q8).
+- Step 14: specified the refresh as a catch-all daemon thread with a last-successful-refresh metric, so the 15-minute alert also catches a dead thread. Fixed the wrong reference to step 16 so the gate is step 8, enforced at step 9 (Q4, Q6).
+- Open questions: added how the pod identity reaches the store and whether a non-prod environment exists.
+- Merged the opening description, today's behaviour and the five-step flow into one summary section titled 'What this is'
+- Merged the scattered scope bullets into one 'Rules that hold throughout' list; kept every stated requirement (4 replicas, 30-day logs, no request may fail, rollback = earlier image, read-only prod identity, memory-only keys)
+- Reworded Scope and Phases as a rules list followed by a one-paragraph map of step groups
+- Step 4 now points to Part B instead of 'steps 11-15' by number
+- Step 12 now notes that today /healthz returns ok as soon as the server listens, to explain why the change is needed
+- Kept all terms, including APP_ENV (exit non-zero if missing), readiness probe, and old/new key
+- Kept step 8's latest-log-line rule and refresh-failure check, step 9's reason for waiting, step 13's no-retry on auth error, step 14's daemon thread and metric, and the four open questions
+- Fixed the step 14 reference so the gate is step 8 and the revoke is step 9
+- Cut repetition only; no stated fact removed, and added no new mechanisms
+
+### Holes
+- Q1: What is the "store" itself, and how does a pod authenticate to it as `orders-api-prod`? Is that identity attached to the pod by the platform, or does something have to be supplied at deploy time? (author: The store is the managed secret store (paths orders-api/<env>/<name>, per-env KMS key, version id per write). deploy.md only says the pods run under the service identity orders-api-prod; it does not say how that identity reaches the store. I assume the platform attaches it to the pod so nothing is supplied at deploy time, but I have not verified this. I added a step 2 check with a real prod pod and an open question.)

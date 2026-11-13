@@ -1,0 +1,34 @@
+## Review of feat-01 (junior-v6, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Step 6: added check 7 so an attempt with `finished = true` resumes at Step 9 using stored etags (answers Q1).
+- Step 6, check 8: now deletes this export's `export_parts` rows and resets `next_row_id` and `finished`, so an old etag is never reused in a new upload (found while answering Q1 and Q3).
+- Step 6 failure text: replaced 'Nothing has been uploaded yet, so the retry starts from the checkpoint' with an explanation of what the retry does, and noted the orphaned upload if the save after `start_multipart` fails (Q3).
+- Step 5: stated the enqueue-then-save order, why a job starting first is safe, and what happens if the save fails (Q2).
+- Step 7: part number is now derived from the committed `export_parts` count; cut rule states that rows after the cut stay for the next part (Q4).
+- Step 7: the checkpoint write is conditional on `next_row_id` still matching the value read, and zero changed rows or a taken part number makes the run stop (Q5, Q6).
+- Step 8: the continuation job's job_id is saved on the row, and the failure text explains the worker-death-before-return case (Q6).
+- Step 9: explicit resume at finish when `finished` is true, clearing `upload_id` after a failed completion, and the done-write-failure case (Q7).
+- Step 3: the cap now counts filtered rows and stops at the 10,001st row, and the 202 comes from Step 4 (Q8).
+- Step 4: a conflict on the second insert returns the active export (kept the stale-guard text and clarified the conflict path).
+- Structure: added a terms section and a data table before the steps, a numbered step section with a failure summary table, and a separate 'Building and rolling out' section that holds the Step 0 measurement gate, the test plan and the email template requirement.
+- Open questions: added question 7 on the lack of an object-existence check, and renumbered the rest. Questions 1 to 6 and their text are unchanged except for the numbering.
+- Preserved every number, limit and rule from the first version, including the 10,000 cutoff, page sizes, 16 MB parts, 5 MB minimum, 10,000-part limit, 20-minute budget, 1,800-second timeout, 60/300-second retries, 6-hour stale guard, 20- and 24-hour upload limits, 7-day lifecycle, 24-hour links, 5-second polling, 512 MB memory, 64 KB payload, 4-hour gate and all status codes.
+- Reordered the document to the skill's layout: summary and how the system works today, terms, data kept, the steps, a separate Building and rolling out section (measurement gate, tests, pre-ship items), the failure table, then open questions.
+- Added a short 'why this shape' sentence to the summary (the 60-second API limit and why progress is checkpointed), and a scope line (CSV only, no scheduled exports, no table changes), which the first version had dropped.
+- Defined every term a newcomer needs in one plain line, including report, report.view, row_count, keyset paging, payload, at-least-once delivery, worker, multipart upload, part, etag, committed part, checkpoint, export row, partial unique index, conditional write, stale guard, lifecycle rule, signed URL and send_email.
+- Step 1: stated the order of checks (404 before 403, because the permission check needs the report's workspace). This ordering is a small added decision, not stated in the first version.
+- Step 4: stated plainly that a second click after a filter change gets the older view, with the reason the response carries filters.
+- Step 6 and Step 12: merged the repeated 'raise and retry' explanation into one place and kept the failure branches. Step 6 check 5 now names both 'no access' and 'report not found' as the failure messages.
+- Step 7: restored the 'part numbers start at 1' rule and kept the part-number derivation, retry safety, memory and size facts in one bullet list.
+- Step 8: removed the duplicate explanation of the 20-minute margin and kept the margin reasoning once. Added that the row's attempt shows the last run that started.
+- Step 9: replaced the dangling reference to 'open question 8' (the list has seven items) with a pointer to the last open question. Stated the storage fact that completing replaces any object at the key, which the first version had reduced to 'replacing nothing'.
+- Replaced internal codes and cross-references (such as 'see open question 4' and 'Step 6, check 8' style pointers that send the reader elsewhere) with the reason stated inline, except for the step and check numbers that name the steps themselves.
+- Kept every number, limit and rule from the brief and first version: 10,000-row threshold, 500 and 5,000 page sizes, 16 MB parts, 5 MB minimum, 10,000-part limit, 512 MB worker, 1,800 s attempt timeout, 60 s and 300 s backoff, 3 attempts, 60 s API limit, 6 h stale guard, 20 h upload age, 24 h upload discard, 7-day lifecycle, 24 h link cap, 5 s polling, 64 KB payload, 900 MB and 4 h measurement gate, about 450 bytes per row, about 57 parts, about 60 part rows, the test plan, and the seven open questions.
+- Merged the duplicated 'what happens on failure' notes from the first version into the steps and the single failure table, without dropping any failure case.
+- Trimmed repetition in Step 13 and Step 10 (the link cap rule now appears once in Step 10 and once in the Step 11 link rule, and the rule that rows stay is stated once), keeping the document close to its first length.
+
+### Holes
+- None.

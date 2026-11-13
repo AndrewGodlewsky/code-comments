@@ -1,0 +1,35 @@
+## Review of auth-01 (junior-v6, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Removed references to numbered requirements and stated the needed requirements inline (session lifetime, logout route, login route, failure clearing).
+- Added a Decisions row saying the sweep is triggered by an in-process timer every 5 minutes, with failure and concurrency behavior.
+- Stated how an expired lockout row is treated and overwritten, and that attempts refused during lockout are not recorded as failures.
+- Spelled out the user lookup and dummy-hash result, and that deleting another user's session via the old cookie is intended.
+- Specified that the post-rejection DELETE is a separate, non-transactional statement that is harmless when no row exists (also in the diagram).
+- Added a rule that static files are exempt from the session middleware and do not restart the idle clock, plus an Open questions entry.
+- Clarified that a Postgres error mid-login rolls back the failure insert, so it does not count toward the 5.
+- Added the users table description and the sign-up/reset out-of-scope line from the brief so the file stands alone.
+- Protected requests: stated that the middleware reads the cookie and hashes it, and that a missing cookie skips the DB calls and redirects to /login (Q8).
+- Protected requests: the returned user_id goes on the request, and the UPDATE is its own auto-committed statement (Q9).
+- Protected requests: the lazy DELETE runs before the redirect, and if it fails the error is only logged and the user is still redirected; diagram note updated to match (Q10).
+- Login: Retry-After is the seconds left until locked_until, rounded up, and the 429 page text is given there (Q11).
+- Login: success does not touch login_lockouts; an expired row is ignored and swept (Q12).
+- Login: the users lookup and bcrypt compare run inside the advisory-locked transaction, and the lock is released automatically at COMMIT or ROLLBACK (Q13).
+- Login: the 254-character email cap moved from the trade-offs into the login rules, run before the transaction and not counted as a failure (Q14).
+- When storage fails: a protected request gets the 503 even if the session was really expired, because the app cannot tell; GET /login always shows the login page, with the choice added under Open questions (Q15).
+- Reordered to: overview (including how the existing system works today), terms, diagram, schema, numbered steps, failure table, choices, trade-offs, open questions.
+- Removed requirement codes (R1-R8) and put each requirement in plain words where it applies; the cookie requirement lives in the Terms and the cookie decision.
+- Added a Terms section defining session, session ID, cookie, idle/absolute limit, lockout, advisory lock, dummy hash, middleware, sweep and fail closed.
+- Split the rules into numbered steps (login, protected request, logout, sweep), each with its trigger, actions, data kept and failure handling.
+- Added the sweep as its own step: a timer in each process every 5 minutes, failures logged and retried, overlapping runs harmless.
+- Moved the 254-char email check, Retry-After calculation and 429 page text from trade-offs into the login steps.
+- Added: how the middleware gets the hash from the cookie, behavior with no cookie, user_id placed on the request, the UPDATE being its own auto-committed statement, separate cleanup DELETE whose failure is only logged, static files exempt, GET /login never redirects, success not touching login_lockouts, expired lockout rows ignored and overwritten, refused lockout attempts not counted, old cookie of another user is destroyed.
+- Merged the Decisions table: storage, expiry-check and expiry-recording rows condensed into 'Choices and reasons'; cookie, session ID and sweep details moved into Terms and Steps; the storage-failure rules merged into one table.
+- Merged repeated rules about the lockout window and the cookie-clear into single statements.
+- Kept every first-version fact: schema, SQL, diagram (updated note for the failed cleanup DELETE), 5/10/15 limits, 30 minute and 12 hour limits, 303 responses, 401/429/503 pages and messages, Redis justification, bcrypt timing, trade-offs.
+- Added two open questions: static file paths and whether GET /login should redirect signed-in users.
+
+### Holes
+- None.
