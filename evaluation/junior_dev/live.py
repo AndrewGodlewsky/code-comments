@@ -81,7 +81,8 @@ def parse(stdout: str) -> dict:
             events.append(e)
     calls, helper, results = [], [], {}
     for e in events:
-        content = (e.get("message") or {}).get("content")
+        message = e.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
         for c in content if isinstance(content, list) else []:
             if c.get("type") == "tool_use":
                 calls.append({"id": c.get("id"), "name": c.get("name"), "input": c.get("input", {})})
@@ -135,9 +136,27 @@ def fidelity(parsed: dict, state: dict | None) -> dict:
             "rounds": (state or {}).get("round")}
 
 
+def cost_from_stream(stdout: str) -> float | None:
+    """total_cost_usd of the last result event, or None when the stream has none."""
+    cost = None
+    for line in stdout.splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(e, dict) and e.get("type") == "result":
+            cost = float(e.get("total_cost_usd") or 0.0)
+    return cost
+
+
 def run_session(prompt: str, model: str, hooks: bool, max_usd: float, label: str, timeout_s: float = 1200) -> dict:
-    """One headless session in a fresh copy of the fixture project. Records its spend, nested juniors included."""
+    """One headless session in a fresh copy of the fixture project. Records its spend, nested juniors included.
+
+    The raw stream and the loop's state files are saved, and the spend recorded, before anything is
+    parsed, so a parsing bug can never hide money spent (it did once; see the ledger)."""
     guard(max_usd)
+    out_dir = HERE / "live-results"
+    out_dir.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="jd-live-") as tmp:
         workspace = Path(tmp) / "project"
         shutil.copytree(FIXTURE, workspace)
@@ -152,14 +171,24 @@ def run_session(prompt: str, model: str, hooks: bool, max_usd: float, label: str
         except subprocess.TimeoutExpired as e:
             stdout = (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         wall = round(time.perf_counter() - started, 1)
-        parsed = parse(stdout)
-        states = [json.loads(p.read_text(encoding="utf-8")) for p in (workspace / ".junior-dev").glob("*/state.json")]
+        (out_dir / f"{label}.stream.jsonl").write_text(stdout, encoding="utf-8", newline="\n")
+        states = []
+        for path in (workspace / ".junior-dev").glob("*/state.json"):
+            try:
+                states.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError):
+                pass
+        (out_dir / f"{label}.states.json").write_text(json.dumps(states, indent=1, ensure_ascii=False) + "\n",
+                                                      encoding="utf-8", newline="\n")
         junior_cost = sum(s.get("cost_usd", 0.0) for s in states)
-        artifacts = {str(p.relative_to(workspace)): p.read_text(encoding="utf-8", errors="replace")
-                     for p in workspace.rglob("*.md") if ".junior-dev" not in p.parts and p.stat().st_mtime > 0}
-    record(f"{label}: main session ({model}, hooks={hooks})", parsed["cost_usd"])
-    if junior_cost:
-        record(f"{label}: nested junior turns", junior_cost)
+        main_cost = cost_from_stream(stdout)
+        record(f"{label}: main session ({model}, hooks={hooks})" + ("" if main_cost is not None else
+               "; no result event, recorded at its budget cap"), max_usd if main_cost is None else main_cost)
+        if junior_cost:
+            record(f"{label}: nested junior turns", junior_cost)
+        artifacts = {p.relative_to(workspace).as_posix(): p.read_text(encoding="utf-8", errors="replace")
+                     for p in workspace.rglob("*.md") if ".junior-dev" not in p.parts}
+    parsed = parse(stdout)
     state = states[0] if states else None
     return {"label": label, "model": model, "hooks": hooks, "wall_s": wall, "cost_usd": parsed["cost_usd"],
             "junior_cost_usd": junior_cost, "num_turns": parsed["num_turns"], "is_error": parsed["is_error"],

@@ -100,6 +100,18 @@ class FidelityTest(unittest.TestCase):
         result = live.fidelity(parsed, {"end_reason": "teachback-correct", "round": 1, "rounds_cap": 6})
         self.assertIn("final message lacks the changes and holes", result["problems"])
 
+    def test_parse_tolerates_string_messages(self):
+        stream = _events(*FULL) + "\n" + json.dumps({"type": "system", "subtype": "hook", "message": "a plain string"})
+        self.assertEqual(live.parse(stream)["helper"][0], "start")
+
+    def test_session_records_spend_even_if_parsing_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "spend.json"
+            ledger.write_text(json.dumps({"cap_usd": 10.0, "entries": []}), encoding="utf-8")
+            stream = Path(tmp) / "s.jsonl"
+            stream.write_text(json.dumps({"type": "result", "total_cost_usd": 0.123}) + "\n{broken", encoding="utf-8")
+            self.assertAlmostEqual(live.cost_from_stream(stream.read_text(encoding="utf-8")), 0.123)
+
     def test_activation(self):
         self.assertTrue(live.activation(live.parse(_events("start docs/plan.md")))["triggered"])
         self.assertFalse(live.activation(live.parse(_events()))["triggered"])
