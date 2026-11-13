@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the app built on (language, web framework, and how the two instances are fronted, e.g. a load balancer)? Where does the middleware that checks sessions live?",
+     "about": "App (either instance)"
+    },
+    {
+     "id": "2",
+     "text": "After a successful login the user is sent to /dashboard. What does GET /login show to someone who already has a valid session, and how does the login form submit email and password?",
+     "about": "POST /login (email, password, optional old cookie)"
+    },
+    {
+     "id": "3",
+     "text": "In the protected request, does the page handler get the user_id from the UPDATE's RETURNING, and what does it do with it (e.g. load the user from users)? Is that a separate query?",
+     "about": "Row returned: valid, idle clock restarted"
+    },
+    {
+     "id": "4",
+     "text": "When the transaction hits a database error partway through a login, what exactly happens: is ROLLBACK sent, and if the database is down how does the app know the transaction is abandoned? Are failures already inserted lost in that case?",
+     "about": "Database error at any step"
+    },
+    {
+     "id": "5",
+     "text": "In the 'Unknown email or wrong password' branch, the failure insert, count and lock update happen before COMMIT. What happens to the row lock on login_throttle and to a concurrent attempt waiting on it once COMMIT or ROLLBACK is done?",
+     "about": "A login attempt opens a transaction and takes a row lock on that email's login_throttle row"
+    },
+    {
+     "id": "6",
+     "text": "The cleanup job runs on every instance every 10 minutes. What actually triggers it (a timer inside the app process, cron, something else), and what happens if a run fails or the database is down at that time?",
+     "about": "Background, on every instance every 10 min"
+    },
+    {
+     "id": "7",
+     "text": "A protected request with no cookie gets 'clear cookie' in the diagram, but the cookie is absent anyway. Why is a clear sent, and does the user get returned to the page they originally wanted after logging in?",
+     "about": "No cookie"
+    },
+    {
+     "id": "8",
+     "text": "For POST /logout the middleware is said to run the session check but the handler tolerates a missing session. What exactly does the middleware do for logout when the session is invalid, and does the 503 on a session-check database error also apply to logout?",
+     "about": "Public vs protected"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief gives no language or framework, only server-rendered pages and two identical instances behind a load balancer. The design assumes only a pre-route middleware. Added a sentence to the Summary and an Open questions line."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "GET /login always shows the plain login form, even with a valid session, since /login is exempt from the session check and the brief does not ask for anything else. The form is a plain HTML form posting email and password. Added to the rules."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the handler gets user_id from the UPDATE's RETURNING and loads any user data it needs with a separate query. The design does not prescribe that query. Added one sentence under decision 5."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The app sends ROLLBACK on a best-effort basis. If the database is unreachable, the connection drops and Postgres abandons the open transaction itself. Failure rows inserted in that transaction are lost, which is acceptable because a storage error is not counted as a failed attempt. Added to the login row of the failure table and to the diagram."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "COMMIT or ROLLBACK releases the row lock. The waiting attempt then proceeds and sees the committed failures or lock state, so it cannot slip past the limit. Added to decision 7 and to the diagram COMMIT arrows."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "A timer inside each app process fires every 10 minutes, with no external cron, to avoid new infrastructure. If a run fails or the database is down, it logs and tries again at the next tick. Security is unaffected because expiry is enforced by the check query. Added to decision 6 and the diagram note."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The clear is sent so that missing, unknown and expired all get one identical reply, matching requirement 7. It is harmless when no cookie exists. Returning to the originally requested page is not required, so login always goes to /dashboard. Both are now noted in the rules."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The earlier wording was confusing, so I simplified it. Middleware now skips the session check entirely for POST /logout, so there is no session-check 503 or redirect there. The logout handler does its own delete and has its own 503 on a database error. Rules and diagram updated."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Browser requests any page. Middleware runs before every route. /login (GET and POST) and POST /logout skip the session check; every other route goes through it. The browser identifies itself with a cookie `__Host-sid` holding a random 256-bit ID. Postgres holds all state (sessions, login_throttle, login_failures), so both app instances see the same data.\n\n2. GET /login always shows a plain HTML form (email, password), even if the browser already has a valid session.\n\n3. User submits the form: POST /login with email, password and possibly an old cookie. The app trims and lowercases the email. Throttling is keyed on that string whether or not the account exists.\n\n4. The app opens a transaction and takes a row lock on that email's login_throttle row, inserting it if absent. Concurrent attempts for the same email wait until the lock is released by COMMIT or ROLLBACK, then see the committed state.\n\n5. If any database error happens during login (throttle check, user lookup, session insert), the app sends ROLLBACK (best effort; Postgres abandons it if the connection is dead). Everything in the transaction is lost, including failure rows. The user gets HTTP 503 \"Sign-in is temporarily unavailable. Please try again.\" The cookie is untouched and the attempt is not counted as a failure.\n\n6. If login_throttle.locked_until is in the future (compared with the database now()), the app rolls back and answers 429. It does not check the password and does not record a failure, so the lock is not extended. The response is the same for known and unknown emails.\n\n7. If not locked, the app runs SELECT id, password_hash FROM users WHERE email. It does a bcrypt compare. If no user row exists, it compares against a fixed dummy hash of the same cost so timing is similar.\n\n8. Wrong password or unknown email take the same path. The app inserts a login_failures row for the submitted email and counts that email's failures in the last 10 minutes. If the count is 5 or more, it sets locked_until = now() + 15 minutes. It commits, which releases the row lock. It returns 401 with the login page and \"Invalid email or password\". Existing sessions and cookies are not touched. Once a lock ends, the 5 triggering failures are older than 10 minutes, so counting restarts from zero.\n\n9. Correct password: the app generates a brand-new session ID (32 bytes from the OS CSPRNG, base64url), never derived from the incoming cookie, which prevents fixation. In one transaction it inserts a sessions row holding only the SHA-256 hash of the ID, the user_id, and created_at and last_seen_at set to now(). It deletes the session row for the old cookie's ID, if any, valid or not. It deletes that email's failures and sets locked_until to NULL. It commits. If anything fails, none of it applies and the user gets the 503 from step 5. On success the app replies 302 to /dashboard with Set-Cookie `__Host-sid=<id>; Path=/; HttpOnly; Secure; SameSite=Lax`. There is no Domain, Max-Age or Expires, so it is a browser-session cookie. Success always goes to /dashboard, not the originally requested page.\n\n10. Browser then requests a protected page such as GET /dashboard with the cookie. If there is no cookie, the app replies 302 to /login with a clearing Set-Cookie. This is the same reply as for an expired session.\n\n11. If a cookie is present, the app hashes it and runs one atomic UPDATE on sessions: set last_seen_at = now() where id_hash matches, last_seen_at is within the last 30 minutes (idle limit) and created_at is within the last 12 hours (absolute limit), RETURNING user_id. created_at is never changed, so the 12-hour limit cannot be extended. Expiry is decided by this predicate, not by cleanup.\n\n12. One row returned means the session is valid and the idle timer has been restarted. The page handler gets user_id, loads the data it needs with its own query, and the app answers 200 with the page.\n\n13. Zero rows (missing, unknown or expired) means the app also runs DELETE FROM sessions WHERE id_hash = $1 (lazy cleanup). It replies 302 to /login with the cookie cleared (same name and attributes, Max-Age=0).\n\n14. A database error during the session check gives 503 \"Temporarily unavailable. Please reload.\" The cookie is not cleared and there is no redirect, because the session may still be valid. This fails closed: no page is served without a successful check.\n\n15. Logout is POST /logout. The middleware skips the session check for it. If there is a cookie, the app hashes it and runs DELETE FROM sessions WHERE id_hash. Deleting zero rows or having no cookie is not an error. It replies 302 to /login with the cleared cookie, identically in every no-error case. On a database error it replies 503 \"Could not sign you out. Please try again.\" and keeps the cookie so a retry can find the session. SameSite=Lax is why no CSRF token is used for POST /login and POST /logout.\n\n16. In the background, a timer inside each app process runs every 10 minutes. It deletes sessions past the idle or absolute limit, deletes login_failures older than 10 minutes, and deletes login_throttle rows that are unlocked (locked_until NULL or past) and have no remaining failures. Overlapping runs on the two instances are harmless because the deletes are idempotent. A failed run is logged and retried on the next tick. If the job stops, the tables grow but security is unaffected.\n\n17. All 503 pages use the same text for every cause and carry no details. Details go to server logs.",
+   "gaps": [
+    "The document does not say how the app knows which user a login belongs to beyond the users lookup; the users table's email column casing is not stated, so it is unclear whether users.email is stored lowercase for the lookup by the normalized email to match.",
+    "It does not say what the 429 response body or page contains, nor whether it carries a Retry-After value.",
+    "It does not say what a protected request does when the session is valid but the user row is gone or the page-handler's own query fails (the 503 rule only covers the session check).",
+    "It does not say how the 503 on login is distinguished from a failure in the final COMMIT or after the COMMIT, such as an error after the session is committed but before the response reaches the browser.",
+    "It does not say what happens to a lock row's locked_until after expiry when no further attempt arrives other than the 10-minute cleanup, nor how the attempt that finds an expired lock treats the old failures if the cleanup job has not yet run (the failure count window is 10 minutes, but this interplay is only implied).",
+    "It does not say how the app obtains the database connection for the lazy DELETE in step 13 when that DELETE itself fails, or what the user sees then."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

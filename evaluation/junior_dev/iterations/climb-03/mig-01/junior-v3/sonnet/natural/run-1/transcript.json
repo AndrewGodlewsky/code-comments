@@ -1,0 +1,194 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In dual_mysql mode, when a write does its inline sync to Postgres, what exactly does 'sync' run, and is it inside the request's transaction or after commit? What does the user get back if it times out?",
+     "about": "Sync outbox, so repair is automatic"
+    },
+    {
+     "id": "2",
+     "text": "What is the 'circuit breaker'? What trips it, what resets it, and where does its state live (per instance or shared)?",
+     "about": "A circuit breaker skips the inline attempt while Postgres is unhealthy"
+    },
+    {
+     "id": "3",
+     "text": "In dual_pg mode, how does a write reach MySQL? Is it the same outbox flow mirrored, and does the repair worker handle both directions or is there a second worker?",
+     "about": "Reverse direction / Switch the source of truth to Postgres"
+    },
+    {
+     "id": "4",
+     "text": "How does an instance learn the flag value, and what are 'flags' here (which service/store)? What is the 'flag scrape interval' and who scrapes what?",
+     "about": "Instances can disagree on a flag for up to 30 seconds"
+    },
+    {
+     "id": "5",
+     "text": "What does paused mean for a write request in practice, and why is it needed at the switch? What goes wrong if two instances disagree on the source of truth for even a moment?",
+     "about": "Switch the source of truth to Postgres (writes paused for 90 seconds at most)"
+    },
+    {
+     "id": "6",
+     "text": "What is 'version' on a user row, and who increments it? Is it bumped on every write in the app code?",
+     "about": "Version rule and deletes, enforced in one statement"
+    },
+    {
+     "id": "7",
+     "text": "How does delete() work in each mode: the MySQL hard delete, users_erased, and the Postgres tombstone? Does a user-facing delete in dual_mysql create the tombstone only via sync?",
+     "about": "Reverse direction / Postgres delete: upsert a tombstone unconditionally"
+    },
+    {
+     "id": "8",
+     "text": "Step 9 says drain the MySQL outbox 'to 0' by T0+55 and also that pause ends within 85 seconds. How is the drain done and checked, and how does setval fit given Postgres ids were copied from MySQL?",
+     "about": "Steps, in order (step 9, item 3)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Inline sync runs after the transaction commits, never inside it. It reads the user's current row from the source of truth and applies the guarded upsert (or tombstone if the row is gone) to the other database, with a 250 ms timeout. On timeout or failure the user still gets the normal success response; the outbox row, committed with the write, stays for the worker. Reason: a Postgres problem must never fail the request."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Per-instance in-memory counter, no shared state. It trips after 5 consecutive inline failures or timeouts, skips inline attempts for 30 seconds, then tries one; a success resets it. The numbers are initial values I chose, not measured, and are listed as open questions. Reason: keep Postgres trouble from adding 250 ms to every write; the worker covers the skipped syncs."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the same flow mirrored. In dual_pg the write commits to Postgres with an outbox row in Postgres, then tries an inline sync to MySQL. One worker process polls both outboxes and syncs each to the opposite database; only the source of truth's outbox gets new rows, so the other is normally empty. Reason: one process is simpler than two."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Per flags_and_jobs.md, app.flags is a library in the app; each instance caches all flags and refreshes every 30 seconds, and exports app_flag_value{flag=...}. Which backing store the flags come from is not stated in the existing files, so that part is unknown and listed as open. The scrape interval is how often our monitoring system pulls the metrics from each instance; I now say so in the file and in step 8, so the waits in step 9 see the change within 10 seconds."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Paused means the instance answers every write request with a retryable 503 and touches neither database; reads continue. It is needed because if one instance wrote to MySQL while another wrote to Postgres, each would copy over the other's work and both could assign the same new id to different users. Disagreement is possible for up to 30 seconds, which is why step 9 waits for every instance to show paused with zero in-flight writes before changing anything. Now stated in the file."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Checked in user_repository.py: create() inserts version 1 and update() runs version = version + 1 in SQL, guarded by WHERE version = expected, raising StaleWrite otherwise. So the repository increments it on every update; copies carry it verbatim. In Postgres modes the repository does the same. Added a Versions bullet."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Only the erasure job calls delete(). In mysql and dual_mysql: one MySQL transaction hard-deletes the row, inserts into users_erased and (dual_mysql) adds an outbox row; the sync sees the row gone and writes the Postgres tombstone, so yes, in dual_mysql the tombstone arrives only via sync, with backfill and comparison as backstops. In dual_pg: Postgres tx writes the tombstone plus outbox row; the sync to MySQL deletes the row and inserts into users_erased. In pg_only: tombstone only. Added a per-mode bullet."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The repair worker drains the outbox as normal. During the pause no instance writes, so no new rows arrive; we poll SELECT COUNT(*) on the MySQL outbox until it is 0, with a deadline of T0+55, else abort back to dual_mysql. The pause ends within about 85 seconds because the dual_pg flip happens by T0+55 and instances take up to 30 more seconds to see it. Postgres ids were copied explicitly from MySQL, so the sequence never advanced; setval jumps it to MySQL's max id plus 1,000,000 once, as a safety margin, so Postgres-assigned ids cannot collide with existing ones."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Does users_writes_inflight count only the request's database transaction, or also the post-commit inline sync to the other database? If an inline sync is still running when the instance becomes paused, could it still touch a database?",
+     "about": "Step 9, item 2: users_writes_inflight gauge"
+    },
+    {
+     "id": "10",
+     "text": "Who receives the 503 and what do they do with it: the end user's client, an upstream service, a retry layer? Does a write that gets the 503 get retried automatically after the pause?",
+     "about": "Step 9, item 1 (T0): retryable 503"
+    },
+    {
+     "id": "11",
+     "text": "Who or what decides that a step's start condition holds and then starts it (for example the backfill, the comparison, or the move of read percentages)? Is it a person watching metrics, or does the backfill job check the conditions itself?",
+     "about": "Step 5 / Step 6 / Step 7 Starts conditions"
+    },
+    {
+     "id": "12",
+     "text": "What if the worker cannot drain an outbox row, for example because Postgres rejects the sync repeatedly (the unique-email collision or an outage)? The worker retries forever, so the count never reaches 0. Is the abort at T0+55 the only response, and what happens to that row afterwards?",
+     "about": "Step 9, item 3: drain the MySQL outbox"
+    },
+    {
+     "id": "13",
+     "text": "After the switch to dual_pg, when reads go to Postgres and it errors, they fall back to the MySQL replica. Is that replica current with writes that now happen in Postgres, and how does a user see their own just-written change in that case?",
+     "about": "Read path"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The gauge counts the whole write request, including the post-commit inline sync, so it is 0 only when no request path is touching a database. Once an instance sees paused it starts no new inline sync. The standalone repair worker is not paused and keeps syncing, which is what drains the outbox. Reason: the 250 ms inline sync is bounded by the request timeout, so waiting for the gauge covers it. Now stated in Terms and in step 9."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The 503 goes to the caller of the write API, which is our own clients. The brief says they already retry a retryable 503, so the write is retried automatically after the pause. Nothing was written for the rejected attempt, so the retry is safe. Now stated in the Write modes decision."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "A person (the operator) starts each step by changing a flag or launching a job once the Starts condition holds. The conditions are the operator's checklist, not an automatic trigger. The backfill and comparison jobs do check replica lag themselves before each batch. Reason: these are one-off steps with high impact, so a human decision is the simplest safe gate. Added a Who starts a step bullet and wording in steps 5 to 7 and 9."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, the abort at T0+55 back to dual_mysql is the only response during the pause. The stuck row stays in the outbox and the worker keeps retrying it, and a unique-email collision clears itself once the other user's sync lands. Before trying the switch again the operator finds the cause, and step 8 now requires the oldest outbox row to be under 5 seconds, so a stuck row blocks the switch. Added to step 9 failure handling and step 8. No new mechanism."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Not guaranteed. In dual_pg the MySQL replica trails Postgres by the copy delay plus replica lag, so a user may briefly see old data on that fallback. We accept it because it only happens when Postgres reads are failing, and the brief requires reads never to fail. Writes in that state also fail because Postgres is the source of truth, so no new writes are being hidden. In pg_only MySQL is no longer updated, so I removed the fallback there and the read retries Postgres once. Changed in the Read path."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "In pg_only no outbox rows are written and nothing is copied to MySQL. When the flag goes back to dual_pg, what exactly catches MySQL up on the writes made in between? Is it only rows already in the reverse outbox, or something else (backfill, comparison)?",
+     "about": "Step 12 If it fails: set the flag back to dual_pg"
+    },
+    {
+     "id": "15",
+     "text": "What does the operator do if that check fails, and how can the counter be below the largest id given that MySQL moves past explicit ids on its own?",
+     "about": "Step 11 Rollback, item 4: Check that the MySQL AUTO_INCREMENT counter is above the largest id"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing automatic catches MySQL up from the outbox: pg_only writes no outbox rows, so the reverse outbox has nothing for those writes. The catch-up is the comparison job, which pushes every persistent difference (including tombstones for erased users) into the outbox of the current source of truth, Postgres, for the worker to copy. Step 12's failure handling now says to set dual_pg, run the comparison until a pass has zero mismatches, and not use the step 11 rollback until then. Reason: reuses the existing repair mechanism instead of adding a new one, and no data is lost since Postgres has every write."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The check should never fail, because MySQL 8 moves its counter past explicit ids by itself, so it was a weak safeguard with no defined response. I replaced it with an unconditional action mirroring step 9: inside the pause, run ALTER TABLE users AUTO_INCREMENT = (largest id in Postgres or MySQL) + 1,000,000. There is no check, so no failure branch. Reason: one deterministic step is simpler than a check plus a recovery path, and it does not depend on automatic behaviour."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup (steps 1-2). An operator runs a one-time additive DDL migration. Postgres gets `users` (same columns as MySQL plus `deleted_at`, with a unique email index), the `users_live` view, `users_id_seq`, a reverse-direction `users_sync_outbox`, and `migration_state`. MySQL gets `users_sync_outbox` and `users_erased`. The operator then does a rolling deploy of the new `UserRepository`, the repair worker, and the backfill and comparison jobs. The flags default to `users_write_mode=mysql` and `users_read_pg_pct=0`, so behaviour is unchanged. The one exception is `delete()`, which now also writes `users_erased`. If either step fails, drop the new objects or roll back the deploy.\n\n2. Pause rehearsal (step 3). The operator sets `users_write_mode=paused` and then sets it back to `mysql`. Each instance caches the flags and refreshes them every 30 seconds. In `paused` mode an instance answers every write with a retryable 503 and touches no database. Clients retry the 503, and nothing was written for the rejected request. Reads continue. The drill measures how long writes are really unavailable, and the plan says to fix the scrape interval or the abort timings if that is over 60 seconds.\n\n3. Dual writes (step 4). The operator sets `users_write_mode=dual_mysql`, which makes MySQL the source of truth. A write request opens a MySQL transaction. In that transaction the repository writes the user and inserts a `users_sync_outbox` row, with `version` set to 1 on `create()` and +1 on each `update()`. After the commit, the request path reads that user's current row from MySQL and applies it to Postgres with the guarded upsert, under a 250 ms timeout. The upsert is `INSERT ... ON CONFLICT (id) DO UPDATE ... WHERE users.deleted_at IS NULL AND users.version < EXCLUDED.version`. If the sync succeeds, it deletes that user's outbox rows with `seq` up to the one it saw. If it fails or times out, the error is swallowed and logged. The caller still gets a normal success, and the outbox row stays. After 5 consecutive inline failures, that instance's in-memory circuit breaker skips inline syncs for 30 seconds and then tries one. Meanwhile the separate repair worker polls both outboxes with `FOR UPDATE SKIP LOCKED`. It re-reads the current row by id, applies it to the opposite database, and retries forever with backoff of up to 60 seconds. The copy carries every column verbatim, including `version` and `updated_at`. A sync copies state, not events, so syncs are idempotent and can run in any order. If a row is gone, the sync applies a delete, which is an unconditional tombstone upsert in Postgres. A unique-email collision fails the later sync, which succeeds on retry once the other user's sync lands. The operator confirms health by checking that `app_flag_value` shows `dual_mysql` on every instance, the oldest outbox row is under 1 minute old, and the Postgres error rate is low. To roll back, set the flag to `mysql`. The worker keeps draining the outbox.\n\n4. Deletes (all modes). Only the erasure job calls `delete()`. In `mysql` and `dual_mysql`, one MySQL transaction hard-deletes the row, inserts the id into `users_erased`, and in `dual_mysql` also adds an outbox row. The sync finds the row gone and writes the Postgres tombstone. A tombstone has only `id` and `deleted_at` set, and the upsert's `WHERE` clause means it can never be overwritten. Tombstones are kept permanently, so a later backfill cannot resurrect an erased user.\n\n5. Backfill (step 5). The operator launches it once three conditions hold. `app_flag_value` is `dual_mysql` on every running instance, with the series count equal to the orchestrator's instance count. The outbox is healthy. `mysql_replica_lag_seconds` is 5 or less. The job reads the MySQL replica in primary-key order, `WHERE id > last_id ORDER BY id LIMIT 2000`. Before every batch it checks replica lag and sleeps while lag is above 5. Each batch is one Postgres transaction that upserts the rows with the guarded statement and sets `migration_state.last_id` to the batch's highest id. A lease row in `migration_state` enforces a single runner. A crash rolls back the open batch, and the job restarts from `last_id`. Repeating a batch is harmless. Stale replica rows are safe because of the version rule, and erased rows are safe because of the tombstones. An empty batch with the lag condition met sets `done`. An alert fires if the checkpoint does not move for 15 minutes.\n\n6. Full comparison (step 6). The operator launches it after `done`. It scans every id in both tables, reading MySQL from the replica under the same lag rule, and compares all columns including `version`. It also looks for Postgres rows with no MySQL counterpart. Any difference is rechecked against the MySQL primary and Postgres once the outbox has nothing pending for that id. A difference that persists is a mismatch, and it is pushed into the source-of-truth outbox so the worker repairs it. Passes repeat until one has zero persistent mismatches. Results are stored in `migration_state`.\n\n7. Read ramp (step 7). With a zero-mismatch pass, the operator raises `users_read_pg_pct` to 1, 10, 50 and then 100. The repository calls `flags.enabled_for(\"users_read_pg_pct\", user_id)`, so a given user always gets the same answer. A user in the percentage is read from Postgres, through the `users_live` view, with a short timeout. On a Postgres error or timeout, the read falls back to the MySQL replica. On a miss, it falls back to the replica only in `mysql` or `dual_mysql` mode. The comparison runs daily. The operator holds 100% for at least 3 days, and any mismatch restarts the 3-day clock. To roll back, lower the percentage, which takes effect within 30 seconds.\n\n8. Preflight (step 8). The operator checks that the latest comparison is clean, the oldest outbox row is under 5 seconds old, Postgres is healthy, and the scrape interval for `app_flag_value` and `users_writes_inflight` is 10 seconds or less.\n\n9. The switch (step 9). The operator sets `paused` at T0. Each instance returns a retryable 503 for writes once it sees the flag, and it starts no new inline sync. In-flight writes, including their inline sync, finish, bounded by the request timeout. By T0+45 the operator waits until monitoring shows every instance as `paused` and `users_writes_inflight` at 0. By T0+55 the worker drains the MySQL outbox, and the operator waits until `COUNT(*)` on it returns 0. The operator then runs `setval('users_id_seq', MAX(MySQL id) + 1,000,000)`, and sets `users_write_mode=dual_pg`. Instances resume within 30 seconds of seeing that flag, so the pause is about 85 seconds at most. This is why `paused` exists. If two instances disagreed on the source of truth, they would overwrite each other's copies and assign the same new id to different users. If step 2 or 3 misses its deadline, the operator sets the flag back to `dual_mysql` and nothing is lost. A stuck outbox row is a reason to abort, not to push on. After the flip, a failure means rollback (step 11).\n\n10. After the switch (step 10). Writes commit to Postgres with an outbox row in Postgres, and Postgres assigns ids from `users_id_seq`. The inline sync, with its 250 ms timeout, and the worker then copy to MySQL. The copy does `SELECT 1 FROM users_erased WHERE id=%s FOR SHARE` and then `INSERT ... ON DUPLICATE KEY UPDATE` with the same version rule. In `dual_pg`, a delete writes the tombstone and an outbox row, and the sync hard-deletes the MySQL row and inserts into `users_erased`. A Postgres read failure falls back to the MySQL replica, which may briefly be stale. The soak lasts at least 14 days, with a daily comparison and the reverse outbox kept near empty.\n\n11. Rollback (step 11, only if needed). A person decides. They repeat the pause pattern: set `paused`, wait for all instances and in-flight writes, drain the Postgres outbox to 0, and run `ALTER TABLE users AUTO_INCREMENT = <largest id> + 1,000,000`. They then set `dual_mysql`. The 90-second budget and the same abort rule apply. If it fails, abort back to `dual_pg`.\n\n12. Finish (steps 12-13). After at least 14 days since step 9 and with the last comparison and the Postgres outbox clean, the operator sets `pg_only`. No pause is needed. This stops the copies to MySQL and the reverse outbox rows. Reads retry Postgres once on failure and have no fallback. Rollback is no longer possible after this point. Undoing it means setting the flag back to `dual_pg` and running the comparison until a pass is clean. The comparison pushes each difference, including tombstones, into the Postgres outbox. Finally, after an agreed quiet period, MySQL `users` is renamed, snapshotted, and dropped. The MySQL code paths, flags, outbox and `users_erased` are removed, and the tombstones are kept.",
+   "gaps": [
+    "The document never says how the two sources of truth coexist during the switch window for the read path. It says reads continue during the pause. It does not say what a read does when it hits the stale-data window right after the flip in `dual_pg`, apart from the Postgres-failure fallback.",
+    "It does not say which database assigns the id inside `create()` during `paused`-to-`dual_pg` hand-off when an instance still holds the cached `dual_mysql` value. It only says instances are paused first, but a 503 'once it sees the flag' leaves the exact moment an instance stops starting new writes undefined.",
+    "The step 9 timeline is internally unclear. The pause is said to be 90 seconds at most, the deadlines are T0+45 and T0+55, and instances 'resume within 30 seconds'. The document does not say what mechanism enforces the T0+55 deadline other than the operator watching.",
+    "The document does not say how the operator knows the count of running instances ('the orchestrator's instance count') or which tool shows it.",
+    "It does not say how the comparison job chooses which database it reads in the 'recheck' phase when the outbox is pending, or how long it waits for 'nothing pending for that id'.",
+    "It does not say how the reverse (Postgres to MySQL) sync handles columns that exist only in Postgres (`deleted_at`) when a tombstone is copied, beyond the hard-delete plus `users_erased` description. It also does not say how a tombstone arriving in MySQL for an id that was never in MySQL is handled.",
+    "Whether `create()` and `update()` themselves are rejected or retried when the outbox insert fails is not stated. Only the post-commit inline sync failure is described.",
+    "The document does not define what happens to pending outbox rows written in `dual_pg` mode when the mode flips to `pg_only` (it only says no more rows are written), nor how the stale-flag window between instances (30 seconds) is handled for that step."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

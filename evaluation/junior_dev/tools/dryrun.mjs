@@ -49,7 +49,11 @@ function canned(role, run, prompt) {
     case 'critic': return { critiques: [], done: true }
     case 'critic-revise': return { artifact: `CRITIC-REVISED for ${caseOf(run)}\n`, changes: ['x'] }
     case 'judge': return { winner: 'A', reason: 'stub' }
-    case 'simplify': return { artifact: `SIMPLIFIED for ${caseOf(run)}\n1. A step.\n`, changes: ['merged two rules'] }
+    case 'simplify':
+      // fx-02 arrives the way one Haiku author once sent it: a single line with literal \n escapes.
+      return caseOf(run) === 'fx-02'
+        ? { artifact: 'SIMPLIFIED for fx-02\\n1. A step.\\n2. More.\\n3. More.\\n4. More.\\n5. Last.', changes: ['merged'] }
+        : { artifact: `SIMPLIFIED for ${caseOf(run)}\n1. A step.\n`, changes: ['merged two rules'] }
     default: throw new Error(`no canned result for role ${role}`)
   }
 }

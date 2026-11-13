@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "By reports.row_count: at most 10,000 rows returns the CSV inline in the click's response. Above 10,000 returns 202 with an export record, and the user later gets an emailed 24-hour link.",
+  "q2": "The request gets the existing active export back with 202 and its export_id and status, even if its filters differ. Only one active large export per user and report is allowed.",
+  "q3": "The emailed link works for 24 hours, signed at send time. The exports bucket deletes stored files after 7 days, which removes the file.",
+  "q4": "Up to 3 attempts, with 60 s then 300 s backoff. After the last failure the export is marked failed with an error, and a failure email is sent.",
+  "q5": "The read replica only, never the primary database.",
+  "q6": "In the report_exports table's status column. The page polls GET exports/latest every 5 s while active, and reopening the page shows the latest export from the last 7 days.",
+  "q7": "It streams in 5,000-row keyset pages into a multipart upload, uploading 8 MB parts from one reused buffer, so memory stays tens of MB regardless of report size.",
+  "q8": "The attempt calls abort_multipart and re-raises, and the bucket discards orphaned parts after 24 hours. Nothing appears at the key, and the next attempt restarts from the beginning.",
+  "q9": "Stored in report_exports filters and cols columns at click time. The job reads them from that row, so the queue payload only carries export_id.",
+  "q10": "A partial unique index on (user_id, report_id) where status is queued or running, used with INSERT ON CONFLICT DO NOTHING, so only one simultaneous insert succeeds.",
+  "q11": "The file must be completely uploaded, marked done, and the email step reached. If a rerun finds done with notified_at null, it sends only the email; otherwise it returns.",
+  "q12": "Nothing is sent until the CSV is complete, so a failure returns a clean 500 and never a truncated file. A 45 s deadline returns 500 Export took too long, and the user can click again."
+ },
+ "sonnet": {
+  "q1": "It compares reports.row_count (unfiltered, up to a day old) with 10,000. At 10,000 or fewer: the HTTP response to the click is the CSV (200, text/csv, attachment), built in memory, nothing stored. Above 10,000: a export record is created and a 202 {export_id, status} returns at once; a background job writes the file and emails a 24-hour link. (If more than 10,000 rows are actually read on the small path, it falls to the job path.)",
+  "q2": "The existing active export is returned with 202 and {export_id, status}; no new row or job is created, even if the new click had different filters. (An active row older than 3 hours is first marked failed 'timed out', then a new export is inserted. A row stuck queued with null job_id older than 60 s gets enqueue called again.)",
+  "q3": "The link is valid 24 hours (86,400 s), signed at email send time. The exports bucket deletes objects after 7 days.",
+  "q4": "Up to 3 attempts (backoff 60 s then 300 s). After the last fails, on_final_failure sets status=failed with error and finished_at, and emails the user 'report_export_failed' (email errors are caught and logged). The page shows 'Export failed. Try again' and re-enables the button. No download link is sent.",
+  "q5": "The read replica only, never the primary (both the small path and the job path).",
+  "q6": "In the status column of the report_exports row in the application database. The page calls GET /api/reports/{report_id}/exports/latest on load (including later returns, covering the last 7 days) and, while queued or running, polls it every 5 s until done or failed.",
+  "q7": "It streams: pages of 5,000 rows via keyset from the replica, appends CSV bytes to an 8 MB buffer, uploads each full buffer as a multipart part, keeps only etags, then uploads the remainder as the last part and completes the multipart. Memory stays at tens of MB regardless of report size. It has a ~1,700 s own deadline (attempt kill is 1800 s); the 2M-row run must be measured on staging.",
+  "q8": "The multipart upload is invisible at the key, so no partial file is downloadable. On an error the attempt calls abort_multipart and re-raises; on timeout or worker death the orphaned parts are discarded by the bucket's 24-hour rule. The next attempt starts again from the beginning (queue keeps no progress): new multipart upload to the same key, rebuilding the whole file.",
+  "q9": "In the filters and cols columns of the report_exports row, written at click time. The job gets only export_id in its payload and loads the row, so the 64 KB payload limit doesn't matter.",
+  "q10": "A partial unique index on (user_id, report_id) WHERE status IN ('queued','running'), used with INSERT ... ON CONFLICT DO NOTHING; the loser selects and returns the existing export.",
+  "q11": "The file must be complete (complete_multipart succeeded) and the row marked done (status=done with object_key) first. If the job runs again: status=done with notified_at null sends only the email; done with notified_at set returns doing nothing; failed returns. Duplicate delivery is harmless. (Step 8 also only marks done where status='running'.)",
+  "q12": "Nothing is sent until the CSV is complete, so the user gets a clean 500, never a truncated file; nothing is stored. If it exceeds the 45 s deadline it returns 500 'Export took too long, try again'. The user can click again."
+ }
+}

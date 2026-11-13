@@ -1,0 +1,43 @@
+## Review of mig-02 (junior-v3, author sonnet, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Summary now says a person advances by command to the rollout controller, which checks the gate and sets the flag; added a short terms list (rollout controller, shadow store, due charge).
+- Fixed the nightly comparison text to say which two invoice sets are compared in shadow and in both (Q2).
+- Moving forward section replaces the gates list; states the controller refuses unmet gates, and that at both to new_only the old engine finishes its current run then stops (Q1, Q8).
+- RB1 now says workers check the controller record before every charge, requests wait and retry after the hold, and the step ends on worker confirmation; diagram edge relabelled to match (Q3).
+- RB2 no longer waits for in-flight charges; it resolves unknown outcomes by key lookup, defines the end condition and the due list (Q4, Q5).
+- RB3 and the rollback-step-failed row now explain why a rerun from RB2 is safe: due list rebuilt each time, invoices keyed, charges guarded by key (Q6).
+- Added a failure row for a worker with a stale billing_mode after a forward move.
+- Open question 2 now also asks what counts as a charge failure (Q7); question 7 notes the RB3 rerun requirement; new questions 8 (flag propagation, who may advance) and 9 (hold confirmation timeout).
+- Removed the word 'settled' from the diagram edge and cleared the hold in RB4.
+- Renamed RB1 to Hold and made it also stop new-engine invoice runs, with usage events waiting in the log (Q10).
+- Defined a due charge and the RB2 due list from ledger invoices, and said the old engine charges the ledger amount (Q9).
+- RB3 now reads events up to the present and writes only periods with no ledger invoice (Q9, Q10).
+- RB4 now gives an explicit order: stop new engine, charge due list, set flag, clear hold and counters (Q12).
+- Shadow to both line now says how charging hands over using the charge key (Q13).
+- Both to new_only line says the 14 days are a total of verified days, and unresolved mismatches must be zero (Q14).
+- Added a failure row: controller unreachable means workers do not charge (Q15); removed the controller-record sentence from the config service row.
+- Added one summary sentence on why handovers and stale modes are safe, a line that the ledger is the amount owed, and open question 10 on what starts a charge (Q11).
+- Softened the failure-table wording to 'not set to old_only until RB4 is nearly done' to match the new RB4 order.
+- Added a Hold term and made the hold apply to normal charges only, with rollback charges in RB4 step 2 exempt, fixing a contradiction between RB1 and RB4.
+- Retitled RB4 in the diagram and clarified the RB4 to old_only edge to say hold and gates are cleared.
+- Added a paragraph explaining what the flag shows and what runs between RB4 step 1 and step 3.
+- Expanded the rollback-step-fails row to state the hold stays on, the flag is unchanged and the new engine stays stopped, and added the stopped fact to the controller record.
+- Defined day 35 as counted from entry into new_only, and made a rollback already running at day 35 continue instead of locking; updated the diagram edge, the failure row and open question 1.
+- Reworded the both to new_only gate line: the old engine charges nothing in both, so it finishes a shadow-store run, not a charging run.
+- Added open question 11 about how rollback charges are recognised under the hold.
+- Reordered into the newcomer layout: summary, terms, diagram, mode table, forward steps, rollback steps, state location, failure table, open questions.
+- Renamed RB1..RB4 to Hold, Reconcile, Reprocess, Resume (diagram state ids, table, failure rows, open questions) so each step stands alone with no codes to look up.
+- Turned the 'Moving forward' paragraph into numbered steps and cut the repeated statement that only the next mode is allowed.
+- Merged the two nightly comparison descriptions into one sentence (always ledger invoice vs shadow-store invoice).
+- Merged open questions 8 and 11 and 9 and 10 into the shared-key question and a single 'Hold details' question; open questions reduced from 11 to 8 and shortened.
+- Folded the old Summary 'Terms' list into its own section and shortened wording across the rollback table and notes.
+- Removed the separate paragraph on rollback from shadow into a single sentence and tightened the lock/day-35 wording, keeping all behavior unchanged.
+
+### Holes
+- Q1: Who or what actually runs the rollout controller, and what does a person do to advance a mode (button, command, approval)? Who is allowed to? (author: The rollout controller is a service that holds the rollout record, checks gates and sets the flag. A person advances by sending an advance command to it, and it refuses if the gate is unmet. Who is allowed to send it is not known. The brief only says a person makes forward moves. Added to the file and to open question 8.)
+- Q7: Who or what starts the automatic rollback: what measures the 2% failure rate, and what counts as a charge failure (declined card vs. system error)? (author: The controller measures the failure rate over a sliding 10-minute window from charge results and starts rollback itself. What counts as a failure is not known. It is unclear whether a declined card counts or only system and provider errors. Neither is a minimum charge volume defined. Both are in open question 2.)
+- Q8: In 'shadow' and 'both' the old and new engines both exist, but the 'both' to 'new_only' step stops the old engine. What exactly happens to the old engine and in-progress billing at that switch, and how does the 'billing_mode' flag change get to all workers consistently? (author: At both to new_only the old engine finishes the invoice run it is on and then stops computing. That is stated in the file. How a flag change reaches all workers consistently is not known. The brief does not say. The file relies on the charge key check to prevent a double charge by a worker with a stale value. The propagation mechanism is recorded in open question 8.)
+- Q11: What starts a charge in the first place? Is there a scheduled invoice run, and does it run per billing period for all customers at once, or continuously? (author: The brief does not say what starts a charge or whether runs are scheduled per period or continuous. The plan only needs each charge to carry its customer and period key. Added as open question 10.)

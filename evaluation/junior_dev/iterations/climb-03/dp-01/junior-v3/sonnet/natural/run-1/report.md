@@ -1,0 +1,37 @@
+## Review of dp-01 (junior-v3, author sonnet, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Added a short intro and a terms list (runner, run_date, watermark, attempt) so a newcomer knows what runs the job and what the main flow is.
+- Named the runner as the thing that connects to the replica and the warehouse, and relabelled the flowchart start node accordingly.
+- Defined run_date as the UTC date of the 02:00 firing, passed by the scheduler and kept by retries.
+- Added a crash/hang path: the scheduler's timeout counts as a failed attempt, a stale 'running' row is overwritten by the next attempt, and the timeout value is listed as open.
+- Removed the lock row in run_log, because it contradicted one row per (job, run_date). Concurrent-write safety now comes from the scheduler's ordering plus the >= merge guard.
+- Spelled out how attempt n is set: the same run_log row is read, incremented and updated each time.
+- Clarified that dashboards refresh on their own schedule and that the 06:00 check only alerts once, with no follow-up.
+- Clarified that the watermark stores max(updated_at) with no subtraction and that the 2h lookback applies only at read time. Added a note on the first backfill and an open question about merging it in one transaction.
+- Reworded the flowchart's 06:00 outcome nodes so they no longer imply the pipeline controls the dashboard refresh.
+- Intro and Terms: runner has nightly and reconcile modes; scheduler also does job chaining and paging (Q9, Q10, Q14).
+- Sunday trigger: scheduler launches reconcile when the nightly job exits 0, replacing the vague 'fires when load commits' (Q9).
+- Reconciliation now has its own run_log row (orders_reconcile) with the same attempt logic; added flowchart node R0 and a Run record bullet (Q10).
+- Added run_log.error column and validation failure routed through the normal failed-attempt path (Q13).
+- Staleness check: specified the row it reads (orders_nightly, today's UTC run_date) and that a missing row counts as not committed (Q12).
+- Reconcile retry restarts with the comparison and skips matching days; stg.orders_reconcile is truncated per day (Q11).
+- Paging done by the scheduler; added an After paging bullet saying the next night's lookback covers the data (Q14).
+- Added an assumption that the scheduler can chain jobs on exit code.
+- Made the scheduler the single owner of attempt counting and paging; run_log.attempt is now diagnostic only (Terms, run_log table, Paging bullet, flowchart decision node Y).
+- Added a Manual re-run bullet: same run_date and run_log row, fresh scheduler count of 3, chains reconcile on Sunday.
+- Reconcile recheck failure now alerts, marks orders_reconcile committed and exits 0; flowchart edge RA to END2 added.
+- Removed attempt-counter wording from reconcile run record and the retry-timer dependency; scheduler applies the same retry policy.
+- Flowchart: crash/hang node no longer claims run_log says running; runner records failure when it can; added exit 0 labels.
+- Assumptions: scheduler must also count attempts per invocation and run a job manually with a given run_date.
+- Merged the separate 'What starts each step', 'Data movement', 'Merge logic', 'Failure and retry' and 'Reconciliation details' sections into one Notes section (starts, numbered nightly steps, merge rules, reconciliation) plus a single failure table.
+- Moved Scheduler into the Terms list and folded the separate crash/hang, paging and retry bullets into the failure table.
+- Cut repeated statements: the retry/paging policy, 'watermark unchanged', 'nothing reads staging', the dashboard-never-sees-partial-load point and the late-row/reconciliation point each now appear once.
+- Shortened the Attempt and run_date definitions and removed the duplicate 'If the two disagree' wording.
+- Folded the first-backfill paragraph into one sentence after the commit SQL, with the single-transaction concern left in Open questions.
+- Reordered for a newcomer: summary, terms, state table, flowchart, notes after it, failure table, assumptions, open questions. Diagram left unchanged.
+
+### Holes
+- None.

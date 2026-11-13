@@ -50,6 +50,11 @@ function context(c) {
 function accept(run, role, current, proposed) {
   const words = s => (String(s || '').match(/\w+/g) || []).length
   if (!proposed || !proposed.trim()) return current
+  // A document that arrives as one line full of literal \n escapes (seen once, from a Haiku author)
+  // is decoded back into lines; a real document has real line breaks.
+  if ((proposed.match(/\n/g) || []).length <= 2 && (proposed.match(/\\n/g) || []).length >= 5) {
+    proposed = proposed.replace(/\\r\\n|\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"')
+  }
   if (words(current) > 100 && words(proposed) < 0.3 * words(current)) {
     run.errors.push(`${role}: rejected a ${words(proposed)}-word artifact that would replace ${words(current)} words`)
     return current
@@ -100,8 +105,17 @@ async function critic(run, c, arm, art) {
   return art
 }
 
-function authorPrompt(c, art, transcript, numbered) {
-  return P.author_junior + '\n\n# The skill\n\n' + P.skill.trim() + '\n\n' + context(c) +
+// Skill step 7: one simplify pass over the whole file.
+async function simplifyPass(run, c, arm, art) {
+  const s = await call(run, 'simplify', P.author_simplify + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
+    '\n# Your document\n\n' + art.trim() + '\n', { model: run.author, schema: REVISE_SCHEMA })
+  if (!s) return art
+  run.changes.push(...(s.changes || []).map(String))
+  return accept(run, 'simplify', art, s.artifact)
+}
+
+function authorPrompt(c, arm, art, transcript, numbered) {
+  return P.author_junior + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
     '\n# Your document (current version)\n\n' + art.trim() + '\n' +
     (transcript.length ? '\n# Earlier rounds\n\n' + renderTranscript(transcript) : '') +
     '\n# The junior\'s questions this round\n\n' + questionList(numbered) + '\n'
@@ -124,7 +138,7 @@ async function juniorLoop(run, c, arm, art) {
       round += 1
       const numbered = asked.map((q, i) => ({ id: String(nextId + i), text: String(q.text).trim(), about: String(q.about || '').trim() || 'general' }))
       nextId += numbered.length
-      const a = await call(run, 'author', authorPrompt(c, art, run.transcript, numbered), { model: run.author, schema: AUTHOR_SCHEMA })
+      const a = await call(run, 'author', authorPrompt(c, arm, art, run.transcript, numbered), { model: run.author, schema: AUTHOR_SCHEMA })
       if (!a) { run.end_reason = 'error'; break }
       const ids = new Set(numbered.map(q => q.id))
       // Authors label answers "Q7" as the skill shows; junior.py's parser accepts the prefix, so this must too.
@@ -141,7 +155,7 @@ async function juniorLoop(run, c, arm, art) {
       const t = await call(run, 'teachback', ROLE(arm.teachback_text) + message, { model: arm.junior_model, schema: TEACHBACK_SCHEMA })
       if (!t) { run.end_reason = 'error'; break }
       const gaps = (t.gaps || []).map(String)
-      const v = await call(run, 'verdict', P.author_verdict + '\n\n# The skill\n\n' + P.skill.trim() + '\n\n' + context(c) +
+      const v = await call(run, 'verdict', P.author_verdict + '\n\n# The skill\n\n' + arm.skill_text.trim() + '\n\n' + context(c) +
         '\n# Your document\n\n' + art.trim() + '\n\n# The fresh junior\'s explanation\n\n' + t.explanation +
         (gaps.length ? '\n\nThey could not explain:\n' + gaps.map(g => '- ' + g).join('\n') : ''), { model: run.author, schema: VERDICT_SCHEMA })
       if (!v) { run.end_reason = 'error'; break }
@@ -189,15 +203,13 @@ async function runOne(spec) {
   else if (arm.review === 'critic') art = await critic(run, c, arm, art)
   else if (arm.review === 'junior' || arm.review === 'junior_full') {
     art = await juniorLoop(run, c, arm, art)
-    if (arm.final_simplify) {
-      // Skill step 7: one simplify pass over the whole file after the loop.
-      const s = await call(run, 'simplify', P.author_simplify + '\n\n# The skill\n\n' + P.skill.trim() + '\n\n' + context(c) +
-        '\n# Your document\n\n' + art.trim() + '\n', { model: run.author, schema: REVISE_SCHEMA })
-      if (s) {
-        art = accept(run, 'simplify', art, s.artifact)
-        run.changes.push(...(s.changes || []).map(String))
-      }
-    }
+    if (arm.final_simplify) art = await simplifyPass(run, c, arm, art)
+  }
+  else if (arm.review === 'simplify') {
+    // Control: the skill's final pass (step 7) on the first draft, with no junior loop. It isolates
+    // what the questions add beyond a good final pass.
+    art = await simplifyPass(run, c, arm, art)
+    run.end_reason = 'simplify-only'
   }
   else run.end_reason = 'none'
   run.artifact_final = art

@@ -1,0 +1,34 @@
+## Review of feat-02 (junior-v3, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a two-sentence summary and a terms list at the top, and replaced the Decisions bullets with short Notes so each fact appears once.
+- Said the gateway passes the plan limit to the script as an argument (diagram step and notes).
+- Said the script uses only Redis TIME for the window and Retry-After, and the gateway clock is unused.
+- Stated that 429 responses carry Retry-After only, and which responses carry X-RateLimit headers.
+- Added a failure table covering timeout-but-executed, replica failover, backend 500, and Key Service trouble.
+- Noted that plan changes and key revocations can take up to 5 minutes to apply because of the existing cache.
+- Replaced the vague Enterprise line with an open question: the gateway has no default and must not guess; Product must set it before launch.
+- Added an open question about Key Service behavior on cache miss, which is existing behavior and unknown to me.
+- Atomic script note now says exactly what the script returns, so the gateway needs no window lookup (Q9).
+- Added a Key expiry note explaining that EXPIRE 120 is cleanup only (Q10).
+- Failure table now says the 50 ms wait adds to client time and is not part of the backend call (Q11).
+- Added a table row and open question for backend timeout or unreachable (Q12).
+- Limit note says the plan-to-limit lookup is a plain config map; added a table row and open question for an unknown plan or missing limit (Q13).
+- Plan or key changes note says a revoked key is expected to come back as unknown from the Key Service (Q14).
+- Added an open question on who watches the ratelimit_store_unavailable metric (Q15).
+- Removed requirement-number references (req. 3, 4, 5, 7) so each note stands alone
+- Merged the 'Store' and counting-across-instances sentence; dropped the repeated 'all gateways use it' phrasing
+- Cut the redundant sentences on what the script returns and that the gateway needs nothing else, and the 'script does not look anything up' line
+- Merged the 'Key expiry' note into a shorter 'Expiry' note
+- Shortened the Redis outage table row (dropped the 'not part of backend call' explanation)
+- Dropped the speculative 'Key Service expected to answer unknown' clause from the plan/key changes note
+- Removed the duplicated '(see open questions)' pointers from rows that are not decisions, and tightened the open questions wording
+
+### Holes
+- Q3: What does Key Service being slow or down do on a cache miss? The fail-open section says it is 'unchanged', but what does the client get? (author: What the client gets when the Key Service is slow or down on a cache miss is existing gateway behavior that I do not know. This design does not change it. Listed under open questions.)
+- Q12: What does the client get if the backend itself times out or is unreachable, rather than returning a status like 500? (author: What the client gets when the backend times out or is unreachable is existing gateway behavior I do not know. The count is kept, as with a 500. Added to the failure table and open questions.)
+- Q13: How is the plan name from the Key Service turned into a limit, and what does the gateway do if the plan is unknown or has no limit configured at runtime (for example Enterprise)? (author: The mapping is a plain plan-name to number map in gateway config (now stated). What the gateway does at runtime for an unknown plan or a missing limit is not decided and I have no defensible reason to pick one. Added to the failure table and open questions.)
+- Q14: What does 'customerId + plan, or unknown' mean for a revoked key: does the Key Service return unknown, and is the cached entry the only thing delaying the 401? (author: I expect the Key Service to answer unknown for a revoked key, and yes, the 5-minute cache is what delays the 401. I have not verified that the Key Service behaves this way. Stated as an expectation in the file.)
+- Q15: Does the 'ratelimit_store_unavailable' metric go to an alert or dashboard, and who acts on it? (author: Not decided. The brief only requires emitting the metric; alerting and ownership are outside it. Added to open questions.)

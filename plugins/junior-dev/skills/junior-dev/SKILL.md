@@ -109,13 +109,18 @@ quotes: paths may contain spaces. `<state>` is the folder that `start` prints.
    - Merge rules or notes that say the same thing.
    - Replace several mechanisms with one simple one wherever the brief allows.
    - Lay it out for a newcomer, in this order:
-     1. Two or three sentences on what this is and how the main flow goes.
-     2. The few terms a newcomer needs, each defined in one line.
-     3. The steps, numbered, in the order they happen.
+     1. Two or three sentences on what this is and how the main flow goes. If it changes an
+        existing system, first say in a sentence or two how that system works today.
+     2. The few terms a newcomer needs, each defined in one line, in plain words.
+     3. The steps, numbered, in the order they happen. Give every step the same parts: what
+        starts it, what it does, which part keeps its data, and what it does when it goes
+        wrong.
      4. What happens when things fail, at each step or in one table.
      5. The open questions, at the end.
-   - Write each step so it stands alone. Avoid codes such as R3 or Q7 that send the reader
-     elsewhere to look things up.
+   - Keep different things apart. How the system runs, and how you build or roll it out, get
+     separate sections.
+   - Write plainly: short sentences, one idea each. Write each step so it stands alone, and
+     avoid codes such as R3 or Q7 that send the reader elsewhere to look things up.
 
    A diagram keeps its diagram form. Put the summary and the terms just before it, and the
    notes just after it.

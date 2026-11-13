@@ -1,0 +1,39 @@
+## Review of ms-02 (junior-v3, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a Terms section that defines MailRelay, owner, claim, route flag, inbox and results outbox in one line each, and moved the terms before the steps.
+- Shared mechanics now states the starting state of a new row (status pending, owner monolith, claim null, attempts 0).
+- Relay step: stated that status stays pending on the monolith until a result arrives, and that the monolith skips the row because its route is service.
+- Relay claim lease set to 2 min (the draft said 'minutes long'), with a 30 s confirmation timeout. Relay now hands off only rows whose backoff is due, so the retry policy holds.
+- The relay message now carries attempts, so the 5-attempt limit is a total across both sides.
+- Sender: polls every 5 s, and the MailRelay send timeout is 30 s, under the 60 s lease.
+- Sender: the 12 h refusal and the attempts-exhausted path now write a results_outbox row, so the monolith learns about failures. The draft wrote a result only on success.
+- Added the results publisher as a sender component (every 1 s, publishes after broker confirmation).
+- Retry section: stated the difference in crash counting and the paging path.
+- Steps 8 and 9: replaced 'as step 7' with the concrete data moves, state, failure and rollback, so each step stands alone.
+- Step 7 rollback: the monolith resumes only rows it still owns, instead of 'unclaimed' rows.
+- Open question 5 now also asks who reviews the thresholds during each soak.
+- Trimmed repeated wording in the intro and shared mechanics to keep the file near its original length.
+- Restructured the file in the newcomer order: summary, terms, numbered steps with starts, data, state and failures, then the timeline and open questions. The former Shared mechanics section is folded into the terms and the steps, and the retry rule is defined once in the terms.
+- Step 3 consumer: the inbox insert now sets attempts from the message, and the file says what happens when a message fails validation (failed inbox row, failed result and page, or a page and ack if there is no id).
+- Step 3 sender: the backoff rule is stated as BACKOFF[n-1] after attempt n fails, so rows that arrive with attempts above 0 are covered, with an example.
+- Step 4 relay: added the field check before publish. A row that fails it is marked failed and paged, as the old worker would do.
+- Step 5 consumer: the update sets status and attempts from the result, does not store at, and logs and acks an unknown id.
+- Step 7 rollback: rows already handed off are finished by the service whatever the flag says, a stuck row goes to the backlog alert and on-call, and it is not reassigned by hand.
+- Step 10: the relay stops checking the route flag and hands off every owner = monolith pending row, the precondition requires all flags to be service, and the old claim that the relay would route an orphaned monolith row was removed because it was wrong.
+- Open question 3: added that the 12 h age check starts at the service's first claim, so a row retried on the monolith before handoff has less margin.
+- Removed repeated wording across the sections, including duplicate statements of the retry policy and the idempotency rule.
+- Cut the summary to three sentences that give the main flow and the step map, and removed the repeated explanation of the fixed rules.
+- Merged the retry policy into one term definition that applies to both sides, and removed the duplicate statements of the 5-attempt limit and the wait times.
+- Defined the claim term once with both column names (monolith `claim`/`claim_until`, service `lease_until`) so the two lease mechanisms are not confused.
+- Replaced every code such as 'Q3' or 'open question 5' with the question's topic name, so each step stands alone and does not send the reader to a numbered item.
+- Restated the moving rules in steps 8 and 9 instead of saying 'same as step 7', so each step is readable on its own. The restated text is shorter than the original cross-reference chain.
+- Kept the sender rules in step 3 as a numbered list and the failure cases as bullets, and merged the 'Known gap' and 'Deliberate change' notes into single lines.
+- Merged the rollback timing check into the Check line in step 6 and removed the duplicate 'Gate' wording.
+- Kept the timeline table, the decommission precondition, every gate, the rollback procedure and all eight open questions. Their substance is unchanged, and only their numbering was removed.
+- Made no change to any step's behaviour, ownership rule, retry rule or cutover order.
+
+### Holes
+- Q8: What exactly are the failed-count and backlog thresholds and who watches them? Who pages on-call and through what mechanism? (author: The failed-count threshold, the backlog-age threshold and the outage duration that triggers rollback are not set. They are open question 5 and must be set before step 7. Who watches them is also not set, and I have added it to open question 5. Paging is not a threshold: every failed notification pages on-call at the moment it fails, through the existing alerts.page_oncall path. I chose to reuse that path. I have not verified that the service has it. Changed in the retry section and open question 5.)

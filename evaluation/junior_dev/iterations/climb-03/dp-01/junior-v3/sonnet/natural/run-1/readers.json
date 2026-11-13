@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The scheduler starts it at 02:00 UTC daily with run_date. It extracts orders rows with updated_at later than HWM minus 2 hours, from the app's read replica.",
+  "q2": "Bulk transactions run up to 90 minutes, so updated_at can be earlier than the time the row becomes visible on the replica. The lag is up to about 90 minutes.",
+  "q3": "The next nightly extract re-reads it, because its updated_at falls after the 2-hour lookback cutoff. The MERGE then applies it since its updated_at is newer.",
+  "q4": "The MERGE sets is_deleted to true, since deleted_at is not null. The row is kept, not removed, because deletes are writes that bump updated_at.",
+  "q5": "The attempt fails and run_log is marked failed with a reason if possible. Watermark and target are unchanged. The scheduler retries 15 minutes later with the same run_date, up to 3 attempts, then pages on-call.",
+  "q6": "Dashboards show the last committed data, since analytics.orders changes only in one atomic commit. One staleness alert is posted to #data-alerts, and nothing follows when the load commits later.",
+  "q7": "The Sunday reconciliation. It compares count and checksum per creation day over the last 30 days and reloads mismatched days from the replica.",
+  "q8": "The MERGE updates only when s.updated_at >= t.updated_at, so stale versions never replace newer ones. Staging dedupes each order_id, keeping the row with the greatest updated_at.",
+  "q9": "It is stored in etl.watermark as high_water_mark for pipeline 'orders'. The value is new_hwm, the max updated_at of the batch, written with GREATEST in the same transaction as the merge commit.",
+  "q10": "The merge, watermark update and run_log commit happen in one warehouse transaction. Dashboards seeing only complete states relies on assumed snapshot isolation, which the doc says still needs confirmation.",
+  "q11": "The failed attempt's staged data is discarded, because staging is truncated at the start of each attempt. The retry extracts from the same unchanged cutoff, HWM minus 2 hours, with the same run_date.",
+  "q12": "It re-reads all replica rows with created_at on that mismatched day, and applies them with the same MERGE in its own transaction. It does not touch the nightly high-water mark."
+ },
+ "sonnet": {
+  "q1": "The scheduler fires the runner at 02:00 UTC daily, passing run_date. It extracts orders rows from the app's read replica with updated_at > HWM minus 2 hours (the cutoff), in one repeatable-read snapshot, keyset-paged by (updated_at, order_id).",
+  "q2": "The document says the 2-hour lookback covers the 90-minute bulk transactions plus a 30-minute margin, so bulk transactions (up to 90 minutes) can make rows visible after their updated_at. It does not explicitly explain the mechanism. It also lists replica lag as a cause of rows visible later than the lookback.",
+  "q3": "The edit bumps updated_at. The next nightly extract reads it (updated_at > HWM-2h) and MERGEs it into analytics.orders, updating the row because the incoming updated_at is >= the target's.",
+  "q4": "A delete is a write that bumps updated_at (deleted_at set). The nightly extract picks it up and the MERGE updates the row with is_deleted = (deleted_at IS NOT NULL) = true. Rows are never removed.",
+  "q5": "Nothing in flight survives: the watermark and target are unchanged. The runner records run_log failed plus the reason when it can, and exits non-zero (or the scheduler kills it on timeout). For attempts 1 and 2 the scheduler retries from the start 15 minutes later with the same run_date. After the third failed attempt it pages on-call, and the next night's lookback covers the data.",
+  "q6": "Dashboards show the last committed data, since analytics.orders only changes in the atomic commit. At 06:00 the staleness check posts one alert to #data-alerts. If the third attempt failed, the scheduler also pages on-call.",
+  "q7": "The Sunday reconcile job. It compares per-creation-day count and checksum for the last 30 days, finds the mismatched day, reloads all replica rows for that day through stg.orders_reconcile with the same MERGE, and so gets the version into the warehouse.",
+  "q8": "The MERGE matches on order_id and updates only when s.updated_at >= t.updated_at, so a stale version never replaces a newer one. Equal versions overwrite with identical data. Staging also dedupes duplicate order_ids within the batch, keeping the greatest updated_at.",
+  "q9": "In the warehouse table etl.watermark, in the row where pipeline = 'orders', column high_water_mark. The value written is GREATEST(current HWM, new_hwm), where new_hwm = max(updated_at) over the batch, not the wall clock and without the 2-hour lookback subtracted. It is written in the final single warehouse transaction, together with the MERGE and the run_log committed update. The write is skipped if the batch was empty.",
+  "q10": "analytics.orders changes only in the single atomic warehouse transaction (MERGE, watermark update and run_log update commit together). Dashboards read only that table, never staging. The document assumes the warehouse gives readers snapshot isolation, so they see either the previous complete state or the new complete state.",
+  "q11": "Staged data is discarded: stg.orders_nightly is truncated at the start of every attempt, and a half-filled staging table is harmless. The retry reruns from the start with the same run_date and reads the same window, updated_at > HWM minus 2h, because the watermark did not move.",
+  "q12": "It re-reads all replica rows with created_at on that mismatched day, through stg.orders_reconcile, truncated at the start of each day's reload. It applies them with the same MERGE (with the >= guard) in a per-day transaction. It never touches the nightly watermark."
+ }
+}

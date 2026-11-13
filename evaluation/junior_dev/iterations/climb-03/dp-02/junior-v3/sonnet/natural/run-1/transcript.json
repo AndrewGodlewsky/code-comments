@@ -1,0 +1,178 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"replicated log\" and the \"key-value store\" concretely here, and what is \"events_clean\" stored in (the warehouse)? Which of these does the plan assume already exist?",
+     "about": "Durable write / Live dedup / Load"
+    },
+    {
+     "id": "2",
+     "text": "Who sends the batches, and what does the client (SDK) do on 503/429 or a timeout? Does it resend the same event_ids unchanged, and does the 7-day SDK buffer mean clients can retry for up to 7 days?",
+     "about": "Durable write; Dedup window"
+    },
+    {
+     "id": "3",
+     "text": "In Live dedup, if the key claim succeeds but the load then fails or the loader crashes, how does the retried event still count as the winner? Where does the same-position check come from if the key already exists?",
+     "about": "Live dedup"
+    },
+    {
+     "id": "4",
+     "text": "The live loader's dedup is per event_id with the first-received copy winning, but a 'Day assignment' is by received_at. If the winning copy is on day D-1 and a retry arrives on D, is it dropped from D's table entirely? Does the live path know what day the winner was on?",
+     "about": "Live dedup / Day assignment"
+    },
+    {
+     "id": "5",
+     "text": "What does \"the live loader's watermark\" mean and how is it computed? How does the tool know the archiver is 'complete through the end of D'?",
+     "about": "Trigger (step 10)"
+    },
+    {
+     "id": "6",
+     "text": "Why must day D be closed at 02:00 UTC on D+1 specifically, and what happens to events whose received_at is on D but that are still being loaded late by then?",
+     "about": "Trigger (step 10)"
+    },
+    {
+     "id": "7",
+     "text": "What does the enrichment step actually produce (which columns) and what does 'pinned enrichment code version' mean — where does that code live and how does the replay tool run it?",
+     "about": "Enrichment / Re-enrich"
+    },
+    {
+     "id": "8",
+     "text": "When the Validate step finds the event_id sets differ, what typically causes it and what does the operator do after confirming? Does the swap then proceed with the staged data?",
+     "about": "Validate before publishing"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The log, key-value store, archive object storage and warehouse are all the existing infrastructure listed in the brief. events_clean lives in the warehouse. Only the collector is new. I added a Terms section saying this."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Per the brief, the website and mobile SDKs send batches. On timeout, 429 or 5xx they resend the same batch with the same event_ids, backing off 1 s to 5 min, and the SDK buffer means a retry can arrive up to 7 days later. Rejected events are never retried. Moved into the Terms section."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The key value stores the event's log position. After a crash the loader restarts from its last committed offset and re-reads the same record, finds a key holding its own position, and treats it as the winner, so it loads it again; the load is idempotent by event_id. Step 6 now explains this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, a retry on D whose first copy was on D-1 is dropped, because its key exists with a different position. The live path does not need to know the winner's day, since the winner's row is already in its own day's partition. Step 6 now says so."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Watermark is the committed log position per partition of a consumer group. A group is past the end of D when in every partition it has committed beyond the first record with received_at on D+1 or later. Applied to both loader and archiver, so there is no separate 'archiver complete' notion. Defined in Terms and step 10."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "02:00 UTC on D+1 comes from the brief and I do not know the reason behind it. My reading is that it gives two hours for lag to drain. Since received_at is stamped by the collector, nothing new can belong to D after midnight; events still being loaded late are covered by the watermark check in step 10, which blocks the replay until they are processed. Stated as such in Terms."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "Exact enriched columns are not defined yet; they are the geo-IP and user-agent derived fields plus the two version stamps. Where the pinned code version is stored and how the replay tool runs it is not specified. Added both to Open questions rather than inventing a mechanism."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Typical causes are live events lost or wrongly dropped, for example after key-value store loss or a bug in live dedup. After the operator confirms, the swap proceeds with the staged data, because the archive is the source of truth. Step 14 now says this."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The loader lags by minutes. What happens to an event with received_at at 23:59 on D that is loaded at 00:03 on D+1? Does it go into D's partition, or is the 'current day' rule different from partitioning by received_at?",
+     "about": "Load: 'Live writes only ever target the current day's partition'"
+    },
+    {
+     "id": "10",
+     "text": "How does the warehouse make a load idempotent by event_id? Is it an upsert or a delete-then-insert, and does it work inside a partition that dashboards are querying?",
+     "about": "Load: 'Load each micro-batch idempotently, keyed by event_id'"
+    },
+    {
+     "id": "11",
+     "text": "If a partition has no record with received_at on D+1 or later (for example a quiet partition), what does the tool do? Does it count as past the end of D, or does the replay stay blocked?",
+     "about": "Trigger: watermark past the end of D"
+    },
+    {
+     "id": "12",
+     "text": "When the key-value store is rebuilt from the archive for the last 8 days, how are the keys and values produced? Does each event_id get its lowest log position as value, and how does the loader avoid reprocessing or mis-dropping events that were already loaded while the store was being reloaded?",
+     "about": "Key-value store failure"
+    },
+    {
+     "id": "13",
+     "text": "The archive is laid out by day of received_at, then partition and offset range. For the 8-day lookback, how does replay compare log positions of copies found in different day folders of the same partition? Is a lower offset always the earlier received_at?",
+     "about": "Archiver / Replay: log position in the archive"
+    },
+    {
+     "id": "14",
+     "text": "After the swap replaces day D, the loader's key-value claims and watermarks are untouched. Is anything else needed (for example for dedup state or for later retries of D's events), or is nothing further required once the partition is swapped?",
+     "about": "Atomic swap vs. live loader"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "It goes into D's partition. Partitioning is always by received_at day; the old 'current day' wording was wrong. Just after midnight the loader still writes the previous day's partition, and replay of that day is blocked until the loader is caught up. Step 8 rewritten."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The brief only guarantees atomic replace of a whole day partition, so I do not know whether the warehouse offers upsert or transactional delete-then-insert, or whether it is safe in a queried partition. I did not invent a mechanism. Added to Open questions and step 8 points to it."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "A quiet partition must not block replay. I replaced the 'beyond the first D+1 record' rule with 'caught up': committed offset equals the log end offset read after 02:00 UTC on D+1. All of D was appended before then, so this proves D is fully processed, and a quiet partition qualifies as soon as it reaches its end. Step 10 and Terms updated."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Each event_id gets its lowest log position (in its partition) as value, only from archive records up to the loader's committed position, with TTL of 8 days minus the copy's age. The archiver must first reach the loader's committed position. The loader resumes from its committed offset, so already-loaded events are not re-read and cannot be mis-dropped. Step 17 expanded."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Copies of one event_id are always in the same partition, so replay compares offsets numerically within that partition and ignores day folders. A lower offset means appended earlier, which is the plan's definition of first received. Small collector clock skew near midnight could make received_at order differ from offset order; I ignore that and list it under Open questions. Stated in the dedup winner decision and step 12."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing further is required. Dedup keys depend only on event_id, not on partitions, so later retries of D's events are still dropped as before, and loader keys and offsets are untouched by the swap. If live had wrongly dropped an event, the replay repairs the table and the key store stays consistent for later retries. Added one line to step 15."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client (website, iOS or Android SDK) sends the collector a batch of up to 100 click or screen-view events over HTTPS. The SDK holds unacknowledged events on the device for up to 7 days.\n\n2. The collector checks each event on its own. It rejects an event if `event_id` or `device_id` is missing, or if the event is over 32 KB. It lists the rejects by their index in the batch, and processes the rest normally. Clients never retry rejected events.\n\n3. For each accepted event the collector builds an envelope. The envelope holds the original bytes untouched, `received_at` (server UTC), the client IP, the User-Agent header and the collector instance id. IP and User-Agent are captured here because they can't be recovered later.\n\n4. The collector appends all accepted envelopes to the log, keyed by `event_id`. It uses an idempotent producer and waits for acknowledgement from all replicas. The key's hash chooses the partition, so every copy of an `event_id` lands in the same partition. The log is replicated and append-only, with 14-day retention. Each record has a (partition, offset) log position.\n\n5. Only after the acknowledgement does the collector return 202, with the list of rejected events. If the append fails or times out, it returns 503, or 429 under load. The SDK then resends the whole batch with the same `event_ids`, backing off from 1 s up to 5 minutes. The retry can arrive up to 7 days later. A half-failed attempt may have left copies in the log, and dedup handles those.\n\n6. Two consumer groups read the log independently. The archiver is the first. It writes every envelope, duplicates included, to object storage. Objects are laid out by UTC day of `received_at`, then by partition and offset range. Each record keeps its partition and offset. The archiver commits its log offsets only after the object write succeeds. A lifecycle rule expires objects at 90 days. An alert fires if archiver lag exceeds 1 hour.\n\n7. The live loader is the second group. It has one consumer per partition, reads in offset order, and works in micro-batches about every 60 seconds.\n\n8. For each event the loader runs set-if-absent on the key-value store, with key `event_id`, value = the event's log position, and TTL = 8 days. If the key was absent, the event wins. If the key exists with the same log position, the event also wins. That happens when the loader crashed after claiming the key but before finishing the load and restarted from its last committed offset. If the key exists with a different position, the event is a duplicate. It is dropped from `events_clean` but stays in the archive. This also covers a retry arriving on a later UTC day, because the live path only drops the later copy and the winner's row stays in its own day's partition.\n\n9. The loader enriches the winners with geo-IP lookup and User-Agent parsing. It stamps each row with the enrichment code version and the geo-IP database version. Bot handling is deliberately not wired in, because Product has not decided whether to drop bots or keep them with a flag.\n\n10. The loader writes winners into `events_clean`, in the partition for each event's own UTC day of `received_at`. Just after midnight it can still write into the previous day's partition, which is correct. Loads are meant to be idempotent by `event_id`, and the loader commits log offsets only after the load succeeds. The target is for rows to be queryable within about 3 minutes end to end, with an alarm on p99 above 3 minutes.\n\n11. Replay: an operator asks to rebuild closed day D and names the enrichment code version. The tool starts only if all of these hold. Now is at or after 02:00 UTC on D+1. Both the loader and the archiver are caught up against log end offsets read after that time. D and its 8-day lookback are inside the 90-day archive window. No other replay of D holds the per-day lock. Otherwise it refuses.\n\n12. The replay runs on separate compute and reads only the archive. Its warehouse and storage read throughput is capped, and it writes to a staging table or partition rather than the live one.\n\n13. The replay reads the archive for D and the 8 days before it. For each `event_id` it takes the copy with the lowest log position, comparing offsets within that event's partition and ignoring day folders. It keeps the event for D only if that winning copy has `received_at` in D. It re-enriches the winners with the chosen code version and writes them to staging.\n\n14. The replay compares staging with the live partition and produces a diff report. The id sets and row counts should match, with differences only in enriched columns. If the id sets differ, the replay stops. The operator reviews the report and may explicitly confirm, after which the swap proceeds with the staged data, since the archive is the source of truth.\n\n15. The replay uses the warehouse's atomic single-partition replace to swap staging into day D, so dashboards see either the old complete day or the new complete day. It records the run id, code version and counts. Nothing else is needed afterwards, because dedup keys depend only on `event_id`. A failed or aborted run leaves the old partition untouched, and re-running is safe.\n\n16. If the key-value store fails, the loader pauses instead of loading without dedup. Then three things happen in order. The operator waits until the archiver reaches the loader's committed position. The dedup state is rebuilt from the archive for the last 8 days, up to the loader's committed position only, using each `event_id`'s lowest log position as the value and a TTL of 8 days minus the copy's age. Then the loader resumes from its committed offset.\n\n17. Monitoring covers collector 5xx and 429 rates, archiver and loader lag, end-to-end freshness and dedup rate. A jump in dedup rate may mean a client retry storm, and a drop may mean key-value store loss. It also covers a daily reconciliation of archive winner count against `events_clean` count for the closed day.",
+   "gaps": [
+    "How the warehouse makes a micro-batch load idempotent by `event_id` (upsert, or delete-then-insert in one transaction) is unknown, as is whether that is safe in a partition being queried. Step 10 depends on it.",
+    "The exact enriched columns (geo and user-agent fields) are not listed, so I can't say what enrichment adds to a row.",
+    "Where enrichment code versions are stored, and how the replay tool fetches and runs a pinned version, is not specified. Step 13 depends on it.",
+    "What happens to bot traffic is undecided. I can't say whether bot rows reach `events_clean` or whether the table has a flag column.",
+    "The document doesn't say how the loader behaves when the load to the warehouse fails (retry, alert, stall). It only says offsets commit after a successful load.",
+    "The document doesn't say what happens when a replay fails the precondition check, other than 'it refuses'. It doesn't say who reruns it or how the operator is told.",
+    "It is unclear whether a key claimed by a duplicate can ever be 'claimed' by an event whose load later fails permanently, and what the recovery is beyond restart from the committed offset.",
+    "Collector clock skew between instances could make offset order differ from `received_at` order near midnight. The plan only says it ignores this, so the effect on day assignment and first-received is unresolved.",
+    "The document doesn't say how the 'caught up' check or the diff report is actually computed or presented to the operator. It also doesn't say how the operator confirms an id-set mismatch."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

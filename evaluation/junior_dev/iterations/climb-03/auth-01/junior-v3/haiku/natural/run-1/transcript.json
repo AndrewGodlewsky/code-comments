@@ -1,0 +1,124 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What code runs the session check on every protected route? Is it shared middleware, or does each route do it itself? And what does the route do with the returned user id?",
+     "about": "Protected page, any route except /login"
+    },
+    {
+     "id": "2",
+     "text": "When the new session row is inserted, what values go into last_seen_at and absolute_expires_at? The schema gives last_seen_at no default.",
+     "about": "Successful login is one transaction"
+    },
+    {
+     "id": "3",
+     "text": "What exactly counts as a failed attempt? Is it only a wrong password or unknown email, or does an empty or malformed email or password count too? What do those requests get back?",
+     "about": "Decisions 6 and 7, Failure counting"
+    },
+    {
+     "id": "4",
+     "text": "What actually triggers the cleanup job every 10 minutes? Is it a timer inside each app process, or an external scheduler? What happens if both instances run it at the same moment?",
+     "about": "Decision 5, Abandoned sessions are cleaned up by a periodic job"
+    },
+    {
+     "id": "5",
+     "text": "When the browser holds a cookie with no Max-Age or Expires, what happens to it when the browser closes? Does the user have to log in again, or can the session continue?",
+     "about": "Decision 3, Cookie: __Host-sid"
+    },
+    {
+     "id": "6",
+     "text": "On a protected request where the session lookup fails, the page is a 503 and the cookie is kept. Does the user just retry by reloading? Is there any retry or timeout logic in the app, or does it depend on the Postgres client's own timeouts?",
+     "about": "Decision 10, Storage failure behaviour"
+    },
+    {
+     "id": "7",
+     "text": "What does GET /login show? And what happens if a user who already has a valid session visits /login or posts to it?",
+     "about": "Sequence diagram, Login, POST /login"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "One shared middleware, not per-route code. It runs before every route except /login and performs the choice 4 statement. The returned user ID is passed to the route, which uses it to load that user's data and does not check the session again. Reason: a new route cannot forget the check."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "On login the insert sets last_seen_at = now() and absolute_expires_at = now() + 12 hours. created_at takes its default. The schema has no default for last_seen_at or absolute_expires_at, so the insert must set both explicitly. The file now says so in choice 8 and the schema comments."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A failed attempt is any POST /login whose trimmed, lowercased email is non-empty and at most 254 characters. That includes a wrong password, an empty password, and an email with no @, since each is checked against the dummy or real hash and fails. A missing or over-long email gets the same 401 page with no database lookup and is not recorded, because there is no key to count it under. Reason: the 254 cap already bounds row creation, and this keeps the rule to one line."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The trigger is a timer inside each app process, not an external scheduler. Every 10 minutes each instance runs the two idempotent deletes. If both run at the same moment, both delete the same rows, row locks serialize them, and the second finds nothing extra to delete. Nothing needs coordination. The file now says where the timer runs."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "A cookie without Max-Age or Expires is a browser-session cookie. Most browsers discard it when they close, so the user signs in again. Some browsers restore session cookies on restart, and then the session continues. The design accepts this: the brief sets the limits and says nothing about remembering users. The server row is not revoked on close. It ends at idle expiry and is removed by cleanup. The file now states this in the rules."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The app has no retry logic and no timeout logic of its own. On a 503 the user retries by reloading. The wait is bounded only by the Postgres client's timeouts. The timeout values are an implementation setting, so they are left out of the file. The table now says there is no app retry."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "GET /login shows the sign-in form. A POST /login with a valid session cookie runs a normal login, so it rotates the session and does not redirect. Nothing sends a signed-in user from /login to /dashboard. Reason: the brief exempts /login from the check and says nothing about redirecting. The file now states this."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "8",
+     "text": "The shared check runs before every route except /login. Does POST /logout also go through it? If so, what does a user with an expired session get when they log out: the check's redirect, or the logout reply?",
+     "about": "Logout, POST /logout, and Protected check"
+    },
+    {
+     "id": "9",
+     "text": "When the session lookup fails and the middleware returns 503, does the route handler run at all? And when the check passes, can the route fail separately when it loads the user's data? What does the user see then?",
+     "about": "Protected page, any route except /login, 503 on storage failure"
+    }
+   ],
+   "answers": [
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Logout is not behind the shared check. The check runs before every route except /login and /logout, and the file now says so. POST /logout reads the cookie itself and deletes the session by hash. If the session is idle-expired, absolute-expired or unknown, the delete removes zero rows and the user gets the same reply as a live session: 302 to /login with the cookie cleared. So an expired user sees the logout reply, not the check's redirect. Reason: the brief (item 8) requires logout to behave the same with or without a session, and routing it through the check would turn it into a redirect with no server-side delete."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "When the session lookup fails, the middleware returns 503 and the route handler does not run; the file now says so in the protected check rule. When the check passes and the route then fails loading its data, that failure belongs to the route, not to this design. The user sees the app's existing error page, and the session stays valid because the check already renewed last_seen_at. Reason: the brief does not define the route's error page, and the auth layer should not own it. The failure is added to the storage-failure table as its own row."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Browser requests the login page (GET /login). The server just shows the form. Nothing redirects a signed-in user away from it.\n\n2. User submits POST /login with email and password. The app instance trims and lowercases the email. If it is empty or over 254 characters, the app replies 401 \"Invalid email or password\" right away, with no database lookup and nothing counted.\n\n3. Lockout check. The app reads the login_failures row for that email in Postgres (the row holds the last 5 failure times and an optional locked_until). If locked_until is in the future, it replies 429 with a Retry-After of the seconds left. This happens before any password check. The attempt is not counted and does not extend the lock. Lockout applies whether or not the account exists.\n\n4. User lookup. The app selects the user id and password hash for the email. It does a bcrypt compare. If there is no user row, it compares against a precomputed dummy hash so the timing is the same.\n\n5. Failure path. If there is no user or the password is wrong (an empty password and an email with no @ also count), the app runs one transaction. It inserts the failure row if missing (ON CONFLICT DO NOTHING), locks it with SELECT FOR UPDATE, appends now(), and keeps the last 5. If there are 5 entries and the oldest is within 10 minutes, it sets locked_until to now()+15 min. The reply is 401 \"Invalid email or password\", the same for known and unknown emails. After the 15-minute lock ends, the stored times are over 10 minutes old, so the next failure starts a fresh count.\n\n6. Success path. The app runs one transaction. If the request carried a cookie, it deletes that old session. It generates a new session ID (32 random bytes, base64url). It inserts a session row holding only the SHA-256 hash of that ID, plus user_id, last_seen_at = now() and absolute_expires_at = now()+12h. It also deletes the failure row. After commit it replies 302 to /dashboard with Set-Cookie __Host-sid (HttpOnly; Secure; SameSite=Lax; Path=/; no Domain; no Max-Age or Expires). Login always issues a new ID, even if the browser already had a valid one.\n\n7. Login storage failures. If the lockout or user lookup fails, or the failure write fails, or the session transaction fails, the reply is 503 \"We could not sign you in right now. Try again in a moment.\" The lockout check is never skipped. A failed attempt is not silently uncounted. If the session transaction fails, no cookie is issued, and the old session and failure count stay as they were.\n\n8. Protected page (for example GET /dashboard). A shared middleware runs before every route except /login and /logout. If there is no cookie, it replies 302 to /login. Otherwise it hashes the cookie value and runs one UPDATE: set last_seen_at = now() where id_hash matches, last_seen_at is within 30 min, and absolute_expires_at is in the future, RETURNING user_id. It uses Postgres now(), so both instances agree on time.\n\n9. If one row comes back, the middleware passes the user ID to the route. The route uses it to load its data and does not query sessions itself. The page is returned as 200. If zero rows come back (idle-expired, absolute-expired, deleted or unknown, all treated the same), the reply is 302 to /login with the cookie cleared (same attributes, Max-Age=0).\n\n10. Protected-request failures. If the session lookup errors, the reply is 503 \"Sign-in check unavailable, try again.\" The user is not treated as signed in, the route does not run, and the cookie is kept. If the check passes but the route fails loading its data, the app's existing error page is shown and the session stays valid.\n\n11. Logout (POST /logout). It is not behind the middleware. If a cookie is present, the app deletes the session by hash. It then replies 302 to /login with the cookie cleared. The reply is the same whether or not a session existed. If the delete fails, the reply is 503 \"Could not sign you out, try again.\" and the cookie is kept.\n\n12. Background cleanup. Every 10 minutes, each app instance runs two deletes. One removes sessions that are idle-expired or absolute-expired. The other removes failure rows with no failure in the last 10 minutes and no active lock. Both are idempotent, so two instances running at once is safe. A failed run is logged and retried on the next tick. Cleanup only affects storage size, because expired rows are never accepted anyway.\n\n13. Other behaviour. Because the cookie has no expiry, closing the browser usually discards it and the user signs in again. The server row stays until its idle limit passes and cleanup removes it. Every response carries Cache-Control: no-store. The app does not retry; the user reloads. Logs record only hashed or truncated session IDs.",
+   "gaps": [
+    "The document does not say what happens when the PUT/POST /login request carries a cookie but the session transaction's DELETE of the old session finds no row (for example the cookie is stale). It only says the old session is deleted 'if any'.",
+    "It does not say how the app obtains the user's raw cookie value on login to find the old session. It is implied to be the same cookie, but the exact handling is not stated.",
+    "It does not say what happens to a request to /login or /logout that fails for a reason other than storage (for example malformed cookie or missing password field), beyond the email rules.",
+    "It does not say how the 429 or 401 login pages are rendered or what the 'existing error page' is, only that they exist.",
+    "It does not say what the browser sees at the 302 target /dashboard beyond it being a protected page, or where a signed-in user's other routes come from (no route list)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

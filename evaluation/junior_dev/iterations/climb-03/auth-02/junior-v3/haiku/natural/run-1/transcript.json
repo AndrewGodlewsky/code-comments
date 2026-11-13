@@ -1,0 +1,303 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"managed secret store\" and \"KMS\" here (which product), and what does \"a new version\" of a secret mean? Does the app always read the latest version?",
+     "about": "Step 2 / Step 4: store, KMS key, new version of orders-api/prod/<name>"
+    },
+    {
+     "id": "2",
+     "text": "The doc says pods authenticate as `orders-api-prod`. How do dev and local `make run` authenticate to the dev store, given they use different identities?",
+     "about": "Assumption A2 and K8: workload identity"
+    },
+    {
+     "id": "3",
+     "text": "In step 4, who does the 'provider test call' and from where, given the new value must not go into files, chat or env vars? How does the security on-call physically pass the value from the provider to the store?",
+     "about": "Step 3 / Step 4: Moves"
+    },
+    {
+     "id": "4",
+     "text": "How does a pod know which version id to log, and how does step 6 compare it with step 4? Is there anything that lets you see which pods are running which image?",
+     "about": "Step 6: Checks, version ids in startup and refresh logs"
+    },
+    {
+     "id": "5",
+     "text": "Between step 4 (new version written) and step 5, old pods run the old code that does not read the store. Does anything else, such as the old code or other services, ever read the store, and what uses the old keys in the config until then?",
+     "about": "Step 4 vs Step 5: State lives"
+    },
+    {
+     "id": "6",
+     "text": "Once the new pods use the new keys and old pods use the old keys, what exactly does the provider see as 'old-key requests dropped to zero'? What if a pod receives a refresh after step 5 and then old keys are the only ones still in config of rolled-back pods?",
+     "about": "Step 6: old key traffic dropped to zero for 15 minutes"
+    },
+    {
+     "id": "7",
+     "text": "What is the readiness probe's relationship to Kubernetes here: who calls `GET /healthz`, and what is the separate liveness check's path?",
+     "about": "K2. Readiness depends on having all three keys"
+    },
+    {
+     "id": "8",
+     "text": "What are 'K1 to K5' and 'K3' in the Step 5 and Step 4 text? Are these the same K sections in Part 2, and what does 'secrets.get' return when a refresh fails mid-request?",
+     "about": "Step 5: Moves, references to K1-K5"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief does not name the secret store product or the KMS service, so the plan calls them 'the secret store' and 'KMS' and lists the product names as an open question. What the plan does fix: each write creates a new version with its own id, and the app reads the current (latest) version. This follows from the brief's requirement that a running instance picks up a new version without a restart."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Developers never use the prod identity. Under step 2, engineer roles can read and write orders-api/dev/* only, so make run and tests use the developer's own engineer identity, which cannot read prod. How a developer logs in to the dev store is not in the brief, so it is an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The security on-call runs the provider test call and the store write. They copy the value straight from the provider console into the store's write command in one sitting, and never save it to a file, chat, ticket or environment variable. The brief does not name the tool or the machine, so that is an open question."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Each pod logs the version id for each key at startup, and again on refresh when the version changes (as K3 requires). Step 6 compares those logged ids with the ids recorded in step 4, or with later ids recorded in the tracking issue. The pod's image is read from the cluster's pod list, since deploy.md describes a Kubernetes rollout. Whether a store read returns the version id along with the value is not confirmed, so that is an open question."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Checked in existing/config_loader.py. The current loader reads only config/app.yaml, and the clients read keys from it. Nothing reads the store until step 5. Between steps 4 and 5, the old code uses the keys in config, which stay valid. Other services that use these keys are found by the step 1 inventory. If there are any, they must be added to the plan, and their use of the old key counts in the step 6 check."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The plan assumes the provider reports requests per API key. Whether it does is not known, and it is an open question. If it does not, step 6 needs another check. On rollback: a new-image pod never holds old keys. It loads from the store, ignores api_key, and refreshes only from the store, so old keys are never the only keys a new pod has. Pods on the pre-migration image hold old keys and never refresh. If one is rolled back before step 7, its old keys still work, and the step 6 gate holds while it runs."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Checked in deploy.md. The cluster's readiness probe is GET /healthz, so the cluster (the kubelet) calls it. The liveness check is a separate path that does not depend on the store. Its exact path is a detail for implementation and is not in the plan."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "K1 to K5 were the runtime sections of Part 2 of the old file. The rewritten file puts them into step 5 and the runtime rules section, and removes the codes. K3 in step 4 means the refresh task that runs every 5 minutes. If a refresh fails mid-request, secrets.get returns the current in-memory value, which is the last good value, because a failed refresh leaves the holder unchanged. The swap is atomic, so a request gets either the old value or the new one, never a partial one."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "After step 5, if a provider call with a key from the holder returns 401, what does the client do? Does anything react, or does the request just fail?",
+     "about": "Step 5: Each provider client reads its key from the holder on each request"
+    },
+    {
+     "id": "10",
+     "text": "When a rollout halts because new pods never become ready, who or what notices, and how? Is there an alert, or does someone watch the deploy?",
+     "about": "Step 5: If it fails / What fails and what happens table"
+    },
+    {
+     "id": "11",
+     "text": "In step 6, what does the on-call do to find 'repeated refresh warnings'? Where are the logs searched, and what counts as repeated?",
+     "about": "Step 6: If it fails"
+    },
+    {
+     "id": "12",
+     "text": "Step 6 requires pod version ids to match step 4 or a later id in the tracking issue. Who records a later id, and when, if a key is rewritten between steps 4 and 6?",
+     "about": "Step 6: Checks, version ids"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "After step 5 the client does not retry with another key or with an old value. The request fails with the provider's error, and the client logs the provider name and the HTTP status, never the key. Reason: the brief adds no fallback mechanism, and the skill says not to add one unless the brief requires it. A 401 would break customers, which is why step 6 is a strict gate that stops old keys being revoked while still in use. Whether to keep a previous value and retry once is an open question at the end of the file (brief open question 7). The failure table and step 5 now say this."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The brief and deploy.md say only that the rollout halts and old pods keep serving. They do not say whether an alert fires or someone watches the deploy. I do not know which is the case. Added as open question 16 so security or the platform owner can answer it."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Search the central log service (kept 30 days) for the refresh warning text, filtered to the prod service, over the same 15-minute window as the old-key check. Any warning fails the gate, not a count of repeats. Reason: a single warning shows that a pod could not refresh, and the gate needs every pod to be refreshing before revoke. A looser threshold would need a decision from security, and that is covered by open question 6."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The security on-call who writes a new version records its version id in the tracking issue at write time, after the same validation in step 4. Step 6 compares each pod's logged ids with the latest id recorded. Reason: the on-call is the only writer of prod secrets, so they are the only ones who know the id when it is written. A rewrite is not a special case. It follows step 4."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "13",
+     "text": "In step 5, the app loads secrets at startup and \"the loader ignores any api_key field\". During the rolling deploy, what does an old pod do when step 4's new key is already live at the provider but the old pod still has the old key? Is the old key really still accepted, so the mixed fleet works?",
+     "about": "Step 5: State lives (mixed fleet)"
+    },
+    {
+     "id": "14",
+     "text": "Step 6 says each pod logs version ids \"at startup\". Do pods also log version ids when the refresh swaps in a new version? If a pod refreshed to a newer version after starting, how does the check treat that?",
+     "about": "Step 6: Checks, version ids"
+    },
+    {
+     "id": "15",
+     "text": "Step 6 requires zero old-key requests for 15 minutes. If the provider has no per-key usage reports, what is the replacement check? Is the gate still passable?",
+     "about": "Step 6: Checks / Open question 14"
+    },
+    {
+     "id": "16",
+     "text": "What does the refresh warning text look like, and where is it defined? Step 6 searches for it, so how does the on-call know the exact string?",
+     "about": "Step 6: Checks (refresh warning text) and Runtime rules: On a failed refresh"
+    },
+    {
+     "id": "17",
+     "text": "In the failure table, if a bad version is written and pods pick it up within 5 minutes, the on-call writes the previous value as a new version. Who notices the 401s, and how long until pods recover?",
+     "about": "What fails and what happens: Bad new store version"
+    },
+    {
+     "id": "18",
+     "text": "Step 2 says a wrong IAM policy shows up as a startup failure in step 5. Why is the policy first tested only by the simulator, and not by a real read from the pod identity before step 5?",
+     "about": "Step 2: If it fails / policy simulator"
+    }
+   ],
+   "answers": [
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Yes, the mixed fleet works. An old pod keeps its old key, which stays valid at the provider: step 3 only adds keys, and step 7 revokes old keys only after the step 6 gate. A new pod uses the new key, validated in step 4 and live since step 3. Step 5 now states this. The reasoning depends on the two-live-keys gate in step 1."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes. The runtime rules already log the new version id on a refresh that changes the version. Step 6 now uses the latest logged id per key, from startup or from any later refresh. A pod on a recorded id passes, and a pod on an unrecorded id fails. Reason: a refresh is how a pod adopts a new version, so startup-only logging would miss the id the pod actually uses."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The plan had no replacement. Without per-key usage, the zero-old-key check cannot be run, so the gate cannot be passed. I made per-key usage a second hard gate in step 1: if a provider cannot report it, stop and escalate before step 3. Whether our providers report it is unknown (Open questions, item 3). Checks such as no pre-migration pods do not see other holders of a leaked key, so they are not a substitute."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The brief does not define the text, so the plan now fixes it: the warning line starts with `secret refresh failed`, followed by the secret name, the attempted version id and the error class. Step 6 searches for that exact text. Reason: the on-call needs an exact string, and the implementation must emit it."
+    },
+    {
+     "id": "17",
+     "tag": "unknown",
+     "text": "Who notices the 401s is not known. The brief and the docs define no alert for provider 401s, so this is added as open question 16. Recovery timing is known from the refresh rule: once the previous good value is written as a new version, pods pick it up at their next refresh, up to 5 minutes later, plus the time to write it. That recovery works only while the previous key is still valid at the provider, which after step 7 holds only for keys that were not revoked."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The simulator checks the policy statements, not what the pod identity can actually read at runtime. The plan had no real read, which left a gap that would surface a wrong policy only at step 5. I added a read check in step 4: after the writes, a job that serves no traffic reads the three prod secrets as orders-api-prod and confirms the version ids. Reason: this is the earliest point where the real identity can read real values, and it runs before any pod depends on it. How the job runs as that identity is not in the brief (open question 13)."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "19",
+     "text": "In step 5, how does a new pod get its identity to read the store at startup? Is `orders-api-prod` attached to the pod by the cluster, and who sets that up?",
+     "about": "Terms: Workload identity / Step 5 Moves"
+    },
+    {
+     "id": "20",
+     "text": "The refresh swaps in the latest version. If the on-call writes a new version later (a rewrite), do all pods switch to it within 5 minutes with no deploy? Then what does 'latest version' mean for the step 6 check when old pods and new pods are mixed?",
+     "about": "Terms: Refresh / Step 4: A later rewrite of a key"
+    },
+    {
+     "id": "21",
+     "text": "Between step 4 and step 5, the new values are in the store but no pod reads them. In step 6 the old-key request count must reach zero. What stops old pods or other services from using old keys after the rollout, and what do old pods do with their old keys until they stop?",
+     "about": "Step 6: Checks (old keys zero for 15 minutes)"
+    },
+    {
+     "id": "22",
+     "text": "At startup, in what order do things happen: load config, read three secrets, build clients, listen? When /healthz returns 503 before keys load, is the server listening at that time, or not yet? How does that fit with 'before the server listens'?",
+     "about": "Step 5: Moves (startup and /healthz)"
+    },
+    {
+     "id": "23",
+     "text": "Who performs step 5's deploy and who watches it finish? What is the 'deployer' role, and how does it differ from the security on-call?",
+     "about": "Step 4 Read check / Step 5 Rollout"
+    },
+    {
+     "id": "24",
+     "text": "What does the refresh task do when a secret is deleted or a new version has a different key that the provider rejects? Does a bad key that passes the format check still replace the good one?",
+     "about": "Runtime rules: Refresh / On a failed refresh"
+    },
+    {
+     "id": "25",
+     "text": "The plan says dev keys come from sandbox or test keys at providers, but step 3 and 4 only describe prod. Who creates the dev keys and writes them to orders-api/dev/, and when?",
+     "about": "Step 4: Dev follows the same path / Step 9"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "unknown",
+     "text": "deploy.md says prod pods run under the service identity orders-api-prod, so the cluster already attaches that identity. The brief and deploy.md do not say how the cluster attaches it or who set it up. The plan now says the cluster provides workload identity and lists the mechanism and owner under open question 13."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Yes. A rewrite reaches running pods at their next refresh, up to 5 minutes later, with no deploy. For step 6, latest version means the newest id recorded in the tracking issue. Old-image pods never read the store, and step 6 requires that none run, so the mixed case only affects new pods. Step 6 now runs at least 5 minutes after the last write so every pod has refreshed. Reason: the refresh rule in the runtime rules."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "Checked against deploy.md and step 5. Old pods keep their old keys in memory until the rolling deploy replaces them, and they stop using them then. Only the pre-migration image holds old keys in its config, so once no such pod runs, the remaining users are other services. Step 1 inventories those, and step 6 requires them moved to the new keys before the zero-usage check."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Step 5 now lists the startup order: load config, read the three secrets, build clients, then listen. The server does not listen until all three keys are in the holder, so /healthz returns 200 only when keys are loaded. The earlier sentence saying /healthz returns 503 before keys load conflicted with listening only after the load, so I removed it. Reason: the brief requires keys before the pod reports ready, and loading before listening meets that with no extra state. A pod that has not loaded keys does not answer the probe, so the cluster treats it as not ready."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The deployer is whoever starts and watches the rollout, meaning the person or pipeline that runs the deploy. It is not the security on-call, who writes prod secrets and signs the step 6 gate. The brief does not name the team that holds the role, so that is listed under open question 13."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "A deleted or missing secret is a failed read: the last good value stays and a warning is logged. A new value with a valid format that the provider rejects does replace the good value, because refresh cannot test a key with the provider. The step 4 test call is the guard. If a bad value gets through, requests get 401s until a good value is written back, as the failure table says. Reason: the brief adds no fallback mechanism."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "Step 9 now says an engineer creates the dev keys. The brief lets engineer roles write orders-api/dev/*. The engineer creates sandbox or test keys at each provider, runs the same test call as step 4, and writes them to orders-api/dev/<name> before developers switch to dev keys. Dev keys never went live in production, so they need no step 6 gate and no step 7 revoke. Whether providers offer sandbox keys is open question 4."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger and starting state. The plan is approved. Right now orders-api has three live provider keys (payments, email, geocoding) in `config/app.yaml`. That file is committed to git and copied into every image. The goal is to move the keys to a managed secret store, rotate them, and have each pod load them at startup and re-read them every 5 minutes. The old keys are revoked only at the end.\n\n2. Step 1, confirm and inventory. Nothing moves. A person records each key's provider, name and every place it is used (code paths, instances, other services) in the migration tracking issue, which holds no key values. The person also checks two hard-gate assumptions for each provider. The provider must allow two live keys at once, and it must report requests per key. If a provider fails either check, the migration stops for that provider before step 3, security is escalated to, and nothing is revoked.\n\n3. Step 2, build the store layout. Through infrastructure-as-code and security review, `orders-api/prod/{payments,email,geocoding}_api_key` and the same three under `orders-api/dev/` are created. One KMS key is created per environment. The IAM rules are:\n   - The pod identity `orders-api-prod` reads only `orders-api/prod/*`.\n   - Only the security on-call role writes prod.\n   - No engineer role reads prod.\n   - Engineers read and write dev only.\n   Before any value is written, the store's policy simulator confirms that engineer and CI roles cannot read prod. If a bad policy slips past both the simulator and the step 4 read check, new pods fail at startup in step 5, the rollout halts, and old pods keep serving. The fix is to correct the policy, re-run the simulator and retry. State lives in the store and the IaC policy files.\n\n4. Step 3, new provider keys. The security on-call creates a new key at each provider's console or admin API. The old keys stay active. State lives at the provider. If this fails, production is unchanged, so retry or escalate, and do not revoke anything.\n\n5. Step 4, validate and write. The on-call copies each new value from the provider console into the store's write command in one sitting. The value is never put in a file, chat, ticket or environment variable. First a provider test call confirms that the value authenticates. If validation fails, nothing is written and the process returns to step 3. If it passes, the value is written as a new version of `orders-api/prod/<name>`. The store returns a version id, and the on-call records each id in the tracking issue at the time of the write. If a write fails, retry, and nothing is affected because the old code does not read the store yet. Then the deployer runs a job that serves no traffic and reads the three prod secrets as `orders-api-prod`. Each read must return the version id just written. If a read fails, fix the policy (step 2) and re-run the check. Validation comes first because running pods pick up a new version within 5 minutes, so a bad key would reach customers. Any later rewrite of a key repeats this step in full, and running pods pick it up at their next refresh without a deploy.\n\n6. Step 5, release the code. The trigger is a merge to `main`. CI builds one image with no key values. The three `api_key` lines leave `config/app.yaml`. The CI guard is added, and local development moves to dev keys. Each new pod starts in this order:\n   a. Load `config/app.yaml` for non-secret settings and ignore any `api_key` field.\n   b. Read the three secrets into the in-memory holder. This is one attempt plus up to three retries, 2 seconds apart. If any secret still fails, the pod logs the secret names and attempt count (no values) and exits non-zero.\n   c. Build the provider clients. Each client reads its key from the holder on every request and does not copy it in its constructor.\n   d. Start listening.\n   `/healthz` therefore answers 200 only after all three keys are loaded. Liveness is a separate check that does not depend on the store.\n\n7. Step 5, rollout. The deployer runs a rolling deploy with `maxUnavailable: 0`, so a new pod must pass readiness before an old pod stops. The deployer watches it until it completes or halts. If the store is down or a secret is missing or bad at startup, the new pod exits and is never ready. The rollout halts and old pods keep serving. During the rollout old and new pods run side by side. Both key sets are valid at the providers, so old pods work on old keys held in memory and new pods work on new keys. If a provider returns 401 for a key in the holder, the request fails with the provider's error. The client logs the provider name and status, never the key, and does not retry with another key. Rollback before step 7 is to redeploy the pre-migration image, whose old keys still work.\n\n8. Runtime, after startup. Every 5 minutes each pod's refresh task re-reads each secret. Each secret is swapped in on its own when its read succeeds, and the swap is atomic. If the version changed, the pod logs the secret name and new version id. If a refresh fails (store error, timeout, missing or deleted secret, empty or malformed value), the pod keeps the last good value and logs one line starting with `secret refresh failed`, followed by the secret name, the attempted version id and the error class. Readiness and liveness are not affected. A value that looks valid but is rejected by the provider is swapped in anyway, because refresh cannot test with the provider. Requests then get 401s until a good value is written back. Keys live only in memory: never on disk, in environment variables or in logs. The store SDK's disk cache must be disabled, the `Authorization` header is redacted in debug logs, and core dumps are disabled or confirmed not collected. A pod restart discards memory and repeats the startup load. If the store is down at that moment, the restarting pod cannot become ready, but running pods keep their last good values.\n\n9. Step 6, the gate. This runs at least 5 minutes after the last write, once step 5 has completed. All five checks must pass:\n   - For each of the four prod pods, the latest logged version id per key equals the id recorded in the tracking issue.\n   - The cluster pod list shows no pod on the pre-migration image.\n   - Every other consumer from the step 1 inventory uses the new keys.\n   - At each provider, requests with each old key have been zero for 15 minutes. The window is proposed and awaits security's confirmation.\n   - A central-log search of the prod service's logs for `secret refresh failed` over the same 15 minutes returns zero matches.\n   The security on-call records sign-off in the tracking issue. If any check fails, hold, do not revoke, and investigate.\n\n10. Step 7, revoke. After the on-call signs off, each old key is revoked at its provider. This cannot be undone. Any old-key traffic left behind would become 401s for customers, which is why the gate is strict. After this step the pre-migration image is no longer a safe rollback target. The plan says to roll back to the post-migration image instead.\n\n11. Step 8, CI guard and cleanup. CI fails any change that puts an `api_key` field in `config/app.yaml`, and it checks the file contents, not just the diff. To verify it, add an `api_key` line on a throwaway branch and confirm CI fails, without merging. Also confirm that `main` and the built image contain no key values. Record in the tracking issue that the old keys remain in git history, which is not rewritten, and that those keys are now revoked. If the guard does not fail, the migration cannot be closed.\n\n12. Step 9, local development. This starts from the step 5 release. An engineer creates sandbox or test keys at each provider, runs the same test call as in step 4, and writes them to `orders-api/dev/<name>`. This happens before developers switch. Dev keys never went live, so they need no gate or revoke. Each developer's own identity reads `orders-api/dev/*`, and `make run` and the tests use the same loader. Tests use an in-memory fake secret source and fake values, with no files or environment variables. The test suite also fails if the fake key `FAKE_PAYMENTS_KEY_123` appears in captured logs. If the dev store is unreachable, `make run` fails fast with a message naming the missing secret, and never falls back to prod or the old keys.\n\n13. Exposure and bad versions. A key found in logs is an exposure incident, so rotate it again from step 3. For a bad store version that validation missed, the on-call writes the previous good value as a new version. Pods pick it up within 5 minutes. This works only while that previous key is still valid at the provider, and a compromised key needs a new provider key.",
+   "gaps": [
+    "The document does not say what exactly triggers or decides that step 5 begins (who merges to `main` and when relative to the step 4 read check). It says only that the trigger is the merge.",
+    "The document does not say how the new pod gets its workload identity (who attaches it and how) or how the read-check job runs as `orders-api-prod` (open question 13). I cannot explain how a pod authenticates to the store in practice.",
+    "The document does not say whether a store read returns the version id along with the value (open question 14). Steps 4 and 6 depend on this, so I cannot explain how the pod learns the id it logs.",
+    "The document does not say how a pod compares versions to decide it should swap. It says to log only if the version changed, but not whether the pod fetches 'latest' each time or checks an id first.",
+    "The document does not say how the deployer learns that a rollout has halted. It also does not say whether anyone is alerted, or who acts on a halted rollout or a 401 spike (open question 16).",
+    "The document does not say how a developer authenticates to the dev store for `make run` (open question 15).",
+    "The document does not say which store and KMS products, tools or machines run the test call, the write and the read check (open questions 12 and 13). It also does not say which team is the deployer.",
+    "The document does not say whether the retry count means four attempts or three (open question 6), so I cannot give the exact startup retry behavior or its timing with certainty.",
+    "The document does not say what happens to a pod that has been unready for a long time during a halted rollout (for example, whether the cluster restarts it or the deployer rolls back). It says only that the rollout halts and old pods keep serving.",
+    "The document does not say how the 'four prod pods' check in step 6 is read from the logs (which tool or log fields give the 'latest logged version id'), beyond naming the central log service."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

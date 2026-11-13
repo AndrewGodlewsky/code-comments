@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 
-REVIEWS = {"none", "self", "prompt", "critic", "junior", "junior_full"}
+REVIEWS = {"none", "self", "prompt", "critic", "junior", "junior_full", "simplify"}
 MODELS = {"haiku", "sonnet", "opus"}
 
 
@@ -28,6 +28,7 @@ class Arm:
     procedure: str = "trace"          # trace (the shipped prompt) | free
     self_passes: int = 3              # SelfReview's revision passes, matched to Junior's mean rounds after the pilot
     final_simplify: bool = True       # skill step 7 (climb iteration 2): one simplify pass after the loop
+    skill_variant: str = ""           # a SKILL.md variant file to run instead of the shipped one (climb screening)
 
     def __post_init__(self):
         if self.review not in REVIEWS:

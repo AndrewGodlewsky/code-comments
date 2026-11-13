@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Which product is the \"managed secret store\", and how does a running pod prove it is identity `orders-api-prod` when it reads from it?",
+     "about": "2. Create the store layout and access rules"
+    },
+    {
+     "id": "2",
+     "text": "How does the app know which environment path to read at startup? The doc says prod's `APP_ENV` comes from the deploy manifest. Does the app build the path `orders-api/<env>/<name>` from that value?",
+     "about": "3. Set up local development / 7. Load all three keys at startup"
+    },
+    {
+     "id": "3",
+     "text": "When the client reads `secrets.get(...)` per call, does the request fail or retry if the provider rejects the key (for example right after a swap)? Or does it just return the error to the customer?",
+     "about": "6. Add an in-memory secret provider and make clients read it per call"
+    },
+    {
+     "id": "4",
+     "text": "How exactly does the operator pause the rollout after the first new pod, and what does \"check that its calls to all three providers succeed\" mean in practice? Is it real customer traffic, a test call, or logs?",
+     "about": "12. Deploy the new image (Gate)"
+    },
+    {
+     "id": "5",
+     "text": "How does the operator read each pod's version ids in step 13? Who can reach the internal endpoint or metric, and is it checked pod by pod?",
+     "about": "10. Report non-secret state / 13. Confirm every instance is on the new keys"
+    },
+    {
+     "id": "6",
+     "text": "Step 13 compares pods against the version ids recorded in step 5. If a newer version gets written later, such as a corrected value, what does the operator compare against?",
+     "about": "13. Confirm every instance is on the new keys (Version ids)"
+    },
+    {
+     "id": "7",
+     "text": "In step 14, if revoking one provider's old key causes errors from a missed consumer, how do you recover? The old key is already revoked, so what does \"treat the new key as the one to keep\" actually do?",
+     "about": "14. Revoke the old keys at the providers (If it fails)"
+    },
+    {
+     "id": "8",
+     "text": "The old images carry the leaked keys, and old pods still serve until the rollout ends. Between step 5 and step 14, does anything stop the old keys in the file from being used by those old pods or other consumers? And how are old pods known to be gone in step 13?",
+     "about": "12. Deploy the new image (Old pods) / 13. Pod list"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief does not name the store product or the mechanism by which a pod proves it is orders-api-prod; it only fixes the identity and paths. I will not guess. Added to the assumptions, to the step 1 checks (Identity) and to the open questions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. The app reads APP_ENV (prod from the deploy manifest, dev from make run) and builds orders-api/<APP_ENV>/<name>. It has no default, so an unset APP_ENV refuses to start; this stops a local run from ever reaching prod paths. Now stated in the Summary and step 7."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The client does no new retry. A provider rejection goes back to the caller exactly as today. Adding retries would be a new mechanism the brief does not require, and the overlap keeps the old key valid, while step 9 restores a bad new version within 5 minutes. Stated in step 6."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The gate is real traffic on the first new pod for a few minutes: pass if its logs and metrics show no provider auth errors for all three providers, plus the on-call's test call from step 5. Chosen because it needs no extra tooling. The exact pause command depends on the deploy tooling, which I have not verified; it is listed under open questions."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Each pod serves a cluster-internal version endpoint. The operator lists pods from the cluster and queries each one in turn from inside the cluster. Version ids are not secret, so no value is exposed. Step 10 and step 13 now say this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The operator compares against the latest version id in the store for each secret, which must be one the security on-call validated (the step 5 ids or a later corrected one recorded on the ticket). Step 5 now records ids on the ticket and step 13 says this."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Nothing can restore a revoked key, so 'keep the new key' was misleading. The recovery is to move the missed consumer onto the new key from the store immediately. Only that consumer's calls to that provider fail meanwhile. This is a residual risk against the no-failed-requests rule for unknown consumers, which is why the step 1 inventory gates revocation and providers are revoked one at a time. Step 14 reworded."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Nothing stops the old pods or other consumers using the file keys between step 5 and 14. This is deliberate: the overlap is what prevents customer failures, and the keys are already exposed in git history, so the exposure window ends at step 14. Old pods are known to be gone because step 13 lists every running pod from the cluster with its image and requires all to be the new image. Both points are now in steps 12 and 13."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Preflight (before anything changes). Approval of the plan starts it. The team checks five things and records them on a tracking ticket checklist: each of the 3 providers (payments, email, geocoding) allows two active keys at once; every consumer of the live keys is listed (other services, cron jobs, workers, CI, staging, developer machines); providers offer test keys; the store's read API returns the latest value with its version id; and a pod can authenticate to the store as `orders-api-prod`. If a check fails, the migration does not start and nothing needs undoing. If a provider allows only one key, that provider needs its own plan.\n\n2. Store layout and access. Once preflight passes, secrets are created at `orders-api/prod/<name>` and `orders-api/dev/<name>`, each environment with its own KMS key. State lives in the store and KMS policies (managed as code). `orders-api-prod` gets read-only on prod plus decrypt. Only the security on-call can write prod. Engineers can read dev only. Four access checks are run. If a policy is wrong, fix it and retry, because nothing uses the store yet.\n\n3. Local development. Before step 14, `make run` sets `APP_ENV=dev` and reads dev secrets with the engineer's own credentials. Those secrets are test keys. `make run-offline` uses local fakes with no keys. The app refuses to start if `APP_ENV` is unset, and prod gets its value from the deploy manifest. Keys live only in process memory. Offline mode must work before the old keys are revoked.\n\n4. New keys at providers. The security on-call issues a new live key at each provider and leaves the old key active. Each provider then holds both keys. The new keys are never pasted into chat, tickets or files. If a provider refuses a second key, stop and re-plan for it.\n\n5. Validate and store. For each key, the on-call proves it works with a harmless authenticated call, writes it to `orders-api/prod/<name>` (the store assigns a version id), and records the id on the ticket. A key the provider rejects is not written and is replaced. A wrong value is fixed by writing a corrected new version. Validation comes before the write because the app takes the latest version automatically.\n\n6. Code: in-memory secret provider. `app/secrets.py` holds a name to (value, version id) map in memory. The map is replaced whole, so a request sees a consistent pair. The three clients stop copying keys in `__init__` and call `secrets.get(\"<name>\")` at each outgoing request. `config_loader.py` loads only non-secret settings. A missing name raises an error at call time. If a provider rejects a key, the error goes to the caller as it does today, with no new retry.\n\n7. Process startup. The app builds each path as `orders-api/<APP_ENV>/<name>` and reads all three secrets. It makes one attempt plus up to 3 retries, 2 seconds apart. On success it fills the map and logs each version id. If any secret fails, it logs the secret name and error type and exits non-zero, and Kubernetes restarts the pod. A partial load is never success.\n\n8. Readiness. Each `GET /healthz` returns 503 until all three keys are loaded, then 200. A flag in memory, set once after step 7, controls this. Later refresh failures do not flip it back. A pod that never becomes ready gets no traffic, and with `maxUnavailable: 0` the old pod is not stopped.\n\n9. Refresh. After startup a background timer fires every 5 minutes. For each secret independently, the app re-reads the latest value and version id. If the version id changed, it swaps in the new pair and logs \"name now at version X\". On failure it keeps the last good value and logs a warning with name, error type and current version. It never restarts or returns 503, and alerts are raised if warnings repeat. Pods refresh on their own schedules, so a new version reaches them within 5 minutes of the write. If a bad version was written, write the previous good value as a new version and pods pick it up within 5 minutes.\n\n10. Observability and log hygiene. An internal-only, in-cluster endpoint on each pod reports the version id used for each secret, never the values. Logs, exceptions, crash output and HTTP header logging are audited and tested so no key appears. Keys are not put in environment variables. If this fails, the PR does not merge.\n\n11. Config cleanup and CI guard. In the same change as steps 6 to 10, the three `api_key` lines are deleted from `config/app.yaml`, and the loader raises an error if it finds an `api_key`. A CI check fails if any `api_key` appears in the file. It is tested against a deliberately bad copy and made a required check on `main`. If it cannot be made required, that blocks. `deploy.md` is updated. Git history still contains the old keys, which is why they were rotated.\n\n12. Deploy. When the new keys are stored (step 5) and the code is merged and built, a rolling deploy of 4 replicas runs one pod at a time with `maxUnavailable: 0`. New pods use store keys. Old pods keep serving with the old baked-in keys, which are still valid. The operator pauses after the first new pod is ready. It serves real traffic for a few minutes. The gate passes if there are no provider auth errors for any of the three providers and the on-call's test call still works. Then the rollout continues. If the store is unreachable or a secret is missing, the new pod exits, never becomes ready and the rollout halts while old pods keep serving. If the first new pod gets provider errors, stop and roll back by redeploying the earlier image.\n\n13. Confirm. After the rollout, the operator lists all running pods with their images, which must all be the new image. The operator queries each pod's version endpoint from inside the cluster. Every pod must report, for all three secrets, the latest store version, which must be one validated and recorded in step 5. The operator also checks provider dashboards for no recent old-key use, where available, and that the other consumers from step 1 have moved. If any pod mismatches, investigate and do not revoke.\n\n14. Revoke. The security on-call revokes the old key at one provider at a time and watches that provider's error rates after each. Unexpected errors mean a missed consumer, and the fix is to move that consumer onto the new key from the store. After this step, rolling back to pre-migration images is impossible.\n\n15. Clean up. Mark pre-migration images non-deployable, confirm `deploy.md` is merged, and close the ticket with the recorded version ids. If an old image stays deployable, leave the ticket open.",
+   "gaps": [
+    "How a pod actually authenticates to the store as `orders-api-prod`, and which store product is used. The document leaves both to step 1.",
+    "How the operator pauses and resumes the rollout in step 12 with the current deploy tooling.",
+    "How the app gets the engineer's own credentials when running locally with `make run`, and how it picks the credential source versus the pod identity.",
+    "What 'the first new pod' failing looks like in terms of exact metrics or log signals, and how long 'a few minutes' of soak is.",
+    "How the operator reaches the per-pod version endpoint (its path, port and access method), and how the 'latest version in the store' is looked up for comparison in step 13.",
+    "Who deploys or merges the code change and triggers the rollout, and how the rollout is continued after the gate."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

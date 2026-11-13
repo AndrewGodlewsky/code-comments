@@ -1,0 +1,159 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the KV store here (which product, who runs it), and what happens to incoming events if it is unavailable or slow during the claim?",
+     "about": "Step 5. Claim each event for dedup"
+    },
+    {
+     "id": "2",
+     "text": "If a second copy of an event arrives while the first copy's claim is still `pending` (not yet committed), what does the consumer do with it? Is it dropped, or does it wait?",
+     "about": "Step 5 and Step 7 (pending claim)"
+    },
+    {
+     "id": "3",
+     "text": "When a consumer takes over a stale pending claim and re-runs step 6, what stops the original consumer (if it was only slow) from also writing? Where does the 'version' in compare-and-set come from?",
+     "about": "Step 7. Commit claims and offsets"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'delivery SLA' and who is bound by it? Who sends the retries (the 7-day SDK buffer), and what does the client do when it gets a 503 or a 202 that never arrives?",
+     "about": "Terms: Dedup window W and R4 delivery SLA"
+    },
+    {
+     "id": "5",
+     "text": "In step 9 a copy arriving after W is admitted as new into today's partition. In replay (R4) the winner is the earliest copy within the 8-day lookback and is kept only if received_at is in D. For such a late copy, what does replay of its day produce, and what does replay of the earlier day produce? Do they match the live result?",
+     "about": "Step 9. Late copies vs R4. Choose winners"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'envelope' and where do `batch_id` and `position` come from and go? Does the live consumer use them, or only replay?",
+     "about": "Step 1. Stamp at the collector"
+    },
+    {
+     "id": "7",
+     "text": "Who triggers a replay of day D and why would they (what problems are being fixed)? Who is the 'operator' and how do they sign off the diff in R7?",
+     "about": "Part B: Replay of one closed day D, R1 and R7"
+    },
+    {
+     "id": "8",
+     "text": "If live consumers and replay both exist, can live still write rows into partition D after 02:00 UTC on D+1 (for example a retried micro-batch)? How is that handled between R8 and R9?",
+     "about": "R8. Confirm no live writes to D"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The brief names only a key-value store with per-key TTL. Which product runs it, and who owns it, is not known (open question 6). Handling: the claim comes before any write and before the offset commit. If KV is unavailable or slow, the consumer writes nothing and commits no offset, so the event is read again from Kafka and is not lost. The collector is unaffected because it writes to Kafka, not KV. The archive sink does not use KV, so it stays complete. The cost is lag and a p99 latency breach, which are alerted. I chose not to add a fallback path, because the brief asks for the simplest handling."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The second copy is dropped as a duplicate: its claim fails, it is not written, and it does not refresh the TTL. This loses nothing, because the first copy's Kafka offset is stored in its claim. If that consumer crashes, a takeover re-reads the first copy from that offset after about 10 minutes. The plan now says offsets never move past a pending claim, since both copies share a partition. The cost is that the first-arrival latency target can slip if the first consumer crashes. The open question on finding stale claims is still unresolved."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The stopping mechanism is the compare-and-set on commit. The version is the KV record's revision number, a token the store returns with each record. The brief says only compare-and-set, so the revision is assumed and is in open question 4. A slow original consumer can still write rows, but the rows are keyed by event_id and built from the same bytes and pinned versions, so the duplicate write is harmless. Its compare-and-set on commit fails, so it commits no offsets and discards its result. The plan does not fence the warehouse write itself."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The 'delivery SLA' in the plan is the brief's statement that the mobile SDK keeps unacknowledged events for up to 7 days and retries with backoff up to 5 minutes. It is SDK behaviour, not a contract with a named owner, and the brief does not say whether the SDK enforces the 7-day cap (open question 7). The SDK sends the retries. On a 503 or 5xx or 429, the client resends the same batch with the same event_ids. A 202 that never arrives is treated as a timeout, so the client also resends. Rejected events are never resent."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Event E arrives first on day X and is written to partition X. A later copy arrives on X+9, after W, with no live claim, so it is written to partition X+9. Replay of X+9 looks back over X+1 to X+9, finds only the later copy, keeps it, and writes E to X+9. Replay of X finds the first copy in X and keeps it. Both replays match live, but events_clean now holds two rows for E, one in each day. That breaks the brief's first-copy-wins rule. The plan's claim that the 8-day lookback covers every copy holds only if the delivery limit is honoured. The plan now says this, and the window-size question decides it. A longer lookback would detect the duplicate only up to its length."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The envelope is the wrapper the collector adds around each event's original bytes. It holds received_at, batch_id (new per request), position (the index in the batch) and the bytes. The collector writes it into the Kafka record, and the archive sink copies it into the object. The live path uses received_at for the partition and the claim, and it does not use batch_id or position. Only replay uses batch_id and position, in its tie-break for winners. The envelope is now defined in the terms section."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "The brief says an operator rebuilds one closed day, usually after an enrichment bug such as a geo-IP or user-agent fix is found. The brief does not name the operator, and it does not say who signs off a removal above the threshold, or how sign-off is recorded. These are open questions 6 and 9. The plan now defines operator as the person who starts a replay."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes, in principle. A micro-batch that was in flight when day D closed could still write D rows after the replay's check, if consumers lag behind the collector. The plan's replay checks for pending claims and buffered micro-batches before the swap, and repeats that check just before the swap. The swap itself is one warehouse operation. Any row written to D after the swap is a close-gate incident, and the next replay corrects it. The gap is that check and swap are not atomic together. Whether the warehouse can do that is open question 4."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 8 checks for pending claims and buffered micro-batches, but replay is said not to touch KV. How does the replay check them, and where do the buffered micro-batches live?",
+     "about": "Replay step 8. Check for live writes (and the intro line 'It does not read Kafka, touch KV or move live offsets')"
+    },
+    {
+     "id": "10",
+     "text": "When a takeover re-reads Kafka from the claim's stored kafka_offset, does it process only that one event or everything from that offset onward? Which consumer takes over, and what happens to the partition's other work meanwhile?",
+     "about": "Live path step 8. Recover a stale claim"
+    },
+    {
+     "id": "11",
+     "text": "Once a claim is set to committed, does it stay until the TTL W expires? And if the consumer crashes after the warehouse write but before setting committed, what exactly happens on recovery?",
+     "about": "Live path step 7. Commit (claims set to committed)"
+    },
+    {
+     "id": "12",
+     "text": "Day D's partition is replaced at 02:00 on D+1 or later. How long after close does a replay usually run, and can late-arriving events with received_at in D still show up in the archive after the swap?",
+     "about": "Replay step 9. Swap, and Failure handling 'Live row for D after the swap'"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Replay does not write to KV, but it does read it. The old wording 'does not touch KV' contradicted step 8, so I changed the intro and step 8 to say that replay reads KV only for the live-write check. Buffered micro-batches are not visible to replay, but each claim is written before its event is buffered, so every in-flight event has a pending claim in KV. Replay checks for pending claims with first_received_at in D, twice. Whether KV can be queried that way is open question 4."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The takeover re-reads the partition from the stored kafka_offset and runs steps 5 to 7 for each event, not for one event only. A committed claim is skipped, a stale pending claim is taken over, and an event with no claim is claimed as new. The taker's offset commit stops at the first claim it cannot take over. Other partitions are unaffected. This partition's offsets wait at the stale claim until the takeover commits. Which consumer finds stale claims is open question 8."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "A committed claim stays until its TTL W expires, which is 8 days from the first copy, and it is not refreshed. If the consumer crashes after the warehouse write but before setting committed, the claim stays pending. After about 10 minutes a takeover re-runs the write. The write is idempotent on event_id within partition D, so no duplicate rows appear, and then the claim is committed. The failure table now has this row."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Replay now waits the collector's write timeout T after 02:00 on D+1 before its gate passes. An event with received_at in D can reach the archive after close only if its request was stamped just before 02:00 and was still being written. The T wait covers that case, and the close gate and the live-write check run after it. The value of T is open (open question 10). How soon after close replays usually run is not known, and it is open question 11. A late event after the swap is a close-gate incident, which the failure table covers."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client (website or mobile SDK) sends a batch of up to 100 events to the collector. The collector sets `received_at` from its own NTP-synced server clock and makes a fresh `batch_id` for the request. This server time, not any client timestamp, decides the event day D (the UTC date of `received_at`).\n2. The collector wraps each event in an envelope. The envelope holds `received_at`, `batch_id`, `position` (the event's index in the batch) and the original JSON bytes, which it never edits.\n3. The collector validates each event. It rejects an event with no `event_id`, no `device_id`, or bytes over 32 KB. A rejected event gets a reason and goes to a reject log. The rest of the batch carries on.\n4. The collector appends the accepted envelopes to the replicated Kafka topic `events_raw`. The key is `event_id`, so all copies of one event land in one partition. It uses `acks=all`. It returns 202 only after Kafka acknowledges, and the 202 lists each rejected event with its reason. If Kafka is unavailable it returns 503, and the client resends the same batch with the same `event_id`s. If the client gets no response, it also resends the same batch. Clients never resend rejected events.\n5. The archive sink is a separate consumer group on `events_raw`. It writes envelopes and bytes to object storage under `received_date=YYYY-MM-DD/`, rolling files hourly and by size. It does no deduplication, so duplicates are kept. Objects expire 90 days after they are written. An alert fires when sink lag passes about 1 hour. This archive is the source of truth.\n6. The live consumer reads `events_raw`. For each event it does an atomic set-if-absent in KV on key `event_id`. The value is `{state: pending, first_received_at, kafka_offset, owner, claimed_at}` and the TTL is W (8 days). It does this before buffering or writing the event. If the claim fails, the copy is a duplicate. It is dropped and the TTL is not refreshed. W is anchored on the first accepted copy. If KV is unavailable or slow, there is no claim, no write and no offset commit. The event is read again from Kafka, and lag and p99 alerts fire.\n7. The live consumer collects claimed events into micro-batches of about 60 seconds. It enriches them with pinned code and reference-data versions (geo-IP lookup, user-agent parsing). It writes them to partition `received_date = D` of `events_clean`. The write is idempotent on `event_id`. Each row records `enrichment_version`, `reference_data_version` and `pipeline_version`. Bot handling is applied here once product decides it.\n8. After the warehouse write succeeds, the consumer sets each claim to `committed`. It then commits Kafka offsets only up to the last fully committed micro-batch. Offsets never pass a pending claim. A committed claim stays until W expires, so later copies within W are dropped. The latency target is p99 of 5 minutes from receipt to queryable, for first arrivals. It is measured as `warehouse_commit_time - received_at`, with an alert at 4 minutes.\n9. Failure in step 7 or 8: if the warehouse write fails, claims stay `pending` and offsets are not committed. If the consumer crashes after the write but before marking `committed`, claims also stay `pending`. In both cases a takeover happens after about 10 minutes. A claim still `pending` after about 10 minutes may be taken over. The taker sets itself as owner with a compare-and-set on the claim's revision number. It re-reads the partition from the claim's `kafka_offset` and reruns the claim, write and commit steps for each event. A committed claim is done, a stale pending claim is taken over, and an event with no claim is claimed as new. Its offset commit stops at the first claim it cannot take over. If the original consumer was only slow, its commit compare-and-set fails, so it discards its result and commits no offsets. Rows it already wrote are identical and the idempotent write keeps one row per event. Other partitions are not affected.\n10. Late copies: a copy arriving after W has no live claim, so it is admitted as new under its own `received_at`. Mobile events buffered for days are first arrivals and land in the day they arrive, with old client timestamps. If the first copy's claim has expired, the late copy gets a second row in its own day. That breaks first-copy-wins. The plan says this happens only if the 7-day delivery limit is broken. Replay cannot detect it, and a monitor counts copies beyond W.\n11. Day close: day D closes at 02:00 UTC on D+1. The close gate checks that the sink has flushed all objects for D. An event with `received_at` in D that arrives after the gate is an incident, and the day is not complete until it is investigated.\n12. Replay of closed day D reads only the archive. It never writes to `events_raw`, KV or live offsets. It reads KV only in the live-write check. First it refuses to run unless the time is at least 02:00 UTC on D+1 plus the collector write timeout T, and the archive for D-8 through D exists. It takes a per-day lock so only one replay of D runs at a time. It pins and logs the enrichment code and reference-data versions.\n13. Replay reads archive objects for D-8 through D on a separate compute pool with a capped read rate. For each `event_id` with a copy in D, it picks the winner as the copy with the smallest `(received_at, batch_id, position)` across the whole range. It keeps the winner only if its `received_at` is in D. Replay is authoritative, and live may differ from it by sub-second reordering. Replay enriches each winner's original bytes with the pinned versions and writes the rows to a staging table or partition for this run. Dashboards never read staging.\n14. Replay validates the staged rows. The row count must equal the winner count, `event_id` must be unique, every `received_at` must be in D, and the schema must match. It diffs staging against the current partition D (rows added, removed and changed, each with a reason). A removal above an operator-set threshold needs sign-off.\n15. Replay then reads KV and aborts with an alert if any pending claim has `first_received_at` in D. The check is repeated immediately before the swap. Pending claims also cover buffered micro-batches, because claims are written before buffering. If KV cannot be read, replay aborts and alerts, and restarts from step 1.\n16. Replay swaps partition D of `events_clean` from staging in one warehouse operation, so dashboards see either the old partition or the new one. It then logs D, the versions, the counts, the diff, the operator and the time, and drops the staging data. If replay fails before the swap, `events_clean` is untouched and replay restarts from the gate. A live row for D appearing after the swap is a close-gate incident, and the next replay corrects it. Replays of different days can run in any order. A day can be replayed only while its archive and eight lookback days are inside the 90-day retention.",
+   "gaps": [
+    "Which consumer or process finds `pending` claims older than about 10 minutes (open question 8), so I cannot say what actually triggers a takeover.",
+    "The value of the collector write timeout T, which the replay gate waits after 02:00 UTC on D+1 (open question 10).",
+    "Whether the replay live-write check and the swap can be made atomic together (open question 4). A live write could land between the second check and the swap, and the document does not say how that is closed.",
+    "Who the operator is, how a replay is started, and when it runs after close (open questions 9 and 11). I cannot say what starts a replay.",
+    "Who signs off a diff above the threshold, how sign-off is given, and what the threshold is (open question 9).",
+    "Whether `event_id` must be a valid UUID, so I cannot fully define what validation accepts (open question in the validation step).",
+    "Whether bot traffic is dropped or flagged, which changes what the enrichment write produces (open question 1).",
+    "Whether the warehouse and KV actually support keyed idempotent writes, atomic partition replace, set-if-absent with TTL, compare-and-set on a revision, and a query for pending claims by `first_received_at` (open question 4). Several steps depend on these, and the document says they are unconfirmed.",
+    "What happens to events whose `received_at` is in D but arrive after the close gate, apart from calling it an incident. The document does not say how they get into `events_clean`, since replay presumably covers them only if it is rerun.",
+    "How the replay Gate learns that the archive for D-8 through D is complete or still exists, and how the sink-flush check at the close gate is performed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

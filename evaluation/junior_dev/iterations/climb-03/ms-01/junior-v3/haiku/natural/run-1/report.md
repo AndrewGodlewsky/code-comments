@@ -1,0 +1,29 @@
+## Review of ms-01 (junior-v3, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Restructured the file for a newcomer: summary, terms, flowchart, numbered steps, failure table, safety notes, decisions, open questions. The old tables and flowchart notes were merged into these sections.
+- Added the Terms section (snapshot, hold, claim, idempotency key, webhook, outbox, inbox, broker) so the flowchart's vocabulary is defined before use.
+- Defined DoneLate, which the flowchart previously referenced without a definition, and stated that Order does not wait for RefundSucceeded.
+- Added the PaymentDeclined path from RESERVATION_EXPIRED to PAYMENT_DECLINED, and stated that ReleaseReservation on an EXPIRED hold is a no-op.
+- Reconciliation now names its schedule (every 5 minutes, charges PENDING over 35 minutes) and states that it applies the outcome with the same conditional update as a webhook. Removed the dashed Reconcile-to-Hook edge.
+- Replaced the generic Call result unknown row with per-call timeout rules for ReserveStock, RequestCharge, ClaimReservation and ReleaseReservation, and stated that only Reserve and Claim query hold status.
+- Made the caller explicit: the customer's browser calls Order, and Order calls Cart and Inventory. Added the customer-facing states during reservation and waiting.
+- Described the outbox relay and inbox consumer mechanism in Terms. Moved the broker product to Open questions.
+- Added a Declined-to-Released edge, and split the success path so a duplicate PaymentSucceeded ends in a no-op node.
+- Added an explicit decision that the cart removes only ordered lines, while the brief says the cart is emptied. Flagged this conflict for confirmation.
+- Added the reconciliation schedule and refund retry threshold N as proposals in the decisions list.
+- Cut the RESERVED state. Order now stores the hold id and goes straight to PAYMENT_PENDING, because no branch depended on RESERVED.
+- Replaced the three scattered failure notes (short stock, declined, late success) with one failure table that lists each case, what happens, and where it ends.
+- Merged the duplicate-webhook and poll-result paths into one rule: Outcome applies only while the charge is still PENDING, so a webhook and a poll that both report the outcome cannot act twice.
+- Shortened node labels and edge labels to plain words and dropped repeated detail (for example, the 'if still open' wording and the explicit 'Order does not wait for the refund' sentence, now 'refund runs separately').
+- Reduced the terms list: folded Communication into one line with the arrow legend, defined the broker, Inbox and Outbox in one line each, and added Charge and refund so a newcomer knows the Payment records.
+- Kept the Recon poll and flagged it as an open question, because the brief does not require it but it is the only recovery path if a webhook is lost. Did not add any new mechanism.
+- Kept every failure branch from the brief: short stock, declined payment, late success after lapse, failed refund and duplicate webhook.
+- Moved the open questions to the end and turned the unknowns into four plain questions, including the unset retry count N and the lost-reply retry rule.
+- Kept the plan's intent unchanged: stock held before charge, all-or-nothing reservation, 10-minute hold, order-id idempotency keys, full automatic refund on late success, and the cart emptied only on CONFIRMED.
+
+### Holes
+- Q2: How does the customer actually pay? Where are card details entered, and what does Payment send to the provider to start the charge? (author: The brief does not say how card details are entered, either on a provider-hosted page or through a token from the browser. The document only says that Payment's reply carries whatever the customer needs to pay. This is listed under Open questions. Known: Payment sends the order total and the order id as the idempotency key, and it stores the provider's charge reference.)
+- Q5: How does an event in the outbox actually reach the broker and then the consumer? What is the broker here? (author: Mechanism: the state change and its outbox row are written in one transaction. A relay in that service reads unsent outbox rows, publishes them to the broker, and marks them sent. The consumer records each message id in its inbox table in the same transaction as its own change, and skips ids it has already seen. The brief does not name the broker product, so that is left as an open question.)

@@ -96,6 +96,7 @@ class BuildAndDryRunTest(unittest.TestCase):
             self.assertLess(roles.index("verdict"), roles.index("simplify"))
             self.assertLess(roles.index("simplify"), roles.index("key"))
             self.assertTrue(run["artifact_final"].startswith("SIMPLIFIED for"))
+            self.assertNotIn("\\n", run["artifact_final"], "literal \\n escapes must be turned into line breaks")
         for run in (r for r in self.dry["result"]["runs"] if r["arm"] in ("no-review", "self-review", "critic")):
             self.assertNotIn("simplify", [p["role"] for p in self.dry["prompts"] if p["run"] == run["run_id"]])
 
@@ -221,6 +222,45 @@ class BuildAndDryRunTest(unittest.TestCase):
             self.assertTrue((run / name).is_file(), name)
         with self.assertRaises(FileExistsError):
             collect.collect(out, it)
+
+
+class SimplifyOnlyArmTest(unittest.TestCase):
+    @unittest.skipUnless(NODE, "node is required for the dry-run harness")
+    def test_simplify_only_arm_runs_the_final_pass_without_a_junior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _fixture_cases(Path(tmp))
+            arm = arms.Arm(name="simplify-only", review="simplify")
+            files = build.build_batch(["fx-01"], [arm], ["haiku"], 1, "natural", Path(tmp) / "b", "simp", cases_root=root)
+            dry = build.dry_run(files[0])
+            roles = [p["role"] for p in dry["prompts"]]
+            self.assertNotIn("junior", roles)
+            self.assertNotIn("teachback", roles)
+            self.assertEqual(roles.count("simplify"), 1)
+            self.assertTrue(dry["result"]["runs"][0]["artifact_final"].startswith("SIMPLIFIED for"))
+
+
+class SkillVariantTest(unittest.TestCase):
+    @unittest.skipUnless(NODE, "node is required for the dry-run harness")
+    def test_arm_skill_variant_replaces_the_skill_text_for_that_arm_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _fixture_cases(Path(tmp))
+            variant = Path(tmp) / "variant.md"
+            variant.write_text("VARIANT-SKILL-MARKER\n", encoding="utf-8")
+            a = arms.Arm(name="junior-x", review="junior", skill_variant=str(variant))
+            files = build.build_batch(["fx-01"], [a, arms.DEFAULT_JUNIOR], ["haiku"], 1, "natural", Path(tmp) / "b",
+                                      "variants", cases_root=root)
+            dry = build.dry_run(files[0])
+            authors = [p for p in dry["prompts"] if p["role"] in ("author", "verdict", "simplify")]
+            self.assertTrue(authors)
+            for p in authors:
+                self.assertEqual("VARIANT-SKILL-MARKER" in p["prompt"], p["arm"] == "junior-x", p["arm"])
+
+    def test_unknown_variant_file_fails_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _fixture_cases(Path(tmp))
+            bad = arms.Arm(name="junior-y", review="junior", skill_variant=str(Path(tmp) / "missing.md"))
+            with self.assertRaises(FileNotFoundError):
+                build.build_batch(["fx-01"], [bad], ["haiku"], 1, "natural", Path(tmp) / "b", "bad", cases_root=root)
 
 
 class VariantTest(unittest.TestCase):

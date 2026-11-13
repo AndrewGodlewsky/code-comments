@@ -1,0 +1,29 @@
+## Review of feat-01 (junior-v3, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Step 3: stated that the response is text/csv (200) for the small path and JSON 202 for the large path, and that row_count is read from the replica.
+- Step 5: the job_id save is its own single-column update, and the worker never touches it; the race-loser path is explicit and enqueues nothing.
+- Step 6: guards put in one fixed order (failed, done with email, done without email, permission re-check, set running); a running row from an earlier attempt is overwritten.
+- Step 6: states that the row stays running between attempts and what the page shows.
+- Step 8: failure path no longer aborts an upload that already completed; the next attempt overwrites upload_id.
+- Step 10: first checks for done and stops; the conditional update and the best-effort abort are spelled out.
+- Step 11: the requested time is created_at, a new signed URL comes from each latest call on a done export, and expiry is based on completed_at.
+- Step 4 and step 12: the small-path save rule and the front-end flow are written out in one place.
+- Terms: the definition of the job queue now says no code runs between attempts and that delivery can repeat.
+- Testing and retention merged into two short sections; the separate retention step was folded in.
+- Open questions: added question 10 (where the permission check reads); the others were kept and shortened.
+- Restructured the document into the skill's order: a short summary, the terms, the numbered steps, the failure handling inside each step, then the open questions.
+- Removed every cross-reference code and pointer such as 'step 5 item 1', 'test 2', 'Q7' and 'R3', so each step stands alone. Kept the step numbers that the flow needs (for example 'go to step 4').
+- Cut the 13-item testing list and its prose from the document, since it is a separate test plan and the main flow does not depend on it. The measurement notes that matter for the design stay in steps 4 and 7 (the 60-second limit and the 57-part estimate).
+- Merged the repeated 'a click while running returns that export' and 'a new export starts only after done or failed' rules into one paragraph in step 5.
+- Merged the stale-row explanation into the term definition, and removed its repeat from steps 5 and 11. Step 11 keeps only the rule that page loads never change the row.
+- Merged the note about unique-index blocking during retries into step 6, next to the retry behaviour it explains.
+- Merged the 'done export whose email failed on every attempt gets no failure email' note into step 10, where the final-failure check happens.
+- Clarified step 6: the original said the row becomes 'queued' when the permission re-check fails. That is wrong after attempt 1, when the row is already 'running'. The row now simply keeps its current status between attempts. This is a wording correction, not a behaviour change.
+- Shortened the retention note to one paragraph, placed after the rollout note, and kept its substance: the bucket rules, the kept export rows and no cleanup job.
+- Shortened the wording of open questions 1 to 10 without changing what each asks. No question was added, removed or answered.
+
+### Holes
+- None.

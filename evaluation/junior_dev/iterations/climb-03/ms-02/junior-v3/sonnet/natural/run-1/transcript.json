@@ -1,0 +1,101 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the consumer inserts a new row into svc_notifications, what status and next_attempt_at does it get? How does the sender decide a row is 'due', and what does it do while waiting out a backoff?",
+     "about": "Step 3, Sender"
+    },
+    {
+     "id": "2",
+     "text": "What are the possible values of svc_notifications.status, and which step changes each one? Where is the attempts count updated, and when does a row become 'sent'?",
+     "about": "Step 3, Sender / svc_notifications"
+    },
+    {
+     "id": "3",
+     "text": "What is the broker here, and what does 'publisher confirmation' mean in practice? What is the 30 s redelivery window and what starts a redelivery?",
+     "about": "Design in one page, Handoff (broker)"
+    },
+    {
+     "id": "4",
+     "text": "What is MailRelay, and what does it mean that it 'accepts' a send? Is delivery to the user synchronous with accept, and what does it return when it drops a repeat key?",
+     "about": "Step 1, MailRelay.send / idempotency_key"
+    },
+    {
+     "id": "5",
+     "text": "Where are the flags stored and who changes them? How does each monolith instance (relay and old worker) read a flag when it queries pending rows, and how does a change reach them within 10 s?",
+     "about": "Flags: notifications.route.<type>"
+    },
+    {
+     "id": "6",
+     "text": "How does the relay filter by flag in its query, and what happens to a pending row for a service-routed type if the relay thread is not running or the publish is slow?",
+     "about": "Step 4, Relay"
+    },
+    {
+     "id": "7",
+     "text": "When the reconciler republishes a row the service has never seen, or one the service is still retrying, what exactly does the service do in each case? How does the service use the attempts and next_attempt_at carried in the message?",
+     "about": "Step 4, Reconciler and Step 3, Consumer"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A new service row is inserted with status 'pending', and attempts and next_attempt_at copied from the message (a fresh row has attempts 0 and next_attempt_at now). A row is due when status = 'pending' AND next_attempt_at <= now(). While waiting out a backoff it is not due, so the sender does not touch it. The file now says this in Step 3."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "svc_notifications.status is pending, sent or failed. The consumer creates rows as pending. Only the sender changes them: it increments attempts on every try, sets next_attempt_at on a retryable failure, sets sent when MailRelay accepts, and sets failed (paged = false) on the fifth failure. The pager then sets paged = true. Now spelled out in Step 3."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The broker is the platform's existing at-least-once broker, already used by billing and search. A publisher confirmation means the broker has stored the message. A message not acked within 30 s is redelivered, possibly to a different consumer. All taken from the platform facts; added to a Terms section."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "MailRelay is the email-sending service all three types use. 'Accepts' means send() returned success. If it already accepted the same idempotency_key in the last 24 hours it drops the new send and returns success (documented). Whether delivery to the inbox is synchronous with accept is not documented, so unknown; the plan does not rely on it. Noted under Open questions."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Flags are runtime flags read in the monolith with flags.get(name), and a change reaches every instance within 10 s (platform facts). Each poll the relay and the old worker call flags.get per type, so a change is seen within 10 s. Who edits flags and where they are stored is unknown from the sources; I added it to Open questions. The plan only needs the read API and the 10 s guarantee."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Each poll the relay calls flags.get for every type, builds the list of types set to service, and queries pending rows with type in that list. If the relay thread is not running or publishing is slow, those rows stay pending and wait. Nothing is lost, and the 30 s age alert fires. The response is to flip the flag back to monolith. Added to Step 4."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Reconciler republish: for an id the service has never seen, it inserts the row as pending (taking attempts and next_attempt_at from the message) and sends normally; for an id it is still retrying, the insert is a no-op and the message is acked, so the service schedule wins; for a terminal id it sets result_published = false and re-emits the result. attempts and next_attempt_at from the message are used only when a new row is first inserted. Now stated in Step 3 and Step 4."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Prerequisite (Step 1). Before anything else, the old monolith worker is changed to call `mailrelay.send(..., idempotency_key=row.id)`. MailRelay then drops any repeat send of the same key within 24 hours but still returns success. The same deploy adds a per-type \"enqueue to MailRelay\" latency metric (`now() - created_at` when MailRelay accepts), which gives a baseline. State stays in the monolith `notifications` table. If MailRelay is down, the old retry policy applies.\n\n2. Prerequisite (Step 2). A second deploy adds a nullable `handed_off_at` column and allows the status `handed_off`. The old worker's query now also skips any type whose flag `notifications.route.<type>` is `service`. If the flag system can't be reached, the worker treats the type as `monolith`. With all flags unset, behaviour is the same as before.\n\n3. Prerequisite (Step 3). The Notification Service is deployed with no production traffic. It has its own database table `svc_notifications`, a consumer, a sender, a pager step, a result publisher and its own copies of the three templates. It is tested with synthetic messages against a staging or sandbox MailRelay.\n\n4. Prerequisite (Step 4). The monolith gets a relay thread, a result consumer and a reconciler. They are deployed with all flags still `monolith`, so they do nothing yet.\n\n5. Flag flip (Step 5). Someone sets `notifications.route.shipping_update = service`. The change reaches every monolith instance within 10 s. From then on, new `shipping_update` rows go to the relay. The old worker stops picking up that type. Order confirmation and password reset follow in Steps 6 and 7, each only after the previous step has run 3 days or more, with extra gates on latency.\n\n6. A caller starts the request. A caller (say a shipping update) calls `enqueue_notification(tx, ...)`. This inserts a `pending` row into the monolith `notifications` table inside the caller's own transaction. That row is the outbox, so if the caller's transaction commits, the notification exists. The monolith owns it while it is `pending`. The monolith table holds the state.\n\n7. The relay picks the row up. A relay thread runs on each monolith instance and polls every 1 s. Each poll it reads the flag for every type. It selects `pending` rows whose type's flag says `service`, using `FOR UPDATE SKIP LOCKED` and a fixed batch size. If an old-worker instance and a relay both reach the same row during the 10 s flag-propagation window, the row lock means only one claims it.\n\n8. The relay publishes. It publishes `notifications.requested` to the broker. The message carries `schema_version`, `id`, `type`, `user_id`, `email`, `payload`, `created_at`, `attempts` and `next_attempt_at`. It waits for the broker's publisher confirmation, which means the broker has stored the message. Only then does it set `status='handed_off'` and `handed_off_at=now()` and commit. From this point the service owns the notification. A `handed_off` row is never sent by the old worker, whatever the flag says. If the relay crashes after publishing but before committing, the row is still `pending` and gets republished later. The service dedupes on the id, so that is safe.\n\n9. The service consumer receives the message. The service's consumer reads `notifications.requested`. In one transaction it runs `INSERT ... ON CONFLICT (id) DO NOTHING` on `svc_notifications`, and it acks only after that commit.\n   - A new id is inserted as `pending`, copying `attempts` and `next_attempt_at` from the message. This is the only time those two fields come from the message.\n   - A known id that is still `pending` is left alone.\n   - A known id that is terminal gets `result_published = false`, so its result is sent again.\n   - If the service database is down, the consumer can't ack, so the broker redelivers after 30 s and nothing is lost.\n   - A redelivered message is a no-op insert that is then acked.\n\n10. The sender sends the email. Every few seconds the sender selects due rows (`status='pending' AND next_attempt_at <= now()`) with `FOR UPDATE SKIP LOCKED`, one row per transaction. It renders the template in the service and calls `mailrelay.send(..., idempotency_key=id)`.\n   - On success it sets `status='sent'`, increments `attempts` and sets `accepted_at`.\n   - On a MailRelay error it increments `attempts` and sets `next_attempt_at`. The schedule is 5 attempts with waits of 1/2/4/8 minutes before attempts 2 to 5.\n   - A failure on attempt 5 sets `status='failed', paged=false`.\n   - If the service crashes after MailRelay accepted the send, the row is still due, so it is re-sent with the same key and MailRelay drops the repeat.\n\n11. The pager step runs for failures. For rows with `status='failed' AND paged=false`, the pager calls `alerts.page_oncall` and then sets `paged=true`. Paging is at-least-once, so a crash can't lose it.\n\n12. The result is published. The result publisher finds terminal rows with `result_published=false` and publishes `notifications.result` (`id`, `status`, `attempts`, `finished_at`). It waits for the confirmation and then sets the flag. A crash causes a republish.\n\n13. The monolith closes the loop. The monolith's result consumer reads `notifications.result` and runs `UPDATE notifications SET status=:s, attempts=:n WHERE id=:id AND status='handed_off'`. It acks after the commit, so redelivery is harmless. The row is now `sent` or `failed`, both terminal. The monolith never reads the service database and never pages, because the service already did.\n\n14. Safety net if a result never arrives. Every minute the reconciler looks for rows that have been `handed_off` for more than 30 minutes and republishes them. The service then does one of three things:\n   - For an id it has never seen, it inserts the row and sends it normally.\n   - For an id it is still retrying, it ignores the message.\n   - For a terminal id, it re-emits the stored result.\n   The reconciler also alerts on the count of such rows.\n\n15. Other failures:\n   - Broker down: the relay can't publish, so rows stay `pending` and are retried every poll. This consumes no send attempt. An alert fires when the oldest eligible `pending` row is older than 30 s.\n   - Rollback: set the flag back to `monolith`. The old worker takes new rows within 10 s. Rows already `handed_off` stay with the service, which must keep running to finish them.\n   - If the service is dead, the reconciler alert fires and an operator can reset those rows to `pending` by hand. This is safe for 24 hours because of the MailRelay key.\n   - Duplicate protection: the service dedupes on the id, and MailRelay's `idempotency_key` equals the id on both the old worker and the service.\n\n16. Final step (Step 8). After `password_reset` has run on the service for 7 days with clean results, the old worker, its retry constants, the monolith templates and the per-type flags are removed. The relay then hands off every type. Rolling back after that means redeploying the previous release, not flipping a flag.",
+   "gaps": [
+    "How the relay or the service tells which notification types exist, and how 'every type' is enumerated in the relay's per-poll flag check, is not stated.",
+    "How a failed notification's `attempts` and final status relate to the monolith row is clear, but the document does not say what the monolith does if the result consumer's UPDATE matches no row (for example, the row is not `handed_off`).",
+    "What the relay does with a row whose publish fails or times out beyond 'retried every poll' is not stated, for example any backoff or limit on the batch.",
+    "How the `email` and `payload` in the message get turned into the rendered subject and body (which template is chosen per type, and the template inputs) is not described beyond 'renders the template'.",
+    "What the sender does with rows whose message was copied with a `next_attempt_at` in the past or `attempts` already at 5 is not stated.",
+    "Who changes the flags, and how, is explicitly not stated, so how the trigger for Steps 5 to 7 is actually applied is unknown.",
+    "Whether MailRelay delivers synchronously with accepting a send is not stated, so what 'accepted' means for the user actually receiving the email is unknown.",
+    "The sender polling interval ('every few seconds') and the relay batch size ('fixed') are not given, so the precise latency of each hop cannot be stated.",
+    "How the old worker and the relay behave when they fail to get the row lock is described only as 'skips it'; what the old worker's own batch and commit pattern is today is not described."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

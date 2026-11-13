@@ -138,6 +138,8 @@ def build_batch(case_ids: list[str], arm_list: list, authors: list[str], reps: i
         cfg = a.to_dict()
         cfg["junior_text"] = junior_prompt_for(a, prompts)
         cfg["teachback_text"] = teachback_prompt_for(a, prompts)
+        cfg["skill_text"] = (Path(a.skill_variant).read_text(encoding="utf-8") if a.skill_variant
+                             else prompts["skill"])
         arm_cfg[a.name] = cfg
     j = _junior_module()
     runs = [{"run_id": f"{cid}__{a.name}__{author}__{mode}__r{rep}", "case": cid, "arm": a.name, "author": author,
