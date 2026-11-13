@@ -211,6 +211,26 @@ eval (#21), with the estimated and actual cost to be reported.
 
 The [roadmap](docs/roadmap.md) links the remaining work.
 
+## A second product: Junior-dev (stated 2026-11-12)
+
+The user started a separate plugin in this repository, tracked in #52. They and the people
+they work with often write plans and diagrams with cheaper models (Haiku 5.5, Sonnet 5.5)
+to save tokens, and those artifacts tend to be less detailed and less clear than a stronger
+model's, especially for architecture. When such an artifact is created, a subagent that
+sees only that artifact plays a junior developer: smart and technical, but new to the stack
+and the software. It asks the author rounds of questions until a correct teach-back shows
+it understands. The author must defend each decision with a reason, or write down that it
+cannot. The author then simplifies or clarifies the artifact, and finally reports what
+changed and what is still a hole.
+
+Quality here means clarity: a capable reader without the context can understand the
+artifact quickly. It is not about length, and it is not a correctness check or an
+adversarial review. The user asked whether the idea is actually useful, so it is a
+hypothesis to test across Haiku, Sonnet and some Opus 5.5, with many variations
+benchmarked. Evals run on the user's subscription, with headless plugin runs capped at
+$10 in total. The [design](docs/junior-dev/design.md) and the
+[evidence review](docs/junior-dev/research-2026-11-12.md) hold the details.
+
 The paragraph below is the founding position. The 2026-11-09 update above settles
 activation (the skill loads on demand, from its description) and packaging (a Claude
 Code plugin) for now.
