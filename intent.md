@@ -228,7 +228,9 @@ artifact quickly. It is not about length, and it is not a correctness check or a
 adversarial review. The user asked whether the idea is actually useful, so it is a
 hypothesis to test across Haiku, Sonnet and some Opus 5.5, with many variations
 benchmarked. Evals run on the user's subscription, with headless plugin runs capped at
-$10 in total. The [design](docs/junior-dev/design.md) and the
+$10 in total. On 2026-11-19 the user set the intended platform: **GitHub Copilot**. The
+plugin is installed once at user level and runs whenever a plan or diagram file is
+written, so it must work in Copilot, not only in Claude Code. The [design](docs/junior-dev/design.md) and the
 [evidence review](docs/junior-dev/research-2026-11-12.md) hold the details.
 
 The paragraph below is the founding position. The 2026-11-09 update above settles

@@ -432,6 +432,17 @@ The builder check on 2026-11-12 left three questions for the user. Their answers
    kept to case writing, the reference arms and a small confirmation slice. Haiku plays
    any role where it holds up. **our call**
 
+## Decided by the user on 2026-11-19
+
+4. **Packaging.** Junior-dev stays a plugin. It is installed once at user level and runs
+   on its own whenever a plan or diagram file is written. A bare skill was considered:
+   without the hook, description-only triggering reached Sonnet 0/5 and Haiku 6/8. **user**
+5. **Target platform: GitHub Copilot.** The intended use is GitHub Copilot, so the plugin
+   must work there. Claude Code support is kept as the development and test harness. What
+   has to change (hook format and events, the plugin-root placeholder, and how the
+   isolated junior is run when the `claude` command is absent) is being researched against
+   Copilot's current documentation before any change is made. **user**
+
 ## Left to the builder
 
 - the exact rule that decides whether a written file is a plan or diagram;
