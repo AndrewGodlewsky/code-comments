@@ -1,0 +1,112 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does `deploy.sh canary` actually do to the cluster: does it create separate canary pods running the new image next to the stable pods, and how does 10 percent of traffic reach them?",
+     "about": "S6 deploy.sh canary SHA: 2 canary pods, 10 percent of traffic"
+    },
+    {
+     "id": "2",
+     "text": "The canary migrates the production database before the watch starts. If the watch then fails, the old image runs on a migrated database. Is that expected to be safe every time, and who checks that each migration works with the previous image?",
+     "about": "Migrations are forward-only and run inside deploy.sh"
+    },
+    {
+     "id": "3",
+     "text": "How does the pipeline decide that a SHA is 'newer than' or an 'ancestor of' current_tag? Which tool does it use, and does it have the git history for that at that point?",
+     "about": "Is SHA newer than staging current_tag? reads SSM"
+    },
+    {
+     "id": "4",
+     "text": "When the author approves and the approval is discarded, who is told, and who can approve instead? What happens if the author is the only member of release-approvers?",
+     "about": "Approver is the author of the merged commit?"
+    },
+    {
+     "id": "5",
+     "text": "After a successful production deploy, what is the rollback path if problems show up later? Who runs `deploy.sh rollback production`, and how does that interact with the production lock and the pipeline?",
+     "about": "DONE: Production deploy finished, announce SHA, previous_tag"
+    },
+    {
+     "id": "6",
+     "text": "Staging and production are separate environments, but the document says the smoke tests and canary watch are the only checks. What does `make smoke` check, and what makes it pass or fail?",
+     "about": "make smoke ENV=staging, about 3 min"
+    },
+    {
+     "id": "7",
+     "text": "When a run is cancelled or fails while another run is waiting on the same lock, what happens to the waiting run? Does it carry on as normal, and does it check anything about the failed deploy?",
+     "about": "Take CI lock production-deploy, queues behind other runs"
+    },
+    {
+     "id": "8",
+     "text": "The 'Failure end' says 'stop the other jobs'. Where does canary-off run in that case, and how does it run if the run was cancelled mid-job?",
+     "about": "Failure end / COFF canary-off cleanup step"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "From deploy.sh and environments.md: `canary` migrates the production DB, sets the new image on the separate deployment shop-api-canary and scales it to 2 pods, then waits for rollout (300 s). Stable pods are untouched. While the canary has ready pods the load balancer sends it 10 percent of traffic. Added to the terms at the top."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Not guaranteed by the pipeline. deploy.sh states the rule that every migration must keep working with the previous image, and that is the only protection. Nothing in the pipeline verifies it, so the rule belongs to whoever writes and reviews migrations. Stated plainly in the terms and listed as a hole."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Decided: git in CI on a full-history checkout, using merge-base --is-ancestor. Not newer means equal to or an ancestor of current_tag. If current_tag is not a commit git knows (old laptop tag), it fails closed. Added one line in the terms. I could not check the CI checkout setup, so full-history checkout is an assumption."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Nobody is notified automatically, to avoid a new mechanism. Any other release-approvers member can approve. If the author is the only approver available, the run waits until the 72 h expiry and is announced. Added to the approval decision."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The pipeline does nothing after a successful deploy. A human decides and runs `deploy.sh rollback production`, using previous_tag from the announcement. The script does not take the production lock, so a manual rollback could overlap with a pipeline deploy. Routing it through the pipeline is not in the brief, so it is listed as a hole."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "environments.md only says `make smoke ENV=staging` takes about 3 min and hits the staging URL. What it asserts is not known. I assume a non-zero exit code is a failure. The document never claims smoke and the canary watch are the only checks. Listed as a hole."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The waiting run does not inspect the failed run. It proceeds when the lock is free and does its own superseded check against current_tag. The failed or cancelled run runs canary-off before releasing the lock, so the waiter starts with the canary at 0 pods. Added to the several-merges decisions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "canary-off runs as an always-run cleanup job in the run that holds the production lock, after the canary starts, including on cancel or timeout. Stop the other jobs means cancel jobs that have not started, not this cleanup. The lock is released after it. I assume CI can run cleanup on cancel. environments.md does not confirm that, so it is listed as a hole. The diagram boxes now say so."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. A merge to `main` is a push to `main`, and each merge starts its own run. (A pull request only builds the image without pushing it and runs `make test-unit`. It shows a green or red check on the PR, deploys nothing and announces nothing. That is the old behaviour, kept as it was.) The rest of this walkthrough follows one merged commit. The commit's full SHA is the tag.\n\n2. Build. CI builds the image once and pushes `registry.internal/shop-api:<SHA>`. The registry holds this state. Every later step deploys this same tag with no rebuild. If the build fails, the run ends as a Failure end. That cancels jobs that have not started, releases locks and announces in #deploys with the step, SHA and run link.\n\n3. Tests. After the build, `make test-unit` (about 4 min, no retry) and `make test-integration` (about 12 min, with a Postgres service container) run in parallel. If integration fails, it is retried once automatically. The doc says this covers a known flaky test. Both tests must pass to continue. A unit failure, or a failed integration retry, is a Failure end, and the other test job is cancelled. Runs from different merges overlap freely up to this point.\n\n4. Staging lock and superseded check. The run takes the CI lock `staging-deploy` and queues if another run holds it. When it gets the lock, it does not care why the earlier holder ended. It reads SSM `/deploy/staging/current_tag` and uses `git merge-base --is-ancestor` on a full-history checkout. If the SHA equals the tag or is an ancestor of it, or staging has moved to a newer commit, the run ends as a neutral Superseded end. That end deploys nothing, releases locks and posts a short note in #deploys. If `current_tag` is not a commit git knows, the check fails closed and the run ends as a failure.\n\n5. Staging deploy. The run calls `deploy.sh staging <SHA>`. The script migrates the staging database forward-only, then rolls the stable `shop-api` deployment. Only after the rollout succeeds does it write SSM `staging/previous_tag` and `current_tag`. The pipeline itself never writes SSM. If the deploy fails, the run ends as a Failure end with no rollback, because the tags were not written and a rollback would overshoot to two releases back.\n\n6. Smoke. While still holding the staging lock, the run does `make smoke ENV=staging` (about 3 min) against the staging URL. If it fails, the run calls `deploy.sh rollback staging`. This puts the image back on `previous_tag`, which is correct because the tags were written. It sets `current_tag` to `previous_tag` and does not undo the schema. Then the run ends as a Failure end and announces. If smoke passes, the run goes to approval.\n\n7. Approval. The staging lock is released here. A manual approval job opens, restricted to the group `release-approvers`. It records who approved and when. A 72 hour deadline starts at this request, and the same deadline later covers waiting for the window and for the production lock. If someone rejects, the run is a Failure end. If nobody approves within 72 h, the run is an Expiry end. Nothing goes to production, locks are released and #deploys is told the SHA and run link. After an approval, CI compares the approver with the author of the merged commit. If they are the same person, the approval is discarded and the gate stays open with the same deadline. Nobody is notified. Another approver can still approve. Otherwise, the run waits for the deadline.\n\n8. Second superseded check. After a valid approval, the run checks whether staging `current_tag` is now a newer commit than this SHA. If it is, the run is a Superseded end.\n\n9. Window gate. A production deploy may start Monday to Thursday, 09:00 to 15:00 UTC. Only the start time is checked. If it is outside the window, the run waits for the next opening and checks again, still bound by the 72 h deadline (Expiry end if that passes). Inside the window, it takes the CI lock `production-deploy` and queues behind other runs. This lock is not held during the approval wait or the window wait. After getting the lock it re-checks the window, because a long wait may have passed 15:00. If the window has closed, it releases the lock and goes back to waiting. Hitting the 72 h deadline while waiting for the lock is also an Expiry end.\n\n10. Third superseded check. With the lock held, the run reads SSM `production/current_tag` and applies the same superseded check. If superseded, it releases the lock and ends neutrally. The doc gives two reasons. It stops an old approval from rolling production to an older image over a newer schema. It also stops re-running a SHA that is already live, which would make `previous_tag` equal `current_tag`, so that `rollback` would do nothing.\n\n11. Canary. The run calls `deploy.sh canary <SHA>`. The script migrates the production database forward-only. Stable and canary share this database. It then sets the image on `shop-api-canary` and scales it to 2 pods. The script waits for rollout status for 300 s. While the canary has ready pods, the load balancer sends it 10 percent of traffic. SSM does not record the canary. Only the cluster does. If this step fails, the run goes to canary cleanup (step 14).\n\n12. Watch. When `deploy.sh canary` returns, the run starts watching Prometheus for 15 min. Every 30 s it samples the canary 5xx ratio over a 1 min rate. A single sample above 1 percent fails the run. Two minutes with no data also fails the run. Either failure goes to canary cleanup. If all samples are at or below 1 percent for 15 min, the run continues.\n\n13. Stable roll. The run calls `deploy.sh production <SHA>`. The script reads `current_tag`, and its migrate step does nothing because the canary step already migrated. It rolls the stable `shop-api` deployment. After the rollout succeeds, it writes production `previous_tag` and `current_tag`. If it fails, stable may be part rolled out. The run does not roll back automatically. It does the canary cleanup and leaves the decision to a human.\n\n14. Cleanup and end. On success, the run calls `deploy.sh canary-off`, which scales the canary to 0 pods. If that works, the lock is released and the run is green. It announces the SHA and `previous_tag` in #deploys. If `canary-off` fails, the run fails and the announcement says the canary may still be up. On any canary, watch or production failure, an always-run cleanup job calls `canary-off`. It also runs on cancel or timeout. It runs before the lock is released, so the next run starts with the canary at 0 pods. Then the run is a Failure end and announces.\n\n15. After success. The pipeline does nothing more. If problems appear later, a human runs `deploy.sh rollback production`, which puts stable back on `previous_tag` and does not undo migrations. An expired or failed run can be re-run by hand. It restarts at the build and then goes through the superseded checks.",
+   "gaps": [
+    "The doc says the Superseded and Expiry checks use `current_tag`, but it does not say how a run learns that a newer merge exists, other than reading SSM. It also does not say whether an older run's approval request is cancelled when a newer run passes it.",
+    "The doc does not say how the run waits for a CI lock, such as the timeout, the queue order, or whether the 72 h deadline applies to the staging lock.",
+    "The doc does not say how the approver or the merged commit author is identified. It names no mechanism for matching the CI approval record's identity to the git commit author. It assumes squash merges, where the author is the PR author.",
+    "The doc does not say how the Prometheus watch is run, such as which job runs it, what authenticates it, or what happens if the Prometheus query itself errors. It does not say how a 'no data' result is told apart from a Prometheus outage.",
+    "The doc does not say what the smoke test checks, or how the make targets use the image built in step 1.",
+    "The doc does not say what happens in practice when the always-run `canary-off` cleanup is not allowed to run on cancel. It admits this is unverified.",
+    "The doc does not say how `deploy.sh` waits for or detects a rollout failure for the stable deployment, such as the timeout or the criteria.",
+    "The doc does not say whether the window is evaluated in the CI system's clock, or how the wait for the next window opening is implemented.",
+    "The doc does not say what happens when `deploy.sh rollback staging` itself fails, or whether the staging lock is held until it finishes. It says the lock covers rollback, but it gives no failure path for it.",
+    "The doc does not say what the first run does when `current_tag` holds an old non-SHA tag, beyond 'a human needs to confirm it or it fails closed'. It does not say how that human confirms."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

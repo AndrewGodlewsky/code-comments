@@ -1,0 +1,34 @@
+## Review of cred-01 (junior, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added the missing facts from the brief as a Rules section: name rules, limit of 10 active, 90-day non-renewable expiry, never store or log plaintext, own tokens only.
+- Defined the terms token, active token, token hash and session, and added the api_tokens columns, to answer what is stored versus returned.
+- Expanded the diagram with the session requirement, create validation, the limit and name failures, a 201 response shown once, and the lost-response case.
+- Spelled out the token check (hash lookup, revoked, expired, owner) and the identical generic 401 for every failure.
+- Made the last-used write conditional (once per hour, after responding, best effort) so it is not a write on every request.
+- Made revoke identify the token by row id, return 404 for another user's token, and read the DB on every call with no cache so the next call gets 401.
+- Replaced 'Errors return the usual 4xx codes' with specific status codes at each failure point.
+- Added a transaction that locks the user's row for count, name check and insert, so concurrent creates cannot break the limit.
+- Added Open questions for the character set and for deleting old expired rows.
+- Diagram: named the users table as the lock target and added it to the participant label, and the Notes say only creates by the same user wait on it (Q9).
+- Rules: added a rule that management endpoints use the session only and a present Authorization header decides on other endpoints, with no cookie fallback (Q10, Q12).
+- Create: split the failure branch so 400 covers an empty or too-long name, and 409 covers a duplicate name and the limit. Added a rule for the error body shape (Q13).
+- List: now also returns the token id, which Revoke uses.
+- Revoke: the UPDATE now matches only active tokens, so an already revoked or expired token gets 404. Added a note on this (Q11).
+- API call: the last-used write is now an optional step, only when the row just read is stale. The UPDATE repeats the condition in its WHERE, which handles racing calls. The read now includes last_used_at (Q14).
+- Create: added a note on what the user sees after create, and that closing the dialog or leaving the page discards the token (Q15).
+- Open questions: added the error body field names and whether the existing API accepts cookies on non-management endpoints.
+- Rewrote the opening as a short summary: what it is, the flow, why it is shaped that way, and how the system works today.
+- Merged the 'Unsalted SHA-256 is enough' note into the Token hash term, where a newcomer asks what hashing means.
+- Merged the two notes on the lost token and the create response being the only place the plaintext exists into the existing rules and the diagram note; cut the duplicate note.
+- Added to Rules: tokens only in the Authorization header, never the query string (Q4), and no server token cache (moved from Notes).
+- Added to Notes: the list shows only active tokens, and revoking another user's token gets 404 (Q7, Q11).
+- Added to the Session term that the user comes from the session on create, list and revoke (Q10).
+- Shortened two diagram notes (race wording, revoke no-cache wording) to remove repetition.
+- Left out the race detail about a later write seconds apart (Q14), and an exact error format and character set, since the plan does not need them yet.
+- Kept every requirement, limit and rule from the first version and the brief: name 1 to 40, 10 active tokens, 90-day non-renewable expiry, one-time display, no plaintext anywhere, 1-hour stale last-used, 401 on revoke with no caching, generic 401 body, own tokens only.
+
+### Holes
+- None.

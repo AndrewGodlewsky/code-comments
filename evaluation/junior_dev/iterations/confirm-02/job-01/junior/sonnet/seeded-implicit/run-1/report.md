@@ -1,0 +1,43 @@
+## Review of job-01 (junior, author sonnet, seeded-implicit)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Added statuses, run_after, attempt_no, started_at and finished_at columns, and the unique constraints, so due, claim and retry are defined.
+- Wrote out all the numbered steps with trigger, action and failure handling instead of one-line notes.
+- Added fencing (guard on lease owner and attempt_count) so a presumed-dead worker cannot overwrite the new outcome.
+- Set next_fire_at on resume and re-enable so there is no catch-up; this fixes a real gap where a resumed tenant would run a stale fire time.
+- Made retry the same run returned to pending, and the reaper count a lost attempt.
+- Added the terms, failure table, save-time rules (50 schedules, 5-minute minimum), rollout section and open questions.
+- Added cancelled handling for a run that fails after its schedule was disabled.
+- Step 4: stated that the run update and attempt close are one transaction, and that a crash before commit is handled by the reaper (Q10).
+- Step 3: heartbeat runs on its own timer; the old handler may overlap the new attempt for up to 30 seconds and idempotent handlers make that acceptable; no handler time limit (Q11, Q14).
+- Step 1: made explicit that active includes pending retries waiting for run_after, that dropped fire times get no run row, and that next_fire_at advances even when a run is skipped (Q12, Q13, Q16).
+- Save rules: editing cron_expr or timezone also recomputes next_fire_at (Q15).
+- Failure table: added the crash before finish commits to the worker-dies row.
+- Open questions: added schedule create, edit and delete handling, and handler time limit.
+- Step 2: added a 5-second claim interval, idle behaviour (wait for next tick), and a cap of 4 concurrent runs per worker, because the junior found no cadence or concurrency stated.
+- Step 2: stated the claim is one transaction and what happens if the worker crashes right after it commits.
+- Terms: added Worker id, a random UUID per process start, so restarts are distinguishable.
+- Step 1: merged the next_fire_at sentence into one bullet to say it once.
+- Step 3: moved the note that a transient heartbeat error is not a loss into the step.
+- Failure table: the crash row now covers crashes after claiming.
+- Open questions: listed the new 5-second claim interval and 4-run cap as our choices.
+- Step 1: insert uses ON CONFLICT DO NOTHING so a duplicate fire time does not abort the transaction, and next_fire_at always advances; replaced the old 'do nothing' unique-failure line (real bug, Q23).
+- Step 1 intro: added that finishing a run does nothing to the schedule (Q21).
+- Step 4: close the attempt only when the guarded run update touched a row, so finish racing the reaper closes it once; success while disabled stays succeeded (Q24, Q25).
+- Step 5: stated attempt_count is kept, lease fields are cleared, and why a stale heartbeat fails (Q26).
+- Step 7: stated outcomes of running runs after pause or disable (Q25).
+- Failure table: added the finish-versus-reaper race to the stale-worker row.
+- Rewrote into the required order: summary (with how the app is today), terms, data model diagram plus constraints, numbered steps, failure table, rollout, open questions.
+- Merged the 'Active' definition into one term (Active run) and removed repeats of it from steps 1 and 7.
+- Restructured the retry rule as an ordered list (cancelled, failed, pending) so the precedence is clear; same behavior as before.
+- Moved the history read description (fire time, final status, attempt worker, times, error) into step 9 so the 'what tenants see' requirement is stated where cleanup is.
+- Merged the repeated 'attempt closed once' explanation: kept it in step 4 and the failure table only; shortened the crash-after-claim text in step 2.
+- Folded the handler definition and the 'every worker has every handler' fact into the Handler term and cut it from step 3.
+- Trimmed the step 7 sentence about disabling stopping steps 1 and 2 to say what is skipped, and noted retries waiting for run_after are cancelled.
+- Added 'never reset' to the attempt_count column note; kept every number, limit and rule from the first version (50 schedules, 5 minute minimum, 30 s heartbeat, 2 min lease, 3 attempts, 1 and 5 minute backoff, 90 day history).
+- Left out nothing the junior asked about as a detail beyond the plan; exact cron library choice and delete-schedule behavior stay as open questions.
+
+### Holes
+- Q15: How does a tenant create, edit, disable or delete a schedule? Does editing cron_expr or timezone recompute next_fire_at, and what happens to existing runs when a schedule is deleted? (author: The brief does not say how tenants create, edit, disable or delete schedules, so the plan has no API for it. Decided: editing cron_expr or timezone recomputes next_fire_at (added to the save rules). Not known: what deleting a schedule does to its runs and history, since the foreign key would block it. Listed as an open question; until decided, disable instead of delete.)

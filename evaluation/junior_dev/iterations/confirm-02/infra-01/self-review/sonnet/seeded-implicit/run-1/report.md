@@ -1,0 +1,29 @@
+## Review of infra-01 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Expanded the bare checklist into the format the brief asked for: every step now says what starts it, what it changes and what happens if it fails.
+- Added a short 'How the system fits together' section defining blue/green, live/idle, old/new, listener and target group for a reader who does not know the stack.
+- Added a 'Decisions made here' section that states the choices the brief left open: idle colour has no instances, test listener, lock mechanism and queueing, the `deploy_state` row and its statuses, the meaning of abort, and fail-safe handling of missing 5xx data.
+- Said where deploy state is kept (a `deploy_state` row in the shared PostgreSQL) and that the live colour is always read from the listener.
+- Spelled out each requirement as concrete behaviour: the 10-minute deadline covering steps 6 and 7, 3 consecutive health passes with reset, the 1% over 5 minutes check each minute, the one-step switch, the 30-minute hold and what rollback does.
+- Made the manual rollback path and the post-shutdown rollback (a normal deploy of the previous release) explicit.
+- Explained why the lock is held until after teardown.
+- Numbered the steps and bolded the titles. Fixed the ordering text so the old colour is 'shut down' in step 11 and the lock is released last.
+- Changed 'up to 4 instances' to '4 instances' to match the brief.
+- Removed the duplicated 'teardown (step 11)' phrasing and said plainly that step 11 stops the old colour's instances.
+- Named instances_started_at and switched_at in the deploy record description so they match the steps.
+- Reworded the missing-metric rule to 'cannot be read for 3 minutes in a row'.
+- Split the three rollback actions in step 9 into a numbered list and moved 'never reverses migrations' to its own sentence.
+- Simplified the 5xx window wording in step 9.
+- Small wording trims in the system overview and decisions.
+- Defined old/new colour and rollback up front, in one place, so later steps can use the terms without re-explaining.
+- Added a definition of the 5xx rate in the decisions list and moved the missing-data rule into step 9, where it applies.
+- Stated that abort and automatic rollback both end by going to step 12 (skipping steps 10 and 11), which was only implied before.
+- Clarified that waiting merges superseded by a newer one are cancelled.
+- Reworded the rollback sub-list in step 9 so the closing sentence is no longer an orphaned paragraph, and removed the repeated 'never reverses migrations' there since it is now defined once.
+- Clarified why step 11 stops the old colour in the idle-colour decision.
+
+### Holes
+- None.

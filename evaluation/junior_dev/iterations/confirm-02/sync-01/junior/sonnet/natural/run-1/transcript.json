@@ -1,0 +1,113 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly starts a sync, and how does the phone decide it is offline or has the connection back? Is anything else besides the foreground, 60s timer and reconnect a trigger?",
+     "about": "Failure and retry: Triggers overlap"
+    },
+    {
+     "id": "2",
+     "text": "Where is `next_body` stored? The outbox schema has no such column. How does the phone know an edit came after the batch was sent rather than before?",
+     "about": "Edit while a change is in flight"
+    },
+    {
+     "id": "3",
+     "text": "Download skips the body overwrite when the note has an outbox row, but the cursor still moves past that entry. Since upload runs first and clears the rows, when does this skip actually happen? How does the phone later get the skipped body, given it will not refetch that seq?",
+     "about": "Download step 2: Skip the body overwrite if the note has an outbox row"
+    },
+    {
+     "id": "4",
+     "text": "On a conflict, the phone deletes the outbox row and keeps its local body until download. If the download then fails or is slow, what does the user see and what is in the local DB? Does the user ever get told a conflict happened, or find N' on their own?",
+     "about": "Upload step 3: conflict(...) leaves the local body as it is"
+    },
+    {
+     "id": "5",
+     "text": "What does the phone do with the conflict result's note id (N')? Is it used for anything, or does N' only arrive through the download?",
+     "about": "Upload step 3: The phone handles each result"
+    },
+    {
+     "id": "6",
+     "text": "In the diagram Phone B's cursor is 100 and Phone B has never synced since, yet it has note N at version 3. How did B get to that state, and what sets the starting cursor of a phone's first ever sync?",
+     "about": "Sync_state(cursor) and the Start note in the sequence diagram"
+    },
+    {
+     "id": "7",
+     "text": "When a batch has several changes and one fails, what does the phone do with the results of the ones that succeeded in that response? What counts as a failed batch (network error, server error, one bad change)?",
+     "about": "Upload step 4: If any batch fails, the sync stops"
+    },
+    {
+     "id": "8",
+     "text": "In the lost-response case, B sees only a failure and the sync stops. When is the retry sent, immediately or on the next trigger, and does B's UI still show its own edit in the meantime?",
+     "about": "Sequence diagram: S--xB b1 conflict, N' (response lost)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Only the three triggers in the brief start a sync: connection regained, app foreground, 60s timer while online. Offline means the OS reports no network or a request fails. I added a short 'When a sync starts' section saying so."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "This was a real gap. I added `sent` and `next_body` columns to outbox. Rows get sent=1 when a batch is read. An edit to a sent row goes to next_body, so the phone knows it came after the send and a retry always carries the same body."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The skip happens only when the user edits a note after upload read the outbox. You found a real bug: the cursor passes the skipped entry and the body would never be refetched. Fix: a conflict response now carries N's current state, which the phone applies at once. So the missed body arrives through the conflict path, not the log."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "With the fix, the local DB holds the server's current N right after the conflict response, not the user's losing body. The losing body is only in the server's conflict note. If download fails, N' is missing until the next successful download. The user is not told about the conflict. I listed that as an open point because the brief does not cover it."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The phone does not use N's id from the conflict result. N' arrives only through the download, like every other entry. The doc now says so."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The scenario assumes both phones synced earlier and hold cursor 100 and N at v3. A phone that has never synced starts at cursor 0 and downloads the whole log. Added to the scope section."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The response has one result per change and the phone applies each. A failed batch is a request error, timeout or non-2xx reply. Then the whole batch is resent on the next trigger, which is safe because processed changes return stored results. Handling a single malformed change is not designed. I added it as an open point."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The retry goes on the next trigger, not immediately. The local DB is untouched, so B's UI keeps showing its own edit meanwhile. The diagram note and failure table now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. User edits note N on a phone, possibly offline. The edit is written first to the phone's local SQLite `notes` table, so the UI updates with no network. If N has no outbox row, one is created: `base_version` = the note's local `server_version`, a fresh `change_id` (UUID), `sent = 0`, full title and body. If N already has an unsent row, a later edit overwrites `body` and keeps the same `base_version` and `change_id`. Several edits collapse into one change. Because this is all in SQLite, nothing is lost if the app is killed.\n\n2. In the scenario, N is at server version 3 and both phones have cursor 100. Both go offline. Phone A edits N twice, which gives one outbox row (a1, base 3). Phone B edits once, which gives (b1, base 3). Each phone shows only its own edit.\n\n3. A sync starts on one of three triggers: the network comes back, the app comes to the foreground, or a 60-second timer while online. Only one sync runs per phone at a time. A trigger that arrives mid-sync sets a flag and causes one more sync afterwards. Phone A's connection returns and it syncs first.\n\n4. Upload, phone side. The phone reads up to 100 outbox rows and sets `sent = 1` on them. It then sends `POST /upload` with `[{change_id, note_id, title, body, base_version}]`. From now on, any new edit to a sent row goes into `next_body` and `body` is left alone, so a retry sends exactly the same body under the same `change_id`.\n\n5. Upload, server side. For each change the server runs its own transaction.\n   - If the `change_id` is already in `processed`, it returns the stored result and writes nothing.\n   - Otherwise, if `base_version` equals the note's current `version`, it accepts the change. N goes from version 3 to 4, a `change_log` entry is appended (seq 101), and the result `applied(4)` is stored in `processed` in the same transaction.\n   - Otherwise it is a conflict, which step 9 covers.\n\n6. Upload, ack. The server sends back one result per change. For `applied(4)`, Phone A runs one local transaction that sets `notes.server_version = 4` and deletes the outbox row. If more rows remain, the next batch of up to 100 is sent. Download starts only once all batches have succeeded.\n\n7. Download, phone A. It sends `GET /changes?after=100&limit=500`. The server returns committed entries ordered by `seq`, plus `has_more`. Here that is `[seq 101: N v4]`. In one local transaction the phone applies each entry. It skips an entry if `entry.version <= notes.server_version`, or if the note has an outbox row. Entry 101 is version 4 and local is 4, so it is skipped as the phone's own write echoing back. Then the cursor is set to 101, in the same transaction. If `has_more` is true, the phone repeats the request.\n\n8. Phone B syncs and uploads `[b1: base 3]`. The server's N is now at version 4, so `base_version` 3 does not match. This is a conflict.\n\n9. Conflict handling on the server. The server does not merge text. It creates a new conflict note N' with B's losing body, titled \"<original title> (conflict)\", with `version = 1`. N' has an id derived deterministically from `change_id`. It appends a log entry for N' (seq 102) and stores `conflict(N')` in `processed`, all in one transaction. N is unchanged. The response carries the conflict result plus N's current state (version 4, A's title and body), read fresh when the response is built.\n\n10. The response to B is lost. B sees a failed request and counts itself offline. The sync ends. The outbox row stays with `sent = 1`, the local DB is untouched, and B still shows its own edit. Nothing retries immediately. The next trigger starts a new sync.\n\n11. Retry. B resends the same `change_id` and the same body. The server finds `b1` in `processed`, so it returns the stored conflict result. It adds N's current state, read fresh, and writes nothing, so no second conflict note is created.\n\n12. B handles the conflict response in one local transaction. It overwrites N's title and body with the server's current state (A's body, v4), sets `server_version`, applying the same version check as a download entry, and deletes the outbox row. B's edit now lives only in N' on the server. B does not use N's id from the response. N' arrives through the download.\n\n13. Download on B is `GET /changes?after=100`, which returns `[seq 101: N v4, seq 102: N' v1]`. In one transaction, entry 101 is skipped because 4 is not above local 4. N' is inserted, since it is unknown locally. The cursor is set to 102. B now shows A's version of N plus the conflict copy N' holding B's edit.\n\n14. Phone A's next sync happens 60 seconds later. It runs `GET /changes?after=101`, which returns `[seq 102: N' v1]`. A inserts N' and sets cursor 102. Both phones now hold N at v4 and N' at v1.\n\n15. Edit during flight. If the user edits a note after its batch was sent, the text goes into `next_body` on that row. When the ack arrives, the phone queues `next_body` as a new change with a new `change_id` and sets `notes.body` to it. Its `base_version` is `v` after `applied(v)`. After a conflict, it is the version from the response's current state.\n\n16. Download skip for an outbox row. If a download entry targets a note that has an outbox row, the phone skips it and still moves the cursor past it. The local edit later uploads with its old base version and conflicts. The conflict response then brings the current server state, so the skipped body is not lost.\n\n17. Failure rules.\n   - Any error, timeout or non-2xx reply ends the sync, and the next trigger starts a new one.\n   - A partially applied batch is safe to resend, because each change has its own transaction and `processed` row.\n   - An interrupted download re-fetches from the old cursor, because the cursor only moves in the same transaction as the applied entries. The version check makes re-applying harmless.\n   - If the app is killed mid-sync, the next trigger resumes from the state in SQLite.\n   - If a conflict happens and the download then fails, the phone already shows the server's N. The conflict note appears at the next successful download, and the user is not told about the conflict.",
+   "gaps": [
+    "How a trigger fired while offline behaves. The document says the phone counts itself offline when the OS reports no network or a request fails, but not what happens to a trigger that arrives while the phone is offline. The 60-second timer is described as running 'while online'. It does not say how a phone that thinks it is offline finds out it is online again after a failed request, other than the OS reachability report.",
+    "What a retried batch contains. Step 1 says to read up to 100 outbox rows and set sent = 1, but after a failed batch it is not stated whether the retry re-reads only the sent = 1 rows, the same 100 rows, or new unsent rows as well. This matters for the batch boundary.",
+    "How the server maps the conflict result onto the phone when the conflict-note id is returned but unused. The phone ignores it, so it does not matter for the flow, but the document does not say how a conflict result is encoded in the upload response, such as its exact fields.",
+    "How the server reads and checks `note_id`, `title` and `version` when the change targets a note the server has never seen. The document defers new-note creation to an open point (base version 0 meaning 'create'), so the creation flow cannot be explained.",
+    "What the phone does with the next_body change when the ack was a conflict and N's current state overwrote notes.body. The document says notes.body is set to next_body at ack, but also that the conflict response overwrites title and body from the server's current N. It does not say which one wins locally, or in what order, or how the UI shows it.",
+    "How the phone decides that the note 'has an outbox row' relative to a conflict-note insert. The document does not say what happens if a download entry arrives for a note that has an outbox row with sent = 1 and whose ack is still outstanding.",
+    "Whether the sync trigger flag causes exactly one extra sync even if several triggers arrive during a sync. It says 'one more sync', which is clear, but not whether download pages beyond the first count as the same sync.",
+    "How the server serves only committed entries. The document asserts that seq is assigned inside the write transaction and only committed entries are served, but not the mechanism, so how ordering is kept under concurrent writers is not explained.",
+    "What happens to a malformed change. The document lists it as an undecided open point, so the failure path for a batch containing one is unknown.",
+    "How long processed rows are retained. This is an undecided open point, so what happens when a phone retries after its processed row is gone is unknown.",
+    "Whether and how the user is told about a conflict. The document says nothing notifies the user, and leaves it as a product decision."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

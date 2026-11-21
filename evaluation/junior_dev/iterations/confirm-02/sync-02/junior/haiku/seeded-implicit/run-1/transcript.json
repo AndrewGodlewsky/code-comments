@@ -1,0 +1,254 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does POST /catalogue/full/start do, and what does it return? Is start_seq something it hands back?",
+     "about": "1. POST /catalogue/full/start"
+    },
+    {
+     "id": "2",
+     "text": "What is a 'seq' here: who assigns it, and what do start_seq, last_seq and change_seq each refer to?",
+     "about": "4. catch up from start_seq / 5. last_seq; change_seq"
+    },
+    {
+     "id": "3",
+     "text": "What exactly is the cursor, where is it stored (sync_state?), and what happens if the app is killed mid-page?",
+     "about": "3. Keep a cursor so it can resume"
+    },
+    {
+     "id": "4",
+     "text": "What does 'swap' mean concretely: how are products and products_staging exchanged, and is it atomic?",
+     "about": "4. catch up from start_seq and swap"
+    },
+    {
+     "id": "5",
+     "text": "What does 'catch up from start_seq' fetch, and from which endpoint, and in what order relative to the swap?",
+     "about": "4. When it's done, catch up from start_seq and swap"
+    },
+    {
+     "id": "6",
+     "text": "What does 'compare change_seq when applying' decide: what is compared with what, and what happens on each outcome?",
+     "about": "5. Incremental sync from last_seq; compare change_seq when applying"
+    },
+    {
+     "id": "7",
+     "text": "When does the server return 410 resync_required, and what does the client do with its existing products and staging data during the re-download?",
+     "about": "6. Handle 410 resync_required with a re-download"
+    },
+    {
+     "id": "8",
+     "text": "What happens if Wi-Fi drops or the device is on cellular during the full download? And what does 'max 5 attempts' do after the fifth failure: which errors are retried and what does the user see?",
+     "about": "3. Wi-Fi only / 7. Retries with exponential backoff, max 5 attempts"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "POST /catalogue/full/start returns start_seq, the highest change_seq committed at that moment. The device saves it in sync_state. The server keeps no state per download. A single fixed starting point lets catch-up replay every edit made after it, and taking it before the first page means nothing is missed."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "change_seq comes from one global, strictly increasing Postgres sequence, stamped when each insert, update or delete commits. The brief states rows become visible in that order. start_seq is the highest change_seq when a full download starts. last_seq is the highest change_seq the device has applied to its live catalogue. change_seq is the stamp on each product row."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The cursor is the id of the last product on the last fully saved page, stored as sync_state.cursor in the same SQLite transaction as that page's rows. If the app is killed mid-page, the transaction rolls back, so the page is either fully saved with its cursor or absent. On relaunch the device refetches the page after the saved cursor."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The swap is one SQLite transaction: drop products, rename products_staging to products, and update sync_state. SQLite runs schema changes inside transactions, so the swap is atomic and reps see either the old catalogue or the complete new one."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Catch-up calls GET /catalogue/changes starting at start_seq, 1,000 per response, and applies each item to products_staging, saving catch_up_seq in each transaction. It runs before the swap and stops at a response with fewer than 1,000 items. Edits committed after that point are fetched by the first incremental sync after the swap, because last_seq is set to the last applied change."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The rule compares the incoming item's change_seq with the change_seq stored for the same product id. A higher incoming value is applied (a tombstone deletes the row). An equal or lower value is skipped, and the feed position still advances. This makes replays from pages and catch-up harmless."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The server returns 410 with resync_required when the requested since is older than the 7-day tombstone window, as the brief states. The client empties products_staging, restarts the full download from step 1, and keeps serving products until the swap. A restart begins from the first page, not from the cursor."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "On a Wi-Fi drop, the in-flight page finishes and is saved, then no new page starts until Wi-Fi returns, and the download resumes from the cursor. Only network errors and 5xx responses are retried, per the brief; a 410 is not retried. During a full download, retries wait for Wi-Fi. After the fifth attempt the client stops, keeps saved data and waits for the next trigger. The brief does not say what the user sees then, which is listed under Open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 1 says a 410 sends the device back to step 1 and empties staging. But step 5's 410 says 'run step 1 into the staging table'. During that re-download, does incremental sync stay off, and what triggers the re-download to continue after the 410 is seen?",
+     "about": "5. Fetch changes (On a 410) and 1. Start"
+    },
+    {
+     "id": "10",
+     "text": "Step 2 stores pages in staging with the apply rule, but staging starts empty. When page products are fetched while edits happen, which change_seq does a product carry, and why does catch-up from start_seq fix rows that were fetched after being edited?",
+     "about": "2. Fetch pages / 3. Catch up"
+    },
+    {
+     "id": "11",
+     "text": "After the swap, last_seq is the larger of start_seq and catch_up_seq. Why is it safe to use that number, given that pages could have contained products with change_seq above catch_up_seq? Also, what does catch_up_seq hold if catch-up returned zero items?",
+     "about": "4. Swap (set last_seq)"
+    },
+    {
+     "id": "12",
+     "text": "The swap drops products and renames staging. If a rep is in the middle of browsing or quoting when the swap runs, what happens to their open queries or screen?",
+     "about": "4. Swap"
+    },
+    {
+     "id": "13",
+     "text": "What does the 15-minute throttle compare against, and does last_attempt_at get set even when the attempt fails or the retries are exhausted? What does 'launch' do if the last attempt was under 15 minutes ago?",
+     "about": "5. Fetch changes (15-minute throttle, last_attempt_at)"
+    },
+    {
+     "id": "14",
+     "text": "How does the device decide on first run that it has no finished catalogue, and how does it tell an unfinished download in sync_state from a finished one at launch?",
+     "about": "1. Start (Trigger)"
+    },
+    {
+     "id": "15",
+     "text": "If the swap transaction keeps failing or is interrupted, what does the app do at launch: does it go to step 5 on the old products, or retry the swap first? Is staging ever stale by then?",
+     "about": "4. Swap (On failure)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes. Incremental sync stays off while mode is full, under the one-writer rule. The 410 in step 5 now sets mode to full, clears start_seq and cursor, and goes to step 1, which is the same path as a 410 in step 3. The download continues at the next launch, foreground or Wi-Fi return: if mode is full and start_seq is set, the device goes to step 2, otherwise to step 1."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "A page carries the change_seq of the version it read. If that product is edited later, the edit has a change_seq above start_seq, so catch-up returns it and it replaces the page copy. An edit already in the page comes back as an equal copy and is skipped. A product deleted after its page read gets a tombstone in catch-up that removes it. A product deleted before its page read is not in the page, assuming the full endpoint omits tombstones, which the brief does not state and which is listed as an open question."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "catch_up_seq starts at start_seq, so a catch-up with zero items leaves it at start_seq. last_seq is now set to catch_up_seq, which is never lower than start_seq, so the max is not needed. It is safe because catch-up covers every change after start_seq up to its last response, and pages read current versions, so older changes are already in them. Rows in pages with a change_seq above catch_up_seq are harmless: step 5 fetches those changes again and the apply rule skips the equal copies."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The swap does not run while a read is open. If it cannot run, it is retried at the next trigger and reps keep the old catalogue. A screen keeps the rows it has already loaded until it reloads its query. Whether the app's SQLite driver actually blocks the swap during a read has not been verified, so it is listed under Open questions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The 15-minute throttle compares against last_attempt_at, which is set when an attempt starts. So failed attempts and exhausted retries also count. A launch or foreground event less than 15 minutes after the last attempt does nothing. The next event after that runs the sync."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No sync_state row means first run. A row with mode set to full and start_seq set is an unfinished download. A row with mode set to incremental means the catalogue is complete and products is live. This is now stated in the sync_state term and in step 1's trigger."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "If the swap fails, mode stays full, so the app does not run step 5 on the old products. At the next launch or foreground it goes to step 2, which finds no new page, then to step 3, which catches up from catch_up_seq. Then the swap runs again. Staging is not stale, because catch-up runs before every swap. That retry needs network and Wi-Fi, so the earlier claim that it needs no network is withdrawn."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "Step 2 says the apply rule compares against the stored row in staging, but a staged page row and a later catch-up item for the same product can both exist. If a product is edited after its page was read, but the catch-up item has a higher change_seq, it replaces the row. What if a product was deleted before start_seq but the page omitted it, then re-created later: does catch-up handle it as a plain insert?",
+     "about": "3. Catch up (Why this is enough)"
+    },
+    {
+     "id": "17",
+     "text": "The apply rule skips a tombstone when the product has no row in staging, or when the tombstone's change_seq is not higher. What does a tombstone for a product with no stored row do, and is it still skipped or applied as a no-op?",
+     "about": "Apply rule"
+    },
+    {
+     "id": "18",
+     "text": "How does the app know a read is open when the swap runs, and who retries the swap? Step 4's trigger is only 'the last catch-up response had fewer than 1,000 items', so what actually fires the retry 'at the next trigger' when the app stays open in the foreground?",
+     "about": "4. Swap (If a read is open when the swap runs)"
+    },
+    {
+     "id": "19",
+     "text": "During a re-download after a 410, mode is full, so incremental sync is off. How long can reps be on a stale products table, and do they see anything telling them the catalogue is out of date?",
+     "about": "5. Fetch changes (On a 410) and One writer"
+    },
+    {
+     "id": "20",
+     "text": "The retry rule says a download retries wait for Wi-Fi and the next trigger includes Wi-Fi returning. In step 5, the retry rule applies on any network. If the app is on cellular and the request fails five times, what is the next trigger, and does the 15-minute throttle block it?",
+     "about": "Retry rule and 15-minute throttle"
+    },
+    {
+     "id": "21",
+     "text": "Where do the steps run: is there a single sync routine in the app that moves through steps 1 to 5, and does it run in the foreground only or can it run while the app is in the background? What happens if the app goes to the background mid-download?",
+     "about": "Full download (steps 1 to 4)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "Yes, it is a plain insert. A product deleted before start_seq has its tombstone at or below start_seq, so catch-up does not return it. Its re-creation has a change_seq above start_seq, so catch-up returns that row, and staging has no row for the product, so the apply rule inserts it. If a page had already copied the re-created row, catch-up returns an equal copy and skips it. Step 3 now says this."
+    },
+    {
+     "id": "17",
+     "tag": "checked",
+     "text": "Nothing is applied. The apply rule applies a tombstone when there is no row, and deleting no row changes nothing, so it is a no-op and is not stored. The first version's wording made it look skipped, so the apply rule now says it changes nothing and is not stored."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The app tracks its own open catalogue reads, so it knows when one is open. A blocked swap is deferred, not retried on a timer. It runs when the last open read closes, after steps 2 and 3 run again, which needs Wi-Fi. Whether the SQLite driver blocks a swap during a read is still unverified and stays under Open questions."
+    },
+    {
+     "id": "19",
+     "tag": "unknown",
+     "text": "How long reps stay on the stale table is not known. It runs from the 410 until the re-download swaps in, which can take hours and waits for Wi-Fi. The plan shows reps no out-of-date notice, and whether product wants one is not decided. Listed under Open questions."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The next trigger is the next app launch or return to the foreground that comes at least 15 minutes after last_attempt_at. Yes, the throttle blocks earlier events, because last_attempt_at is set when the attempt starts. Wi-Fi returning does not trigger incremental sync, because incremental sync may use any network."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Yes, one sync routine picks the step from sync_state and runs only in the foreground. When the app leaves the foreground, no new request starts. The page in flight finishes and saves, or rolls back if the OS stops the app. The brief does not say whether downloads may run in the background, so that is listed as open."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I will follow one rep's phone through its whole life with the catalogue: first install, first full download, then a later incremental sync.\n\n1. **App launch, deciding what to do.** The app starts and comes to the foreground. The single sync routine reads the one `sync_state` row in the app's SQLite database. If there is no row, it is a first run. A row with `mode` = `full` and no `start_seq` means a re-download is needed. A row with `mode` = `full` and `start_seq` set is an unfinished download. A row with `mode` = `incremental` means `products` is complete and live. The routine only runs while the app is in the foreground. For our first run, it goes to step 2 below.\n\n2. **Start (Wi-Fi only).** The trigger is a first run or a re-download. The app calls `POST /catalogue/full/start`. The server returns `start_seq`, the highest `change_seq` at that moment. `change_seq` is a global, strictly increasing Postgres sequence number stamped on every insert, update and delete when it commits. The server keeps no state for the download. The app then does one SQLite transaction. It creates `products_staging` if missing and empties it. It sets `mode` = `full`, saves `start_seq`, sets `catch_up_seq` = `start_seq`, and clears `cursor`. `start_seq` is taken before the first page, so no edit is missed. The live `products` table is not touched. If the call fails, the retry rule applies. That rule retries only network errors and 5xx responses, after 2 s, 4 s, 8 s and 16 s, five attempts in total. After the fifth failure the app stops, and the next trigger (launch, foreground or Wi-Fi returning) repeats this step. Nothing was saved, so nothing is lost.\n\n3. **Fetch pages (Wi-Fi only).** This starts when step 2 has saved its state, or when the previous page was saved. It also starts at launch, foreground or Wi-Fi return while `mode` = `full` with `start_seq` set. The app calls `GET /catalogue/full?after_id=<cursor>&limit=500`. It omits `after_id` when `cursor` is empty. The server returns up to 500 live products with an id above `after_id`, in id order (keyset pagination), each with its `change_seq`. Pages are fetched one at a time, never in parallel. For each product the app uses the apply rule against `products_staging`. If there is no stored row, or the item's `change_seq` is higher, the product inserts or replaces the row. Otherwise it is skipped. In the same transaction, the app saves the id of the page's last product as `cursor`. A page and its cursor are therefore saved together or not at all. A page with fewer than 500 products, or an empty page, is the last one, and the flow moves on to step 4. If the phone moves to cellular, the page in flight finishes and saves, then the download pauses. It continues from `cursor` when Wi-Fi returns. If the app is killed or the phone restarts mid-page, that page's transaction rolls back. The next launch fetches the page again after the saved `cursor`. Network errors and 5xx responses follow the retry rule.\n\n4. **Catch up (Wi-Fi only).** This starts once the last page is saved. The app calls `GET /catalogue/changes?since=<catch_up_seq>&limit=1000`. The server returns products and tombstones with `change_seq` above `since`, in `change_seq` order. A tombstone is a deleted product kept as a row with `deleted = true`. The app applies each item to `products_staging` with the apply rule. A product inserts or replaces the row. A tombstone deletes the row, and with no stored row it does nothing and is not stored. In the same transaction, it saves the last `change_seq` applied as `catch_up_seq`. It repeats while a response has 1,000 items. It stops at a response with fewer than 1,000. This catches edits made on the server while the pages were downloading. A later edit has a higher `change_seq` and replaces the page copy. An equal copy is skipped. A delete removes the row if a page copied it. A product re-created after being deleted comes back as a plain insert. If the app is killed here, the next launch goes to step 3, which finds no new page, and then resumes catch-up from the saved `catch_up_seq`. If the server answers 410 (`since` older than the 7-day tombstone window, so the download outlived it), the app clears `start_seq`, `cursor` and `catch_up_seq` and goes back to step 2. That step empties staging and starts again. `mode` stays `full`, and `products` keeps serving reps throughout. A 410 is never retried. Other errors follow the retry rule.\n\n5. **Swap.** This happens when the last catch-up response had fewer than 1,000 items and no catalogue read is open. The app tracks its own open reads. In one SQLite transaction, it drops `products` and renames `products_staging` to `products`. It sets `last_seq` = `catch_up_seq` and `mode` = `incremental`, and it clears `start_seq`, `cursor` and `catch_up_seq`. Reps see either the old catalogue or the complete new one. If a read is open, the swap waits. It is not retried on a timer. It runs when the last open read closes, after steps 3 and 4 run again, which needs Wi-Fi. Reps keep the old catalogue until then. If the swap fails, nothing changes, the complete staging table is kept, and `mode` stays `full`. The next launch, foreground or Wi-Fi return resumes at step 3 and catches up again before swapping. Edits committed after the last catch-up response are picked up by step 6 after the swap.\n\n6. **Later launches, incremental sync (any network).** On a later launch or return to the foreground, `mode` is `incremental`. The sync runs only if `last_attempt_at` is more than 15 minutes ago or was never set. Wi-Fi returning does not trigger it. The app first sets `last_attempt_at` to now. It then calls `GET /catalogue/changes?since=<last_seq>&limit=1000`. It applies each item to `products` with the apply rule. In the same transaction, it saves the last `change_seq` applied as `last_seq`. It repeats while responses have 1,000 items. Fewer than 1,000 items means the device is up to date. Incremental sync never runs while `mode` is `full` (the one-writer rule). On a network error or 5xx, the retry rule applies. After five failures the app stops and keeps what it saved. The failed attempt still counts toward the 15 minutes, because `last_attempt_at` was set when it started. The next launch or foreground at least 15 minutes later restarts from `last_seq`. If the app is killed, the same applies. On a 410, the device has been away longer than the tombstone window. The app sets `mode` = `full`, clears `start_seq` and `cursor`, and goes back to step 2, which waits for Wi-Fi. `products` keeps serving reps until the swap in step 5.\n\n7. **Leaving the foreground.** When the app leaves the foreground, no new request starts. The page in flight finishes, or rolls back if the OS stops the app. Sync resumes at the next foreground or launch.",
+   "gaps": [
+    "The document does not say what the user sees or what the app does after five failed attempts, or on responses other than network errors, 5xx and 410, such as other 4xx codes. This is listed as an open question. I cannot say how the flow behaves for those cases.",
+    "The document does not say what reps see during the first download. It says only that there is no finished `products` table to browse, and the choice of a progress screen is undecided. I cannot say what the UI shows between first launch and the first swap.",
+    "The document does not say how the app detects Wi-Fi returning or a network change, or how it knows the foreground and background state, beyond naming them as triggers.",
+    "The document does not say how the app tracks open catalogue reads, or what the swap check actually does. It admits it did not verify whether the SQLite driver blocks the swap.",
+    "The document does not say what a delete means during the first full-page fetch. It only assumes `/catalogue/full` returns no tombstones, and that assumption is unconfirmed.",
+    "The document does not say what exactly the client sends to or receives from the server in terms of authentication, or how `change_seq` is delivered per item. I cannot explain how the app identifies itself or what the response format is.",
+    "The document does not say what happens if a 410 arrives in the middle of an incremental page loop after earlier pages were already applied to `products`. It says only that `mode` becomes `full` and the old `products` is kept, without saying how the already-applied partial changes interact with the later swap.",
+    "The document does not say whether `sync_state` gets its row created on first run in step 2's transaction or earlier, or what `last_seq` and `last_attempt_at` hold during the first full download. `last_seq` is not shown being set before the first swap."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

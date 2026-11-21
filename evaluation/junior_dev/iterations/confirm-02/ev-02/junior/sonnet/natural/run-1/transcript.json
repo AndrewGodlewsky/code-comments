@@ -1,0 +1,269 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The Ingest step reads the core DB for active subs where event_types has the type or *. Where does that list of event types live, and what does * mean for a subscription?",
+     "about": "Ingest: Read core DB, read only"
+    },
+    {
+     "id": "2",
+     "text": "The attempts counter is incremented at claim time, and a delivery is dead after the 8th failure. If attempts is 8 at claim, does that attempt still get sent, or is it dead-lettered before sending? How does that fit with the 'On reclaim, if attempts is already 8' rule?",
+     "about": "Crash recovery / Claim a batch ... attempts + 1"
+    },
+    {
+     "id": "3",
+     "text": "The retry schedule lists 7 waits (30 s to 6 h) for 8 attempts. Which wait follows which failed attempt, and is the wait measured from the failure or from the claim?",
+     "about": "attempts less than 8? / next_attempt_at = now + wait"
+    },
+    {
+     "id": "4",
+     "text": "In the 'Core DB down' row, due deliveries stay pending and the lease expiry returns them. But the claim already set lease_until and attempts + 1. Does a core DB outage use up attempts, and can it push deliveries to dead?",
+     "about": "Failure summary: Core DB down"
+    },
+    {
+     "id": "5",
+     "text": "On a 410, the flow says the delivery is dead-lettered and all other pending deliveries of that subscription are swept to dead. What last_error does the 410 delivery itself get, and does the sweep also touch rows currently leased by other workers?",
+     "about": "410 -> Dead-letter this delivery and sweep all other pending deliveries"
+    },
+    {
+     "id": "6",
+     "text": "Who calls the Admin API and how are they authenticated? What does the GET return for a subscription, and is there any way to replay many dead deliveries at once?",
+     "about": "Admin API for support"
+    },
+    {
+     "id": "7",
+     "text": "What does a receiver do with X-Webhook-Signature? What exactly is signed (t plus the raw body?), with which key, and how does the receiver get that key?",
+     "about": "Decrypt secret. Sign t = now at send time"
+    },
+    {
+     "id": "8",
+     "text": "What is the 'visibility timeout' on the queue and who sets it? And what is ingest_rejects: is it a table, and who looks at it?",
+     "about": "Record in ingest_rejects and ack / No ack. Message reappears after the visibility timeout"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "It is the `event_types text[]` column of `webhook_subscriptions` in the core DB (existing/schema.sql): exact event names, or '*' meaning every event type. The junior needed this stated in the file, so the core DB section now says it."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The claim that makes attempts 8 is the 8th attempt and is sent. The 'already 8' rule applies only when a claim finds an expired lease with attempts already 8: the 8th attempt was lost mid-flight, so the row is dead-lettered as worker_lost with no send. Clarified in Crash recovery."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The wait after failed attempt n is the nth listed wait: 30 s after attempt 1, 2 min after 2, 10 min, 30 min, 1 h, 3 h, and 6 h after attempt 7. It is measured from when the failure is recorded, not from the claim. Added to Attempt timing."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "As written it did burn attempts, which was a real flaw. Fix: if the core DB or decrypt fails after the claim and before sending, the claim is given back (attempts - 1, lease cleared, next_attempt_at = now + 30 s). An outage therefore cannot dead-letter deliveries. Diagram, Crash recovery and the failure table are updated. Failures after a real send still count."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The 410 delivery gets last_status = 410 and last_error = 'gone'. The sweep covers all pending rows, including ones leased by other workers; their in-flight send may complete but the result write now requires state = 'pending', so it is discarded. Both added to the file."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "Authentication of admin API callers is not specified by the brief or existing files, so I do not know it. Listed under Open questions. The GET returns the subscription's dead deliveries with last_status, last_error, dead_at and attempt history. Replay is one delivery per call, as the brief asks, with no bulk replay."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The brief says v1 is HMAC-SHA256 hex over '<t>.<raw body>', keyed with the subscription's secret. The receiver recomputes it, compares, and rejects a t older than 5 minutes. Added to Attempt timing. How the receiver obtains the secret is not in the brief or the files (probably shown in the dashboard), so that is an open question."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The visibility timeout is the managed queue's setting: default 30 s, max 12 h (existing/outbox-relay.md). I decided to keep the default because the ingest transaction is short. I do not know who owns the queue config. ingest_rejects was an omission: it is now a fourth table (raw body, reason, received_at) that engineers query, purged after 14 days. The 'three tables' claim was fixed."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Where does the worker get the URL it POSTs to? The document lists what is read from webhook_subscriptions but never mentions the endpoint URL column.",
+     "about": "Decrypt secret. Sign t = now at send time. POST raw event body"
+    },
+    {
+     "id": "10",
+     "text": "What values can a subscription's status take besides active and disabled, and who or what re-enables a subscription (the customer, support, the dashboard)?",
+     "about": "Core database, read-only apart from one write / 409. Re-enable the subscription first"
+    },
+    {
+     "id": "11",
+     "text": "When a 2xx comes back, what is written (state delivered, an attempt row, last_status)? And what happens if the lease was lost by then and the result is discarded: does the row still end up delivered via another worker's attempt?",
+     "about": "Recording the outcome / 2xx -> state = delivered"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "It is the `url` column of `webhook_subscriptions` (text, always https, per existing/schema.sql). The worker reads it from the subscription row at claim time. The file now lists the columns the service reads, including `url`, and the send step says it POSTs to the subscription url."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The schema comment says `status` is 'active' or 'disabled', so there are no other values; the file now says so. Who re-enables a subscription is not in the brief or the files. The dashboard API writes that table, so probably the customer, but I do not know whether support can. Added to Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "On a 2xx the conditional write sets state = 'delivered', last_status = the status code, and clears the lease, and the attempt row (status code, duration) goes in the same transaction. If the lease was lost, the write and its attempt row are discarded. If the row is still pending, another worker claims and sends again, and that send's result decides the final state, so it ends delivered once a send gets a 2xx. If the row was swept to dead meanwhile, it stays dead. The receiver may have got the event, but dedupe by X-Webhook-Id makes this safe. Added to Recording the outcome."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "12",
+     "text": "What is the 'queue' and 'domain-events' topic: who publishes to it, and what does the message body look like (is it the event JSON itself)?",
+     "about": "Ingest: every worker consumes domain-events"
+    },
+    {
+     "id": "13",
+     "text": "When the worker gets a 2xx, what exactly does the receiver have to do for the delivery to count as success? Is the response body ever read or stored?",
+     "about": "I -- 2xx --> state = delivered"
+    },
+    {
+     "id": "14",
+     "text": "If the service DB is down when a worker finishes a send (result write fails), what happens to that delivery and does it get sent again?",
+     "about": "Recording the outcome"
+    },
+    {
+     "id": "15",
+     "text": "Does the worker acknowledge the queue message before or after the core DB read? And with several workers consuming the same topic, how is one message kept from being handled by all of them?",
+     "about": "Ingest: every worker consumes domain-events"
+    },
+    {
+     "id": "16",
+     "text": "When a subscription is disabled manually (not via 410), who marks its waiting deliveries dead? Is it only noticed when each row is claimed?",
+     "about": "Subscription still active in core DB? -> disabled"
+    },
+    {
+     "id": "17",
+     "text": "After a delivery is dead and the 14-day purge runs, what can support still see about it? Are delivery_attempts rows deleted too?",
+     "about": "Daily purge job"
+    }
+   ],
+   "answers": [
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "The topic is on the managed queue. The existing outbox-relay publishes to it, one message per outbox row. The body is the event JSON { event_id, event_type, account_id, occurred_at, payload }, which is also what we forward to customers (existing/outbox-relay.md). The file now says this in Decisions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Only the status code matters. The receiver just has to answer 2xx. The response body is never read or stored, because nothing in the brief needs it and the attempt log keeps only the code and duration. Added to Recording the outcome."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The result write fails and nothing is recorded, so the row stays pending with its lease. The lease expires after 60 s and another worker claims it and sends again. That is a duplicate send, which at-least-once allows, and the stable X-Webhook-Id lets the receiver dedupe. The attempt counts. Added to Recording the outcome and the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "The ack comes after the core DB read and after the local commit, never before. The queue facts say an unacked message is hidden until the visibility timeout ends, so one worker normally handles a message at a time. At-least-once means a duplicate can still reach another worker, and the idempotent insert absorbs it. Both points are now in Duplicates and fan-out."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Nobody sweeps on a manual disable. Each waiting delivery is only noticed when it is next claimed, once next_attempt_at is due, and the subscription is read with a cache of up to about 30 s. Until then it stays pending and is never sent. I chose this over a periodic sweeper to avoid a new mechanism. The cost is that a waiting row can show as pending for up to its wait, at most 6 h. Now stated explicitly."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The purge deletes the dead delivery and its delivery_attempts rows together, so after 14 days support sees nothing about it. This follows the brief's 14-day retention. Delivered rows and their attempts go after 7 days. Added to Dead letters and the diagram's purge node."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "18",
+     "text": "The ingest step reads active subscriptions and inserts one delivery per match. How does a worker's poll loop learn the subscription's url and secret later at send time: does the delivery row point to subscription_id, and is that column listed anywhere?",
+     "about": "Where state lives: deliveries table / Dispatch: Subscription still active in core DB?"
+    },
+    {
+     "id": "19",
+     "text": "When a send fails and the row goes back to pending with next_attempt_at set, what happens to the 1 to 2 s poll and the 60 s lease? Is the lease cleared only on failure or also on success, and who writes that?",
+     "about": "Dispatch: attempts less than 8? / next_attempt_at = now + wait"
+    },
+    {
+     "id": "20",
+     "text": "The core DB UPDATE on 410 and the local dead-letter are two separate writes. If the 410 handler succeeds in core but the local write fails, what exactly happens next and why does the retry return 410 again?",
+     "about": "410 and disabled subscriptions: UPDATE core subscription"
+    },
+    {
+     "id": "21",
+     "text": "What does the replay do to purge_after, dead_at and last_error on the row, and what happens if a replayed delivery's subscription gets disabled again before it is claimed?",
+     "about": "Admin API for support: POST replay, one delivery"
+    },
+    {
+     "id": "22",
+     "text": "The queue's visibility timeout is 30 s but the 'core DB error' path says no ack and retry. How long can a message keep retrying, and what finally happens to it if the core DB outage is long?",
+     "about": "Ingest: No ack. Message reappears after the visibility timeout and is retried"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "Yes, the delivery row needs a subscription_id column. It was implied by the UUIDv5 id and the UNIQUE (event_id, subscription_id) key but never listed. It is now listed in the deliveries table. At send time the worker reads url, secret_ciphertext and status from the core DB by that subscription_id."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The result write, made by the worker that sent the request, clears the lease on every outcome: success, retry and dead. After a failure the row is pending with a future next_attempt_at, so every poll skips it until that time. The poll loop itself is unaffected. Stated in Recording the outcome and Attempt timing."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The old text was wrong: the retry does not return 410 again. After the core update, if the local write fails or the worker crashes, the row stays pending and the lease expires. The next claim reads the subscription, sees it is disabled, and dead-letters the row as subscription_disabled without sending. So that row's last_error may be subscription_disabled instead of gone. Fixed in the 410 section."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Replay sets state pending, attempts 0, cycle + 1, next_attempt_at now, and clears lease_until, dead_at and purge_after. last_status and last_error stay until the next attempt overwrites them. If the subscription is disabled before the claim, the claim dead-letters it again as subscription_disabled with new dead_at and purge_after. Added to the replay section."
+    },
+    {
+     "id": "22",
+     "tag": "unknown",
+     "text": "The service has no limit of its own: the message stays un-acked and reappears every 30 s until the core DB recovers. If the queue's failed-receives threshold is reached it lands in the dead-letter topic, so we set that threshold high and alert on depth above 0. I do not know the queue's maximum retention for an un-acked message or the exact threshold value, since the queue facts do not give them. Added to Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one event, say an `invoice.paid` event for account A, from the moment it is published to the moment the customer's endpoint gets it. I'll cover one failure branch and the replay path.\n\n1. **An event is published.** The existing outbox relay publishes a JSON message `{event_id, event_type, account_id, occurred_at, payload}` to the `domain-events` topic of a managed queue. The queue delivers at-least-once and in no particular order. The relay may publish duplicates, and the message may be delivered to any worker. State at this point is in the queue only.\n\n2. **A worker's ingest loop receives the message.** Every worker runs the ingest loop, and there is no leader. The worker first checks that the body is valid JSON with `event_id`, `event_type` and `account_id`. If it isn't, the worker writes the raw body and the reason to `ingest_rejects` and acks. It acks so the message doesn't loop into the queue's dead-letter topic, which support can't inspect.\n\n3. **Ingest looks up matching subscriptions.** The worker reads the core database, read-only, for `webhook_subscriptions` rows where `status='active'`, `account_id` matches, and `event_types` contains the event's type or `'*'`.\n   - If the core DB errors, the worker doesn't ack. The message reappears after the 30 s visibility timeout and is retried. The service has no retry limit of its own.\n   - If there are 0 matches, the worker acks and stores nothing.\n\n4. **Ingest writes locally, then acks.** With 1 or more matches, the worker runs one local transaction in the service's own Postgres.\n   - It inserts the event into `events` with the exact JSON text as `body`, using `ON CONFLICT DO NOTHING`.\n   - It inserts one `deliveries` row per matching subscription. The `id` is a UUIDv5 of `event_id` and `subscription_id`. `state` is `pending`, `next_attempt_at` is now, and the insert is `ON CONFLICT DO NOTHING`.\n   - After commit, the worker acks.\n   - If the worker crashes before commit or the DB errors, there is no ack and the message is redelivered. The `ON CONFLICT DO NOTHING` inserts and the `UNIQUE (event_id, subscription_id)` constraint make a second run add nothing.\n   - The core read happens before the commit because the two databases can't share a transaction.\n   - A subscription created after the event was read gets nothing for that event.\n\n5. **Dispatch claims due deliveries.** Every worker's dispatch loop polls about once a second. One statement, `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED LIMIT n) RETURNING`, claims a bounded batch of rows that are `pending`, due, and have no live lease. For each claimed row it sets `lease_until = now+60 s`, `locked_by`, and `attempts+1`. `attempts` is incremented at claim time, so the claim that makes it 8 is the 8th attempt and is sent. Workers never take the same row. A first send goes out within about 1 to 2 s of ingest. The worker sends a batch with limited concurrency.\n   - If the claim finds an expired lease and `attempts` is already 8, the row is dead-lettered with `last_error='worker_lost'` and nothing is sent.\n\n6. **The worker checks the subscription.** It reads the subscription by `subscription_id` from the core DB, with a cache of at most about 30 s.\n   - If the subscription is disabled, the row goes to dead with `last_error='subscription_disabled'` and nothing is sent.\n   - If the core DB or decryption fails, that isn't counted as an attempt. The worker gives the claim back with `attempts-1`, a cleared lease and `next_attempt_at = now+30 s`.\n\n7. **The worker sends.** It decrypts the secret with `libs/secrets.decrypt()`. The secret is never copied into the service DB. It builds `X-Webhook-Signature: t=<now>,v1=<hex HMAC-SHA256 of \"t.rawbody\" keyed with the secret>` just before sending, so every attempt and replay has a fresh `t`. It POSTs the stored body byte-for-byte to the subscription `url`. The timeout is 10 s and redirects are not followed. `X-Webhook-Id` is the delivery id and is the same on every attempt. Only the status code is used, and the response body is never read.\n\n8. **The outcome decides what happens next.**\n   - **2xx:** `state='delivered'`.\n   - **410:** the worker updates the core subscription to `status='disabled'`, `disabled_reason='gone'`. This is idempotent. It then dead-letters this delivery (`last_status=410`, `last_error='gone'`) and sweeps all the subscription's other pending deliveries to dead with `last_error='subscription_disabled'`, including rows leased by other workers.\n   - **Other 4xx or any 3xx:** dead immediately.\n   - **408, 429, 5xx, timeout or connection error:** retryable. If `attempts < 8`, `next_attempt_at` is set to now plus the nth wait from 30 s, 2 m, 10 m, 30 m, 1 h, 3 h, 6 h, measured from when the failure is recorded. Up to 10% jitter is added. A `Retry-After` on a 429 or 503 can lengthen the wait but not shorten it, capped at 6 h. The worker records `last_status` and `last_error`. If this was the 8th failure, the row is dead.\n\n9. **The result is recorded.** The write is `WHERE id=$id AND state='pending' AND locked_by=$me AND lease_until>now()`. The `delivery_attempts` row is inserted in the same transaction. The lease is cleared on every outcome.\n   - If the lease was lost or the row was swept to dead, the result and its attempt row are discarded. A duplicate send is possible, and receivers dedupe on `X-Webhook-Id`.\n   - If the service DB is down at write time, nothing is recorded. The lease expires, another worker re-sends, and the attempt counts.\n\n10. **Crash recovery.** If a worker dies mid-attempt, the row stays `pending` with a lease. After at most 60 s another worker claims it. If the worker died on a 410 after the core update, the next claim sees the subscription disabled and dead-letters the row as `subscription_disabled` without sending.\n\n11. **Dead rows.** The row gets `dead_at` and `purge_after = dead_at + 14 d`. Support calls the admin API to list a subscription's dead deliveries. The listing returns `last_status`, `last_error`, `dead_at` and the attempt history.\n\n12. **Replay.** Support POSTs a replay for one delivery. There is no bulk replay.\n    - If the subscription is disabled, the API returns 409 and says to re-enable it first.\n    - Otherwise a conditional `UPDATE ... WHERE state='dead'` sets `attempts=0`, `cycle+1`, `state='pending'` and `next_attempt_at=now`, and clears `lease_until`, `dead_at` and `purge_after`. A double click replays once. The `id` is unchanged, and the row re-enters step 5. If the subscription gets disabled before the claim, the row dead-letters again with a new `dead_at` and `purge_after`.\n\n13. **Retention.** A daily purge job deletes dead rows past `purge_after`, delivered rows older than 7 days, and `ingest_rejects` older than 14 days. It also deletes their `delivery_attempts` rows and any events that no delivery references.\n\n14. **Whole-system failures.**\n    - If the service DB is down, ingest doesn't ack and dispatch pauses.\n    - If the core DB is down, ingest doesn't ack and every claim is given back at no attempt cost.\n    - A slow or erroring receiver follows the retry schedule and then goes to dead.",
+   "gaps": [
+    "How the admin API authenticates callers is not specified.",
+    "How receivers get the subscription secret is not specified.",
+    "Who may re-enable a disabled subscription, and whether support can, is not specified.",
+    "How long the queue keeps an un-acked message, and the exact 'failed receives' threshold, are not given. The document says a long core DB outage could lose messages.",
+    "What triggers the daily purge job (scheduler or which worker runs it) is not stated, nor how the admin API is hosted (in the same workers or separately).",
+    "The exact batch size, concurrency limit and polling mechanics are not given. They are only described as bounded and about once a second."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

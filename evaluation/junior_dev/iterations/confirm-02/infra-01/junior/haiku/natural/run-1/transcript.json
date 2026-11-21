@@ -1,0 +1,201 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "After the switch in step 9, the deploy must wait up to 30 minutes. Is that one long pipeline run, or does a scheduled job pick up from the state record? What starts step 13 and step 14?",
+     "about": "Checklist, steps 9 to 14 (who runs them)"
+    },
+    {
+     "id": "2",
+     "text": "A merge arrives during the 30-minute hold and is queued. The lock stays held until step 14. Does the queued deploy always wait the full 30 minutes after the switch? What exactly starts it?",
+     "about": "Step 1, Merge starts the deploy and takes the lock"
+    },
+    {
+     "id": "3",
+     "text": "What are the two colours and the target groups, and how does the public listener map to them? Where do the instances run, and what does 'desired count' act on?",
+     "about": "Step 2, Confirm the live colour"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'internal test path'? What does the smoke suite check, and where does it run from?",
+     "about": "Step 7, Smoke suite / internal test path"
+    },
+    {
+     "id": "5",
+     "text": "The migration runs on the shared PostgreSQL database while the old release is still serving. What makes that safe for the old release? Is it only the lint rules in step 3?",
+     "about": "Step 4, Apply migrations once"
+    },
+    {
+     "id": "6",
+     "text": "Where do the response counts come from, and how does the pipeline read them? What does 'metrics missing' mean in practice?",
+     "about": "Step 10, Watch the 5xx rate"
+    },
+    {
+     "id": "7",
+     "text": "After an automatic rollback, is hold_until still switch + 30 minutes from the original switch? And can a manual rollback in step 12 then switch back to the colour that was just rolled back from?",
+     "about": "Step 11 and step 12, hold and rollback"
+    },
+    {
+     "id": "8",
+     "text": "Step 8 says the idle colour can keep running if scale-down fails. But step 2 requires the idle colour to have no running instances. How does the next deploy proceed in that case?",
+     "about": "Step 8, Abort without touching the public listener"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Neither is one long run. Steps 1 to 9 run in one pipeline run that ends at the switch. After that, a scheduled job (the watch) runs every minute from the switch until the hold ends. Each run reads the state record, does the step that is due, and exits. Step 13 starts when that job sees hold_until has passed while status is holding. Step 14 follows in the same run. No run waits 30 minutes, and a failed run loses nothing, because the state is in the record."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Yes, after a successful switch. The lock is held until step 14, and step 14 runs only after hold_until and after the old colour is shut down, so a queued merge waits the full 30 minutes. If the switch aborts in step 8, the wait is shorter. The watch job starts the queued deploy by running step 1 for queued_sha."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "There are two colours, blue and green. Each has its own target group with 4 instances. The public listener's forward action names exactly one target group, so the live colour is the one that name belongs to. Desired count is the number of instances the platform keeps running for that colour's group. The brief does not name the compute platform, so where the instances physically run is not known. See Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The internal test path is a private address for each new instance, reached directly from the pipeline's network. It is not the public listener. What the smoke suite checks is not in the brief, and I do not know it. See Open questions."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The brief's additive-only rule is what makes it safe for the old release. The step 3 lint is the only automated check of that rule, and it checks the migration text, not what the old release's queries do. The lock_timeout stops the migration from queuing behind traffic-serving locks for long. The old release is not tested on the migrated schema before the switch. See Open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The counts come from the load balancer's own metrics for the public listener, filtered to the new target group. The brief names one load balancer, so that is the only count of responses through the listener. Metrics missing means the query fails or returns no data for the window. Zero traffic is not missing: fewer than 100 responses means no breach. The metric's name is not known."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes. hold_until stays at the original switch + 30 minutes. A rollback does not move it. The earlier wording said the hold followed the last switch, which conflicted with this, so I fixed it. A manual rollback in step 12 cannot return to the colour that was rolled back from (rolled_back_from). That release was rolled back for a reason, so bringing it back needs a new deploy."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Step 8 now releases the lock even when the scale-down fails. The next deploy's step 2 scales the leftover idle colour to 0 and waits for its instances to stop before it runs its check. This is safe because an aborted colour has no hold. If the instances cannot be stopped, that deploy stops and pages an engineer."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The listener always forwards to exactly one target group, and the idle colour has 4 instances in its own group. What puts the new instances into the idle colour's target group, so the listener can send traffic to them at step 9? Is that automatic when desired count is 4, or a separate action?",
+     "about": "Step 5, Start the new release on the idle colour / Target group"
+    },
+    {
+     "id": "10",
+     "text": "In step 11, how does the watch job know which target group's responses to count after a rollback, and what happens to the 5xx watching once the listener is back on the old colour? Does the watch job keep running the 1-minute cycle until hold_until?",
+     "about": "Step 10 and Step 11, Automatic rollback"
+    },
+    {
+     "id": "11",
+     "text": "After step 11 or step 12 sets status = holding, who sets status to shut_down and complete, and does the watch job keep running until step 14 finishes? What happens to the watch job after step 14 clears the lock?",
+     "about": "How the run is driven / Step 13 and Step 14"
+    },
+    {
+     "id": "12",
+     "text": "In step 12, an engineer starts the rollback job during a hold. Is that job a separate pipeline run that writes to the state record at the same time as the watch job? How do they avoid clashing, for example if the watch job triggers an automatic rollback at the same minute?",
+     "about": "Step 12, Manual rollback during the hold"
+    },
+    {
+     "id": "13",
+     "text": "In step 8, when the abort starts the queued deploy by running step 1, the lock was just released. Does step 1 for the queued SHA run as a new pipeline run, and what deploy_id does it get? Also, who clears queued_sha in step 8?",
+     "about": "Step 8, Abort without touching the listener / queued_sha"
+    },
+    {
+     "id": "14",
+     "text": "If the status is rollback_failed or migration_failed, who clears the lock or moves the deploy on? Step 11 sets rollback_failed but does not say the lock is released, and step 14 only runs after step 13. What state is the system in and how do deploys resume?",
+     "about": "Step 11, rollback_failed / Statuses"
+    },
+    {
+     "id": "15",
+     "text": "What does the 'previous release' mean for step 13 in the normal case: how does it know the non-live colour's digest and sha at that moment? Is it read from the state record fields (release_sha, image_digest) or from the instance tags?",
+     "about": "Step 13, Shut down the non-live colour at hold_until"
+    },
+    {
+     "id": "16",
+     "text": "If the pipeline run for steps 1 to 9 crashes between steps, for example after step 5 or in the middle of step 9, what picks it up? Who notices the lock is held by a dead run, other than the 15-minute stale-lock alert?",
+     "about": "How the run is driven / Step 9, Switch the listener"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "The brief does not name the compute platform, so I do not know how a started instance joins its colour's target group. The plan assumes the platform does this when the desired count is set. I stated that assumption in step 5 and kept it in Open questions."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "After a rollback the 5xx watch stops, so no response counts are read and no target group needs to be chosen. The scheduled job keeps running each minute until step 14 finishes, only so that step 13 can run when hold_until passes. I wrote this into How the run is driven and into steps 10 and 11."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The watch job sets status shut_down in step 13 and status complete in step 14. It runs until step 14 finishes. After step 14 clears the lock it has no step left, so it exits. I wrote this into How the run is driven."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The manual rollback job is a separate pipeline run. The two writers cannot clash, because every write is a compare-and-set on version and the states they need do not overlap: automatic rollback acts only from watching, and manual rollback only from holding. Step 12 now moves status to rolling_back from holding, and step 13 moves status to shut_down from holding before it scales down, so only one of them can win. The loser stops, and the next run re-reads the record."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. The queued SHA's step 1 runs as a new pipeline run. Its deploy_id is that run's own ID, which I now define in Terms. The same compare-and-set that clears the lock also takes and clears queued_sha, so the SHA is taken only once. A merge that arrives during that hand-off can take the lock first. The brief does not say how to order it, so it is in Open questions."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "migration_failed releases the lock in step 4, so the next merge's step 1 can run. rollback_failed does not release the lock. The new colour stays live, and the watch job does nothing. The brief does not say how an engineer clears this state or hands the deploy back to the watch, so that is in Open questions. I changed step 11 to state the lock and the watch's behaviour."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Step 13 reads them from the instance tags of the non-live colour, before its instances are scaled down. The state record's release_sha and image_digest already describe the new release by then, so they cannot be used. Step 5 now tags each instance with image_digest as well."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Nothing in the brief restarts a crashed run. The deploy run now writes heartbeat_at when it starts each step. If the lock is held and heartbeat_at is more than 15 minutes old, the stale-lock alert fires, and an engineer decides what to do. Step 2 of the next deploy handles leftover idle instances and stops if the listener and the state disagree. A crash that leaves the switch done but the state unwritten is in Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one ordinary deploy of `catalog-web` from a merge to `main`. It is a blue-green switch, so I use \"old colour\" for the live colour and \"new colour\" for the idle one that gets the new release.\n\n1. **A merge to `main` starts a pipeline run.** CI runs the steps itself. Nobody runs them by hand. Each run gets its own `deploy_id`. The run reads the deploy state record, `catalog-web/<env>/deploy-state`. That is a JSON record in a small key-value store the pipeline owns. It is kept out of the application database so a failing migration cannot change it. If `lock` is empty, the run writes `lock = deploy_id` and `status = deploying`. It does this with a compare-and-set (CAS) on `version`, so the write only succeeds if nobody changed the record since the run read it. If `lock` is already set, the run writes its SHA into `queued_sha`, replacing any older queued SHA, and ends. If the state can't be read or the CAS loses a race, it retries up to 3 times. Then it stops, leaves the listener alone and sends an alert.\n\n2. **The run confirms which colour is live.** It reads the public listener's forward target and maps it to a colour. That colour must match `live_colour` in the record. The listener is the source of truth and the record is only checked against it. The other colour becomes `idle_colour`. If the idle colour still has running instances, an aborted deploy left them there. The run scales them to 0 and waits for them to stop. Then it records `idle_colour` and `release_sha`. If the listener and the record disagree, or the instances won't stop, the run stops and releases the lock. Nothing is changed, and an engineer has to reconcile the two.\n\n3. **Build and test.** The run builds one image from `release_sha` and records its `image_digest` in the state record. That digest is the only artifact deployed to every instance. It runs the unit and integration tests. It also lints the migrations. The lint rejects any migration that drops or renames a table or column, changes a column type, or adds `NOT NULL` to an existing column without a default. If anything fails, the run stops and releases the lock. The live colour is untouched and nothing has been migrated.\n\n4. **Migrations run once.** A one-off migration task starts from `image_digest`. It takes a PostgreSQL advisory lock, so only one migrator can run at a time. It sets `lock_timeout` to 5 seconds and `statement_timeout` to 10 minutes. It runs the pending migrations in order. Indexes are built with `CREATE INDEX CONCURRENTLY`, and the task fails if one leaves an INVALID index. The database rolls back a failed transactional migration. Each applied migration goes into the migration tool's own table and into `migrations_applied` in the record. Migrations are additive only, and they are never reversed. That is why the old release keeps working on the migrated schema. If migrations fail, `status = migration_failed` and the lock is released. No new instance has been started, so the live colour keeps serving. Migrations that already finished stay applied. The next deploy's migration task drops any INVALID index with `DROP INDEX CONCURRENTLY` before it runs its own migrations.\n\n5. **Start the new release on the idle colour.** The run sets the idle colour's desired count to 4, with `image_digest`. Each instance is tagged with `deploy_id`, `release_sha`, `image_digest` and its colour. The tags record each colour's release for as long as its instances run. The platform adds each started instance to that colour's target group. The listener doesn't forward to the idle colour, so no user traffic reaches it. The first launch time is recorded as T0, and the deadline for steps 6 and 7 is T0 + 10 minutes. A launch error counts against that deadline. If the platform says no instance can be launched at all, the run aborts at once through step 8.\n\n6. **Health gate.** Every 10 seconds the pipeline calls `GET /healthz` directly on each of the 4 new instances. It counts consecutive passes for each instance. An instance is ready after 3 passes in a row, and a failure resets its count. The counts live only in the pipeline run, not in the record. The gate passes when all 4 are ready. One failed check does not abort. If the gate hasn't passed by T0 + 10 minutes, the run aborts through step 8, and the listener is not touched.\n\n7. **Smoke suite.** Once the gate passes, the CI runner runs the smoke suite against each new instance through its internal test path. The public listener is not used. The result goes in the CI run log. A failing suite, or one that isn't finished by T0 + 10 minutes, aborts the run through step 8.\n\n8. **Abort path.** This runs when step 5, 6 or 7 fails or the deadline passes. It sets the idle colour's desired count to 0 and leaves the logs in the log system. Then, in one CAS, it sets `status = aborted`, clears `rolled_back_from` and `lock`, and takes `queued_sha`, clearing it. If a SHA was taken, a new pipeline run starts for it from step 1, with its own `deploy_id`. The migrations from step 4 stay applied. If the scale-down call fails, the run retries and then alerts. The lock is still released, and the next deploy's step 2 scales that colour to 0. The listener is never touched on this path.\n\n9. **Switch the listener.** This happens only if steps 6 and 7 both passed by the deadline. The run re-checks that the listener forwards to `live_colour` and that all 4 new instances pass `/healthz`. Then it repoints the listener's forward action to the new target group in one update, with no weights. It reads the listener back to confirm. After that it writes `live_colour`, `switch_at`, `watch_until` (switch + 15 minutes), `hold_until` (switch + 30 minutes) and `status = watching`. This is the end of the pipeline run.\n   - If the switch step fails and the listener forwards to the new colour, the switch happened. The run continues to step 10. If the state write fails, it retries 3 times and then pages an engineer.\n   - If the listener still forwards to the old colour, the switch did not happen, and the run follows step 8.\n   - If the listener can't be read, the run stops and pages an engineer.\n\n10. **Watch the 5xx rate.** From here the watch job takes over. It is a scheduled pipeline job that runs every minute. Each run reads the state record, writes `heartbeat_at`, does whatever step is due and exits. No state is lost if a run fails, because the state is in the record. While `status = watching`, each run computes the 5xx rate over the trailing window of min(5 minutes, time since switch). It uses the load balancer's response counts for the new target group. A window breaches only if the rate is strictly above 1% and the window holds at least 100 responses. A breach starts step 11. If `watch_until` passes with no breach, `status = holding`. If the response counts are missing for 2 evaluations in a row, an engineer is paged and no rollback happens. Missing means the query fails or returns no data. Zero traffic is not missing. If `heartbeat_at` is more than 2 minutes old, an alert fires. The hold cannot end while the watch is unconfirmed.\n\n11. **Automatic rollback.** By CAS from `watching`, the job sets `status = rolling_back` and `rolled_back_from` to the new colour. It repoints the listener to the old target group in one update, without waiting for the old colour's health check. It reads the listener back. On success it sets `live_colour` to the old colour and `status = holding`, and the 5xx watch stops. The new colour keeps running until `hold_until`. Migrations are not reversed. If the listener update fails, the job retries 3 times. If it still fails, it sets `status = rollback_failed` and pages an engineer. The new colour stays live, the lock stays held, and the job does nothing more until an engineer acts. If the old colour fails `/healthz` after the rollback, an engineer is paged and nothing switches again automatically.\n\n12. **Optional manual rollback during the hold.** An engineer starts the rollback job and someone approves it. It runs only when `status = holding` and the non-live colour is still running. It refuses a target equal to `rolled_back_from`, so a rolled-back release must come back through a new deploy. Otherwise it sets `status = rolling_back` by CAS from `holding`, which stops step 13 from acting at the same time. It repoints the listener to the non-live colour and reads it back. Then it sets `live_colour`, sets `rolled_back_from` to the colour it left, and sets `status = holding`. `hold_until` does not move, and the lock stays held. If the listener update fails, it follows the same retry and `rollback_failed` handling as step 11.\n\n13. **Shut down the non-live colour at `hold_until`.** The watch job sees that `hold_until` has passed while `status = holding`. It confirms the listener forwards to `live_colour` and that the live colour's 4 instances pass `/healthz`. Then it sets `status = shut_down` by CAS from `holding`. If the CAS fails, step 12 or another change got there first. This run stops and the next run checks again. While the non-live instances still run, the job reads their `release_sha` and `image_digest` from their tags. If `rolled_back_from` is empty, those values become `previous_release_digest` and `previous_release_sha`, which is the rollback target from here on. If a rollback happened, they are left unchanged, because the right values are already recorded. Then it sets the non-live colour's desired count to 0 and waits for the instances to stop. If the live colour is unhealthy, the job doesn't shut anything down. It pages an engineer and keeps `status = holding`, because that colour is the only rollback target left. If the scale-down call fails, it retries. `status` stays `shut_down`, and step 14 waits until the instances stop.\n\n14. **Finish.** Once the non-live instances have stopped, one CAS sets `status = complete`, clears `rolled_back_from` and `lock`, and takes `queued_sha`, clearing it. If a SHA was taken, a new pipeline run starts for it from step 1, with its own `deploy_id`. The run log records the deploy, its outcome and its timestamps, and a notification is sent. If the CAS fails, it is retried. Until the lock clears, every other deploy waits. The stale-lock alert covers this case. It fires when the lock is held and `heartbeat_at` is more than 15 minutes old, and it restarts nothing.\n\n**Rollback after the old colour is gone.** After step 13 there is no colour to repoint to. An engineer starts a normal deploy of `previous_release_digest`, with approval. It runs steps 1 to 14 with two differences in practice. Step 3 skips the build and uses the previous digest and SHA. Step 4 applies nothing new. If `previous_release_digest` is empty, the run stops before step 2 and releases the lock.",
+   "gaps": [
+    "The compute platform is not named. How each colour's instances join its target group, and where they run, is not stated. That matters for step 5, which also leaves open how a launch error is reported to the pipeline.",
+    "The document doesn't say how the new `deploy_id` is created or how the CI pipeline decides which SHA step 1 is working on. It also doesn't say how the SHA is passed into the run when a queued merge is started in step 8 or step 14.",
+    "The smoke suite's contents and run time are not given. I can't say what a pass looks like, so step 7 cannot be explained in detail.",
+    "The name and source of the response-count metric, and how long it lags, are unknown. Without them I can't explain how step 10 gets its data or how 'missing' is told apart from lag.",
+    "The document doesn't say how an engineer clears `rollback_failed` and hands the deploy back to the watch. The lock stays held and deploys wait until that is decided.",
+    "A crashed pipeline run is not picked up by anything. Only the stale-lock alert fires. A crash after the switch but before `status = watching` leaves no watch running, and the next deploy's step 2 stops because the listener and the state disagree. The document doesn't say how an engineer then recovers.",
+    "The ordering of a newly arrived merge versus an older queued SHA that is being started is not defined. The new merge can take the lock first.",
+    "The document doesn't say who approves the manual rollback or the rollback deploy, or how that approval works.",
+    "It isn't stated what happens in step 8 if the CAS that releases the lock fails, or what the run does in step 2 when the idle colour's instances won't stop beyond releasing the lock.",
+    "The document doesn't say what the watch job does if `status = watching` but the listener was never actually switched, or how a manual rollback is told which colour to target besides 'the non-live colour'.",
+    "The statement timeout of 10 minutes may be too short for `CREATE INDEX CONCURRENTLY` on large tables, and the document doesn't say what happens then beyond the step 4 failure path.",
+    "The old colour is not tested against the migrated schema before the switch. Safety relies on the additive rule and the step 3 lint, with nothing else checking it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,293 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The command checks 'B's last recorded replay lag'. Where is that recorded, and who writes it?",
+     "about": "Pre-checks: B's last recorded replay lag is 30 s or less?"
+    },
+    {
+     "id": "2",
+     "text": "When A's lease is renewed, what exactly gets written to the record store, and does the lease live in the same key as the active-region record?",
+     "about": "Write lease / Where the active-region record lives"
+    },
+    {
+     "id": "3",
+     "text": "After the FAILING_OVER write, how does A's primary find out it must stop? Does it read the record, or just fail to renew?",
+     "about": "Fence A: Write record FAILING_OVER, A can no longer renew its lease"
+    },
+    {
+     "id": "4",
+     "text": "The flowchart shows epoch +1 at the FAILING_OVER write and again at ACTIVE. Is that two increments, and does the compare-and-set check the epoch each time?",
+     "about": "Write record: state FAILING_OVER, epoch +1 / Write record: state ACTIVE, region B, epoch +1"
+    },
+    {
+     "id": "5",
+     "text": "What does the on-call person actually type and see? How do they pass the accept-data-loss override, and what does the command output while it waits?",
+     "about": "On-call decides and runs the failover command"
+    },
+    {
+     "id": "6",
+     "text": "What is the process running the failover command and where does it run? If it runs in Region A or B, what happens if that region is the one that is down?",
+     "about": "Failover command"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Retry, then escalate' mean in practice: how many retries, who retries (the command or a person), and who is escalated to?",
+     "about": "Retry, then escalate (Promote B / Bring up B)"
+    },
+    {
+     "id": "8",
+     "text": "Does the watchdog on A's primary read the lease from the record store, and what does 'demote' do to in-flight transactions and A's app?",
+     "about": "A local watchdog on A's primary makes the database read-only, or stops it"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The replica in B records it itself each time it receives WAL from A (from the brief's description of today's setup). The command reads the last value from B's database. It is not in the record store. Added a short section saying so."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Each renewal extends the expiry of a lease key by about 15 s, in one transaction that checks the active-region record still says A is active at A's epoch. The lease is a separate key in the same store. Reason: frequent renewals would otherwise change the record's version and break the failover command's compare-and-set."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "By failing to renew. After the FAILING_OVER write, A's renewal is refused (or fails if the store is unreachable). The watchdog counts from its last successful renewal on its own clock and stops the database when about 15 s pass. It does not need to read the record, so this works under a partition."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "It was two increments, which was needless. Changed so the epoch rises once, at the FAILING_OVER write. The final ACTIVE write keeps that epoch and compare-and-sets on epoch and run_id. Every write is a compare-and-set."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The person runs the single failover command, adding a flag such as --accept-data-loss for the override. It prints each step name as it starts and a countdown during the fence wait. The exact output format is a detail the plan does not need to fix."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It runs from a host outside Region A, such as on-call's workstation or a runner in B or a third location. It needs the store, B's DB, B's cloud API and the DNS manager, not A. Because state is in the record, it can be rerun from another host if that host dies."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The command itself retries the step about 3 times with a short wait (a proposal to tune), then exits with an error naming the step. The on-call person who ran it takes over and calls the secondary on-call per the team's runbook, then reruns the command to resume. The team's escalation roster is not defined here."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The watchdog renews the lease in the store (it writes to it, as in Q2), and does not read the record directly. Demote now means a fast shutdown of A's PostgreSQL, which rolls back in-flight transactions. A read-only setting would leave open transactions running, so it was dropped. A's app tier is untouched and gets database errors."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The fence wait lasts about 15 s plus margin, counted from the FAILING_OVER write. But the watchdog counts 15 s from A's last successful renewal, and renewals happen every 5 s. How does the command know the wait is long enough? What is it measuring from?",
+     "about": "Wait for A's write lease to expire plus clock-skew margin"
+    },
+    {
+     "id": "10",
+     "text": "The command waits out the lease, but how does it know A's primary actually stopped? Is there any check, or is it purely a timer?",
+     "about": "Fence A / F2: A's primary has stopped and can no longer take writes"
+    },
+    {
+     "id": "11",
+     "text": "If the watchdog can't reach the store but A's primary is still serving users, A stops itself after 15 s even though no failover has been started. Is that the intended behaviour, and who gets told?",
+     "about": "The cost is a new dependency"
+    },
+    {
+     "id": "12",
+     "text": "What does the 'B still in recovery?' check actually query, and what exactly does 'B writable?' check? Who makes the promote call, and against what?",
+     "about": "Promote B (point of no return) / D0, D2"
+    },
+    {
+     "id": "13",
+     "text": "The rerun reads the record's `step` and continues. But the record stays FAILING_OVER until the end, and the table says rerun 'sees B writable'. Is resume driven by the step field or by inspecting B? What if they disagree?",
+     "about": "Failed or interrupted runs"
+    },
+    {
+     "id": "14",
+     "text": "The pre-check says 'no other run in progress'. How is that determined, and how does someone deliberately restart a run whose command crashed, given the record already says FAILING_OVER?",
+     "about": "Pre-checks: record says A is active, no other run in progress"
+    },
+    {
+     "id": "15",
+     "text": "The loss report is mentioned. What produces it and what does it contain, given the command only has B's data and A is unreachable?",
+     "about": "Jobs can be lost / loss report"
+    },
+    {
+     "id": "16",
+     "text": "How are B's workers and app tier scaled, and what does the 'B health check' call and what counts as passing?",
+     "about": "Bring up B: Scale B app tier from 2 to 12 / B health check passing?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The wait is measured from the lease key's expiry, not from the FAILING_OVER write. After the write no renewal can succeed, so the expiry is final. The command reads it and waits until it has passed plus the skew margin. That is never later than 15 s after the write. Changed the flowchart and the record section to say so."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "It is purely a timer. The design relies on the watchdog stopping A by itself, and the command cannot check A when A is unreachable. A frozen or paused watchdog is the residual risk, already listed. The best-effort cloud API stop is the only extra signal, and its failure is ignored. Stated plainly in the flowchart and the record section."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, intended. A cannot tell a store outage from a partition, so it must stop itself. On-call is told by an alert on a store outage and on any missed lease renewal. Made this explicit in the dependency bullet."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The command runs pg_is_in_recovery() on B's database. If true it calls pg_promote() on B's database. Writable means pg_is_in_recovery() now returns false. Added a short section on what the command does in each step."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The step field says where to start, and the real state decides what each step does. Every step checks real state first and skips itself if done. If they disagree, the real state wins. Wrote this into the failed-runs section."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A new run needs the record to say A is active. A record saying FAILING_OVER refuses a new run, which is how a second, unrelated run is stopped. Restarting a crashed run is deliberate: the person reruns with a resume flag and confirms the earlier command has stopped. Overlapping resumes are safe because steps are idempotent and the final write checks run_id. Changed the pre-check box and the failed-runs section."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "There is no list of lost jobs, because A is unreachable and B never saw them. The command prints a summary instead: time of last WAL receipt, recorded replay lag, count of requeued jobs, and a statement that anything A committed after the last WAL receipt is not on B. Rewrote the jobs bullet."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The command scales B's worker group from 0 and app group from 2 to 12 through B's cloud API. The health check calls /healthz on B's load balancer and passes when the call succeeds and all 12 instances report healthy. That pass criterion is my proposal. What /healthz itself checks is unknown, and I added it to the open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "What is the \"DNS manager\" and what exactly does the command call to point the DNS name at B? Who owns that DNS name, and what does it point to before failover?",
+     "about": "Cut over: Point DNS name at B (TTL 60 s)"
+    },
+    {
+     "id": "18",
+     "text": "B's app instances need to talk to B's database. Is that address fixed ahead of time, or does the command have to change any app configuration when B's database is promoted?",
+     "about": "Bring up B: Scale B app tier from 2 to 12"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "unknown",
+     "text": "The DNS manager is the global traffic manager from the brief, which serves the one user-facing name with a 60 s TTL. Before failover the name points at A's regional load balancer (an inference from 'A serves all traffic'). The command calls the manager's API to point it at B's load balancer. The brief does not say who owns the name, which product it is or which API call is used, so I do not know. I added the first two facts to the step description and the unknowns to Open questions."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "No app configuration changes. I assume B's app and workers already point at B's own database server, the one that is a replica today, and promotion makes that same server writable, so its address stays the same. The brief does not state this, so it is an assumption, not a verified fact. I added it to the step descriptions and to Open questions for confirmation."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "19",
+     "text": "The command first checks the record says A is active, and the FAILING_OVER write is compare-and-set. What does the command compare against, and what does it print or do if the compare fails because someone else got there first?",
+     "about": "Write record: state FAILING_OVER, epoch +1, target B"
+    },
+    {
+     "id": "20",
+     "text": "After the final ACTIVE write the record says region B. Does anything on B (workers, app, a watchdog) take a lease or read the record afterwards? Or does B's database take writes with no lease at all?",
+     "about": "Write lease / Record set to ACTIVE B"
+    },
+    {
+     "id": "21",
+     "text": "Workers are scaled from 0 and app from 2 to 12. How does the command know the worker group has started successfully? Is there a check, or only for the app health check?",
+     "about": "Start B workers (scale from 0)"
+    },
+    {
+     "id": "22",
+     "text": "When the command is resumed after a crash during the fence wait, does it wait out the lease again, and how does it find the expiry? Is the fence wait skipped if the lease has already expired?",
+     "about": "Failed or interrupted runs / Wait until A's write lease expiry"
+    },
+    {
+     "id": "23",
+     "text": "A's last write lease renewal could have been just before a partition, and A's watchdog counts from its own last success. If A's clock runs slow, how big is the clock-skew margin and who sets it? Does the margin get applied by the command only?",
+     "about": "Wait until A's write lease expiry plus clock-skew margin"
+    },
+    {
+     "id": "24",
+     "text": "The probes decide A is down, but the pre-checks only look at the record and lag. Does the command confirm A is actually down before fencing, or can a person fail over a healthy A? What happens to A's users then?",
+     "about": "On-call decides and runs the failover command"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The compare-and-set compares against the epoch and state the command read in the pre-checks (A active, epoch N). If it fails, someone else changed the record first. The command prints the state it now finds, exits, and changes nothing more. The person reads the record and decides. Added to the step descriptions and the failure table."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "No. After the ACTIVE write nothing on B takes or renews a lease, and B's database takes writes without one. This is enough for this plan, because the only database that could be written to by mistake is A, and A cannot renew. A watchdog on B is needed before any failback, which is a separate planned switchover. Added a bullet and an open question, since the brief does not say whether that is acceptable."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Added a check. The command waits until the worker group reports its full desired count running, and DNS does not move before that. A failure is retried, then escalated. It does not check that workers are actually polling jobs, which the plan does not need. Reason: the scale call returning success does not mean instances are up."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Yes, it waits again, but only for what is left. On resume the command reads the lease key's expiry from the store again (it is final once FAILING_OVER is written) and waits until it plus margin has passed. If that time has already passed, it does not wait at all. Added a bullet and a failure table row."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The margin covers A's watchdog clock running slow, so A stops later than the lease says. The watchdog now uses a monotonic clock, which keeps drift small, and the command compares against the store's clock, not its own. The command alone applies the margin, as a fixed setting owned by the plan's owner. I propose 5 s as a starting value, but it is a proposal with no measurement behind it, so it stays in Open questions."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "No. The command does not confirm A is down, so a person can fail over a healthy A. A is fenced and stops itself, its users get errors until DNS moves, writes committed after the last WAL receipt are lost, and everyone signs in again. I kept this as a deliberate human decision because the brief says a person starts the failover and asks for no extra check. Stated under Limits and decisions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Detection and page. Probes call A's /healthz every 10 s from 3 locations. If 2 of 3 see 3 consecutive failures, A counts as down. The only thing that happens is on-call gets paged. This is the only automatic step, and it changes no state.\n\n2. A person starts the command. On-call decides to fail over and runs one failover command from a host outside A, such as a workstation or a small runner in B or a third location. The RTO clock (15 min) starts here. The command needs to reach the record store, B's database, B's cloud API and the traffic manager. It does not need A. It prints each step's name as it starts.\n\n3. Pre-checks. The command reads the active-region record from the external strongly consistent store. The record holds {active_region, epoch, state, step, run_id}. It also reads B's last recorded replay lag from B's database. B writes that value each time it receives WAL from A. It stops with nothing changed in three cases. First, the store is unreachable. Second, the record does not say A is active. A FAILING_OVER record refuses a new run unless --resume is given. Third, the lag is over 30 s and no --accept-data-loss override was given. It does not check whether A is really down, so a person can fail over a healthy A. That is deliberate.\n\n4. Write FAILING_OVER. The command does a compare-and-set on the record. It raises the epoch by 1 and sets state FAILING_OVER, target B and a new run_id. The write succeeds only if the record still matches what step 3 read, so only one run can win. If it fails, someone else changed the record. The command prints the state it finds and exits, and a person decides what to do next.\n\n5. Fence A. The aim is that A can no longer take writes before B is promoted. A's primary may take writes only while a separate lease key in the same store stays alive. A watchdog on A's primary host renews it about every 5 s. Each renewal extends expiry to about 15 s out. A renewal is one transaction that succeeds only if the record still says A is active with the epoch the watchdog holds. After step 4 the renewal is refused. If the store is unreachable, renewal fails too. About 15 s after its last successful renewal, measured on its own monotonic clock, the watchdog fast-shuts-down A's PostgreSQL. That rolls back in-flight transactions. A's app tier is left running and starts getting database errors. In parallel, the command makes a best-effort call to A's cloud API to stop A's database and app. Failure there is ignored. The command then reads the lease key's expiry. That expiry is final, because no renewal can succeed now. It waits until the store's clock passes expiry plus a clock-skew margin (proposed 5 s), and prints a countdown. This is only a timer. It does not verify that A's database stopped. If the command is resumed during the wait, it re-reads the expiry and waits for the remainder, or skips the wait if it has passed.\n\n6. Promote B. The command runs pg_is_in_recovery() on B's database. If true, it calls pg_promote(). \"Writable\" means pg_is_in_recovery() now returns false. If B is already promoted, it skips the promote. It never promotes twice. This is the point of no return, so from here the run only goes forward. If promotion fails or times out, it re-checks pg_is_in_recovery(), retries, then escalates. A stays fenced and DNS stays on A.\n\n7. Requeue jobs. Jobs are rows in the jobs table. B's copy is A's as of the last WAL received. Rows A was working on still show as running, but their workers are gone. B has no workers yet, so every running row is an orphan. The command resets all running rows to queued. This is idempotent, so an interrupted requeue is rerun. It then prints a summary with the time of the last WAL receipt, the recorded lag, the number of jobs requeued, and a statement that anything A committed after the last WAL receipt is not on B. It cannot list those lost jobs. Requeued jobs may run twice, because a job may have finished in A while its completion row never reached B. Handlers must be idempotent and side effects need idempotency keys. A stale worker in A cannot mark anything done, because A's database is stopped.\n\n8. Start workers and scale the app, in parallel, once B's DB is writable. Workers: the command scales B's worker group from 0 through B's cloud API and waits until the group reports its full desired count running. It does not check that workers are polling. App: the command scales B's app group from 2 to 12 through the cloud API. It then calls /healthz on B's load balancer, which passes when the call succeeds and all 12 instances report healthy. If either fails, it retries, then escalates, and DNS does not move. Nothing needs reconfiguring, on the assumption that B's app and workers already point at B's own database server, which is the promoted replica.\n\n9. Move DNS. This happens when the app is scaled and healthy and the workers are running. The command calls the traffic manager's API to point the single user-facing DNS name at B's load balancer. The call is idempotent, so failures are retried. Resolvers may still serve A's address for up to 60 s because of the TTL.\n\n10. Write ACTIVE. The command sets the record to state ACTIVE, region B, with the same epoch, by compare-and-set on epoch and run_id. It retries on failure. Until this succeeds the record still says FAILING_OVER, so no failback or second failover can start. Users who were signed in must sign in again, because B's Redis starts empty. This is accepted. The run is then done.\n\n11. Failure handling and resume. \"Retry, then escalate\" means about 3 retries with a short wait, then exit with an error naming the step. On-call calls the secondary on-call per the usual runbook, and after the fix reruns with --resume. Each step writes its name to step in the record. To resume, the person confirms the earlier command is no longer running, then reruns with --resume from any host. The command takes run_id from the record and continues from the recorded step. Real state wins over the recorded step. For example, if step says promote but B is already writable, the promote is skipped. Overlapping resumes are safe, because each step checks real state first and only one ACTIVE write can succeed. A stop before the FAILING_OVER write changes nothing. After it, backing out is a manual human decision, so the default is to resume forward.\n\n12. When A returns. A's lease has expired and the record says B is active with a higher epoch, so A's database stays stopped. A is rebuilt as a replica of B, using a fresh base backup or pg_rewind. A's old database is never reused as primary. Failback is a separate planned switchover with its own plan.",
+   "gaps": [
+    "Where the watchdog's stopping of A is configured to run, and what restarts or prevents A's DB from restarting (for example by an init system) after the watchdog stops it, is not stated. The document says only that it stops the DB.",
+    "How the command reads 'the store's clock' to wait out the fence is not defined. The document does not say what API call or source gives this time.",
+    "How the command knows the full desired worker count and the 12-instance app target. The document does not say where these numbers are configured.",
+    "How the 'step' name is written relative to compare-and-set on the record. The document does not say whether step updates are compare-and-set writes, what they check against, or how they interact with the epoch/run_id CAS on later writes.",
+    "What the workers actually do once running, such as how they poll the jobs table, claim rows, or mark them running or done, is not described. Only the 'running' state and requeue to 'queued' are mentioned.",
+    "What B's /healthz actually checks, for example whether it touches the database, is unknown (acknowledged in Open questions). So I cannot say what 'healthy' proves.",
+    "Which traffic-manager product and API call is used to repoint the name, and who holds the credentials, is unknown (acknowledged in Open questions).",
+    "The document does not explain how A's users and A's app tier behave between A's DB stopping and DNS moving beyond 'users get errors'. It also does not explain whether anything routes traffic away from A earlier.",
+    "What the command does if the final ACTIVE write keeps failing after retries is not fully stated. Only 'retry' is given, and no escalation is stated for that specific step, although the general rule implies it.",
+    "How the 3-location probes and the page-out are wired, including who receives the page, is not specified. That is not needed for the later steps."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,419 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is `seal()`/`unseal()`, and what key does it use? Where does that key live?",
+     "about": "Active TOTP secret, user_totp.secret_sealed"
+    },
+    {
+     "id": "2",
+     "text": "What is a 'step' and how does the server turn a typed code into one? What does 'within ±1 step' mean in practice?",
+     "about": "Replay guard, user_totp.last_step"
+    },
+    {
+     "id": "3",
+     "text": "On the code page, how does the user choose between an authenticator code and a recovery code? Is it one field or two, and how does the server tell which was entered?",
+     "about": "Entering a code or recovery code"
+    },
+    {
+     "id": "4",
+     "text": "After a recovery-code sign-in, how does the server know the session came from a recovery code, and what does the user see that leads to 'starts new authenticator at once'? Is anything forced?",
+     "about": "SignedInByRecovery --> ReplacePending"
+    },
+    {
+     "id": "5",
+     "text": "Who or what deletes the pending secret when it expires, and what deletes expired login_challenges rows? Is it a background job or checked on the next request?",
+     "about": "SetupPending --> Off: pending secret expires or is discarded"
+    },
+    {
+     "id": "6",
+     "text": "In the replacement flow, what exactly is stored while ReplacePending, and where does the old secret sit? Does replacement use the same pending columns as first setup?",
+     "about": "Replacing the authenticator / Pending secret"
+    },
+    {
+     "id": "7",
+     "text": "The failure counter belongs to a challenge. If a user fails 4 times, restarts from the password, and gets a new challenge, can an attacker with the password keep guessing indefinitely? What bounds this besides the IP rate limit?",
+     "about": "Challenge --> PasswordEntry: 5th wrong entry or 5 minutes"
+    },
+    {
+     "id": "8",
+     "text": "In transaction D, when a recovery code is the proof, why is its use recorded if the row is deleted right after? Also, does turning 2FA off sign out other sessions?",
+     "about": "Turning 2FA off (On to Off), transaction D"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "They are existing helpers in app.security (schema.sql comments): AES-GCM encryption with the app key held in the KMS. The key is not in the database. Added a one-line term."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "A step is Unix time divided by 30, rounded down (RFC 6238). The server computes the 6-digit code for the previous, current and next step from the secret and accepts a match; that is what within ±1 step means. Added to the terms."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "One field. Exactly 6 digits is treated as an authenticator code; anything else is a recovery code. This works because recovery codes are 10 characters, shaped like abcde-fghij, never 6 digits. It keeps the page simple and needs no extra state."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "No flag is stored. After a recovery-code sign-in the server redirects to the new-authenticator page instead of /home, with a message. Nothing is forced: the user can leave and the session is normal. Starting replacement asks for the password, as for any session."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Expiry is checked on use, so an expired pending secret counts as absent and an expired challenge is rejected. No job is needed for correctness. A periodic cleanup job removes stale rows only to keep tables small."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Replacement uses the same pending_secret_sealed and pending_expires_at columns as first setup. The old secret stays untouched in secret_sealed (and the old recovery codes stay valid) until transaction C swaps them. Clarified in the table."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, as first written an attacker with the password could keep restarting, 5 guesses per restart, bounded only by the per-IP limit, which a spread-out attacker avoids. I added a required per-user limit on wrong entries across all challenges (assumed 20 per hour). It is flagged in open questions, including that I do not know whether rate_limit can key on a user id."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Recording the recovery code use was pointless since the row is deleted in the same transaction, so I removed that sentence. Turning 2FA off does not sign out other sessions: it already needs the password and a second factor, and the brief only requires that on confirming 2FA. This is a judgement call, and it is noted in the file."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What does `start_session` do today: what row does it create, and which cookie does it set? The document only says it is unchanged.",
+     "about": "Session, `sessions`, unchanged / start_session"
+    },
+    {
+     "id": "10",
+     "text": "When the per-user limit of 20 wrong entries an hour is hit, are correct codes refused too? What does the real owner see, and can an attacker use this to lock the owner out of sign-in?",
+     "about": "Limit across challenges"
+    },
+    {
+     "id": "11",
+     "text": "During a replacement, `last_step` already holds a step accepted for the old secret. Is the new secret's first code checked against that same `last_step`? What is `last_step` at first setup, when there is no earlier step?",
+     "about": "Replay guard, user_totp.last_step / Replacing the authenticator"
+    },
+    {
+     "id": "12",
+     "text": "How does the recovery-code check work: what is hashed and compared? What happens if the user types it without the dash or in capitals? And what is `{remaining}` in the queued email?",
+     "about": "Recovery codes / Challenge --> SignedInByRecovery"
+    },
+    {
+     "id": "13",
+     "text": "What does the user see when they are sent back from the code page to the password screen, after the 5th wrong entry or after 5 minutes? Is a message shown?",
+     "about": "Challenge --> PasswordEntry: 5th wrong entry or 5 minutes"
+    },
+    {
+     "id": "14",
+     "text": "What does the `enqueue_email` queue consist of, and what sends the email later? What happens if the queue itself is down at the moment of a recovery-code sign-in?",
+     "about": "Recovery-code success also calls enqueue_email"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "From existing/login.py: start_session inserts a sessions row (sha256 of a new 32-byte random token, user_id, expiry now + 30 days), sets the sid cookie (HttpOnly, Secure, SameSite=Lax, max_age 30 days) and redirects to /home. Added one line saying so."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes, once the limit is hit all entries are refused for that user, correct codes included, and the owner sees 'Too many attempts, try again later'. An attacker who knows the password can therefore keep the owner out of the code step for up to the window. I accept this because the alternative is unlimited guessing of a 6-digit code. Noted in the file as an accepted trade-off."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, the same last_step is used. It is 0 before first confirmation, so first setup has no earlier step. In a replacement, a code from the very same 30-second step as the last accepted old-secret code is rejected and the user waits for the next code. A per-secret counter would avoid this but is an extra mechanism for a rare, harmless delay."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The server lowercases the input, strips dashes and spaces, takes SHA-256 and compares it with code_hash, which is stored from the same normalised form, so a missing dash or capitals are accepted. {remaining} is the count of the user's recovery codes with used_at still null after the claim. Added to the Recovery code term and the email line."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, a message is shown: 'Your sign-in timed out or had too many wrong codes. Enter your password again.' Added to the sign-in section."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Per the helper's comment in schema.sql, enqueue_email puts the email on a queue and a background process retries sending; I do not know what the queue is made of internally and the plan does not need it. If the enqueue call itself raises, the server catches and logs it and signs the user in anyway, so that one notice email is lost. The brief requires that sign-in not wait for the email, so I chose not to fail sign-in on it."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "On the code page, how does the server know which user the entry belongs to, and what does it do if the `mfa` cookie is missing or the challenge is already gone? Is the user shown a message?",
+     "about": "Entering a code: loads the challenge by cookie"
+    },
+    {
+     "id": "16",
+     "text": "If a recovery code is claimed but then something fails before start_session (for example the transaction fails), is the code still consumed? What is inside the transaction and what comes after the commit?",
+     "about": "Challenge --> SignedInByRecovery: code consumed, email queued"
+    },
+    {
+     "id": "17",
+     "text": "In the replacement flow, where is the password entered and checked, and does that step create the pending secret? What does the user see if the password is wrong?",
+     "about": "On --> ReplacePending: user starts replacement, password required"
+    },
+    {
+     "id": "18",
+     "text": "In transaction C, the old recovery codes are deleted and 10 new ones are shown once. If the user closes the page before saving them, what can they do? Is there a way to see or regenerate codes?",
+     "about": "Success (transaction C): recovery codes returned in that one response"
+    },
+    {
+     "id": "19",
+     "text": "Does the per-user limit of wrong entries also count the wrong entries on the turn-off-2FA endpoint and setup endpoint, or only the sign-in code endpoint? The document mentions per-user rate limiting on setup and off but not whether it is the same counter.",
+     "about": "Limit across challenges / Failure: wrong code or replayed step"
+    },
+    {
+     "id": "20",
+     "text": "When the user successfully confirms setup and 'other sessions' are deleted, what happens to a challenge that is open in another browser at that moment? Is it affected?",
+     "about": "Success (transaction C): deletes every other session"
+    },
+    {
+     "id": "21",
+     "text": "What does the recovery-code email say and who gets it? Is it sent to the account email, and is it the only signal the owner gets that a recovery code was used?",
+     "about": "enqueue_email(user_id, \"recovery_code_used\", {remaining})"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The server hashes the mfa cookie and loads the login_challenges row; its user_id says whose entry it is. A missing cookie or an expired/gone challenge sends the user back to the password screen with the timed-out message. Added to the Entering a code step."
+    },
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "Intended: the recovery-code claim, challenge delete and start_session are in one transaction, so a failure before commit leaves the code unused. Only enqueue_email runs after the commit. I do not know whether start_session can join a caller's transaction (it uses db.execute directly). If it cannot, a failure after the claim would burn a code. Added to open questions."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The password is typed on the new-authenticator page and checked with bcrypt_check first. Only on success is the pending secret created. A wrong password shows an error, creates nothing and counts toward the per-user limit. Added to the replacement section."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The codes cannot be shown again, as the brief requires. If the user lost them, they replace the authenticator, which issues a new set and invalidates the old one. There is no separate regenerate action, because the brief issues codes only on confirmation. Added to transaction C."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "One shared per-user counter of wrong second-factor entries covers the sign-in code page, setup, replacement and turn-off. This is the simplest option and stops guessing through any endpoint. The cost is that an attacker could also lock the owner out of settings for the window, which is the same accepted trade-off. Clarified in the file."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Not affected. A challenge is not a session, so transaction C does not delete it. If that person then enters a valid code, they get a new session, which is a normal sign-in. Added to transaction C."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "It goes to the account's own address (users.email), from template recovery_code_used, saying a recovery code was used and how many remain. It is the only notice, as there is no in-app log in this design. I do not know the exact wording because the template is not specified, which is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "22",
+     "text": "On the code page, after a correct authenticator code, `start_session` runs. The document says the intent is that it runs inside the transaction for recovery codes. For an authenticator code, is there a transaction at all, or is it just the guarded UPDATE of last_step then start_session? What if start_session fails after last_step moved?",
+     "about": "Entering a code: A valid authenticator code must match within ±1 step"
+    },
+    {
+     "id": "23",
+     "text": "When 2FA is off and the user starts setup, what exactly does the server check first (is the user's session enough, or is the password asked as in replacement)? Does first setup need the password?",
+     "about": "Turning 2FA on (Off to SetupPending to On)"
+    },
+    {
+     "id": "24",
+     "text": "During setup or replacement, if the user starts setup a second time while a pending secret already exists and has not expired, does it overwrite the pending secret, reuse it, or refuse? What does the user see?",
+     "about": "SetupPending / Pending secret: user_totp.pending_secret_sealed"
+    },
+    {
+     "id": "25",
+     "text": "When turning 2FA off with a recovery code as proof, what is checked first and how does the claim work (is the code claimed with the same guarded UPDATE)? And how does the turn-off page tell an authenticator code from a recovery code?",
+     "about": "Turning 2FA off (On to Off), transaction D"
+    },
+    {
+     "id": "26",
+     "text": "The Challenge state is entered after the right password. Does the right password itself count toward or get blocked by the per-user limit? If the per-user limit is already hit, what does the user see at the code page, and is the challenge's failures counter still incremented?",
+     "about": "Limit across challenges"
+    },
+    {
+     "id": "27",
+     "text": "In the Off to SetupPending step, when the user closes the QR page and returns, can they see the secret again? Also, how is the QR code produced, and what is inside it (what the authenticator app receives)?",
+     "about": "Off --> SetupPending: user starts setup, server makes secret and QR"
+    }
+   ],
+   "answers": [
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Authenticator codes get the same treatment as recovery codes: the guarded last_step UPDATE, the challenge delete and start_session are meant to be in one transaction. If start_session cannot join it (not known, listed in open questions) and fails after last_step moved, the user just waits for the next 30-second code, which is a small cost. Nothing is burned permanently, unlike a recovery code."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "First setup now also asks for the password, checked with bcrypt_check before any secret is created. The brief only says the user is signed in, so this is my addition. Reason: a stolen session could otherwise turn on 2FA with the thief's authenticator, lock the owner out and sign out their other sessions. Flagged as an assumption for product."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "Starting setup (or replacement) again while a pending secret exists overwrites it and restarts the expiry, so the earlier QR code stops working. Simplest option, no extra state. The user sees the new QR code and secret."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "Order of checks on turn-off: per-user limit, then password, then code. The field works as on the sign-in page: exactly 6 digits is an authenticator code, anything else a recovery code. The recovery code is claimed with the same guarded UPDATE (used_at IS NULL) inside transaction D, and an authenticator code uses the same last_step guard. Added to the turn-off section."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "The right password is neither counted by nor blocked by the per-user limit, which counts only wrong second-factor entries. If the limit is already hit when the user reaches the code page, the page shows 'Too many attempts, try again later' without checking the code, and the challenge failures counter is not incremented. The challenge just expires after 5 minutes. Added to the sign-in section."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "No, the secret is never shown again. If the user closes the page and returns, they start setup again, which overwrites the pending secret and makes a new QR code. The QR code holds a standard otpauth://totp/ link with the base32 secret, the account email and the app name, with default 6 digits and 30 seconds. I did not choose a library or fix the exact app name, as the plan does not need them yet."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "28",
+     "text": "The document says expired pending secrets are 'cleared' by a cleanup job and 'count as absent'. If a user is in ReplacePending and the pending secret expires, what does the user see if they then type the code from their new app?",
+     "about": "ReplacePending --> On: pending expires, old secret and codes unchanged"
+    },
+    {
+     "id": "29",
+     "text": "Where does the per-user limit counter live and how does the 'one hour' window work (rolling or fixed)? Does a correct entry reset it?",
+     "about": "Limit across challenges"
+    },
+    {
+     "id": "30",
+     "text": "In Transaction C, how does the server know which pending secret to check the typed code against, and what happens if two browser tabs confirm setup at the same moment?",
+     "about": "Success (transaction C)"
+    },
+    {
+     "id": "31",
+     "text": "After the 5th wrong entry the challenge is deleted and the user re-enters the password. Does a user who hits the per-user limit at the code page get any way forward, or does the user just wait? What does the user see on the password screen?",
+     "about": "Challenge --> PasswordEntry: 5th wrong entry or 5 minutes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "The server treats an expired pending secret as absent, so the typed code is not checked. The user sees 'Setup expired, start again'. The old authenticator and old recovery codes keep working. To get a new QR code they enter the password again. Added to the replacement failure line."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "The counter is a small table of its own, one row per wrong second-factor entry, and the limit counts rows from the past hour (a rolling window). A correct entry does not reset it, because resetting would let an attacker who somehow gets one valid code wipe the count. The 20 per hour figure and the window are assumptions for product. I do not know whether the existing rate_limit helper can key on a user id and could replace the table. Added to the limit paragraph and the open questions."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "The server reads the pending secret from the user's own user_totp row, since there is at most one per user. The transaction C update only applies if the pending secret is still present and unexpired, so with two tabs the first confirms and the second finds no pending secret and sees 'Setup already finished or expired, start again'. This reuses the guard idea from the last_step update and adds no lock or other new mechanism. Added to transaction C."
+    },
+    {
+     "id": "31",
+     "tag": "decided",
+     "text": "There is no way forward except to wait. At the limit the code page refuses entries without counting them. The challenge expires after 5 minutes and the password screen shows the timed-out message. If they re-enter the password, the new code page shows 'Too many attempts, try again later' until old entries age out of the hour. A bypass such as emailing a reset link would be a new mechanism, and the brief does not ask for one. This is the accepted trade-off. Added to the code-entry step."
+    }
+   ]
+  },
+  {
+   "round": 6,
+   "questions": [
+    {
+     "id": "32",
+     "text": "On the sign-in code page, in what order does the server check things: challenge lookup, per-user limit, then the code? And is a wrong entry written to the per-user limit table and to `failures` in the same step?",
+     "about": "Signing in (single attempt) / Entering a code"
+    },
+    {
+     "id": "33",
+     "text": "When a recovery code is used as proof and is claimed, then the sign-in succeeds, is the recovery-code user redirected to the 'set up a new authenticator' page with the session already created? Which password prompt applies there, given they just typed the password at sign-in?",
+     "about": "SignedInByRecovery --> ReplacePending"
+    },
+    {
+     "id": "34",
+     "text": "In transaction C, how does the server know the user is making a first setup versus a replacement, and what does `confirmed_at` become on replacement?",
+     "about": "Success (transaction C)"
+    },
+    {
+     "id": "35",
+     "text": "What is the 'Security settings' page and 'set up a new authenticator' page: are these the same page for first setup and replacement, and what does the user see if 2FA is already On when they open it?",
+     "about": "Turning 2FA on / Replacing the authenticator"
+    },
+    {
+     "id": "36",
+     "text": "What does the `mfa` cookie lifetime look like, and what happens if a user finishes the password step in one browser and submits the code in another, or signs in twice and gets two challenges? Does the older challenge stay valid?",
+     "about": "Sign-in challenge, login_challenges"
+    },
+    {
+     "id": "37",
+     "text": "Does the 'wrong code, pending kept' case in SetupPending have any cap of its own besides the per-user limit, and does a wrong entry there touch `failures` on any challenge?",
+     "about": "SetupPending --> SetupPending: wrong code, pending kept"
+    }
+   ],
+   "answers": [
+    {
+     "id": "32",
+     "tag": "decided",
+     "text": "Order on the code page is: challenge lookup, then per-user limit, then the code. A wrong entry writes a row to the per-user limit table and increments the challenge failures in the same step. If the limit is already hit, neither is touched. Added to the sign-in section."
+    },
+    {
+     "id": "33",
+     "tag": "decided",
+     "text": "Yes, the session already exists when the user is redirected. The replacement password prompt still applies, even though they just typed it: one rule for every session, no flag to remember where the session came from. The cost is one extra password entry. Added one clause to the replacement section."
+    },
+    {
+     "id": "34",
+     "tag": "decided",
+     "text": "The server does not need to know: transaction C is identical for both, and it simply moves the pending secret to the active one. confirmed_at is set to now on each confirmation, so on a replacement it becomes the time of the latest one. Added a line."
+    },
+    {
+     "id": "35",
+     "tag": "decided",
+     "text": "Security settings is one page: it offers set up when 2FA is off, and replace authenticator and turn off when it is on. Set up and replace both lead to the same set-up-a-new-authenticator page (password, then QR). Exact screen layout is not decided here. Added a Pages line."
+    },
+    {
+     "id": "36",
+     "tag": "decided",
+     "text": "The mfa cookie has a max-age of 5 minutes, matching the challenge. If the code is submitted in another browser, there is no cookie, so the user is sent back to the password screen with the timed-out message. Signing in twice makes two independent challenges and the older stays valid until it expires, which is the simplest option and harmless since each needs its own cookie and valid code. Added to the challenge row."
+    },
+    {
+     "id": "37",
+     "tag": "decided",
+     "text": "No other cap: the only limit in SetupPending is the shared per-user limit, and a wrong entry there does not touch any challenge failures, since setup happens in a signed-in session with no challenge. Added to the setup failure line."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [],
+ "rounds": 6,
+ "end_reason": "cap"
+}

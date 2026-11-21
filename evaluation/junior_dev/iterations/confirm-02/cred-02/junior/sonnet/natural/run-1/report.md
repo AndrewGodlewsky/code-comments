@@ -1,0 +1,56 @@
+## Review of cred-02 (junior, author sonnet, natural)
+
+Rounds: 6. Ended: cap.
+
+### What changed
+- Added a Terms section defining time step with the plus or minus 1 step meaning, seal/unseal with the KMS key, and the recovery code format (Q1, Q2, Q3).
+- Specified a single code field: exactly 6 digits means authenticator code, anything else is a recovery code (Q3).
+- Added what happens after a recovery-code sign-in: redirect to the new-authenticator page, nothing forced, no flag stored (Q4).
+- Stated that expiry is checked on use, with a cleanup job for housekeeping only (Q5).
+- Clarified that replacement reuses the pending columns and leaves the old secret untouched (Q6).
+- Replaced the advisable code-endpoint rate limit with a required per-user limit across challenges, assumed 20 per hour, because restarting from the password reset the failure count (Q7). Added to open questions.
+- Removed the pointless recording of recovery code use in transaction D, and stated that turning 2FA off leaves other sessions alone (Q8).
+- Moved the lost-phone open item into a final Open questions section and added the assumptions for the per-user limit, the pending lifetime and the password prompt.
+- Added what start_session does today (row, expiry, sid cookie, redirect) to the state section, because the junior could not tell what 'unchanged' meant.
+- Defined how a recovery code is checked (lowercase, strip dashes and spaces, SHA-256) in the Recovery code term, and defined {remaining} in the email line.
+- Stated last_step is 0 before first confirmation and that a replacement's first code is checked against the same last_step, with the consequence.
+- Stated that enqueue_email is a queue plus background sender, and that an enqueue failure is caught and logged and does not fail sign-in.
+- Added the message shown when the user is sent back to the password screen.
+- Stated that the per-user limit refuses correct codes too, what the owner sees, and the accepted lockout trade-off.
+- Entering a code: stated that the user is found from the challenge row via the hashed mfa cookie, and that a missing or expired challenge returns to the password screen with the timed-out message.
+- Recovery-code success: stated the intended transaction (claim, challenge delete, start_session together, email after commit) and added an open question on whether start_session can join it.
+- Replacement: stated where the password is typed and checked, that a wrong password creates nothing and counts toward the limit.
+- Transaction C: added that lost recovery codes cannot be re-shown and are only replaced by replacing the authenticator, and that open challenges elsewhere are unaffected.
+- Per-user limit: made it one shared counter for sign-in code, setup, replacement and turn-off, and updated the failure lines of setup and turn-off to point to it.
+- Email: stated it goes to users.email, says a code was used and how many remain, and is the only notice; added an open question on template wording.
+- First setup now requires the password, same as replacement (stolen-session lockout risk); diagram edge, setup section and open questions updated.
+- Starting setup or replacement with a pending secret already present overwrites it and restarts expiry; stated once in setup and referenced in replacement.
+- Setup section says the secret and QR cannot be shown again; added a one-line term for what the QR code contains.
+- Authenticator-code sign-in now has the same one-transaction intent as recovery-code sign-in; open question widened to cover last_step update.
+- Sign-in section states that a right password is not counted by the per-user limit, and what the code page shows (without incrementing failures) when the limit is already hit.
+- Turn-off section now gives the order of checks, how the code field tells the two kinds apart, and that the code is claimed inside transaction D.
+- Replacement failure: added what the user sees when a code is typed after the pending secret expired (setup expired message, old authenticator still works, password needed again).
+- Limit across challenges: stated the counter lives in a small table of its own, the window is rolling, and a correct entry does not reset it.
+- Transaction C: said the pending secret is read from the user's own user_totp row and that the update only applies if the pending secret is still present, so a second tab gets a clear message instead of a double confirm.
+- Entering a code: said what the user sees and can do when the per-user limit is hit (wait, password screen message, limit message again).
+- Open questions: noted the rolling window is an assumption and what happens if rate_limit cannot key on a user id.
+- Added the check order on the code page (challenge, per-user limit, code) and said a wrong entry updates both the limit table and failures in one step, because Q32 showed this was missing.
+- Said that a missing mfa cookie (another browser) sends the user to the password screen, for Q36.
+- Added mfa cookie max-age of 5 minutes and the rule that two sign-ins make two independent challenges, for Q36.
+- Said transaction C is the same for first setup and replacement and that confirmed_at is set to now each time, for Q34.
+- Added a Pages line describing Security settings and the set-up-a-new-authenticator page, for Q35.
+- Noted that the password prompt in replacement applies even right after a recovery-code sign-in, and that the session already exists, for Q33.
+- Said the per-user limit is the only cap in SetupPending and that no challenge is touched, for Q37.
+- Moved the summary, terms and diagram to the top in the required order; the summary now says how sign-in works today and why the design is shaped this way.
+- Added a Terms section: time step and within +-1 step, seal/unseal and the KMS, recovery code format and check, challenge, QR code content, enqueue_email.
+- Added one line in the state table on what start_session does today.
+- Merged the three repeated statements of the per-user limit (setup, sign-in, turn-off, open questions) into one 'Limit across challenges' bullet; other places now only refer to it, and added the wrong-entry log as a table row.
+- Merged the repeated replacement/transaction C text and the repeated 'pending overwritten' and password-prompt explanations into single mentions.
+- Put the code-entry checks into a numbered order (challenge, limit, code) and folded the 'limit already hit' consequences into step 2.
+- Added a Pages paragraph covering the single Security settings page and shared set-up page.
+- Cut the 'rate limit on the code endpoint is also advisable' line (replaced by the per-user limit), the pointless 'record recovery code use' sentence in transaction D, and the rarely needed library/format detail.
+- Kept every fixed requirement and number from the first version: 6 digits, 30-second steps, +-1, replay rejection, seal, hashed codes, 10 codes shown once, other sessions signed out, 5 minutes and 5 wrong entries, queued email, lost-phone replacement, turn-off rules, and the open lost-phone item.
+- Left out answered details the plan does not need: the queue internals, the email wording, a QR library, and exact screen layout; the email wording stays an open question.
+
+### Holes
+- Q16: If a recovery code is claimed but then something fails before start_session (for example the transaction fails), is the code still consumed? What is inside the transaction and what comes after the commit? (author: Intended: the recovery-code claim, challenge delete and start_session are in one transaction, so a failure before commit leaves the code unused. Only enqueue_email runs after the commit. I do not know whether start_session can join a caller's transaction (it uses db.execute directly). If it cannot, a failure after the claim would burn a code. Added to open questions.)

@@ -1,0 +1,28 @@
+## Review of ev-02 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Opened with what the service is and why retries are in Postgres rather than the queue (15 min max delay vs 6 h waits), which the original left unexplained.
+- Defined the deliveries table columns and what each is for; the original only named the table.
+- Made the flowchart concrete: dedupe insert and ack, claim with lease, active-subscription check, retry vs dead paths, 410 handling, replay, cleanup, instead of generic boxes.
+- Replaced vague notes ('uses leases', 'Disabled subscriptions are handled') with explicit mechanisms: SKIP LOCKED claiming, 30 s lease, crash recovery, duplicate sends and why they are acceptable.
+- Specified the disabled-subscription decision (dead-letter waiting rows, replay after re-enable) and the retention choice for delivered rows, labeled as a design choice.
+- Spelled out signing at send time and the exact retry wait schedule.
+- Reorganized notes under bold topic labels so a reader new to the stack can follow each behavior.
+- Opened by saying one row equals one (event, subscription) pair and that retry timing is a timestamp polled by workers
+- Fixed the flowchart: commit-then-ack is one step, the database write comes first, and the cleanup node is shorter and clearer
+- Described claiming as taking one due row, and spelled out what 'due' means
+- Added two crash-recovery details the first draft missed: a reclaim after a crash uses up an attempt (dead-letter if 8 are used), and results are saved only if `attempt` still matches, so a slow worker cannot overwrite a newer claim
+- Split the disabled-subscription paragraph into cause, effect and recovery, and gave the exact `last_error` text
+- Stated the risk behind the 14-day delivered retention choice
+- Tightened wording throughout and removed repeated phrases
+- Opened with a one-line purpose and defined the four status values and the next_attempt_at polling idea up front.
+- Added delivered_at column and made the cleanup job node and retention text consistent (previously delivered rows had no timestamp to age from).
+- Clarified the retry-wait label in the diagram (wait after this attempt number).
+- Reworded the crash-recovery attempt-8 rule to say what it means (crashed 8th attempt is dead-lettered on reclaim).
+- Noted that a claim increments attempt before sending, and that ~1 s for attempt 1 is the polling interval.
+- Defined the queue as the domain-events topic on first mention and made small wording tweaks for flow.
+
+### Holes
+- None.

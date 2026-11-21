@@ -1,0 +1,352 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Evaluator A claims the tick key with a 30 s lease, but the doc says a re-run after a crash 'cannot count a breach twice'. What exactly is the 'version' check on the breach streak, and where does the version come from?",
+     "about": "Breach streak plus 1 (conditional on version)"
+    },
+    {
+     "id": "2",
+     "text": "The streak reaches 3 and then the incident insert may conflict with an existing open incident. If it conflicts, does the flow stop there, or does it still look up the primary and send a page?",
+     "about": "Insert open incident (unique index on open service and rule)"
+    },
+    {
+     "id": "3",
+     "text": "The incident row is inserted first, then the page row and level 2 job are inserted. If the evaluator dies between those steps, who notices and pages anyone? Are these in one transaction?",
+     "about": "Insert page row level 1, queue level 2 job at now + 5 min"
+    },
+    {
+     "id": "4",
+     "text": "The diagram sends the push and SMS from the evaluator itself, but Failure handling says a background retry runs if both fail. What process does that retry, and where is it recorded?",
+     "about": "Push fails: the SMS fallback runs in the send path"
+    },
+    {
+     "id": "5",
+     "text": "What does 'Push call failed' mean here: the provider API returned an error, or the responder never received it? How does the system know the push was delivered?",
+     "about": "Push page to primary / Push call failed"
+    },
+    {
+     "id": "6",
+     "text": "The ack webhook sets acked_at and cancels queued jobs. Does acknowledging also affect the incident's open status or later breaches? And what does the 'clean streak' resolve do to an acknowledged incident?",
+     "about": "Ack webhook"
+    },
+    {
+     "id": "7",
+     "text": "How does the webhook map a page ID to an incident, and what does it do if the signature check fails or the page ID is unknown?",
+     "about": "Webhook with page ID"
+    },
+    {
+     "id": "8",
+     "text": "The doc says 'Time comes from the store's clock' and 'Tick key = service + rule + minute'. How does each evaluator know which minute it is, and what rule/service combinations does each tick cover (one tick per pair or one for all)?",
+     "about": "Both instances fire every 60 s. Tick key = service + rule + minute"
+    },
+    {
+     "id": "9",
+     "text": "What happens when the Metrics store is unavailable on a tick: does the evaluator release the claim, and does the next minute retry the missed one? The doc says a missed tick resets the breach streak but the diagram shows no such step.",
+     "about": "Sum 5xx and requests, trailing 5 complete minutes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The 'version' was the wrong mechanism, and I removed it. Each tick's writes are one transaction that first checks this instance still holds the tick claim (not expired, not done), then marks the tick done. An instance that lost its lease fails the check and writes nothing, so a re-run cannot count a breach twice. The claim, not a version number, is the guard."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "It stops there. The incident insert relies on the partial unique index. On conflict, the same transaction records the breach on the existing incident and queues no page. The primary lookup runs before the transaction, but nothing is inserted or sent on a conflict. The brief allows at most one unresolved incident per service and rule, so a second page would break it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, they are one transaction: the incident row, the level-1 page row, the level-2 job, the send job and the tick-done mark commit together or not at all. If the evaluator dies before commit, nothing exists. The lease expires, the other instance re-runs the tick, and the breach is counted once. If it dies after commit, the queued jobs run without the evaluator."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The send is a queued job, not an inline call from the evaluator. The queue runs it after commit and retries with backoff. Each attempt updates push_status and sms_status on the page row. The first version drew the first send inside the evaluator path, which was unclear, so the diagram now shows a send job."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "'Push call failed' means the provider's send call returned an error or timed out. The system knows only whether the provider accepted the request and returned a page ID. It does not know whether the responder's phone received it, and the escalation clock does not wait for delivery. Whether the provider offers delivery receipts is not known; it is in the open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "An ack sets acked_at and acked_by and stops escalation. It does not change status, so the incident stays open until the metrics clear it. Breaches after an ack are recorded on the incident and do not page, as before. An acknowledged incident resolves the same way, and resolved notices go to everyone paged, including the person who acked."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Each pages row stores the provider page ID that the send returns. The webhook finds the page by that ID and gets the incident from it. A bad signature gets a 401 and no change. An unknown page ID gets a 200, so the provider stops retrying, and is logged with no change. Whether the ID is available before an ack can arrive is not known; it is in the open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Each evaluator reads the store's clock and truncates it to the minute, so both get the same tick minute. Each service and rule pair has its own tick and claim row, so one pair's failure does not hold up the others. Each instance tries every pair every minute, and only the winner of each pair's claim evaluates it."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes. A failed metrics query is written as a missed tick in a transaction under the same claim check. It resets the breach streak and leaves the clean streak unchanged. The claim is marked done, so the missed minute is not retried. The next tick uses its own trailing window. The diagram now shows this branch."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "The clean streak and breach streak live on the incidents row, but with no open incident there is no row yet. Where is the breach streak stored before the first incident exists?",
+     "about": "incidents table / Breach streak plus 1"
+    },
+    {
+     "id": "11",
+     "text": "The metrics query sums the last 5 complete minutes, but the streak counts consecutive minutes. Is each tick's breach decision based on the 5-minute window, and so are consecutive ticks overlapping windows?",
+     "about": "Sum 5xx and requests over the last 5 complete minutes"
+    },
+    {
+     "id": "12",
+     "text": "What exactly does the escalation job do when it finds the incident acknowledged: does the level-3 job exist at that point, and who cancels it? What does 'cancel queued escalations' do to the queue?",
+     "about": "Escalation job for level 2 / Ack webhook"
+    },
+    {
+     "id": "13",
+     "text": "What does the send job do with the person it pages: where does it get the person and the incident details from, and what does the provider return that becomes the provider page ID?",
+     "about": "Send job, runs after each commit that queued it"
+    },
+    {
+     "id": "14",
+     "text": "When the incident resolves, what does the 'resolved notice' send job do, and does it use push then SMS the same way as a page?",
+     "about": "queue resolved notice for each recorded page"
+    },
+    {
+     "id": "15",
+     "text": "What is the 'roster' on the incident, and when is it written? Which person is chosen from it when the schedule service is down?",
+     "about": "Schedule service down / roster"
+    },
+    {
+     "id": "16",
+     "text": "When an instance takes over an expired lease, how does the first instance (still running) find out it lost the claim, and what does the second instance see for a tick marked done?",
+     "about": "Insert tick claim with 30 s lease, or take over if lease expired"
+    },
+    {
+     "id": "17",
+     "text": "The send job retries with backoff when push and SMS both fail. Does a retry resend both channels, and what stops it from retrying forever or paging after the incident resolves?",
+     "about": "Push and SMS both fail"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The breach and clean streaks are no longer on the incidents row. They live in a rule_state row per service and rule, which exists before any incident. The streak writes in each tick's transaction update that row, so a breach streak that builds before the first incident is kept there."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. Each tick at minute T reads the five complete minutes before T, so consecutive ticks overlap by four minutes. The breach streak counts ticks, so three breaching ticks cover about seven minutes of data. A Terms line now says this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Level 3 does not exist yet when the level-2 job runs. It is queued only by a successful level-2 page. If the level-2 job finds the incident acknowledged, it drops and queues nothing. The only queued job the ack can need to cancel is the pending level-2 job, and the ack transaction does that. Cancel marks the incident's pending escalation jobs as cancelled in the queue, so they never run. This is now in the queue bullet under Where state lives."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The send job reads its page row, which holds the person chosen at page time and the level. It reads the incident for the service and rule. It sends the person and a short summary to the provider. The provider's send response returns the page ID, and the job stores that ID on the page row. The new Sending pages section says this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes. A resolved notice uses the same send job, with kind 'resolved': push first, SMS if push fails. It creates no page row, so it cannot escalate. Its retries run until a channel succeeds. This is in Sending pages."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The roster was on the incidents row, so it did not exist when a lookup failed at open time, before any incident. It now lives on rule_state. Each successful schedule lookup, at open or at an escalation, writes the primary, secondary and manager person IDs. If the schedule service is down at level n, the job uses the roster slot for that level. If the slot is empty, it raises a failure alarm, records no person and still advances the clock."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The first instance does not watch its lease. Its first write in the tick transaction is a conditional update: mark the tick done only if this instance still holds an unexpired claim. After a takeover that update changes no row, so the transaction stops and writes nothing. The first instance learns it lost the claim only at that write. A second instance that finds the tick already done exits. The diagram now labels that exit."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "A retry resends only the channels that have not succeeded: push first, and SMS if push failed. Retries stop once either channel succeeds. A page's retries also stop when the incident resolves or is acknowledged, because the job re-reads the incident first, so it does not page after resolution. The brief sets no maximum attempt count, so the design adds none. That is an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "18",
+     "text": "The 30 s lease can expire while the first evaluator is slow. When the first instance's conditional update changes no row and it writes nothing, the second instance re-runs the tick. Does the second re-run read metrics again and make its own decision? What if the first instance already queued nothing but the second finds the tick still 'claimed'?",
+     "about": "Insert tick claim with 30 s lease, or take over if lease expired and tick not done"
+    },
+    {
+     "id": "19",
+     "text": "In the open-incident branch (breach, clean, low volume, 1-2%), the diagram does not say 'fenced write'. Are those transactions also guarded by the claim check, so a re-run cannot count a clean streak twice?",
+     "about": "Open incident exists"
+    },
+    {
+     "id": "20",
+     "text": "When the clean streak reaches 10 and the incident resolves, is that done in the same transaction as the clean streak + 1 and tick done, or a second one? And what happens to rule_state's clean streak after resolve?",
+     "about": "Clean streak reaches 10"
+    },
+    {
+     "id": "21",
+     "text": "The primary lookup happens before the transaction. If the schedule service fails at open time and the roster is empty (first ever incident), what happens: is an incident still opened, and who gets paged at level 1?",
+     "about": "Who is primary for service now / Schedule service down"
+    },
+    {
+     "id": "22",
+     "text": "The level-2 escalation job reads the incident and then does the secondary lookup before its transaction. How does 'check still open and not acked' inside the transaction work, and what if an ack lands between the read and the transaction?",
+     "about": "Escalation job for level 2"
+    },
+    {
+     "id": "23",
+     "text": "How does the queue run a send job for the page and what makes sure the send job runs once per page? If the job crashes after calling the provider but before recording the provider page ID, what happens on retry?",
+     "about": "Send job, runs after each commit that queued it"
+    },
+    {
+     "id": "24",
+     "text": "Which page does the webhook treat as the ack: if the responder at level 3 acks, but the provider page ID belongs to level 1's page, how does it find the incident, and does it matter which level was acked?",
+     "about": "Ack webhook: find incident from page ID"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Yes. The second instance runs the whole tick itself: it reads metrics again and makes its own decision. The first instance's transaction never committed, so it wrote nothing and nothing is duplicated. If the first instance's lease is still unexpired, the second exits and waits for expiry. The earlier design tried only the current tick, so a tick whose holder died was never retried. The fix is that each wake also tries the previous tick, so an expired tick is taken over within about a minute."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "Yes. Every tick write is a fenced transaction whose first statement is the conditional claim update, including all open-incident branches (breach, clean, between, low volume). A re-run therefore cannot count a breach or a clean minute twice. The diagram now labels each of these branches as fenced."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "It is one transaction. The clean-streak increment, the resolution, the streak reset and the tick-done mark commit together. When the streak reaches 10 the incident is marked resolved and both rule_state streaks are set to 0. The separate second transaction is removed."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "The incident still opens. If the primary lookup fails and the roster has no level-1 person, the level-1 page row is written with no person, a failure alarm is raised, and the level-2 job is queued at +5 minutes as normal. The brief says a failed page must never stop or delay the escalation clock, and an open incident with an alarm is safer than no incident."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The check runs inside the transaction, which locks the incident row first. The ack transaction locks the same row. If the ack gets the lock first, the job's recheck sees it acked and drops. If the job gets the lock first, it commits the level-2 page and queues level 3, and the ack then cancels that pending level-3 job. Neither order lets an ack be missed. The notes now say the row is locked."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The send job is queued in the same commit as its page row. The durable queue runs it once after that commit, and it retries if it fails. Delivery is at least once, not exactly once. If the job crashes after the provider accepts the push and before the page ID is stored, the retry pushes again. This is accepted, because each escalation level has one page row, so a duplicate push cannot add a level. It is listed in the failure table and as an open question about an idempotency key."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "Each push gets its own provider page ID, stored on its own pages row. The webhook finds the page from the ID in the ack and takes the incident from that page. The level does not matter, because any ack stops escalation, as the brief requires. acked_by is the person on the page that was acked. The notes now say this."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "25",
+     "text": "The doc says a tick is not evaluated until the previous tick is done, and a tick is 'missed' if metrics fail. If the previous tick's claim is held by a live instance, does the current tick just wait until the next wake? Does the current tick ever get evaluated late, and what state does it end in?",
+     "about": "Tick starts / Order"
+    },
+    {
+     "id": "26",
+     "text": "The streak counts ticks, and the open-incident rule says 'Breach and breach streak would reach 3'. Is the breach streak stored as the number before this tick, and the transaction writes the new value? Where is the current streak read from (rule_state), and is that read inside the fenced transaction?",
+     "about": "Decide and commit / rule_state"
+    },
+    {
+     "id": "27",
+     "text": "What does the send job do for a level-1 page where no person was found (empty person_id)? Does it push to nobody, skip, or fail and retry forever?",
+     "about": "Schedule lookup fails / Send"
+    },
+    {
+     "id": "28",
+     "text": "How does the queue know when a send job or escalation job is 'due', and what process in the system actually picks jobs up and runs them? Is it a separate worker from the evaluators?",
+     "about": "Job queue"
+    },
+    {
+     "id": "29",
+     "text": "When the incident resolves, what happens to page rows and the ack fields? And if the same service and rule breaches again later, does it open a fresh incident with a fresh level-1 page, with the streaks starting from 0?",
+     "about": "Record or resolve while open"
+    },
+    {
+     "id": "30",
+     "text": "The webhook must find the page by provider page ID. If a send job retries and pushes again, a second provider page ID is returned. Which ID is stored on the page row, and can an ack for the other ID be found?",
+     "about": "Send / Ack webhook"
+    }
+   ],
+   "answers": [
+    {
+     "id": "25",
+     "tag": "checked",
+     "text": "The current tick waits only when the other instance holds the earlier tick's claim at the same wake. The instance that wins the earlier tick then runs the current tick in that same wake, so nothing waits a full minute. The losing instance leaves both and tries again on the next wake. A tick is never evaluated before its earlier tick is done. Its end state is done, with its decision committed and its own window. An earlier tick whose holder crashed is taken over on the next wake, once its lease expires. Still open: if that taker also fails, the one-tick look-back never retries the stuck tick, so the pair stops. This is in Open questions."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "Yes. The streaks are stored in rule_state. The instance reads them before deciding, because the read decides whether a primary lookup is needed. The fenced transaction then reads them again after its fence check and writes the new values from that read. Ticks of one pair run in order, so nothing else changes the streaks between the two reads. A stale instance fails the fence and writes nothing. Step 3 says this."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "The send job does not push to nobody and does not retry. It records the push and SMS status as no person on the page row. Retrying would only waste provider calls, and a person chosen later could be a different responder than the one the page was meant for. The failure alarm was already raised when the person was missed. Escalation runs on its normal clock. A resolved notice with no person is handled the same way. Sending pages says this."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "Each job has a due time in the jobs table. A job worker is a loop inside each evaluator process. It runs every pending job whose due time has passed by the store clock. It is not a third service, because the brief names only two instances. Any worker may run a due job. Two workers running the same job is harmless: escalation rechecks under a row lock, and each level has one page row. If the surviving instance is alive, its worker runs a crashed instance's queued jobs. If both are down, no job runs, which is covered by the dead-man heartbeat in the failure table."
+    },
+    {
+     "id": "29",
+     "tag": "checked",
+     "text": "Resolution changes no page rows and no ack fields. They stay as a record of the old incident. The resolved notices are send jobs, not page rows. A later breach that reaches 3 opens a new incident with its own level-1 page. The unique (incident_id, level) constraint is per incident, so there is no clash. Both streaks start from 0, because resolving set them to 0. Step 5 and Rules to confirm say this."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "Normally a page makes one push and keeps one ID. Once an ID is stored, no further push is sent for that page. So a second ID only exists after a crash in the window before the first ID is stored. In that case the retry's ID is the one stored. An ack on the first notification then cannot be matched. The webhook returns 200 and changes nothing, so escalation continues on schedule. This is accepted and listed in the failure table and as an open question. The design does not store two IDs per page."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one case from start to finish. The API error rate stays above 2 percent for three minutes. After that an incident opens, escalation runs, a responder acks, and the incident later resolves.\n\n1. **Every minute, both evaluators wake up.** The timer is a 60-second wake on each of the two identical evaluator instances. Each one reads the shared database's clock (the \"store clock\") and cuts it to the minute, so both agree on the tick minute. For each service and rule pair, an evaluator handles the current tick and the tick before it, earlier one first. A tick's key is service, rule and tick minute.\n\n2. **Claim the tick.** An evaluator inserts a row into `tick_claims` with a 30-second lease. If the other evaluator already holds the claim, or the tick is already done, it exits for that tick. If a lease has expired and the tick isn't done, the evaluator can take over with one conditional update, and only one evaluator can win that update. The current tick isn't evaluated until the earlier tick is done. If the earlier tick can't be claimed, the evaluator skips both and retries on the next wake.\n\n3. **Read the metrics.** The claim winner asks the metrics store to sum 5xx counts and request counts over the last five complete minutes (the window). A complete minute is one the metrics store reports as finished counting. Nothing is written at this point. If the query fails, a fenced transaction marks the tick done as \"missed\" and sets the breach streak to 0. The clean streak is left alone, and the minute is not retried. A fenced transaction first checks that this evaluator still holds an unexpired claim on a tick that isn't done. If that check fails, it writes nothing.\n\n4. **Classify the window.** The evaluator reads the pair's `rule_state` row (breach streak, clean streak, roster) and classifies the window:\n   - Breach: error rate above 2 percent on at least 500 requests.\n   - Clean: error rate below 1 percent on at least 500 requests.\n   - Between: error rate from 1 to 2 percent on at least 500 requests.\n   - Low volume: fewer than 500 requests.\n\n5. **Decide with no incident open.** One fenced transaction commits the decision and marks the tick done. It re-reads the streaks after the fence check and writes new values from that read. A breach adds 1 to the breach streak. Any other result, including low volume, resets it to 0, because the streak must be consecutive. If a breach would bring the streak to 3, go to step 6.\n\n6. **Open the incident on the third breaching minute.** Before any transaction, the evaluator asks the on-call schedule who the primary is. Schedule lookups and provider calls never run inside a transaction. Then one fenced transaction does all of this:\n   - It inserts the `incidents` row, with breach count 1 and last breach set to this tick.\n   - It inserts the level-1 `pages` row.\n   - It queues a level-2 escalation job due in 5 minutes.\n   - It queues a send job for the primary.\n   - If the lookup succeeded, it writes the roster, sets the breach streak to 0 and marks the tick done.\n\n   If a partial unique index rejects the insert because an incident is already open, the same transaction instead adds 1 to that incident's breach count, sets its last breach, and queues nothing. If the lookup failed, the roster slot for that level is used. If that slot is empty, the incident still opens, the page row records no person, and a failure alarm is raised.\n\n7. **Send the page.** After the commit, a job worker (a loop inside each evaluator process) runs the due send job once. It reads the page row (person and level) and the incident. It calls the provider's push with the person and a short summary (service, rule, level). The provider's response gives a provider page ID, which the job stores on the page row along with the push status. If the push errors or times out, it sends an SMS to the same person and records the SMS status. If both fail, the page row is marked failed. The send job then retries with backoff, sending only the channels that haven't succeeded. A page's retries stop when the incident is acked or resolved. A page with no person sends nothing, isn't retried, and records \"no person\". Delivery is at least once, so a crash after the provider accepts the push but before the ID is stored causes a duplicate push on retry. It adds no level.\n\n8. **Escalate if nobody acks.** The level-2 job comes due 5 minutes after the level-1 commit, by the store clock. It re-reads the incident. If the incident is acked or resolved, it drops itself. Otherwise it looks up the secondary before any transaction. Then one transaction does the following:\n   - It locks the incident row.\n   - It rechecks that the incident is open and unacked.\n   - It inserts the level-2 page row.\n   - It queues the level-3 job for 5 minutes later.\n   - It queues a send job for the secondary.\n\n   Level 3 is the same for the engineering manager and queues nothing further. A failed lookup falls back to the roster, as in step 6. The unique key (incident_id, level) means each level has one page row. Any worker may run any due job. Jobs are in the database, so restarts don't lose them. A job whose worker crashes stays pending and runs again.\n\n9. **Acknowledge.** The responder taps Acknowledge in the provider's app. The provider calls our webhook with the provider page ID and a signature.\n   - If the signature is invalid, the webhook returns 401 and changes nothing.\n   - If the page ID is unknown, it returns 200, logs it and changes nothing.\n   - Otherwise, one transaction locks the incident row, sets acked_at and acked_by if they are empty, and cancels the pending escalation jobs. It then returns 200.\n\n   acked_by is the person on the acked page. An ack at any level stops escalation, but it doesn't change the incident's status. Later acks change nothing. The incident row lock stops an ack and an escalation from interleaving. If the ack goes first, the escalation job's recheck drops it. If the job goes first, the ack cancels the level-3 job it just queued.\n\n10. **Evaluation continues while the incident is open.** Each minute's tick still runs. Each branch is a fenced transaction that marks the tick done:\n    - Breach: breach count plus 1, last breach set, clean streak set to 0. No new page.\n    - Clean: clean streak plus 1.\n    - Between: clean streak set to 0.\n    - Low volume: clean streak unchanged.\n\n11. **Resolve after 10 clean minutes in a row.** When the clean streak reaches 10, the same transaction does the following:\n    - It marks the incident resolved.\n    - It sets both streaks to 0.\n    - It cancels pending escalation jobs.\n    - It queues one `resolved` send job per recorded page row.\n\n    These resolved notices go to the people recorded on the page rows, including whoever acked. They don't look anyone up again. They create no page rows, so they can't escalate. Their retries continue until a channel succeeds. A later breach starts a fresh incident with both streaks at 0.\n\n12. **Failure cases for the evaluators.** Again, the fence check is what protects the data:\n    - If an evaluator crashes before its commit, nothing is written. The lease expires and the other evaluator re-runs the tick from a fresh metrics read.\n    - If an evaluator is slow and loses its lease, its fenced transaction writes nothing, so a streak change applies only once.\n    - If an evaluator crashes after its commit, the other evaluator's job worker runs the queued jobs.\n    - If both evaluators or the metrics store are down, nothing pages. An outside dead-man heartbeat monitor alerts.\n    - If the provider is fully down, a non-paging alarm goes to a monitored channel.",
+   "gaps": [
+    "The document doesn't say how the evaluators know which service and rule pairs exist, or where the rule definitions and thresholds are configured. The service-and-rule list and the first creation of a `rule_state` row aren't described.",
+    "A 30-second lease and a 60-second wake are given, but the document doesn't say how an evaluator behaves when a tick takes longer than the lease. It doesn't say whether the evaluator stops, or whether it only finds out when the fenced transaction writes nothing.",
+    "The document doesn't say how a pair's current tick gets evaluated if the earlier tick was claimed and run in the same wake. It also doesn't say what 'the earlier tick is done' means when that tick was never claimed because it didn't exist yet, for example on the very first run.",
+    "The document doesn't say how the send job's 'failed' state and its retry schedule are bounded. The number of retries and the backoff timing are not set, and the open questions say so.",
+    "How the webhook finds the page when the push response ID is not yet stored, or when only SMS succeeded, is not resolved. The document says an ack in those cases can't be matched. It doesn't say what the system does about it.",
+    "The document doesn't say how a 'failure alarm' or non-paging alarm is delivered. It doesn't say which channel it goes to or what component raises it.",
+    "How a send job knows which kind of failure counts as a push 'error or timeout', and the timeout duration, are not given.",
+    "The 'missed' tick handling at step 3 says the breach streak resets to 0 even when an incident is open, but the document doesn't say whether a missed tick while an incident is open affects the clean streak or only 'unchanged'. It says clean streak is unchanged generally, but the open-incident case isn't spelled out in the step notes.",
+    "The document doesn't say how the 'roster' is used or refreshed when the lookup succeeds at levels 2 and 3. It says each successful lookup replaces the roster in the transaction that uses it, but doesn't say which fields are replaced or how the stored slot is chosen."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

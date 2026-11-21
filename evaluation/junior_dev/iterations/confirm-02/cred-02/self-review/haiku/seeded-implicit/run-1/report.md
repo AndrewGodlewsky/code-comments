@@ -1,0 +1,35 @@
+## Review of cred-02 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short list of terms (session, pending login, time step, replay protection) so a reader without project context can follow the plan.
+- Rewrote the opening so it explains what the feature is and what stays the same, before listing tables and helpers.
+- Split the single diagram's two start points into two named blocks (Account and SignIn). Two unnamed start edges in one flat diagram read as a single start state.
+- Added a label to every transition in the diagram stating its trigger, and added the failure transitions (5 wrong entries, 5-minute expiry, wrong password).
+- Turned the bare notes into grouped sections: where state lives, what triggers each transition, what happens on failure, and open items.
+- Stated where the unconfirmed setup or replacement secret is stored (in user_totp, unconfirmed). The brief does not say this; it is an inferred design choice and is marked as such in the notes.
+- Stated that the last accepted time step is stored per user for replay protection, and that the p2f cookie stores only a hash, mirroring sid. Both are inferences from the brief and are described as such.
+- Explained that a recovery code sign-in puts the user in a signed-in state, so the lost-phone path (set up a new authenticator) can start straight away.
+- Moved the 'support reset' item into a clear Open section and listed the unclear point about signing out other sessions on replacement as a second open item.
+- Kept the original format: a plan heading, one Mermaid stateDiagram-v2, and notes after it. Kept all fixed requirements from the brief.
+- Defined the terms a reader outside the project would not know: session, sealing and the KMS, hashing, time step, queued email.
+- Explained replay protection in plain words: a time step at or before the last accepted one is refused.
+- Fixed a contradiction. Replacement previously said it used 'the same confirmation steps as setup', but the Open section says sessions are signed out on first setup only. Replacement now states what it does: new recovery codes, no sign-out of other sessions, flagged as open.
+- Added that the setup confirmation code's time step is recorded, so that code cannot be replayed at sign-in. This follows from the replay rule but was not stated.
+- Clarified the wrong-entry limit: the 5th wrong entry ends the step, so the diagram now says 'fewer than 5 wrong entries' for staying and '5th wrong entry' for leaving.
+- Made the diagram labels say 'unused recovery code' and 'signed-in user', matching the text. The state structure is unchanged.
+- Linked the lost-phone path explicitly: a user who signed in with a recovery code starts replacement from the same signed-in path.
+- Added an Open item for unconfirmed secrets, which the brief does not cover.
+- Added a short paragraph explaining what 2FA and the two-step sign-in mean, for a reader new to the project.
+- Defined TOTP-related terms more plainly: time step now says a code belongs to one step and that the steps before and after are also accepted, which removes the earlier ambiguity about what 'valid for one step' meant.
+- Added a 'How to read the diagram' section stating that Account and SignIn are independent, that sign-in reads but does not change account state, and that failure loops are described in notes rather than drawn.
+- Reworded the replay protection definition to say that the accepted step and every earlier step are refused, matching the stored last-accepted step.
+- Stated that both sign-in limits (5 wrong entries and 5 minutes) are checked on every entry.
+- Split the long transition bullets into shorter sentences and listed the three server actions of setup confirmation as separate items.
+- Clarified the storage notes: the p2f cookie carries a random token and only its hash is stored, and recovery codes are replaced on every confirmation.
+- Added to the Open lost-phone item that the recovery-code sign-in is the only route to a new authenticator after losing a phone.
+- Left the Mermaid diagram code unchanged, so it still renders the same states and transitions.
+
+### Holes
+- None.

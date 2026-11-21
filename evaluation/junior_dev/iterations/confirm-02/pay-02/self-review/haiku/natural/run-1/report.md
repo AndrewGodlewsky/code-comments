@@ -1,0 +1,33 @@
+## Review of pay-02 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Corrected the worst-case wait in step 5 from 43 seconds to about 47 seconds: 4 attempts at 10 seconds each, plus 7 seconds of backoff (1, 2 and 4).
+- Step 4: moved the request_token check before the capacity check. Otherwise a double-click would get a 409 from its own first refund instead of the original row.
+- Step 4: the rejection audit row is written in a separate transaction after the rollback, because a rollback would otherwise erase it.
+- Step 5 and step 9: the sweeper now selects rows whose last_attempt_at is empty as well as older than 5 minutes. Without this, a refund whose enqueue failed before any attempt would never be picked up.
+- Allowed transitions: added needs_review -> succeeded and needs_review -> failed. Steps 9 and 14 require admins to resolve needs_review, but the original transition list did not allow it.
+- Step 9: spelled out the final create call at 23 hours and why every resubmit stays inside the provider's 24-hour key window. Added the advice to re-check before marking a needs_review refund failed.
+- Step 11: replaced the example of a pending update arriving after succeeded (webhooks only carry succeeded or failed) with the real case, where the create response arrives after the webhook.
+- Step 10: stated that processed_at is set only after the transition has applied.
+- Added a plain-language summary and a terms section defining captured amount, provider, idempotency key, job queue, sweeper, reconciler, email worker and reserved amount, so a reader new to the project can follow the steps.
+- Rewrote the steps in shorter sentences and named each component consistently. The step order, the checklist format, the per-step Starts/Data/Stored/On failure structure and the open decisions are unchanged.
+- Open decisions: added the email retry limit and the alert threshold for unmatched webhook events, which the steps mention but leave unspecified.
+- Added plain-language definitions for transaction, row lock, HTTP status classes, timeout and webhook to the terms section, so a reader outside the project can follow the steps.
+- Explained the 'UPDATE ... WHERE status = expected' rule in step 11 in words: the change only happens if the row is still in the expected state, and otherwise it is ignored and logged.
+- Clarified step 10's timestamp check: a timestamp more than 5 minutes off our clock is rejected in either direction, not only when it is in the future.
+- Reworded the step 4 audit sentence to say what it protects. The original implied a step 3 row was written after a step 4 rollback, which was unclear.
+- Split several long bullets into shorter sentences and spelled out terms such as 'final' (for succeeded and failed) and 'conditional update'. The original said 'terminal' and used the shorthand without a definition.
+- Stated the order status rule once in plain words in step 11, and described the order status as 'worked out' rather than 'derived', so it is clear it is not stored.
+- Described the audit log as append-only in plain words and noted that the email outbox's unique key allows at most one email per refund and kind. Steps, states, transitions, tables, numbers and open decisions are unchanged.
+- Added a short plain-language opening sentence on why the plan exists and that the browser never calls the provider.
+- Added a 'Why 23 hours?' note explaining the one-hour margin under the provider's 24-hour idempotency window, since the 23-hour cutoff otherwise looks arbitrary.
+- Defined 'reserved amount' and noted that it is the figure checked against the captured amount.
+- Clarified that `needs_review` keeps the amount reserved while a person resolves it.
+- Clarified that the audit log is append-only and that the reserved total excludes failed refunds.
+- Reworded the step 4 transaction order and the rollback/audit-row explanation so the reader can follow why the audit row for a rejected request survives.
+- Kept all 14 steps, their order, the Starts/Data/Stored/On failure structure, the tables, and the open decisions unchanged in substance.
+
+### Holes
+- None.

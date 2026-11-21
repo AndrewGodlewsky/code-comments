@@ -1,0 +1,40 @@
+## Review of mr-01 (junior, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Moved the lag check before fencing, so a stop leaves A untouched; the draft fenced A first.
+- Replaced the bare 'Fence A' with a lease: the command marks 'fenced', the store refuses A's renewals, and the command waits out the lease plus a 10 s margin. This makes fencing work when A is unreachable.
+- Kept 'Take lock' as a 'failover running' mark on the active-region record, and defined what it locks and how a crashed run clears it.
+- Added a Promote B step that checks B accepts writes, and defined Fix up jobs as resetting `running` rows to `queued` on B.
+- Scale up now names 12 web instances and starts workers only after B's database is writable; Health check and DNS switch stay after scale-up, as the brief requires.
+- Added the fixed targets (RPO 30 s, RTO 15 min), the 2-of-3 probe rule, the no-automatic-promotion rule, the 60 s DNS TTL and the sessions-are-not-copied rule.
+- Added the required handling for jobs mid-run in A, the failure table, the resume and abort rules, and the after-failover section (A rebuilt as replica, no automatic failback).
+- Replaced the vague notes with a summary, terms, the diagram with failure stops, and open questions. The file is longer than the first version because the brief's fixed requirements had to be restated; I kept it as short as those allowed.
+- Kept the first version's facts: lag check with override, fencing through the control store, idempotent jobs, resumable and abortable command, sessions not carried over, and separate failback with A's database rebuilt.
+- Reordered the flow to promote B, record B promoted, fix up jobs, grant B's lease, scale up, health check, DNS. The Mermaid diagram is rebuilt to match (Q10, Q11).
+- Added the grant of B's write lease as step 7, and defined the record's states in Terms so a second run can tell them apart (Q10, Q11).
+- Added a lag re-check after the fence wait, using the same 30 s rule, so writes A made during the wait are measured (Q12).
+- Stated that the command, not the operator, checks B's state after a hung promotion, and that an unreadable B stops the command for a manual check (Q13).
+- Wrote the step 6 log entry before step 7 starts, so a rerun cannot reset jobs B has started. Noted that rows added later are queued (Q14).
+- Step 3 now clears the failover mark when it stops, which fixes a contradiction with step 2 (a stop would otherwise leave the mark and block a rerun).
+- Corrected failure wording: users still reach A, which is down and fenced, not a path that keeps them served.
+- Added failure rows for the lag re-check, the lease grant, and an unreadable B database.
+- Merged the repeated lease description into Terms, and removed repeated rules from the step text.
+- Moved the no-time-limit and no-path-back point for a failing health check into Open questions (Q15).
+- Cut the one-line 'Pieces' list. Each piece now appears where it is defined or used: probes and on-call in step 1, the control store and traffic manager in Terms, Postgres and Redis in Terms and step 11.
+- Cut the separate 'Notes' list. Each note moved to where it applies: lag check and override to step 3, fencing to step 4, idempotent jobs to step 6, sessions to step 11, failback to 'After the failover', and the step log to the rule before the steps.
+- Merged repeated lines about the lease, the 30 s rule and the override into one place each, so each fact is stated once.
+- Added a plain summary of how region A and B work today, and the RPO and RTO targets.
+- Added one-line definitions for terms a newcomer would not know: replica, primary, promote, WAL, replay lag, sessions, Redis, /healthz, global traffic manager and TTL. Also added the meaning of 'fence' in the lease context.
+- Gave each step a trigger, what it does, and the data it keeps. Stated that every step checks whether it already happened before acting. Added the reason workers wait until step 8.
+- Step 2 now says the record stays marked for the whole run, so a second run is refused, including between steps 5 and 7 when the record says 'B promoted'.
+- Step 6 now says the rerun rule (it skips when logged, and resets only A's jobs if the log write was lost). Step 8 says jobs added later are untouched.
+- Failure table keeps all rows. The promotion hang row now states the check the command runs, and what a replica or primary reading means.
+- Removed the 'Q' and 'R' code references, so each step and section stands alone.
+- Kept all requirements, numbers and rules from the brief and the first version. Kept the diagram unchanged, and kept every open question, including the unknowns on user downtime and resolvers ignoring the TTL.
+- Did not change what the plan does. The only added content is explanation and the step-level data notes taken from the answers.
+
+### Holes
+- Q8: What does 'Switch DNS' change, and how does the global traffic manager do it? How long until clients reach B, and what do users see in the meantime? (author: The brief does not say how the traffic manager is changed, by API or console. The DNS name is pointed at B's load balancer, and the 60 s TTL means most clients move within about a minute. It is not known how resolvers that ignore the TTL behave. Until the switch, users see an outage because A is down. After it, they must sign in again.)
+- Q15: When the health check fails and there is no abort, how long can users stay down, and who decides when to stop fixing B? Is there any path back to A at that point? (author: Not known: how long users may stay down, and who sets that limit. The brief gives an RTO of 15 min but no limit on fixing B. The plan has no path back to A, because after promotion there is no abort and A's old database is never primary again. On-call decides when to stop fixing B, for now. This is listed as an open question.)

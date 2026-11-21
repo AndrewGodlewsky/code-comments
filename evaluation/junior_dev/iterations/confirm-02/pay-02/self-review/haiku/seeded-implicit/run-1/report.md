@@ -1,0 +1,39 @@
+## Review of pay-02 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Turned the one-line checklist items into steps, each with: what starts it, what data moves, where state is stored, and what happens on failure, as the brief requires.
+- Added a short list of terms (captured, refund states, idempotency key, webhook) so a reader new to the project and the stack can follow the steps.
+- Added a 'Where state lives' section that names the existing payments and order records and the new refunds and audit tables.
+- Made the concurrency rule explicit in step 3: lock the payment row in a transaction before checking the remaining amount, so two simultaneous refunds cannot exceed the captured amount.
+- Set the refund id as the idempotency key (step 4), so retries reuse the same key and cannot create duplicates.
+- Specified the handling of provider errors in step 6: a 4xx marks the refund failed with no retry; an unresolved timeout or 5xx leaves it pending for reconciliation.
+- Specified webhook handling in step 7: signature check on the raw body, duplicate-event detection, and a non-2xx response when the refund is not yet known so the provider redelivers.
+- Specified in step 8 that a final status (succeeded or failed) never changes, which handles duplicate and out-of-order webhooks.
+- Made step 9 derive the order status from succeeded refunds only, and committed it together with the refund status change.
+- Made the once-only customer email in step 10 a conditional update on an 'emailed' marker, sent only after commit.
+- Set the reconciliation job in step 11 to run hourly and check every pending refund, with rules for success, failure, and no record at the provider. The brief did not specify these choices, so they are proposals the team should confirm.
+- Moved audit logging to a final step that also describes the rule every other step follows: each audit row is written in the same transaction as the change it records, and a change is rolled back if its audit row fails.
+- Kept the original order of the twelve steps and the checklist format.
+- Defined terms the reader may not know: transaction, row lock, audit entry, and append-only; the terms section now explains each in plain words.
+- Step 5 and step 6: stated that 3 retries means 4 attempts in total, which the brief's wording left ambiguous.
+- Step 3 and step 4: spelled out that the row lock is what stops two concurrent refunds from exceeding the captured amount.
+- Step 7: made clear that nothing is stored at the webhook check itself; the event id is recorded only in step 8's transaction.
+- Step 8: added the conflicting-event case as a concrete example, since the original only said conflicts are recorded.
+- Step 11: stated that the refund id doubles as the idempotency key, so a lookup is always possible even when no provider id was saved.
+- Steps 1, 2, 6, 10: replaced terse phrases (for example, 'Nothing else changes', 'Input errors are shown') with full sentences that say what the reader sees and what is stored.
+- Step 12: listed the triggering events as a sub-list for easier scanning; the requirements are unchanged.
+- Added a plain-language opening that explains the two-stage provider response (accepted, then a later webhook) and why we also poll.
+- Added short definitions for conditional update, actor, reconciliation and redeliver, so the steps can be read without prior knowledge.
+- Step 2: stated the request audit entry has its own transaction, has no refund id yet, and that an audit failure stops the request. Step 12 now records the same exception.
+- Step 5: explained that the provider call happens after the lock is released, and that a crash before saving the provider id is handled by reconciliation.
+- Step 7: the missing-refund case now says the endpoint returns a 5xx so the provider redelivers. The original said only 'returns an error', which did not say which status code causes a redelivery.
+- Step 8: specified the status change as a conditional update (only if still pending), and said that a conflicting event is recorded but not applied. Step 9 runs only when a refund actually moves to succeeded.
+- Step 10: the original said the 'customer emailed' field is set both before sending and only after a successful send. I resolved this as a claim before sending that is cleared on failure, which gives at most once, and I stated the crash trade-off. The author should confirm this choice.
+- Step 10 and step 12: the original said every audit entry is in the same transaction as its change, but the email audit entry cannot be, because the send happens outside the database. Step 12 now names this exception.
+- Steps 5 and 6: the original did not say who the actor is for provider calls and errors. I assigned the admin who made the request. The author should confirm.
+- Step 1: the request id is sent with the submission, but the brief does not say what the server does with it. I left it as sent and did not invent a use. The author should decide whether it prevents double submissions.
+
+### Holes
+- None.

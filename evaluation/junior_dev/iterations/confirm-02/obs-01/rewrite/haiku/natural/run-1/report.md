@@ -1,0 +1,17 @@
+## Review of obs-01 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short opening that says how paging works today (cron email to a shared inbox) and how the new flow runs, and why the database is the only shared memory.
+- Added a terms section that defines every stack or design term a newcomer would not know: claim, FOR UPDATE SKIP LOCKED, ON CONFLICT DO NOTHING, partial unique index, claimed_until, heartbeat, reaper, gap, ack, provider alert id, and the others.
+- Kept the sequence diagram's flow and messages. Changed only the streak note so it says a breach resets the low streak and a low reading resets the breach streak. The brief's 'consecutive' rule requires this, but the first version did not say it.
+- Clarified the resolved-notice key: one notice per page attempt that was sent, following the unique key, rather than 'per person who was paged'. Same intent; the key is exact.
+- Merged the two resend statements (failed sends retry in the background, and the reaper resends pending attempts) into one retry path for failed and pending attempts. The first version said both and also said the reaper was the only resend path.
+- Turned the coordination bullets (one evaluator per minute, escalation clock, ack check under lock, idempotent paging, breach dedupe, who is paged) into numbered steps. Each step names its trigger, what it does and what keeps the data. Moved the 09:00 handover explanation into the paging step.
+- Replaced the failure bullet list with one table. It keeps all twelve failure cases from the first version, with the same handling.
+- Moved the assumptions into the open questions at the end. Kept the low-streak confirmation, the repeatable metrics query and the ack-carries-alert-id assumption. Added the unknown about whether the provider accepts an idempotency key, which the first version implied but did not list.
+- Kept every requirement from the brief: 60 s evaluation, 5-minute trailing window, 2% breach with 500-request floor, 3 breaches to open, one open incident per service and rule, 1% for 10 minutes to resolve, 5-minute escalation levels with the engineering manager last, push first then SMS, resolved notices, two evaluators, and the 09:00 handover.
+
+### Holes
+- None.

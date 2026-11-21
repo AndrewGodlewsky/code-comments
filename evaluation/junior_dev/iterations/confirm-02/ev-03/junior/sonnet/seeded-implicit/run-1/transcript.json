@@ -1,0 +1,224 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the Sender sends a message, at what exact point does the Gateway return the ack with the seq? Is it after the Message Store write commits, or earlier?",
+     "about": "Sender gets an ack with the seq"
+    },
+    {
+     "id": "2",
+     "text": "Who assigns the seq, and is it per conversation or global?",
+     "about": "Sender gets an ack with the seq"
+    },
+    {
+     "id": "3",
+     "text": "What is the outbox, and how does the Message Service write to it together with the Message Store? What does the Outbox Relay do with its rows and when?",
+     "about": "Message Store (+ outbox) / Outbox Relay"
+    },
+    {
+     "id": "4",
+     "text": "What does the Fan-out Worker do for one event, step by step? In what order does it consult Presence Registry, Gateway, Offline Inbox and Push Service?",
+     "about": "Fan-out Worker: Offline Inbox, Presence Registry, Gateway, Push Service"
+    },
+    {
+     "id": "5",
+     "text": "What does the 5 s delivery timeout apply to, and what happens when it fires? Who starts the timer, and what counts as delivered?",
+     "about": "5 s delivery timeout"
+    },
+    {
+     "id": "6",
+     "text": "How does the Presence Registry know which Gateway holds a user's connection? What happens if the TTL expires while the user is actually still connected?",
+     "about": "Presence has a TTL; heartbeats every 10 s"
+    },
+    {
+     "id": "7",
+     "text": "When does a message go into the Offline Inbox: only for offline recipients, or for all recipients until acknowledged? How is it removed from the inbox?",
+     "about": "Inbox tracks undelivered messages, 30-day expiry"
+    },
+    {
+     "id": "8",
+     "text": "On reconnect, how does the client say what it already has, and how do the Gateway, Offline Inbox and Message Store split the work? What happens to messages whose inbox entry expired after 30 days?",
+     "about": "Reconnect: Gateway, Offline Inbox, Message Store / Sync on reconnect, ordered by seq"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The Gateway sends the ack only after the Message Store write commits. The ack carries msg_id and seq. If the write fails the sender gets an error instead. Reason: the brief requires ack only after commit."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The Message Store assigns the seq at write time, and it is per conversation (increments by one within a conversation), not global. Reason: the brief gives a per-conversation sequence number and reconnect ordering is per conversation."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The outbox is a table in the Message Store. The Message Service inserts the message and an outbox row in one transaction. The Outbox Relay polls unpublished rows, publishes them to the Event Bus, and marks them published after the bus confirms. A crash in between causes a re-publish, which is acceptable because delivery is at-least-once. Reason: this guarantees an acked message is never lost even if the process crashes right after the write."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "For one event the worker loads members, drops the sender, and for each recipient looks up Presence. If online, it sends through that gateway and waits 5 s for the client ack. If offline or no ack, it writes an Offline Inbox entry and then asks the Push Service once, ignoring errors. It commits the event only after all recipients are handled. Reason: this order keeps the stored inbox entry independent of push success, as the brief requires."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The timeout applies per recipient per message, to the wait for the recipient client's ack. The Fan-out Worker starts the timer when it sends the message via the gateway. Delivered means the client's ack for that msg_id reaches the worker. On expiry the recipient is treated as offline for that message: inbox entry plus push. A late ack is harmless because of dedupe."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The Presence Registry maps user id to gateway id. The Gateway writes the entry when the client connects and refreshes it on each heartbeat, with a 30 s TTL. If the TTL expires while the user is still connected, the user is treated as offline for that window and gets inbox entries and pushes. The next heartbeat re-creates the entry and that triggers an inbox sync, so nothing stays missed. I chose this over a more complex lease mechanism because it needs no new mechanism."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Only offline recipients (no presence, or no ack within 5 s) get an inbox entry. Online recipients who ack never touch the inbox. Entries are removed when the client acks them during sync, or by the 30-day expiry. Reason: keeps the inbox small and matches the brief's 'keep what they have missed'."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The client sends its last seq per conversation. The Offline Inbox says which conversations have missed messages. The Message Store supplies the messages with seq above the client's last, and the Gateway sends them in seq order and deletes inbox entries after the client acks. After 30 days the inbox entry expires, so sync no longer pushes that message, but it remains in the Message Store and appears in normal history load. Reason: the Store is the source of truth and already has seq ordering, so the inbox only needs to point at what is missed."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How does the Fan-out Worker send a message through Gateway B, and how does the recipient client's ack get back to the worker? Over what path, and does the worker call the gateway directly?",
+     "about": "Fan-out: online (gateway B): send message via Gateway B, wait 5 s for client ack"
+    },
+    {
+     "id": "10",
+     "text": "Where does the Fan-out Worker get the conversation members from, and what is in the event it takes from the bus (the whole message, or just ids)?",
+     "about": "Fan-out Worker takes event, for each recipient"
+    },
+    {
+     "id": "11",
+     "text": "If the 5 s timer fires and an Inbox entry is written, but the ack arrives later, is the Inbox entry removed? And at the next sync, if the client's last seq is already past that entry's seq, what does the Gateway do with the entry?",
+     "about": "Recipient does not ack in 5 s / Reconnect: Gateway deletes inbox entries"
+    },
+    {
+     "id": "12",
+     "text": "Does the Outbox Relay publish rows for one conversation in seq order? What keeps events in order on the bus when a row is re-published after a crash or rows are read in batches?",
+     "about": "Outbox Relay: reads unpublished outbox rows --> Event Bus (partition = conversation id)"
+    },
+    {
+     "id": "13",
+     "text": "When a client connects, does the Gateway write the Presence entry before or after reading the Inbox, and what happens to a message the worker sends live to this gateway while sync is running?",
+     "about": "Reconnect: Gateway registers presence, reads user's Offline Inbox"
+    },
+    {
+     "id": "14",
+     "text": "With up to 200 recipients and a 5 s wait each, does the worker wait for recipients one after another or in parallel? What happens to later events in the same conversation while it waits?",
+     "about": "Fan-out Worker: one event at a time per conversation; commits only after all recipients handled"
+    },
+    {
+     "id": "15",
+     "text": "When the sender's client connects or reconnects, does the sender also sync? Does a message the sender sent from this device appear in its own sync?",
+     "about": "Reconnect and sync (step 6)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The worker makes a direct internal request/response call to the recipient's gateway (found via the Presence entry). The gateway sends the message over the WebSocket and returns the client's ack as the reply, with a 5 s limit. Reason: it is the simplest path that gives the worker a delivered/not-delivered answer without a new return channel."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The event holds ids only (conversation id, msg_id, seq, sender id). The worker reads the message and the member list from the Message Store, which is the source of truth. Reason: small events and no second copy of the message. That the Message Store holds membership is assumed, not verified; recorded under open questions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes. Any client ack makes its gateway delete that user's Inbox entry for that msg_id (a no-op if none exists), so a late ack removes the entry. At sync, entries whose seq is not above the client's last seq are deleted without sending. Reason: no new mechanism and no stale entries. The push may already have gone out; accepted since push is best effort."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The relay takes rows in seq order within a conversation and publishes them one after another; the bus keeps one partition per conversation. After a crash it restarts from the oldest unpublished row, so duplicates are possible but order is kept. Reason: the brief requires seq order on reconnect, and the client also orders by seq, so live ordering needs no stronger guarantee."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The Gateway writes the Presence entry first, then reads the Inbox. A message sent live during sync is delivered over the WebSocket and acked normally; the client dedupes by msg_id and places it by seq. A message that arrived before presence was registered is already in the Inbox. Reason: this order leaves no gap in which a message is missed. How the client merges the two streams is still an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The worker handles all recipients in parallel, each with its own 5 s timer, so an event takes about 5 s at worst. Later events of the same conversation wait until the event commits, since the bus handles one event at a time per conversation. Reason: sequential waits could take 200 x 5 s, which is far too long."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The sender syncs like any other user on connect. Its own message is never put in its Inbox (the sender is excluded from fan-out), so it does not appear in sync, and the sender's client already has the seq from the ack. If the ack was lost, the client's retry returns the same message and seq. Reason: the sender is not a recipient of its own message."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "When a heartbeat re-creates the Presence entry, the client is still connected and did not send its last seq. How does the Gateway get the client's last seq per conversation to run the sync?",
+     "about": "Reconnect and sync (step 7): a heartbeat re-creates a missing Presence entry"
+    },
+    {
+     "id": "17",
+     "text": "Suppose message seq 6 went to the Inbox (no ack in 5 s) and then live message seq 7 was delivered and acked. The client's last seq is now 7. At sync, is seq 6 deleted unsent as 'not above the client's last'? How does the client end up with seq 6?",
+     "about": "Reconnect: inbox entries with seq <= client's last are deleted unsent"
+    },
+    {
+     "id": "18",
+     "text": "If the Presence entry names gateway B but the user has already disconnected or moved to another gateway, what does Gateway B reply to the worker's call, and how does the worker treat that?",
+     "about": "Fan-out: online (gateway B): internal call to Gateway B"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "It does not need it. I removed the client's last seq from sync. The Offline Inbox already lists every message the user has not acked, so the Gateway can run sync from the Inbox alone, whether the trigger is a connect or a heartbeat re-creating the Presence entry. The client dedupes by msg_id, so re-sending something it already has is harmless. Reason: simpler, and it fixes the gap in Q17."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "You found a real bug. A single 'last seq' is not a safe watermark, because seq 7 acked live does not mean seq 6 was received. Deleting seq 6 as 'not above last' would lose it. Fix: sync no longer filters by the client's last seq. It sends every Inbox entry's message in seq order, the client drops duplicates by msg_id and acks, and the Gateway deletes the entries. So the client gets seq 6 at sync (or earlier, if a late ack deleted the entry because it had already received it). Reason: the Inbox is the exact list of unacked messages."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Gateway B replies at once that the user is not connected. The worker treats that the same as no ack: the recipient is offline for this message, so it writes an Inbox entry and sends one push, without waiting the 5 s. If gateway B is unreachable or the call errors, the worker also treats the recipient as offline (at the latest after 5 s). Reason: no new mechanism, and the Inbox plus the next sync covers the message."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Send. The client makes a message with a new msg_id and sends it over its WebSocket to its Gateway (call it A). The Gateway passes it to the Message Service.\n2. Write. The Message Service opens one transaction in the Message Store. It writes the message, and the Store assigns a seq (a per-conversation counter). It also writes an Outbox row in the same transaction. Both rows are saved, or neither is. If a message with this msg_id already exists in the conversation, the write returns the existing message and seq. It makes no copy.\n3. Ack or error. After the commit, Gateway A sends the sender an ack with {msg_id, seq}. If the write fails or times out, the sender gets an error and no outbox row exists. Nobody receives anything, and the client retries with the same msg_id. If the system crashes after the commit but before the ack, the sender sees no ack and retries. The retry returns the same message and seq, and fan-out still runs from the outbox row. The sender's path ends here. Everything below happens off it.\n4. Relay. The Outbox Relay polls the Message Store for unpublished outbox rows. Within a conversation it takes them in seq order. It publishes each one to the Event Bus, and the Bus partitions by conversation id. The event holds only ids: conversation id, msg_id, seq and sender id. The relay marks the row published after the bus confirms. If the relay crashes between publish and mark, it restarts from the oldest unpublished row. That can publish an event twice, but never out of seq order. Unpublished rows stay in the outbox until then.\n5. Worker pickup. One Fan-out Worker handles a conversation's events one at a time, in order. It reads the full message and the member list from the Message Store. It drops the sender, which leaves at most 199 recipients. It handles all recipients in parallel, each with its own 5 s timer.\n6. Per-recipient lookup. The worker looks up the recipient in the Presence Registry (user to gateway id). A live entry means the user is online and names a gateway, say B.\n7. Online delivery. The worker makes an internal call to Gateway B. B sends the message down the client's WebSocket. When the client acks, B returns that ack as the reply to the call. The recipient counts as delivered only when this ack arrives within 5 s.\n8. Treated as offline. A recipient counts as offline if any of these happens: there is no live Presence entry; B says \"user not connected\" at once, which means the entry was stale; the call fails; or no ack arrives in 5 s. The worker then writes an Offline Inbox entry (conversation, seq, msg_id), which is idempotent per user and msg_id. After that it asks the Push Service once. A failed push is ignored and never retried. It does not affect the Inbox or the Message Store, so the message still arrives at the next sync.\n9. Commit. Because recipients run in parallel, one event takes about 5 s at worst. The worker commits the event only once every recipient is handled. Later events of the same conversation wait until then. The Event Bus keeps the event until it is committed. If the worker crashes first, the event is processed again from the start. Recipients may then get duplicates, and clients drop them by msg_id.\n10. Late ack. If a client acks after its 5 s timer fired, its Gateway deletes that user's Inbox entry for that msg_id. The delete does nothing if no entry exists. The message is then not resent at sync. The push may already have gone out, and that is accepted.\n11. Presence upkeep. The client sends a heartbeat every 10 s. Each heartbeat refreshes its Presence entry with a 30 s TTL. If the entry expires while the user is still connected, messages in that window are treated as offline and produce inbox entries and pushes. The next heartbeat re-creates the entry, and creating an entry always triggers sync.\n12. Reconnect and sync. Sync starts when a client connects or when a heartbeat re-creates a missing entry. The client sends nothing. The Gateway registers presence first, then reads the user's Offline Inbox. A message that arrives during sync therefore goes live. One that arrived earlier is already in the Inbox. For each conversation with entries, the Gateway reads those messages from the Message Store and sends them in seq order. The client drops any it already has (by msg_id) and acks all of them. The Gateway deletes the matching Inbox entries. Entries never acked stay until they expire after 30 days. The sender's own messages never enter its Inbox.\n13. Expiry. After 30 days an Inbox entry is removed. The message stays in the Message Store, so the client still sees it when it loads conversation history. Sync no longer sends it.\n14. Guarantees. Delivery is at-least-once, and clients dedupe by msg_id. On reconnect, a client receives a conversation's messages in seq order.",
+   "gaps": [
+    "Which process actually writes the Inbox entry and who deletes entries after a normal live delivery is clear, but how the Gateway knows which user and device an incoming client ack belongs to (the ack format) is not described.",
+    "How a client treats live messages that arrive while sync is replaying older ones is not designed. The Open Questions say the client must place messages by seq per conversation, but how is undecided.",
+    "Whether the Offline Inbox is an existing store or a new one is undecided, so I cannot say where that state lives.",
+    "Where conversation membership lives today is unverified. The worker reads members from the Message Store, but the document does not confirm that this is possible.",
+    "What happens when a recipient's gateway hangs is only partly covered. The 5 s timer is the only mechanism, and nothing beyond it is decided, so later events in that conversation stall for that time.",
+    "How the relay learns about new outbox rows is only described as polling. The polling interval is not given, so I cannot say how soon after the ack fan-out starts.",
+    "What the worker does if the Message Store or Presence Registry read fails, or if the Inbox write fails, is not stated. Only the push failure and gateway failures are covered.",
+    "How the Gateway finds the Message Service, and what the sender's client does when it receives a live message mid-send, are not described."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,163 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "How does the Order relay find new outbox rows: does it poll the table, or is it triggered some other way? What does it do if the broker is down or slow?",
+     "about": "RL->>BR: publish OrderPlaced, key orderId, mark sent only after ack"
+    },
+    {
+     "id": "2",
+     "text": "What is the broker here, and how does each service get only its own events from the one order-events topic? Does each service read everything and ignore what it does not need?",
+     "about": "Broker order-events / BR->>INV: deliver OrderPlaced"
+    },
+    {
+     "id": "3",
+     "text": "How does Inventory decide there is enough stock, and where is the stock count stored? The state table only lists reservations.",
+     "about": "alt Enough stock / Inventory reservations"
+    },
+    {
+     "id": "4",
+     "text": "After the 202 Accepted, how does the customer find out whether the order was confirmed or cancelled?",
+     "about": "OS-->>Cust: 202 Accepted with orderId"
+    },
+    {
+     "id": "5",
+     "text": "When a handler throws, what exactly triggers the redelivery after 1 s, 10 s and 60 s? Is that the broker's feature or code in Payment? And what does the consumer do with the message while it waits?",
+     "about": "opt Card timeout or 5xx during charge / loop Retry after 1 s, 10 s and 60 s"
+    },
+    {
+     "id": "6",
+     "text": "If Payment crashes after the card charged but before the CHARGED row is saved, what happens next, step by step? The payments row says ATTEMPTING, so how does it get from there to publishing PaymentCharged?",
+     "about": "Payment avoids a second charge / payments status ATTEMPTING"
+    },
+    {
+     "id": "7",
+     "text": "Who or what actually does the 'move message to Payment dead-letter queue' and 'page on-call'? And what does a human do then to re-drive or cancel the order?",
+     "about": "Note over BR,PAY: If the 4th attempt also fails"
+    },
+    {
+     "id": "8",
+     "text": "What happens if the processed_events insert succeeds but the rest of the handler's transaction fails? Does the whole transaction roll back so the retry runs again from scratch?",
+     "about": "Each consumer processed_events / One tx: processed_events insert"
+    },
+    {
+     "id": "9",
+     "text": "Where does the eventId come from, and who creates it? Is it the same value on the outbox row and in the published message?",
+     "about": "outbox / key eventId"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Nothing triggers the relay except its own poll. It polls the outbox every 500 ms (fixed by the brief), publishes unsent rows oldest first, and marks each row sent only after the broker acks. If the broker is down or slow, the ack does not come, so the row stays unsent and the next poll tries again. The customer is not affected, because the 202 was already returned. The brief does not name the broker product, so that is not known; it is listed as an open question."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The broker is the message system that holds the one topic order-events. The brief does not name a product. Each service has its own consumer group, and a consumer group receives every event on the topic. So each service reads all events and skips the types it does not handle. Filtering by type in the consumer is the simplest option the brief allows."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The brief does not say where Inventory keeps its stock count or how it checks it. The design only covers the reservations table. The rule (reserve only when stock is enough, otherwise reject with no charge) is fixed by the brief, but the store and the check are not known. Added as open question 8 and named in step 3."
+    },
+    {
+     "id": "4",
+     "tag": "unknown",
+     "text": "The brief gives no status endpoint and no push to the customer after the 202. The only customer notice it states is the confirmation or cancellation email, which is sent after Order Service has set the final status. Whether the customer can query order status is not known. Added as open question 9."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The retry is code in the Payment consumer. The brief says the consumer retries after 1 s, 10 s and 60 s, so the broker does not schedule it. The handler waits, runs again on the same message, and counts attempts. While it waits, the consumer does not take the next message in its partition. That cost is open question 3. The diagram loop was changed to show an in-place retry, not a broker redelivery."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Step by step: (1) Payment charges the card and crashes before saving CHARGED. (2) The message was never acked, so the broker redelivers StockReserved. (3) Payment reads the payments row, which says ATTEMPTING. ATTEMPTING means the card call may already have happened, so Payment does not assume failure. (4) Payment calls the card again with the same idempotency key orderId. The provider returns the first result, so the card is not charged twice. (5) Payment saves CHARGED and the PaymentCharged outbox row in one transaction, and the relay publishes it. A crash path was added to the diagram."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The consumer does it. After the 4th failed attempt, its code moves the message to that group's DLQ, sends a page to on-call, and acks the original so it moves on. The brief names no tool for the page or the DLQ move. What a human does to re-drive or cancel the order is not defined in the brief, so it is open question 1, not invented here."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Checked against the design. The processed_events insert and the state change run in one local database transaction. If any part fails, the whole transaction rolls back, including the processed_events row, so the retry runs the handler again from scratch. The card call and the email send are outside that transaction, so a rollback does not undo them. The card's idempotency key covers the card side, and email is best-effort."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The service that writes the outbox row creates the eventId (a unique ID) in the same transaction. The same value is stored on the outbox row and copied into the published message. The brief requires every event to carry a unique eventId, so the value must be one fixed ID per event, not created again by the relay."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Payment commits a processed_events row together with ATTEMPTING before the card call. When StockReserved is redelivered after a crash, why doesn't that processed_events row make it a duplicate no-op? What exactly does Payment check first on redelivery?",
+     "about": "opt Payment crashes after card charged, before CHARGED saved / Note over PAY: Row is ATTEMPTING, so the card is called again with the same key"
+    },
+    {
+     "id": "11",
+     "text": "In the in-place retries after a card timeout, the first attempt already committed processed_events and ATTEMPTING. How do the retries get past the processed_events check and reach the card call again?",
+     "about": "opt Card timeout or 5xx during charge / loop Retry in place after 1 s, 10 s and 60 s"
+    },
+    {
+     "id": "12",
+     "text": "When the payments row already says CHARGED or DECLINED and the message is redelivered, what exactly does Payment do? It only re-publishes from its outbox, but if the outbox row already exists, what gets re-published and who triggers it?",
+     "about": "Design choices / No second charge: Payment does not call the card. It only re-publishes from its outbox"
+    },
+    {
+     "id": "13",
+     "text": "In the PaymentDeclined case, Inventory and Order Service each handle the same event. Does Payment's DLQ message or a failure in one of them affect the other? Are they fully independent?",
+     "about": "par Release the reservation / Cancel the order"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The question exposed a real flaw in the earlier design. The ATTEMPTING commit also wrote processed_events, so a redelivered StockReserved would have hit the duplicate check and been skipped, and the crash recovery would not have run. The fix: the ATTEMPTING commit writes only the payments row, and the processed_events row is written with the final CHARGED or DECLINED. On redelivery Payment checks, in order: (1) processed_events for this eventId, which is empty after a crash before the final commit; (2) the payments row for orderId. If it is ATTEMPTING, Payment calls the card again with the same key. This is step 5 of the rewritten file."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "The retries never reach the duplicate check as a duplicate. The first attempt committed only the payments row as ATTEMPTING, with no processed_events row, so each retry passes check 1, finds ATTEMPTING at check 2, and calls the card with the same orderId key. The provider returns the first result if an earlier call charged. The old text had the same flaw as Q10, and the fix is the same."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "On redelivery Payment does nothing: it does not call the card and writes no new row. The outbox row was written in the same transaction as CHARGED or DECLINED, so the relay publishes it on its next poll if it is still unsent. The relay, not the consumer, does the re-publish. The processed_events row is written in that same transaction, so a redelivery after the final commit also hits it. The 'Design choices' bullet and step 5 now say this."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "They are fully independent. Each has its own consumer group, database, processed_events table, retries and DLQ. Payment's DLQ belongs to Payment's group, which consumes StockReserved and not PaymentDeclined, so a Payment DLQ does not touch Inventory or Order Service. A failure in one of the two PaymentDeclined consumers does not stop the other. If Inventory dead-letters PaymentDeclined, the reservation stays RESERVED while Order Service still cancels the order. That combination is now in the failure table and open question 11."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer sends POST /orders to Order Service. In one database transaction, Order Service inserts an `orders` row with status PENDING and an `OrderPlaced` row in its own outbox table. The event row gets a unique `eventId` in that same transaction. It then returns 202 Accepted with the `orderId`. The request handler never calls the broker. If this transaction fails, nothing is written and the customer gets an error instead of a 202.\n\n2. Order Service's relay polls the outbox every 500 ms. It publishes unsent rows oldest first to the topic `order-events`, keyed by `orderId`, and copies the existing `eventId` into the message. It marks a row sent only after the broker acks it. If the broker is down, the row stays unsent and is retried on the next poll, and the customer is unaffected. If the relay crashes after the ack but before marking the row, the row is published again. Consumers drop that duplicate using `processed_events`.\n\n3. Inventory receives `OrderPlaced`. Every consumer group gets every event and skips the types it doesn't handle. Inventory checks its stock count. In one transaction it inserts a `processed_events` row, then does one of two things. With enough stock, it inserts a `reservations` row (unique on `orderId`) and a `StockReserved` outbox row. With too little stock, it writes only a `StockRejected` outbox row and reserves nothing. Inventory's own relay then publishes the result to `order-events`, the same way as step 2.\n\n4. Not-enough-stock branch. Order Service receives `StockRejected`. In one transaction it inserts `processed_events`, runs a guarded update (`UPDATE orders SET CANCELLED WHERE status = 'PENDING'`), and writes an `OrderCancelled` outbox row. Its relay publishes `OrderCancelled`. Notification receives it, records a `notifications` row keyed by `eventId`, and sends a cancellation email on a best-effort basis. Payment never sees an event in this branch, so the card is never charged.\n\n5. Enough-stock branch. Payment receives `StockReserved` and checks, in order, stopping at the first match.\n   a. If `processed_events` already has this `eventId`, it stops.\n   b. If the `payments` row for the `orderId` is already CHARGED or DECLINED, it stops without calling the card. The outbox row was written with that status, so the relay will publish it if it is still unsent.\n   c. If there is no `payments` row, it inserts one with status ATTEMPTING and commits right away, with no `processed_events` row. If an ATTEMPTING row already exists, it keeps it.\n   d. It calls the card provider with idempotency key `orderId`. A repeat call with that key returns the first result and does not charge again.\n\n6. Card accepts. In one transaction, Payment inserts `processed_events`, sets `payments` to CHARGED, and writes a `PaymentCharged` outbox row. Payment's relay publishes it. Order Service receives it and, in one transaction, inserts `processed_events`, runs a guarded update to CONFIRMED `WHERE PENDING`, and writes an `OrderConfirmed` outbox row. Its relay publishes that. Notification receives `OrderConfirmed`, records a `notifications` row, sends a confirmation email, and records the result. A failed send is recorded and never changes the order status.\n\n7. Card declines. A decline is treated as a normal answer. Payment saves `processed_events`, sets `payments` to DECLINED, and writes a `PaymentDeclined` outbox row, all in one transaction. The relay publishes it, and two independent consumer groups react in parallel. Inventory sets the reservation to RELEASED, or does nothing if it is already released. Order Service sets the order to CANCELLED with the guarded update and writes `OrderCancelled`. That event leads to a cancellation email as in step 4.\n\n8. Duplicate delivery. A consumer that gets an event whose `eventId` is already in its `processed_events` does nothing and publishes nothing. State changes are also guarded by a natural key (unique `orderId` or `WHERE status`), so the logic stays correct even if the `processed_events` row is lost.\n\n9. Crash after the card charged but before CHARGED was saved. The message was not acked, so the broker redelivers `StockReserved`. There is no `processed_events` row and the payment is still ATTEMPTING, so Payment calls the card again with the same key. The provider returns the first result without a second charge. Payment then saves CHARGED, and the normal path resumes.\n\n10. Card timeout or 5xx. The handler throws, the outbox is untouched, and the row stays ATTEMPTING. The consumer waits 1 s, 10 s and 60 s and retries the same message with the same key. While it waits it takes no other message from that partition. If the 4th attempt fails, it moves the message to Payment's DLQ, pages on-call, acks the original and moves on. The order stays PENDING and stock stays reserved until a human acts. Re-driving the DLQ message is described as safe because of the idempotency key.\n\n11. Other handler failures. If any handler throws, its local transaction rolls back, including the `processed_events` row. Card and email calls are outside the transaction, so a rollback does not undo them. The same retry and DLQ rules apply per consumer group. An Inventory DLQ on `PaymentDeclined` leaves a CANCELLED order with the reservation still RESERVED. An Order Service DLQ leaves the order PENDING.",
+   "gaps": [
+    "Where Inventory keeps its stock count and how it checks it. Step 3 says it checks the count but not against what store, and the document says only the reservations table is designed.",
+    "How the customer learns the outcome or checks an order's status. The 202 returns an `orderId`, but there is no status endpoint or push, and the email is the only stated notice. The document leaves open whether customers can query status.",
+    "Who or what releases stock or resolves orders after a dead-letter. The on-call runbook is not written, and the document does not decide who releases a reservation held for a CANCELLED order.",
+    "What a consumer's retry does when the handler throws on non-Payment events, in particular what is retried for the 'any consumer' case beyond the 1 s / 10 s / 60 s schedule. Nothing says how the attempt count survives a consumer restart."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

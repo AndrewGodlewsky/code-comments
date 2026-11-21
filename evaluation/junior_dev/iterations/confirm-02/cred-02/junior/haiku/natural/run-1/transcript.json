@@ -1,0 +1,344 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The Challenge state: after a correct password, how does the browser reach the second-factor endpoint? What does the server return from POST /login, what does the user see, and what does the client send next?",
+     "about": "PasswordCheck --> Challenge : correct password, 2FA on, no session created"
+    },
+    {
+     "id": "2",
+     "text": "What does \"sealed cookie\" and \"seal()\" mean here? Is it encryption, signing, or both, and who holds the key?",
+     "about": "Sign-in challenge / secret_sealed bytea (set by seal())"
+    },
+    {
+     "id": "3",
+     "text": "When the user submits a code in Challenge, how does the server decide whether the input is a TOTP code or a recovery code? Is it one endpoint with one field, or separate ones?",
+     "about": "Challenge --> SessionIssued (valid code vs unused recovery code)"
+    },
+    {
+     "id": "4",
+     "text": "How is a submitted recovery code checked against code_hash? What hash is used, and how does the server find the matching row?",
+     "about": "Recovery code use / recovery_codes table"
+    },
+    {
+     "id": "5",
+     "text": "When Challenge goes back to PasswordCheck after 5 failures or 5 minutes, what does the user see and does the same password then start a fresh challenge? Is the attempt count per challenge only, so a new password entry resets it?",
+     "about": "Challenge --> PasswordCheck : 5 wrong entries or 5 minutes elapsed"
+    },
+    {
+     "id": "6",
+     "text": "What does \"the window of one step either side\" mean for the user, and how does it combine with the rule that the matched step must be greater than last_step? Can a code from the previous step ever be accepted after a current-step code?",
+     "about": "Confirm / Code acceptance"
+    },
+    {
+     "id": "7",
+     "text": "Setup confirm and the sign-in code check both use the TOTP check. Does confirm also update last_step and use the same atomic UPDATE? Also, if the user starts Setup again while already in SetupFirst, is the old pending secret overwritten?",
+     "about": "Setup (Off to SetupFirst) / Confirm"
+    },
+    {
+     "id": "8",
+     "text": "Is a wrong code on setup confirm or disable counted anywhere? And after disable, what happens to last_step and the totp_factors row, and what about other sessions?",
+     "about": "Disable (On to Off)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "After a correct password with 2FA on, POST /login creates no session. It stores the challenge, sets the sealed challenge cookie and redirects to /login/second-factor, which shows a form with an authenticator-code field and a recovery-code field. The browser then posts that form with the cookie. A redirect matches how sign-in already redirects to /home, so no new client code is needed."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "seal() is AES-GCM with the app key held in the KMS (existing/schema.sql). AES-GCM hides the value and rejects any change, so it provides both encryption and integrity. The sealed cookie holds the raw random token, which the browser cannot read or alter. The database stores only the sha256 of that token, so a database leak gives no usable token."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "One endpoint with two form fields, totp_code and recovery_code. The server uses whichever field is filled. If both or neither is filled, it counts as a wrong entry. The server never has to guess whether six digits are a TOTP code or a recovery code. The recovery code format is not decided here."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The hash is sha256, not bcrypt, because recovery codes are long random values rather than passwords, so a slow hash adds nothing and sha256 can be matched directly. One statement checks and uses the code: UPDATE recovery_codes SET used_at = now() WHERE user_id = %s AND code_hash = sha256(%s) AND used_at IS NULL RETURNING id. A returned row means accepted. No row means unknown or already used, which counts as a wrong entry. The code length and format are not decided here."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The user sees the password form again with a plain message: sign-in timed out or too many wrong codes, enter your password again. The same password does start a fresh challenge: a new row with failed_attempts at 0, and a new cookie. The count is per challenge, so a new password entry resets it. What limits restarts is the existing rate limit on POST /login, 10 per minute per IP (checked in existing/login.py). Whether the 5-entry limit should span restarts is listed as open."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The server accepts a code for the current step, the step before, or the step after, so a code can be up to 30 seconds early or late to allow for clock drift. A code is also accepted only if its matched step is greater than last_step. So yes, a previous-step code can be accepted after a current-step code, but only if no later step was accepted first. Example: last_step is 99 and the server is at step 101. A code for step 100 is accepted and last_step becomes 100. A code for step 101 is still accepted after that. If the step-101 code is accepted first, a step-100 code is then rejected."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes. Confirm uses one conditional statement: UPDATE totp_factors SET secret_sealed = pending_secret_sealed, pending_secret_sealed = NULL, last_step = %s WHERE user_id = %s AND pending_secret_sealed IS NOT NULL AND (last_step IS NULL OR last_step < %s). The recovery-code replacement and the session deletion run in the same transaction, and zero rows changed rolls the whole confirm back. Starting setup again overwrites pending_secret_sealed. There is only one pending secret per user, so the earlier QR code stops working. This is the simplest option, with no second pending slot."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Wrong codes at setup confirm or disable are not counted anywhere and have no lock. The brief makes any lock a product decision. As a suggestion, both endpoints get the existing per-IP rate limit (10 per minute, as /login). That is a real weakness, so a lock is listed as open. After disable, secret_sealed and pending_secret_sealed become NULL and all recovery_codes rows are deleted. The totp_factors row stays with last_step, because last_step is a time position: keeping it blocks nothing and deleting it gains nothing. The brief does not say what happens to other sessions on disable. They are left signed in, and this is listed as open."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "When a valid code or recovery code is accepted at the second-factor step, what happens to the login_challenges row and the challenge cookie before or after start_session() is called? Can the same challenge be used again?",
+     "about": "Challenge --> SessionIssued"
+    },
+    {
+     "id": "10",
+     "text": "On each POST to /login/second-factor, in what order does the server work: read the cookie, look up the challenge row, check expiry, check the code, then increment failed_attempts? What does it do if the cookie is missing, tampered with, or points to no row?",
+     "about": "Challenge / Failed entry"
+    },
+    {
+     "id": "11",
+     "text": "On the fifth wrong entry, does the server check the code first and then count it, or count first? Is the fifth entry's code still checked, so a correct fifth code could succeed?",
+     "about": "Challenge --> PasswordCheck : 5th wrong entry"
+    },
+    {
+     "id": "12",
+     "text": "For Disable, how are the password and the code collected: one form with both fields or two steps? How does the server know the password step passed before it takes the code?",
+     "about": "Disable (On to Off)"
+    },
+    {
+     "id": "13",
+     "text": "When a TOTP code is submitted at sign-in, which secret does the server use to compute codes (it must unseal secret_sealed), and which time steps does it try? Is last_step updated in the same conditional UPDATE before start_session() runs?",
+     "about": "Code acceptance"
+    },
+    {
+     "id": "14",
+     "text": "What does the user see on the second-factor form when they pick a field and the code is wrong, and does the page tell them how many tries are left?",
+     "about": "Failed entry / What happens when things fail"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "On a valid code or recovery code, the server first runs the code's own check (last_step UPDATE or used_at UPDATE), then deletes the login_challenges row with DELETE ... RETURNING, then clears the challenge cookie and calls start_session(). If the delete returns no row, a concurrent request already used the challenge and the attempt is refused. After the delete, the same cookie matches no row, so the challenge cannot be used again. A row that stayed would let one password entry produce more than one session."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Order on each POST: (1) read and unseal the challenge cookie; a missing, tampered or unsealable cookie counts as no challenge; (2) look up the row by sha256 of the token; no row sends the user to the password step with a message to start again, and nothing is counted; (3) if expires_at has passed, delete the row and cookie and do the same; (4) check exactly one filled field; (5) check the code; (6) on a wrong result, increment failed_attempts with RETURNING and, at 5, delete the row and cookie. The check-then-count order means a missing or unknown challenge cannot be used to guess codes."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The server checks the code first and counts only a wrong result. So a correct fifth code succeeds. Counting first would reject a correct code. The brief says the step allows 5 wrong entries, so the fifth entry only locks the step if it is also wrong."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "One form and one request: password plus totp_code or recovery_code, filled by the same rule as sign-in. The server checks the password first with bcrypt_check, and if it fails it stops without looking at the code. Only after the password passes does it check the code. This avoids storing any half-finished state between two steps. A TOTP code used to disable also moves last_step, so it cannot be replayed."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The server unseals secret_sealed with unseal() and computes the 6-digit code for three time steps: the current step, the one before and the one after. If one matches, that step is the candidate. If more than one matches, the highest is used. Then the conditional UPDATE sets last_step to the candidate, and only if the candidate is greater than the stored last_step. This runs before start_session(), so a replay during the session start is blocked. The rule that the matched step must be greater than last_step is in the plan already."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The form shows one message for every wrong entry: \"That code did not work. Try again.\" It does not say how many tries are left. The message is the same for a wrong code, a reused step, and an unknown or used recovery code, so it does not reveal which check failed. A count would also tell an attacker exactly when the step will be thrown away. The count is still stored in failed_attempts for the limit."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "At setup confirm and disable, the doc says the code is checked 'with the same rules as sign-in'. At sign-in the TOTP check unseals secret_sealed. At setup confirm, which column is unsealed, and what happens to a user in ReplacePending who signs in meanwhile?",
+     "about": "Setup and replacement / Confirm"
+    },
+    {
+     "id": "16",
+     "text": "When the challenge cookie is cleared and the user is sent back to the password step, what exactly does the browser send next? Does the user retype email and password on /login, and is the old challenge cookie still sent along?",
+     "about": "Challenge --> PasswordCheck : 5th wrong entry or challenge expired"
+    },
+    {
+     "id": "17",
+     "text": "After sign-in succeeds via a TOTP code, the Success step deletes the challenge after the last_step UPDATE. If the delete returns no row, last_step has already moved. Is that code now burned for the real user, and does the user just retry with a new code?",
+     "about": "Sign-in step 6, Success"
+    },
+    {
+     "id": "18",
+     "text": "Where does the recovery code email get sent to, what does it say, and what does the remaining count come from if the count query runs after the UPDATE? Is the email sent even if the later challenge delete fails and the attempt is refused?",
+     "about": "Recovery code (step 5) / enqueue_email()"
+    },
+    {
+     "id": "19",
+     "text": "On setup confirm, 'other sessions signed out' deletes rows where token_hash differs from sha256 of the current cookie. How does this compare with how sessions are stored, and what does a signed-out browser see on its next request?",
+     "about": "Confirm / other sessions signed out"
+    },
+    {
+     "id": "20",
+     "text": "What does the user see after a successful confirm, and how are the 10 recovery codes shown once? What if the page is closed or the response is lost before the user saves them?",
+     "about": "On: valid code for pending secret, 10 recovery codes shown once"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Setup confirm unseals pending_secret_sealed, because it checks the new secret, not the active one. Sign-in and disable unseal secret_sealed. Same rules means the time window and the last_step rule. A user in ReplacePending who signs in meanwhile is checked against the old secret_sealed, as today, and the pending secret is ignored. That sign-in can move last_step, so a new-secret code for the same step is refused and the user waits for the next code, 30 seconds later. This is accepted because it costs only one step."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The server clears the challenge cookie and redirects to /login. The browser sends no challenge cookie after that. The user enters email and password again on /login, and a new challenge starts only after a correct password. If an expired cookie is still sent, the server finds it expired or the row gone and goes to the password step, as the expiry check already does."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, the code would have been burned. The order is changed so this cannot happen: the code's write and the challenge delete now run in one transaction. If the delete returns no row, the transaction rolls back, last_step returns to its old value, and the attempt is refused. The user can retry with the same code if it is still in its window, or with the next code if it has passed."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The email goes to the address the mailer holds for user_id. enqueue_email takes user_id, and the brief does not show the lookup. The wording belongs to the recovery_code_used template and is not in the plan. The template states that a recovery code was used and gives the remaining count. The count is read in the same transaction after the UPDATE, so it includes the code just used. The email is queued only after the transaction commits, so a refused attempt, including a failed challenge delete, sends nothing."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "sessions.token_hash stores the sha256 of the cookie value (existing/schema.sql), so token_hash <> sha256(current cookie) keeps the current session and deletes the others. A signed-out browser sends a sid cookie that matches no row. The server then finds no session, so the request is not signed in and goes to /login, as an expired session does. The session lookup code is not in the files, so this is a decision, not a check."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "After confirm, the response is the page itself, rendered with the 10 codes, not a redirect. The codes are shown once in that response and never saved in raw form. If the page is closed or the response is lost, the codes are gone. The account stays On with the new secret, and the old codes are void. The user gets 10 new codes by starting replacement from Security settings while signed in and confirming with a new code. The failure table now lists this case."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "21",
+     "text": "Recovery code sign-in: the UPDATE sets used_at, then the delete of the challenge runs. If the delete returns no row, the transaction rolls back. Is the count of remaining codes read before that rollback, and is it only used if the commit succeeds?",
+     "about": "Sign-in step 5 Recovery code and step 6 Success, in one transaction"
+    },
+    {
+     "id": "22",
+     "text": "On the second-factor form, the user's challenge may belong to a user who has since turned 2FA off or replaced the secret. What does the code check do if secret_sealed is NULL when the challenge is used?",
+     "about": "Sign-in step 4 Authenticator code"
+    },
+    {
+     "id": "23",
+     "text": "When the session write fails after a valid code, the doc says the user starts again with a new code. Does the user see an error page, and is the challenge cookie already cleared at that point?",
+     "about": "What happens when things fail: Session write fails after a valid code"
+    },
+    {
+     "id": "24",
+     "text": "How does the server know which user a challenge belongs to when it runs the code's UPDATE? Is user_id taken from the login_challenges row, and never from the form?",
+     "about": "Sign-in step 3 Checks on every POST, Look up the row"
+    },
+    {
+     "id": "25",
+     "text": "Do expired login_challenges rows that are never revisited stay in the table, or is something cleaning them up?",
+     "about": "login_challenges, expires_at = now() + 5 minutes"
+    },
+    {
+     "id": "26",
+     "text": "If the user goes Off to SetupFirst and starts a pending secret, what does the 'Stays pending' state mean for sign-in: the user has no totp_factors.secret_sealed, so sign-in is as 2FA off. Is that right?",
+     "about": "Setup and replacement, step 1 Trigger"
+    }
+   ],
+   "answers": [
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Yes. The remaining count is read inside the same transaction, after the UPDATE, and is used only if the commit succeeds. If the challenge delete returns no row, the transaction rolls back: the used_at change is undone, so the code is not spent, and the count is discarded with it. The email is queued only after commit. One transaction keeps the spend and the email decision together. Step 6 now says the count is discarded on rollback."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "If secret_sealed is NULL when the challenge is used, 2FA was turned off after the password step (disable is the only thing that sets it to NULL). The server deletes the challenge row and cookie and sends the user to the password step, the same as other challenge failures. Keeping the challenge would only waste the user's tries, because disable also deletes all recovery codes, so no code could succeed. This check is now in step 3 and applies whichever field was filled. During a replacement secret_sealed is still the old secret, so the challenge keeps working until a confirm succeeds."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The user sees an error page from the server, not a designed message. The commit has already spent the code and deleted the challenge row. The challenge cookie is still in the browser, because the failed response could not clear it, but it matches no row. The next POST goes to the password step as a missing challenge. The failure table now says this."
+    },
+    {
+     "id": "24",
+     "tag": "checked",
+     "text": "Yes. The lookup step reads the row by sha256 of the token, and user_id comes from that row. The form carries only the two code fields, so user_id is never taken from the form. Step 3 now states this in the text."
+    },
+    {
+     "id": "25",
+     "tag": "checked",
+     "text": "Nothing cleans them up. The plan has no cleanup step. An expired row stays until a request presents its cookie, and step 3 then deletes it. The row holds only a hash and a user_id, no secret. The table can grow, so this is listed under Open, with a periodic delete left for the build."
+    },
+    {
+     "id": "26",
+     "tag": "checked",
+     "text": "Yes. The file defines 2FA as on when secret_sealed is not NULL. A user in SetupFirst has no secret_sealed, so sign-in is password only, the same as with 2FA off, and the pending secret is never read. During ReplacePending the old secret is still active, so sign-in still asks for a code. The failure table row now says so."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "27",
+     "text": "The doc says the challenge cookie is checked and a user_id comes from the row. But if the same user starts two sign-ins (two browsers), do they each get their own challenge row, and does a code accepted in one affect the other?",
+     "about": "login_challenges / Challenge"
+    },
+    {
+     "id": "28",
+     "text": "On a correct recovery-code sign-in, what does the user see right after start_session()? Is there a redirect to /home, and is the user told about remaining codes on screen or only by email?",
+     "about": "Challenge --> SessionIssued : unused recovery code, email queued after commit"
+    },
+    {
+     "id": "29",
+     "text": "In setup confirm, how does the server know which user and which pending secret it is checking? Is it the signed-in session, and what does the user see if the conditional UPDATE changes zero rows?",
+     "about": "Setup and replacement, step 3 Confirm"
+    }
+   ],
+   "answers": [
+    {
+     "id": "27",
+     "tag": "checked",
+     "text": "Each browser gets its own row. Each POST /login with a correct password creates a new login_challenges row keyed by its own random token's sha256, and each browser holds its own sealed cookie. The two challenges do not touch each other. last_step is per user (totp_factors), so a code step accepted in one browser moves last_step, and the same step is then refused in the other browser. The other browser's user then waits for the next 30-second code. The document now says this in sign-in step 6."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "The existing start_session() in existing/login.py returns redirect('/home'), so the user lands on /home right after the recovery-code sign-in, as with any sign-in. The remaining-code count is not shown on screen. The brief sets the notice as an email, and the plan adds no page message, so the user learns the count only from the email. Sign-in step 6 now says this."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "The user is identified by the signed-in session: the sid cookie maps to a sessions row, which holds user_id (existing/schema.sql). The server then reads that user's pending_secret_sealed. The session lookup code is not in the files, so this is a decision, not a check. If the conditional UPDATE changes zero rows, the whole transaction is rolled back and the form is shown again with 'That code did not work. Try again.' Setup step 3 and the failure table now say this. The same message is used because the brief gives no other wording, and it does not reveal which check failed."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start: the user posts email and password to `POST /login`. `rate_limit` (per IP) runs first, then `bcrypt_check` compares the password with the stored bcrypt hash. State read: the user's account and `totp_factors.secret_sealed`. 2FA is \"on\" for a user when `secret_sealed` is not NULL.\n2. Wrong email or password: the server returns 401 with the same message as before. No challenge row is created.\n3. Correct password and 2FA off: `start_session()` runs as before. It writes a `sessions` row, sets the `sid` cookie and redirects to `/home`.\n4. Correct password and 2FA on: the server makes a random token and inserts a `login_challenges` row. The row holds the sha256 of the token as `challenge_hash`, the `user_id`, `expires_at` (now plus 5 minutes) and `failed_attempts` = 0. The raw token goes into a sealed cookie (httponly, secure, samesite=Lax, 5-minute max-age). The server redirects to `/login/second-factor`. No session exists yet, and the challenge does not grant access to `/home`. Each correct password makes a new row, so two browsers each get their own row and cookie.\n5. The browser loads `/login/second-factor`. It shows two fields, `totp_code` and `recovery_code`. The user submits the form. The browser sends the challenge cookie, and `rate_limit` applies to this endpoint too.\n6. On every POST the server runs these checks in order. The first one that fails decides the outcome.\n   - a. Unseal the cookie. If it is missing, tampered or unsealable, treat it as no challenge.\n   - b. Look up the row by sha256 of the token. If there is no row, nothing is counted. The `user_id` comes from the row, never from the form.\n   - c. If `expires_at` has passed, delete the row and the cookie.\n   - d. If the user's `secret_sealed` is NULL, 2FA was turned off in the meantime. Delete the row and cookie. During a replacement, `secret_sealed` is still the old secret, so the challenge keeps working.\n   - Failures a to d send the user to `/login` with a message to start again. They enter email and password again, and a new challenge starts only after a correct password.\n   - e. Exactly one field must be filled. Both or neither counts as a wrong entry.\n   - f. Check the code (step 7 or 8). Only wrong results are counted.\n7. Authenticator code. The server unseals `secret_sealed` and computes the 6-digit code for the previous, current and next 30-second step. If one or more match, it takes the highest matching step as the candidate. The candidate must be greater than the user's `last_step`, which is per user and shared by all their browsers. This is enforced by a conditional UPDATE on `totp_factors.last_step`, where zero rows changed means refused. So a reused step is refused.\n8. Recovery code. One statement, `UPDATE recovery_codes SET used_at = now() WHERE user_id AND code_hash = sha256(input) AND used_at IS NULL RETURNING id`, checks and spends the code. A returned row means accepted. No row means unknown or used, which is a wrong entry. In the same transaction the server counts the remaining unused codes for the email.\n9. Wrong result: `UPDATE login_challenges SET failed_attempts = failed_attempts + 1 ... RETURNING failed_attempts`.\n   - If the count is now 5, the row and cookie are deleted and the user is redirected to `/login`.\n   - Otherwise the form is shown again with \"That code did not work. Try again.\" It does not say how many tries are left.\n10. Success runs in one transaction. First the `last_step` UPDATE (authenticator) or the `used_at` change (recovery). Then `DELETE FROM login_challenges WHERE challenge_hash = sha256(...) RETURNING challenge_hash`.\n    - If the delete returns no row, a concurrent request already used this challenge. The transaction rolls back, so the code is not spent and `last_step` goes back. The attempt is refused as a wrong entry.\n    - If the transaction commits and a recovery code was used, `enqueue_email(user_id, \"recovery_code_used\", {remaining})` is called. This happens after commit and is not awaited. Failed sends are retried in the background and do not affect sign-in.\n    - After commit, the server clears the challenge cookie and calls `start_session()`. That writes the `sessions` row, sets `sid` and redirects to `/home`. A recovery-code sign-in shows no remaining count on screen. The count is only in the email.\n11. If the session write fails after commit, the code and challenge are already spent. The user sees an error page. The challenge cookie stays but matches no row. The next request goes to `/login` as a missing challenge, and the user must enter the password again.\n12. Setup, replacement and disable are separate flows.\n    - Setup or replacement: a signed-in user starts it in Security settings. The server stores a new sealed secret in `pending_secret_sealed` and shows a QR code. Sign-in ignores this column. Starting again overwrites it.\n    - Confirm: the `sid` cookie leads to a `sessions` row and the `user_id`. The code check runs against the pending secret. On success, one transaction copies pending into `secret_sealed`, sets `last_step`, deletes the old recovery codes and inserts 10 new hashed ones, and deletes all of the user's other sessions. The 10 raw codes are shown once, in the confirm response page. If the UPDATE changes zero rows, the transaction rolls back and the form is shown again.\n    - Cancel: the pending secret is deleted and nothing else changes.\n    - Disable: the password is checked first, then the code against `secret_sealed`. On success, both secrets are set to NULL and all recovery codes are deleted. The `totp_factors` row and its `last_step` stay, and other sessions stay signed in. On failure nothing changes, and the message is \"Check your password and code\".",
+   "gaps": [
+    "The document does not say how the failed `start_session()` case is detected or reported beyond 'Error page'. This does not block the main flow.",
+    "How a user tells the server they have no device and no unused recovery code is undefined. The Challenge to Stuck transition has no trigger, and Stuck has no exit. This is stated as open in the document.",
+    "Whether the 2FA setup (Start) endpoint requires re-entering the password or any check beyond being signed in is not stated. Only 'signed in' is given.",
+    "The document does not say how `/login/second-factor` is handled when the challenge cookie is valid but the form is requested by GET with an expired or deleted row. The checks a to d are described only for POST."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachback-correct"
+}

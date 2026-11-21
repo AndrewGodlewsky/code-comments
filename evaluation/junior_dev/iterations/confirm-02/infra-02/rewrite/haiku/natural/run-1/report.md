@@ -1,0 +1,17 @@
+## Review of infra-02 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Kept the diagram's flow and labels. One label changed: the canary node now says `deploy.sh canary` runs the migration itself, which removes a duplicate 'migrate production' step from the diagram text.
+- Merged 'Read this first', the 13 decisions and the deploy.sh problems into one terms list, short notes after the diagram, a failure table and a known-problems section. Each rule now appears once, next to the stage it applies to, with its reason in a short clause.
+- Added a summary of what the pipeline is, and how today's manual deploy works, before the terms.
+- Added plain definitions for terms a newcomer would not know: SSM, migration, rollback, canary, lock, approval gate, deployment window, superseded run, #deploys and the Postgres service container.
+- Kept every stated fact: the 72 h clock and its start point, the window and its once-only check, the 300 s rollout timeout, the 30 s sampling and 15 min watch, the 1% threshold and the 3-sample no-data rule, the lock reasons, the no-smoke-test choice, the canary-off cases and the staging and production cluster details.
+- Split out the CI features the design needs into a separate build and rollout section, so how the system runs is kept apart from how it is built.
+- Added a failure table with trigger-level rows for every failure path, including the canary-off cases from the decisions.
+- Added open questions instead of guessing: lock release after failed staging deploy or rollback, rollback failure, canary-off failure, approval-gate supersession not shown in the diagram, co-author identity, and the lost-runner cleanup assumption.
+- Did not change the plan's behaviour. The file is longer than the first version in places, but it removes repetition and adds only definitions and the failure table.
+
+### Holes
+- None.

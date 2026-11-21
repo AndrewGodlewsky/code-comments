@@ -1,0 +1,21 @@
+## Review of obs-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the whole file once, for a newcomer, in the order: summary, terms, diagram, steps, failures, open questions.
+- Fixed a wrong arrow: the evaluator no longer 'clears' the incident. Resolution now comes from 10 clear minutes in the counters, as the brief says.
+- Added the dedup flow the first version lacked: the claim-the-minute step in Postgres (so two evaluators never count one minute twice) and the unique open-incident rule, plus breaches recorded on an open incident without paging.
+- Added the escalation clock: a 5-minute timer on the timer queue, a check on each timer that stops on ack or resolve, and an idempotent per-level key in page_log so duplicate timers cannot double-page.
+- Added the schedule lookup at each page time, so the 09:00 rotation change is respected.
+- Added the SMS fallback on a failed push, and the rule that a failed page never delays the clock.
+- Added the ack path (provider webhook, first ack wins) and the resolved notice to everyone paged, including escalation stopping when resolved before ack.
+- Merged the two duplicate page arrows into one escalation flow and removed the duplicate engineer arrow.
+- Defined the terms a newcomer needs: error rate, breach, clear minute, incident, page, ack, metrics store, schedule service, timer queue, paging provider, and the three Postgres tables.
+- Added a failure table covering the metrics store, one or both evaluators, push and SMS failures, and a crash mid-step.
+- Kept every fact in the brief: 60 s cadence, 5-minute window, 2% and 500-request breach rule, 3 consecutive breaches, one open incident per service and rule, 1% for 10 minutes to resolve, 5-minute escalation levels, ack stops escalation, push then SMS, and two evaluators with no double incident or double page.
+- Decisions made without the brief, all flagged in the file: breaches reset the count after a non-breach, push and SMS both failing still runs the timer, and the resolved notice goes by push with SMS fallback. Open questions list the unknowns: schedule outage, quiet windows, webhook retry, lost timers, and the resolved-notice channel.
+- Cut nothing from the first version's intent. Its 'Evaluator clear' arrow was the only element removed, because it was wrong.
+
+### Holes
+- None.

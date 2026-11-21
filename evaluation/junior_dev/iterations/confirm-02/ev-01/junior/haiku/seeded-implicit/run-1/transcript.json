@@ -1,0 +1,257 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the outbox and relay here? Where does the outbox live, and what does the relay do to get events to the broker?",
+     "about": "Order->>Broker: OrderPlaced (via outbox)"
+    },
+    {
+     "id": "2",
+     "text": "When Order returns 202, what has actually been saved, and where? What is the order's state at that moment?",
+     "about": "Order-->>Customer: 202"
+    },
+    {
+     "id": "3",
+     "text": "How does the customer find out the final result of their order, given 202 only acknowledges receipt?",
+     "about": "Order-->>Customer: 202"
+    },
+    {
+     "id": "4",
+     "text": "What does idempotent mean for Inventory, Payment and Notification here? How does a consumer recognise an event it has already handled?",
+     "about": "Consumers are idempotent"
+    },
+    {
+     "id": "5",
+     "text": "What does the idempotency key with the card provider consist of, and what does it protect against, for example if Payment crashes after charging but before publishing PaymentCaptured?",
+     "about": "Payment uses an idempotency key with the card provider"
+    },
+    {
+     "id": "6",
+     "text": "Who publishes StockUnavailable, PaymentDeclined and OrderCancelled, and who consumes them? In particular, if payment is declined, is the reserved stock released, and by what?",
+     "about": "Unhappy paths: StockUnavailable and PaymentDeclined"
+    },
+    {
+     "id": "7",
+     "text": "What does 'usual retries and a DLQ' mean concretely: how many retries, who retries, and what happens to a message in the DLQ and to the order waiting on it?",
+     "about": "Usual retries and a DLQ"
+    },
+    {
+     "id": "8",
+     "text": "Do all services read the one order-events topic? How does each consumer pick only the events it cares about, and is event ordering guaranteed per order?",
+     "about": "a broker topic (order-events)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The outbox is a table in the sending service's own database. For OrderPlaced it is Order's database. Events are written there in the same transaction as the data change, so an event exists only if the change was saved. The relay is a loop that polls the table every 500 ms, publishes unsent rows oldest first to order-events, and marks each row sent only after the broker acknowledges it. The brief fixes this design."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "At the 202, the order row is saved in Order's database with status PENDING, in the same transaction as its OrderPlaced outbox row. Nothing has reached the broker yet. The relay sends it on its next poll, within about 500 ms. The customer receives only the order ID."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "202 means accepted, not finished. The customer reads the order status from Order Service, which stays PENDING until it becomes CONFIRMED or CANCELLED, and receives the final result by email. The brief names email as the customer notice and sets no push channel, so I added none. Whether a status read endpoint exists is unknown; see Open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Idempotent means a repeated event leaves the same result as one delivery. Each consumer keeps a processed_events table in its own database. It writes the eventId there in the same transaction as its effects, so a repeated eventId is found and skipped. Order Service also changes status only from PENDING. The shared transaction means a crash cannot leave the effect without the record, or the record without the effect."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The key is the order ID, sent with each charge for that order. I chose it over the eventId because it stays the same if the same order's StockReserved is delivered again or re-published under a new eventId. If Payment crashes after charging but before saving the result, the retry sends the same key, and the provider returns the first result. The customer is charged once. The provider behaviour is from the brief."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Payment publishes PaymentDeclined. Inventory consumes it and releases the reservation in its own database, with no new event. Order consumes it, sets CANCELLED and writes OrderCancelled, which Notification uses for the email. StockUnavailable is published by Inventory and consumed by Order, which cancels the same way. Nothing else releases stock."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Each consumer group makes four attempts in total: the first, then retries after 1 s, 10 s and 60 s. The same consumer retries in place, so later messages in its partition wait. That keeps one order's events in order. The retries are not a separate queue. After the fourth failure, the message goes to that group's DLQ, on-call is paged, and the consumer moves on. The order keeps its status, and any reserved stock stays reserved. The brief does not say who replays the DLQ, so that is in Open questions."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Yes. All services read the one order-events topic. Each consumer group gets its own copy of every event. A consumer picks the events it needs by type and ignores the rest. Events are keyed by orderId, so all events for one order go to one partition and are read in the order they were published. That holds only because retries block the partition, which is my decision in Q7."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "When Order handles PaymentCaptured, what exactly happens if the status is no longer PENDING, for example it is already CANCELLED? Does it still write OrderConfirmed?",
+     "about": "Step 6: It changes status only from PENDING"
+    },
+    {
+     "id": "10",
+     "text": "What does the card provider return on a repeat call with the same key after a first call that was declined? And what happens if the same orderId is charged again later, for example after a retry?",
+     "about": "Idempotency key / Step 4: Payment calls the card provider"
+    },
+    {
+     "id": "11",
+     "text": "When Payment gets a timeout or 5xx from the card provider, what exactly is retried, and what happens to the order and reserved stock while it waits?",
+     "about": "Step 4: A timeout or 5xx from the provider is an error and follows the retry rule below"
+    },
+    {
+     "id": "12",
+     "text": "How does a consumer's processed_events check work with the retry and DLQ rules? If the fourth attempt fails, is the eventId recorded as processed?",
+     "about": "Shared rules: Duplicates / Thrown errors"
+    },
+    {
+     "id": "13",
+     "text": "Notification keeps only processed_events. How does it avoid sending the same email twice if it crashes after sending but before saving the eventId?",
+     "about": "Step 7: Notification sends the email"
+    },
+    {
+     "id": "14",
+     "text": "If the relay publishes an event and crashes before marking the row sent, what happens next, and who sees the duplicate?",
+     "about": "Step 2: marks the row sent only after the broker acknowledges it"
+    },
+    {
+     "id": "15",
+     "text": "What does Inventory do when PaymentDeclined arrives for an order that has no reservation, or arrives twice? And what if StockReserved is handled after a release?",
+     "about": "Step 5: Inventory releases on decline"
+    },
+    {
+     "id": "16",
+     "text": "What stops a stale reservation from being left behind when Order cancels for a reason other than a decline? Is there any case where stock is held but no event will ever release it, other than the DLQ case?",
+     "about": "Open questions: stock stays reserved"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Order changes nothing and writes no OrderConfirmed. It records the eventId as handled so a repeat is skipped. Reason: status may change only from PENDING, and a capture on a non-PENDING order should not happen, because Payment charges only after a reservation and a StockUnavailable cancellation means no charge. The file now says this (step 6). The unclear part, how a stray capture is refunded, is in Open questions."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The brief says a repeat call with the same key returns the first result and does not charge again. So a repeat after a decline returns the same decline, and the same orderId cannot be charged twice through the key. A declined order is final; a new attempt needs a new order. The brief does not say how long the provider keeps keys, which matters if a key expires. That is in Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "What is retried is the same charge call with the same key, because the consumer retries the StockReserved message. No result is published until it is saved. While it waits, the order stays PENDING and the stock stays reserved. After the fourth failure the message goes to the DLQ, which is already in Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "processed_events is written only in the same transaction as the effects, so a failed attempt saves nothing. If the fourth attempt fails, the eventId is not recorded, and the message goes to the DLQ unhandled. Reason: recording a failed event would hide work that never happened. A DLQ replay therefore runs the handling again, and Payment's idempotency key stops a second charge."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "It does not fully prevent this. Notification sends first and records the eventId second, so a crash between the two sends again on retry. I accept this rare duplicate because the brief says email is best-effort and does not ask for exactly-once email. A fix would be an idempotency key at the email provider, which I cannot confirm exists, so it is in Open questions."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "The row was sent but not marked, so the next poll publishes it again. Consumers receive the same eventId twice. Each group's processed_events check skips the repeat, so its effects happen once. The customer never sees the duplicate. Step 2 now says this."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "A release with no reservation does nothing. A second PaymentDeclined is skipped by processed_events. A StockReserved after a release cannot happen in the normal flow: Inventory reserves once, on OrderPlaced, and PaymentDeclined is produced only after StockReserved on the same order partition, so it is always later. Step 5 now says this."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "Apart from the DLQ cases, no. StockUnavailable means nothing was reserved, and a decline releases the reservation in Inventory. Three DLQ cases can leave stock held: Payment's group (already listed), Inventory's group on PaymentDeclined (the order is cancelled but the stock stays held) and Order's group on PaymentCaptured (charged, order PENDING, stock held). The last two are now in Open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "What data does OrderPlaced carry, so Inventory knows which items and quantities to check? Where does that data come from?",
+     "about": "Step 3: Inventory handles OrderPlaced"
+    },
+    {
+     "id": "18",
+     "text": "What does Payment send to the card provider besides the key: the amount and the card? Where does Payment get them, since it has no order data of its own?",
+     "about": "Step 4: Payment handles StockReserved"
+    },
+    {
+     "id": "19",
+     "text": "Is the card provider call made inside the database transaction, or before it? What is saved if Payment crashes between the charge and the transaction?",
+     "about": "Step 4: Payment calls the card provider, then in one transaction stores the result"
+    },
+    {
+     "id": "20",
+     "text": "How does a consumer take the next message: does it commit its position on the topic after handling, and what happens to a message it skipped as a duplicate?",
+     "about": "Consumer group / Shared rules: Duplicates"
+    },
+    {
+     "id": "21",
+     "text": "If the broker is down for a long time, what happens to the outbox rows and to new POST /orders requests?",
+     "about": "Step 2: Order relay sends OrderPlaced"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "OrderPlaced carries the order's items (product and quantity). The brief sets only eventId, orderId and type for events, and gives Inventory no other source of items. Order has the items from the request when it writes the order, so they travel in the event. The exact field format is not decided and is not needed for the flow."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Payment needs the amount and a card reference, and it has no order data of its own. The events are its only link to the order, so OrderPlaced carries the amount and card reference, and Inventory copies them into StockReserved. The brief does not say what the card reference is or how it is protected. That is in Open questions."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The card call is made before the database transaction, not inside it. Reason: an open transaction during a slow provider call is the problem this plan removes. If Payment crashes after the charge and before the transaction, nothing is saved and the message is not finished. The retry runs the call again with the same key, and the provider returns the first result, so the customer is charged once. Step 4 now says the call runs before the transaction."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "A consumer moves its position on the topic past a message only after it handles the message, skips it as a duplicate, or sends it to the DLQ. Reason: moving the position earlier could lose a message on a crash. A duplicate skipped through processed_events counts as handled, so its position is moved past too. The brief does not name the broker's offset mechanism, and the plan does not need it. Shared rules now say this."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "The brief says the request handler never contacts the broker. So during a broker outage POST /orders still saves the order as PENDING and returns 202. Outbox rows stay unsent. The relay retries on each 500 ms poll and sends the rows oldest first when the broker returns. Meanwhile the orders stay PENDING. The brief sets no limit on how long rows may wait, and no alert for a stuck relay. That is in Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one order through the happy path, then the two cancellation paths.\n\n1. **Customer places the order.** `POST /orders` hits Order Service. In one database transaction it saves the order as `PENDING`, with its items, amount and card reference, plus an `OrderPlaced` row in its outbox table. The state sits in Order's own database. It then returns `202` with the order ID. The handler never talks to the broker. If the transaction fails, nothing is saved and the customer gets an error and retries.\n\n2. **The relay publishes the event.** Every 500 ms, Order's relay loop reads unsent outbox rows, oldest first. It publishes each to the `order-events` topic with `orderId` as the key, so all of one order's events go to the same partition in order. It marks a row sent only after the broker acks it. With no ack, the row stays unsent and the next poll retries. If the relay crashes after the ack but before marking the row, the row is published again. That is why consumers dedupe by `eventId`. Every service with an outbox runs the same relay, so this step repeats for every event below.\n\n3. **Inventory handles `OrderPlaced`.** Inventory's consumer group gets its own copy of every event and ignores types it does not handle. Before acting, it checks its `processed_events` table and skips a known `eventId`. It reads the items from the event.\n   - If there is enough stock, it holds the stock. In one transaction it also writes `StockReserved` to its outbox, copying in the amount and card reference. The reservation lives in Inventory's database.\n   - If there is not enough stock, it holds nothing and writes `StockUnavailable` instead.\n   - The consumer saves its effects and the `eventId` in one transaction. Only then does its position in the partition move on.\n\n4. **Payment handles `StockReserved`.** This is the only event that can lead to a charge. Payment calls the card provider, outside any database transaction, with the amount, the card reference and the idempotency key `orderId`. The key is the order ID rather than the `eventId`, so a redelivered or republished `StockReserved` still carries the same key and cannot cause a second charge. Then, in one transaction, Payment saves the charge result and writes either `PaymentCaptured` or `PaymentDeclined` to its outbox. A decline is a normal answer. A timeout or 5xx is an error, and it goes to the retry rule in step 8.\n\n5. **Order finalises on success.** Order consumes `PaymentCaptured`. If the order is `PENDING`, then in one transaction it sets the status to `CONFIRMED` and writes `OrderConfirmed` to its outbox. Order is the only service that changes status, and only from `PENDING`.\n\n6. **Notification emails the customer.** Notification consumes `OrderConfirmed` and sends the confirmation email. It sends the email first and saves the `eventId` second. Its database holds only `processed_events`. A failed send never changes the order status.\n\n7. **Failure branches.**\n   - Not enough stock: Order consumes `StockUnavailable`, sets `CANCELLED` and writes `OrderCancelled`. Notification emails a cancellation. No charge happened.\n   - Card declined: Payment publishes `PaymentDeclined`. Inventory consumes it and releases the reservation in its own database, publishing nothing. If there is no reservation, the release does nothing. Order also consumes it, sets `CANCELLED` and writes `OrderCancelled`, and Notification sends the cancellation email. A declined order is never charged again, and a new attempt needs a new order.\n   - If Order receives an event when the order is not `PENDING`, it changes nothing, writes no event and records the `eventId`.\n\n8. **Generic error handling.** If handling a message throws, the group retries in place after 1 s, then 10 s, then 60 s, for four attempts in total. No later message on that partition is taken during this time. After the fourth failure the message goes to that group's DLQ, on-call is paged, and the consumer moves on. The `eventId` is not saved, so a DLQ replay would handle it again. Nothing else is undone. A crash before the position moves means the message is read again, and `processed_events` skips it if it was already handled. A crash after the charge but before the result is saved means the retry sends the same key and the provider returns the first result, so the customer is charged once.",
+   "gaps": [
+    "The form of the card reference, and how it is protected inside events, is not defined. Order, Inventory and Payment all carry it, so I can't say what actually travels.",
+    "Nothing says how a customer reads the order status before the email arrives, or whether a status endpoint exists. The customer gets only the order ID from the 202.",
+    "Who fixes DLQ messages and how they are replayed is unspecified. After a Payment, Inventory-release or Order `PaymentCaptured` message lands in the DLQ, I can't say how the flow recovers.",
+    "I can't tell how a `PaymentCaptured` that reaches an order that is not `PENDING` is refunded, or what happens to that charge.",
+    "I don't know how long the card provider keeps an idempotency key, so I can't say whether a late retry is safe.",
+    "I can't say whether the email provider supports an idempotency key, so a duplicate email after a crash can't be prevented, and I can't say whether email failures page on-call or go to a lower-priority alert.",
+    "The document does not say how Inventory decides how much stock is available, or what happens when two orders compete for the same stock at once.",
+    "The order fields are not fully defined, and neither is where Notification gets the customer's email address. The events listed carry no address, and Notification keeps only `processed_events`.",
+    "It is not defined what Payment does with a `StockReserved` for an order it has already charged. I assume it makes the same provider call and gets the first result back, but the document never says this.",
+    "Nothing limits how long outbox rows may wait during a broker outage, and nothing says what alerts on a stuck relay.",
+    "Whether retries and the DLQ are configured per partition or per group is only partly clear, and whether 71 s of blocking is acceptable is left as an open question."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,26 @@
+{
+ "q6": {
+  "answer": "Step 4 runs in one transaction that first locks the payment row with SELECT ... FROM payments WHERE id = ? FOR UPDATE, so concurrent refunds on the same payment queue behind that lock. Under the lock, the code sums amount_cents over that payment's pending and succeeded refunds, and if that sum plus the requested amount exceeds captured_amount_cents, it audits the rejection and rolls back. The second admin only sees the first admin's pending row after the first commits, so the total can never go over the captured amount.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The browser generates refund_request_id (a UUID) when it draws the refund form and sends it with the POST. Step 4 stores it as refunds.id and as refunds.idempotency_key, and the primary key also makes a repeated submit a no-op. Every later create call, from step 5, 6 or 10, reads the key from that stored row, so retries and re-sends reuse the same key within the provider's 24-hour window.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Each webhook is verified by signature and timestamp first. Then, in the same transaction as the change, its event_id is inserted into refund_webhook_events under a unique constraint, so a repeated event_id returns 200 and does nothing. The refund row is locked FOR UPDATE and applyRefundTransition only moves pending to succeeded or failed, so a second terminal event is either a no-op (same result) or audited as conflicting_event with an alert. The customer email is written as one outbox row per refund (unique refund_id and type) inside that same transaction, so it is queued only on the first move to succeeded.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The refund is left pending, not marked failed, with no provider_refund_id, and attempts is recorded. A timeout or 5xx does not prove the provider did not create the refund, because it may have been created before the response was lost. Step 6 audits refund.submit_exhausted, the admin sees 'submitted, status being confirmed', and the reconciliation job (step 10) takes over and re-sends the create under the same key, which the provider answers with the original refund if it exists.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The reconciliation job runs every 15 minutes. For a pending refund with a provider_refund_id, it calls the retrieve API once an hour has passed since last_status_check_at (or created_at if that is empty): succeeded calls applyRefundTransition to succeeded, failed calls it to failed, and any other answer leaves it pending. For a pending refund with no id created less than 2 hours ago, it re-sends create on every run as one full sequence of up to 4 claimed attempts, storing the id on a 2xx, marking failed on a 4xx, and staying pending if all attempts fail. For one with no id created 2 hours or more ago, it never re-sends. It looks the refund up by our metadata refund id instead and stays pending if nothing is found. After any answered check it updates last_status_check_at, and a failed call leaves the row alone. Alerts fire at 20 hours without a check, and on-call is paged at 24 hours.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Right after submit, step 4 shows 'Refund submitted, awaiting provider confirmation', with the refund id, the amount and the status pending. The browser does not wait for the provider. If the provider call later fails to return an answer and no id is stored, the message changes to 'submitted, status being confirmed'. That second message is my design for the exhausted-attempts state, not the immediate post-submit message.",
+  "decided": true
+ }
+}

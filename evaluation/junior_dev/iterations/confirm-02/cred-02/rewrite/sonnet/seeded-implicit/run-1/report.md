@@ -1,0 +1,17 @@
+## Review of cred-02 (rewrite, author sonnet, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a plain opening that says how sign-in works today and the main flow, replacing the one-line list of tables.
+- Added a terms section: TOTP, time step, recovery code, seal/unseal, enqueue_email, start_session, pending login.
+- Added a table of the new state: columns of user_totp (secret, pending_secret, last_step), recovery_codes, pending_logins and the p2f cookie, including 5-minute expiry, hashing and cookie flags, plus the rule that 2FA is on when secret is not null.
+- Labelled every diagram transition and added the missing ones: wrong password loop, setup abandoned, 2FA-off sign-in, and the two limits (5 wrong entries, 5 minutes).
+- Replaced the vague notes list with six numbered steps, each with trigger, what it does, where data lives and failure handling. This includes how other sessions are signed out, the ten new recovery codes shown once, the email that never blocks sign-in, lost-phone replacement and disabling.
+- Decided and stated the replay rule as one atomic update on last_step, shared by all code checks. Also decided that the old secret keeps working until a replacement is confirmed, that a recovery-code sign-in can start a replacement with no extra proof, and that a recovery code is consumed with an atomic conditional update.
+- Added a failure table and a rollout section kept apart from the runtime description.
+- Kept the open question about users with no phone and no codes, with the support reset and identity-check detail, and stated that no path is designed.
+- Nothing from the brief or first version was cut. Drift tolerance, replay protection, 10 recovery codes, hashed storage, the 5 minute and 5 attempt limits, the email and disable rules all appear in the steps or state table.
+
+### Holes
+- None.

@@ -1,0 +1,33 @@
+## Review of search-01 (junior, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Defined the rebuild controller (small program the operator starts, separate from the indexer) in the Rebuild notes and renamed the rebuild subgraph and trigger node to match.
+- Defined the WAL guard as a monitoring check on pg_replication_slots that alerts ops on-call, and explained what restarting the connector recovers from.
+- Defined lag, doc count and the DLQ check in Gate details, and replaced 'no unexplained DLQ' with 'no unreviewed DLQ events' in the diagram.
+- Added that a failed DLQ produce is a transient failure with the same backoff, in the DLQ node and notes, plus that DLQ events can be replayed by hand.
+- Added that delete events carry commit_lsn and in-order replay prevents resurrection, that a replayed delete of a never-loaded row is a no-op, and that replays of changes between offsets and snapshot are correct.
+- Added that consumer groups are independent and unknown to Debezium and the topic.
+- Explained in go-live step 3 why products_v3 gets its own group (lossless rollback) and named it indexer-products_v3.
+- Added open items: deleted-document version memory, unversioned cron documents, and on-call rota and alerting system.
+- Added a line that the document id is the event's id, so a delete with null after still targets the right document (Q15).
+- Added a line that active, inactive, active produces index, delete, index and the last event wins (Q9).
+- Added a line to the rebuild safety list that the live index is untouched by a rebuild (Q10).
+- Defined who handles a failed snapshot load: the controller alerts on-call and the operator restarts; updated the LOADFAIL node to match (Q11).
+- Added what happens after a rollback (new index and group kept until a person deletes them) and what users see during the swap; updated the ROLL node (Q12).
+- Defined the canary: dedicated row, counter in description, polled through the alias, alert thresholds (Q13).
+- Added open items: who watches stale_total and at what level, and how the canary is excluded from results (Q13, Q14).
+- Restructured into the skill's order: a short 'today' description and summary, a terms list, the flowchart, then notes for how it runs, a failure table, rollout, and open questions.
+- Added a terms section defining WAL, Debezium, commit_lsn, version rule, alias, consumer group, DLQ, rebuild controller, sync_control, gate and canary in one line each (answers Q1, Q2, Q5, Q6, Q8).
+- Merged the many bullet notes into numbered live-path and rebuild steps; each fact now appears once, with the diagram carrying the flow and the notes carrying detail the diagram cannot show.
+- Folded the gate details into rebuild step 5 and merged the 'Why this order is safe' list with the delete, replay and live-index-untouched points (answers Q3, Q4, Q9, Q10).
+- Added a failure table consolidating connector, WAL, index, DLQ, crash, retention, loader and gate failures, and rollback.
+- Separated the first go-live and settings to confirm into a rollout section, apart from how the system runs.
+- Moved the 'Open items to check' that are unsettled (mapping shapes, deleted-version memory, unversioned cron docs, on-call and alerting, stale_total owner, canary exclusion) into one Open questions list at the end; settings to confirm stayed with rollout.
+- Cut repeated explanations of backoff, offsets and snapshot failure that appeared in both flowchart notes and prose; kept every brief number (5s/95%, 1s/60s backoff, 20/50 GB, 5,000 rows/s, 0.5%, 48h, 7 days, 12 partitions) in place.
+- Left the flowchart unchanged, since it already holds the triggers, data, progress stores and failures.
+
+### Holes
+- Q7: When an invalid document goes to the DLQ, who looks at the DLQ and what do they do with it? Can DLQ events be replayed, and what happens if the DLQ produce itself fails or Kafka is down? (author: The search on-call is alerted for DLQ events and decides the fix (data or mapping). Who exactly is on that rota and which alerting system is used is not known; added as an open item. DLQ events keep the original event and commit_lsn, so a person can replay them by hand after the fix, and the version rule makes a replay safe. If the DLQ produce fails, it is treated as a transient failure: same backoff, partition paused, offsets not committed. Added to the doc.)
+- Q14: When the indexer says an event is stale and counts it in stale_total, who watches that number, and what level would mean something is wrong? (author: Nobody has been named to watch stale_total, and no alert level has been chosen. It is expected to be non-zero in normal running (overlapping retries) and high while a new group replays, so a naive threshold would be wrong. Added as an open item.)

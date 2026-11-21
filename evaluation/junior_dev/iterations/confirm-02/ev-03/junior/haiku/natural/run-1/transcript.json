@@ -1,0 +1,210 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is a \"hint\" in step 7a: what does it contain, and does the recipient's client then fetch the message body from somewhere, or is the body in the hint?",
+     "about": "7a. hint to recipient's gateway node; gateway -> recipient WS -> client ack"
+    },
+    {
+     "id": "2",
+     "text": "Step 8 says \"delayed job at hint time + 5 s\". What runs this delayed job (what component or queue), and who creates it for each recipient?",
+     "about": "8. delayed job at hint time + 5 s"
+    },
+    {
+     "id": "3",
+     "text": "For an offline recipient, step 7b pushes now and step 8 also runs. Does 7b set push_sent_at so step 8 skips it? The diagram only shows step 8 setting it.",
+     "about": "7b. push now (best effort, no retry) vs 8. push_sent_at IS NULL"
+    },
+    {
+     "id": "4",
+     "text": "How does the fan-out worker know which gateway node to send the hint to, and what happens if the presence entry points at a node that no longer has the user's connection?",
+     "about": "6. read PRESENCE for each recipient"
+    },
+    {
+     "id": "5",
+     "text": "What is the difference between msg_id and seq, and who assigns each? Is msg_id generated in the send transaction?",
+     "about": "3. ack {msg_id, seq}"
+    },
+    {
+     "id": "6",
+     "text": "Can a user be connected from more than one device? Presence holds one node and connection per user, so how are a second device and the sender's own other devices handled?",
+     "about": "Presence: one key per user holding gateway node id and connection id"
+    },
+    {
+     "id": "7",
+     "text": "In the reconnect path, how does the client know it has finished syncing the pending rows, and does the gateway send the message bodies with them or only ids?",
+     "about": "11. gateway SELECT pending WHERE user_id = ? ORDER BY conv_id, seq (paged)"
+    },
+    {
+     "id": "8",
+     "text": "Step 4 says the relay polls the outbox. What is the relay (separate process or inside the gateway?), how often does it poll, and how is it kept from running as several copies?",
+     "about": "4. relay polls unpublished rows, publishes to fan-out topic"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The hint carries the full message: msg_id, conv_id, seq, sender and body. The client then needs no second fetch. The reason is that the sync path already returns bodies, so one message shape covers both paths, and the hint is only a delivery attempt."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The first version named no component for the delayed job, and the brief does not require one. It is now a sweeper: a timed job in each fan-out worker that runs every second over the pending table. Nothing creates a job per recipient. The sweeper needs no broker delay feature, and a crash in any worker is covered because the other copies keep sweeping."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes. Step 7b sets push_sent_at only if it is NULL and then pushes. The sweeper skips any row with push_sent_at set, so an offline recipient gets one push, not two. The diagram now shows this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Presence holds the node's address and connection id, so the worker can send the hint directly to that node. If the node reports no such connection, or the send fails, no hint reaches the client. The sweeper then pushes 5 s later, and the stale presence entry expires within 30 s. There is one fallback path, not a separate retry."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "msg_id is assigned by the database when the message row is inserted, in the send transaction. seq comes from the conv_seq counter, incremented in the same transaction, so both values are fixed at commit. The sender ack carries both. A retry returns the existing row's msg_id and seq."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The brief assumes one device per user, so presence holds one entry per user. A second connect overwrites the first entry, and the first socket gets no hints until its client syncs. The sender's other devices get no copy, which I have listed as an open question rather than a decision. Multi-device support is out of scope for this version."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The gateway joins pending rows to messages, so each page carries the bodies. It sends pages of 100 rows in conv_id and seq order, then a sync-complete frame, which tells the client the sync is finished. Each message is still acked by msg_id, and the ack deletes the pending row. Unacked rows come again on the next connect."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The relay is a separate worker process, not part of the gateway, so it can scale on its own. It polls the outbox every 500 ms. Several copies may run safely because each takes rows with FOR UPDATE SKIP LOCKED, so no two copies publish the same row. A copy that crashes mid-publish leaves its rows for the others, and duplicates are covered by idempotent fan-out."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "In step 7a the worker sets hinted_at and then sends the hint. Who sets hinted_at for an online recipient, and what is hinted_at used for besides starting the 5-second window?",
+     "about": "7a. presence found (online)"
+    },
+    {
+     "id": "10",
+     "text": "After a hint is delivered, the client acks and the pending row is deleted. If the client acks within 5 seconds, does anything else still happen to that row? What does the sweeper do with it?",
+     "about": "8. SWEEPER"
+    },
+    {
+     "id": "11",
+     "text": "The sweeper pushes a recipient whose ack is late, even though they are online and connected. What does the push do for a user whose app is open, and is the 5 s window meant to catch only lost hints or also slow acks?",
+     "about": "Hint lost, or ack takes over 5 s"
+    },
+    {
+     "id": "12",
+     "text": "Step 2 increments conv_seq inside the same transaction as the message insert. Why is the insert done first and the increment only on success, and what do two senders in the same conversation do while the row lock is held?",
+     "about": "2. Write"
+    },
+    {
+     "id": "13",
+     "text": "The topic key is conv_id. What does keying by conv_id give you, and is there any ordering guarantee between messages in one conversation at the fan-out worker?",
+     "about": "4. FAN-OUT TOPIC (key = conv_id)"
+    },
+    {
+     "id": "14",
+     "text": "Who tells the gateway which pending row to delete when the client acks, and does the ack go to the same gateway node that sent the hint or to whatever node the client is connected to?",
+     "about": "9. client ack {msg_id} -> gateway DELETE pending row"
+    },
+    {
+     "id": "15",
+     "text": "In 7c, if the hint send fails after 7a, the worker sets hinted_at again and sends nothing. Is this a second write of hinted_at, and does it reset the 5-second window?",
+     "about": "7c. presence store unavailable, or the hint send failed after 7a"
+    },
+    {
+     "id": "16",
+     "text": "The client detects gaps by tracking the highest seq per conversation. What does it do when it sees a gap, and how does that relate to the history API mentioned for 30-day expiry?",
+     "about": "Client state"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "The fan-out worker sets pending.hinted_at in step 7a, just before it sends the hint. Nothing else reads it except the sweeper, which treats a row as overdue when hinted_at is more than 5 s old and push_sent_at is still NULL. So hinted_at starts the 5-second window and does nothing else. The terms did not define the field, so I added its meaning to the Pending row term and to step 7."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "Nothing else happens. Step 9 deletes the pending row when the client acks, and the sweeper only selects pending rows, so a deleted row is never pushed. The only overlap is a rare race where an ack lands in the same instant the sweeper claims the row. That can cause one extra push, which is accepted because push is best effort. It is not written in the file, since the junior does not need it to follow the main flow."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The 5-second window is meant to catch both lost hints and slow acks. The brief says an ack that does not arrive within 5 s counts as offline for that message, so the sweeper must push in that case too. Whether the push is shown while the app is open is not in the brief, so I listed it as an open question rather than guessing."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "The insert runs first so that a conflicting retry returns the existing row and never increments conv_seq, which means no gap in seq. The increment takes the conv_seq row lock, and the lock is held until commit. A second sender in the same conversation can run its own insert, but it waits at the conv_seq increment until the first transaction commits or rolls back. I added these two points to step 2."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Keying by conv_id puts one conversation's rows in one partition, so a single consumer sees them in publish order. The file does not guarantee order, though. Several relay copies, and retries after a failed publish, can publish out of order, so live delivery order is not guaranteed. Only the reconnect sync is ordered by seq. I added this to step 4 and kept the open question."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "The client sends the msg_id in its ack, and the gateway knows the user from the WebSocket. The ack can go to any gateway node the client is connected to, not necessarily the node that sent the hint. The pending table lives in the Message Store, so any node can delete the row by user and msg_id. I added this to step 9."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Yes. In the earlier text, 7c wrote hinted_at a second time, which would reset the 5-second window and delay the push. I changed 7a and 7c to set hinted_at only if it is NULL. The window then starts at the first hint attempt, which is the intended timing. I updated the diagram and step 7 to match."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "On a gap, the client fetches the missing seqs from the existing conversation history API. That is how a client recovers messages whose pending rows expired after 30 days. The brief says clients already reload history, so the API exists. Its endpoint name is not in the brief, so I listed it as unknown. A seq gap can also appear for the client's own messages, because the sender gets no pending row. I fixed the client-state text so the gap is a seq the client has neither received nor sent itself. The reinstall case is unknown and listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one message from \"user presses send\" to \"recipient acks it\", then cover the reconnect case.\n\n1. **Send.** The sender's client makes a client_msg_id and sends {client_msg_id, conv_id, body} over its WebSocket to the gateway node it is connected to. It keeps the same client_msg_id and retries until it gets an ack. State: the client holds the id. Nothing is durable yet.\n\n2. **Write.** The gateway receives the send and runs one transaction on the Message Store.\n   - It first inserts into messages with ON CONFLICT (sender, client_msg_id) DO NOTHING. The database assigns msg_id.\n   - If the insert succeeded, the same transaction increments conv_seq with UPDATE ... RETURNING to get seq. It then inserts an outbox row and commits.\n   - If the insert conflicted, this is a retry. The transaction reads the existing row and writes nothing else.\n   - The insert runs before the increment so that a retry never takes a seq. The conv_seq row lock is held from the increment to commit. A second sender in the same conversation waits there, so commit order matches seq order and a rollback leaves no gap.\n   - The summary says pending is written in this same transaction, and the diagram lists pending among the tables in step 2. The step text only lists messages, conv_seq and outbox, and the Terms say the sender gets no pending row.\n   - If the write fails, nothing commits, so there is no outbox row and nothing fans out. The client retries with the same id. If the commit succeeded but the ack was lost, the retry hits the conflict branch and returns the existing msg_id and seq without a second outbox row.\n\n3. **Ack the sender.** After the commit, the gateway sends {msg_id, seq} to the sender. It does not wait for recipients. If step 2 failed, the sender gets an error instead. The sender's client records its own seq from this ack, so it does not later treat that seq as a gap.\n\n4. **Relay.** A separate relay worker runs on a 500 ms timer. It selects unpublished outbox rows with FOR UPDATE SKIP LOCKED, so several copies never take the same row. It publishes them to the fan-out topic with key conv_id and waits for the broker's ack. It then marks the rows published and commits. The topic is durable and an unacked item is redelivered.\n   - If the broker or relay is down, the rows stay unpublished and are retried on the next tick.\n   - If the relay publishes and then crashes before marking the rows, the message is published twice. This is harmless because later steps are idempotent.\n   - Live order is not guaranteed, because several relays and retries can publish out of order.\n\n5. **Pending rows.** A fan-out worker reads the message from the topic. It reads the conversation's current membership, which is at most 200 people. It leaves out the sender, so there are at most 199 recipients. It batch-inserts one pending row per recipient (user_id, msg_id, conv_id, seq) with ON CONFLICT DO NOTHING. Each row gets expires_at, which is created_at plus 30 days. The pending row is the source of truth for \"not delivered yet\". This membership read is the snapshot for the rest of the fan-out. If the worker crashes before it acks the topic message, the broker redelivers it and steps 5 to 8 repeat safely.\n\n6. **Presence check.** For each recipient, the worker reads the presence key-value store. It gets a gateway node address and connection id, or nothing. If the presence store is down, every recipient goes to 7c.\n\n7. **Delivery.** There are three branches.\n   - **7a, online.** If hinted_at is NULL, the worker sets it to now. It then sends a hint with the full message to the recipient's gateway node. The gateway forwards it over the recipient's WebSocket. The hint is in memory only.\n   - **7b, offline.** If push_sent_at is NULL, the worker sets it to now and sends a push through the push provider. This is best effort, with no retry.\n   - **7c, presence down or the hint send failed.** If hinted_at is NULL, the worker sets it to now and sends nothing. The sweeper pushes later.\n   - Failure cases:\n     - A stale presence entry means the node reports no connection. The sweeper pushes 5 seconds later.\n     - A gateway node crash loses its hints and sockets. Presence expires within 30 seconds, and the sweeper pushes unacked recipients.\n     - A push provider failure is only logged. push_sent_at stays set and the pending row is untouched.\n\n8. **Sweeper.** Every second, each fan-out worker scans all pending rows. It selects rows with hinted_at older than 5 seconds and push_sent_at NULL. It claims each with UPDATE ... SET push_sent_at = now WHERE push_sent_at IS NULL. Only the copy that wins the claim sends the push, and there is no retry. It also deletes rows past expires_at. Rows that were already acked are gone, so they are never pushed. A lost hint or an ack slower than 5 seconds therefore ends in one push. If all workers are down, the sweep resumes when one restarts. After a 30-day expiry the message stays in messages, and the client backfills through the history API when it sees a gap.\n\n9. **Client ack.** The recipient's client receives the message, live or in sync, and drops it if it has already seen that msg_id. It acks {msg_id} to whichever gateway node it is connected to. That node knows the user from the WebSocket and deletes the pending row for (user_id, msg_id) in the Message Store. Any node can do this, and repeating the ack does nothing.\n\n10. **Reconnect presence.** When a client connects to any gateway node, the gateway writes presence (user, node address, connection id, TTL 30 s) before it reads pending rows. The client sends a heartbeat every 10 seconds, which refreshes the TTL. Fan-out writes pending and then reads presence, while connect writes presence and then reads pending. Whichever runs second sees the other's write, so a message cannot sit pending while the user is online and syncing.\n\n11. **Sync.** The gateway reads the user's pending rows joined with messages, ordered by conv_id and seq, in pages of 100. Each page carries bodies. It then sends a sync-complete frame. The client dedupes by msg_id, orders each conversation by seq, and acks each message, which is step 9. Unacked rows stay pending and come again on the next connect. If the client drops mid-sync, the same thing happens. Live and sync deliveries may interleave, and dedupe plus seq ordering keep the screen correct. If the client sees a gap, it fetches the missing seqs from the existing history API.",
+   "gaps": [
+    "The summary and the diagram's step 2 box say pending is written in the send transaction, but the Step 2 text lists only messages, conv_seq and outbox, and Step 5 has the fan-out worker create pending rows. The document does not say which is right.",
+    "The document does not say how the fan-out worker gets a hint to the recipient's gateway node: the transport, how the node address is used, or what 'the node reports no connection' looks like to the worker.",
+    "The document does not say what happens if the worker crashes between setting hinted_at or push_sent_at and actually sending the hint or push. On redelivery push_sent_at is already set, so the push would apparently never be sent, but the document does not say so.",
+    "The document does not say when push_sent_at is claimed for a recipient who was found offline in 7b but later reconnects. It also does not say whether a push is sent for a row whose message the user already received through sync.",
+    "The document does not say how the client tells the gateway the connection is closed or how the gateway removes presence on a clean disconnect. It only gives TTL expiry."
+   ],
+   "verdict": "wrong",
+   "notes": "The summary and the Step 2 diagram box say pending rows are written in the send transaction, but the Step 2 text lists only messages, conv_seq and outbox, and Step 5 has the fan-out worker write pending rows. Fixed: the send transaction writes no pending rows. The fan-out worker writes them at step 5, so the send path stays free of up to 199 inserts.; The file does not say how the fan-out worker reaches a recipient's gateway node, or what 'the node reports no connection' means for the worker. Fixed in step 7a and in the Hint term. The exact internal call is listed as an open question.; The file does not say what happens if the fan-out worker crashes after it sets hinted_at or push_sent_at but before the hint or push is sent. Fixed in the step 7 failure list: the lost push is accepted, and redelivery sends no second push.; The file does not say whether a push is sent for an offline recipient who later syncs, or for a row the user has already received through sync. Fixed in step 8."
+  },
+  {
+   "text": "I'll follow one message, Alice sends \"hi\" to a conversation, and Bob is one recipient.\n\n1. **Send.** Alice presses send. Her client makes a client_msg_id and sends {client_msg_id, conv_id, body} over its WebSocket to the gateway node it is connected to. The client keeps the same client_msg_id and retries until it gets an ack.\n\n2. **Write.** The gateway receives the send and runs one transaction on the Message Store. The Message Store is the existing conversation database.\n   - It first inserts into messages with ON CONFLICT (sender, client_msg_id) DO NOTHING. The database assigns msg_id.\n   - If the insert went in, the same transaction increments the conv_seq row for the conversation with UPDATE ... RETURNING to get seq. It then inserts an outbox row and commits.\n   - The insert comes before the increment, so a retry never uses up a sequence number. The conv_seq row lock is held from the increment to commit. A second sender in the same conversation waits there. That keeps commit order equal to seq order, and a rollback leaves no gap.\n   - If the insert conflicted, the message is a retry. The transaction reads the existing row and writes nothing else, so there is no second outbox row.\n   - If the write fails, nothing commits, so nothing fans out. Alice's client retries with the same client_msg_id.\n   - The transaction does not write pending rows.\n\n3. **Ack the sender.** After the commit, the gateway sends Alice {msg_id, seq} and does not wait for any recipient. If step 2 failed, she gets an error instead. If the commit worked but the ack was lost, her retry hits the conflict branch. It returns the same msg_id and seq.\n\n4. **Relay.** A separate relay worker process runs a timer every 500 ms.\n   - Each copy selects unpublished outbox rows with FOR UPDATE SKIP LOCKED, so two copies never take the same row.\n   - It publishes each row to the fan-out topic with key conv_id. It waits for the broker's ack, then marks the rows published and commits.\n   - The outbox holds the state here. If the broker or relay is down, the rows stay unpublished and are retried on the next tick.\n   - If the relay publishes and crashes before marking the rows, the message is published twice. Later steps tolerate that.\n   - Order is not guaranteed in live delivery. Several relays, or retries, can publish out of order.\n\n5. **Pending rows.** A fan-out worker reads the message from the topic. It reads the conversation's membership at that moment. That gives at most 199 recipients, because the sender is left out. It batch-inserts one pending row per recipient (user_id, msg_id, conv_id, seq) with ON CONFLICT DO NOTHING. The Message Store holds this state, and pending is the source of truth for \"not yet delivered\". The row also gets created_at and expires_at (created_at + 30 days). If the worker crashes before it acks the topic message, the broker redelivers it. Steps 5 to 8 are safe to repeat.\n\n6. **Presence check.** For each recipient, the worker reads the presence store. Presence is a key-value store with a TTL, with one key per user. It returns the gateway node address and connection id, or nothing. Presence is not durable. If the presence store is down, every recipient takes branch 7c. Pending rows are still written but no hints go out. The sweeper then pushes everyone 5 seconds later, so people may be over-notified. The document accepts that.\n\n7. **Delivery.** Bob's presence result picks one of three branches.\n   - **7a, Bob is online.** The worker sets pending.hinted_at to now if it is NULL. It then sends a hint with the full message (msg_id, conv_id, seq, sender, body) to the node address from presence, through an internal call. If that node has an open WebSocket for the connection id, it passes the hint to Bob's client. Bob's client acks {msg_id}, which is step 9. If the node has no open socket for that connection id, it reports no connection. The hint then counts as failed and branch 7c applies.\n   - **7b, Bob is offline.** The worker sets push_sent_at to now if it is NULL, then sends a push through the push provider. Push is best effort and is never retried.\n   - **7c, presence is unavailable, or the hint failed.** The worker sets hinted_at if it is NULL and sends nothing. The sweeper pushes later.\n   - A hint is never retried. hinted_at is set once, so a failed hint does not restart the 5-second window.\n   - If the presence entry is stale, the sweeper pushes 5 seconds later. The stale entry expires within 30 seconds.\n   - If the gateway node crashes, its hints and sockets are lost. Its presence expires within 30 seconds. The sweeper pushes to anyone who has not acked. Clients reconnect to another node and sync.\n   - If the worker crashes after setting hinted_at, redelivery keeps the first hinted_at value. The worker re-hints if Bob is still online.\n   - If the worker crashes after setting push_sent_at but before sending, the push is lost. Redelivery sends no second push.\n   - If the push provider fails, the failure is logged and not retried. push_sent_at stays set, and the pending row is untouched.\n\n8. **Sweeper.** Every fan-out worker runs a sweeper every 1 second over all pending rows.\n   - It selects rows with hinted_at older than 5 seconds and push_sent_at NULL.\n   - It claims each row with UPDATE ... SET push_sent_at = now WHERE push_sent_at IS NULL. Whichever copy wins the claim sends the push.\n   - It also deletes pending rows past expires_at.\n   - If a hint is lost or the ack is slower than 5 seconds, Bob gets a push. If he acks in time, the row is already gone and he is never pushed. If every worker is down, sweeping resumes when one restarts.\n   - If Bob stays offline for more than 30 days, the row is deleted. The message stays in messages, and the client backfills through the history API when it sees a gap.\n\n9. **Client ack.** Bob's client acks the msg_id, whether it came live or in sync. The ack goes to whichever gateway node he is connected to, which may not be the node that sent the hint. The gateway knows the user from the WebSocket. It deletes the pending row for (user_id, msg_id). Any node can do this because pending lives in the Message Store. Repeating an ack does nothing.\n\n10. **Reconnect presence.** If Bob (re)connects to any gateway node, that node first writes presence (user to node address and connection id, TTL 30 seconds). Heartbeats every 10 seconds refresh the TTL. A user with no heartbeat for 30 seconds counts as offline. This write comes before the sync read in step 11. Steps 5 and 6 write pending before they read presence. So whichever side runs second sees the other's write. A message cannot stay pending while the user is online and syncing. This needs read-after-write consistency for those two keys.\n\n11. **Sync.** The gateway reads Bob's pending rows joined with messages, ordered by conv_id and seq, in pages of 100. Each page carries the message bodies. After the last page it sends a sync-complete frame.\n    - The client drops duplicates by msg_id and orders each conversation by seq. It acks each message, and step 9 deletes that row.\n    - Unacked rows stay pending and come again on the next connect.\n    - If the client drops during sync, the unacked rows are simply re-sent next time.\n    - Live and sync deliveries may interleave. The client dedupes and orders, so the screen is correct even when arrival order is not.\n    - If the client sees a gap, it fetches the missing seqs from the existing history API. That is also how it recovers messages whose pending rows expired.",
+   "gaps": [
+    "The document does not say how the gateway node learns which user and conversation a WebSocket send belongs to, or how it checks the sender is a member of conv_id. Only the sender-excluded recipient list at step 5 is covered.",
+    "How the client learns which seqs it sent itself is only partly explained. The document says it knows them from the acks it received, but it does not say how the client detects a gap from this at runtime, or when it triggers the history API fetch.",
+    "The document does not say how a retry is told apart from a first send on the client side, such as the retry interval or timeout. 'Retries until it gets an ack' has no stated trigger or limit.",
+    "The document does not say what the client does with the sync-complete frame beyond 'the sync has finished'.",
+    "The document says the push provider takes a push, but not what it is sent to. It does not say how a user's device or push token is found, or what the push contains.",
+    "How the relay detects its work, and how a row is marked 'published' (for example a column or flag on outbox), is not described. Neither is outbox cleanup after publishing.",
+    "It is unclear how the fan-out worker knows a particular recipient's hint ack arrived within the 5 seconds, apart from the pending row being deleted. It is also unclear whether the sweeper checks anything beyond that row's existence.",
+    "The internal call from the fan-out worker to a gateway node is not specified (protocol, address format). The document lists this as an open question and only fixes the pass-or-fail behaviour.",
+    "The document does not say how a stale presence entry is overwritten when the same user has a second device. It only says a second connect overwrites presence, and multiple devices are out of scope."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

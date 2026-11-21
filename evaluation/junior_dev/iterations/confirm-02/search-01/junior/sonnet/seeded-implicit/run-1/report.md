@@ -1,0 +1,31 @@
+## Review of search-01 (junior, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added the original brief's missing requirements: retry/backoff numbers, DLQ behaviour, WAL alert thresholds, snapshot rate, ready thresholds and the 48 h window.
+- Spelled out how deletes and non-active statuses leave the index (delete action) so hard deletes are covered.
+- Decided that the v4 consumer starts after the backfill, with its own consumer group, to avoid a delete arriving before its document.
+- Decided that both writers keep running for 48 h so rollback loses no changes.
+- Added terms (slot, event, version, alias, DLQ) and a labelled diagram, and listed open questions (DLQ reader, latency not measured, delete tombstones).
+- Rebuild step 1: if the slot was dropped, recreate it and restart Debezium before taking the snapshot, so no change after the snapshot is lost (Q9).
+- Rebuild step 2: the job also notes the snapshot start time, which catch-up needs (Q10).
+- Rebuild step 3: catch-up starts at Kafka offsets for 5 minutes before the snapshot start time, found per partition by timestamp (Q10).
+- Rebuild step 3: if indexer-v4 fails or stalls, keep v4 and resume from its own offsets; drop v4 only if the needed events aged out (Q11).
+- Rebuild step 6: named the two writers, said they are separate processes with separate offsets, so a stalled v4 does not hold up v3 (Q12).
+- Live sync step 2: added what happens if Kafka is down and if the indexer is down for more than 7 days (Q14).
+- Open questions: added the undecided cutover from cron and the unknown causes of invalid documents (Q13, Q15).
+- Rewrote the whole document in the skill's order: summary, terms, diagram, steps, open questions; diagram kept with summary and terms before it and notes after.
+- Split running the system into live sync steps and a separate rebuild section; added a note on how progress is stored (slot and per-group offsets).
+- Added scale numbers (40M rows, 300 writes/s) and the target in the summary; kept all brief limits (20/50 GB, 7 days, backoff 1s to 60s, 5,000 rows/s, 2.5h, 5s and 0.5%, 48h).
+- Added terms for consumer group/offsets and CDC; folded the 7-day retention and 12 partitions into the Debezium term.
+- Merged the old Rules section and repeated statements (versions, only active, offsets after ack) into one short list under the diagram; removed the repeated cron-retired and v3-written-directly lines (stated once in the summary).
+- Merged the two Postgres/Kafka WAL descriptions so the WAL pile-up is explained once, in step 1, and step 2 refers to it.
+- Folded the junior's rebuild answers into steps: slot recreation before snapshot, 5-minute margin explained as a choice, indexer-v4 failure handling, independence of the two writers.
+- Moved the unanswered items (slot recreation by Debezium, lag alert threshold) into Open questions.
+- Dropped the 'a target, not measured' repetition by keeping it only in step 4 and the open questions, and removed the cron-code detail that nothing asked for.
+
+### Holes
+- Q6: Who reads the DLQ, and how do its messages get fixed or replayed? Does a doc in the DLQ mean the index is stale for that product? (author: Who reads the DLQ and how messages are replayed is not decided. The product stays stale in the index until a later change for it succeeds or a replay happens. Added to open questions.)
+- Q13: How do you move from the cron job to the indexer? The cron job wrote products_v3 without commit_lsn versions, so how does the indexer treat documents already in v3, and when does the cron stop? (author: Cutover from the cron job is not decided. Cron wrote v3 without commit_lsn versions, and the setup notes do not say how the store compares a versioned write with an unversioned stored document, so I cannot say when cron can safely stop. Added to open questions.)
+- Q15: What makes the index refuse a document as invalid? Is that something that depends on the product data, such as a bad title or price? (author: Not known. The brief only says the index may refuse a document as invalid; what triggers it (for example data that does not fit the mappings) is not stated in the files. Added to open questions; no change to the flow.)

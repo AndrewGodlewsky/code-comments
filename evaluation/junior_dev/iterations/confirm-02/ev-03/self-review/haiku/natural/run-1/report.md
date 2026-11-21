@@ -1,0 +1,32 @@
+## Review of ev-03 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a Key terms section defining gateway node, Message Store, sequence number, outbox, inbox, presence, fan-out, idempotent and at-least-once, since the reader does not know this project or stack.
+- Redrew the lower half of the diagram. The presence store, recipient gateway, and recipient client boxes were misaligned and their arrows were unclear. Each box now has a clear label and the read and delivery steps point to the right place.
+- Expanded shorthand in the diagram and notes, such as 'PK', 'acked', 'treat offline' and 'deadline', so each step says what happens and who does it.
+- Rewrote the ordering invariants to explain in plain terms why inbox-before-presence and presence-before-sync prevent a message from being missed.
+- Added an invariant that delivered{through_seq} is sent only after sync-complete, so the server cannot delete rows the client has not received. The original text did not state this.
+- Rewrote each failure entry as cause, then effect, then recovery, and used plain wording throughout.
+- Kept the original structure (diagram, where state lives, ordering invariants, failure handling, open points), all design decisions, and all open points, reworded for clarity.
+- Added a short plain-language summary at the top of the document.
+- Added a reading guide under the diagram that groups steps into Send (1 to 4), Fan-out (5 to 12) and Reconnect (13 to 16).
+- Expanded Key terms with definitions for WebSocket, heartbeat, primary key, row lock, fan-out queue, TTL, ack, sync, push and APNs/FCM, so a reader unfamiliar with the stack can follow the design.
+- Changed the outbox wording from 'clears each row' to 'marks the row published', to match the outbox column published_at in the diagram.
+- Clarified that the 5 s timers start after the queue job is acked, and that if a worker restart loses them, only the push is lost.
+- Added a failure case: a live delivery held during sync can pass its 5 s deadline and cause a redundant push, which is harmless.
+- Clarified the presence-store-down case: correctness is kept, but connected clients see the message at their next sync rather than live.
+- Clarified the gateway-crash case to say the 5 s check sends the push for deliveries that were not acked.
+- Clarified the presence store's role: losing it loses no messages, and the socket map is lost on a node crash.
+- Kept the diagram, the section structure, all ordering invariants, and the open points unchanged in substance.
+- Added a plain-language opening that walks through the four things that happen when a message is sent, and why the inbox stores a pointer instead of a copy of the text.
+- Explained why the outbox exists (it closes the gap between saving a message and queuing it) and added a definition of the relay.
+- Split the word "ack" into four named kinds (sender ack, client ack, queue ack, delivered message), since the original used the word for different things.
+- Expanded the key terms with transaction, relay, fan-out job, and clearer definitions of presence, TTL, idempotent, and at-least-once.
+- Clarified that a queue job is acknowledged after the inbox rows are written and online deliveries are sent, and that the 5 s timers run after that, so the queue ack does not wait 5 s.
+- Added a timing argument to the inbox-before-presence invariant, so a reader can see why a user who connects during the check is still covered.
+- Rewrote the state, invariant, and failure bullets in shorter sentences. No behavior was changed, and the diagram, phase split, and open points are unchanged.
+
+### Holes
+- None.

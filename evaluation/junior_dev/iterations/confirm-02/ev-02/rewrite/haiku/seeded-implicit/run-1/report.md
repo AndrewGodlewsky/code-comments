@@ -1,0 +1,19 @@
+## Review of ev-02 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a plain-language summary that says how the system works today (the topic is published, nothing delivers to customers) and why retries live in the service database (queue delay limit of 15 minutes versus 6-hour waits).
+- Added a terms section defining subscription, delivery, delivery id, dispatcher, worker, lease, ack, dead letter, HMAC signature and at-least-once, which the first version used without definition.
+- Replaced the first version's Mermaid flowchart with a corrected one. It now shows the subscription-active check, the 410 path that disables the subscription, the retry loop with the 8-attempt limit, the crash-and-lease path, replay, and the 14-day cleanup. Notes sit after the diagram.
+- Moved state and queue facts into notes after the diagram: where state lives, why not the queue for retries, why dead letters stay in the database, and that the relay is unchanged.
+- Added numbered steps with trigger, action, data kept, and failure handling. Steps cover dispatch with dedupe and text body storage, claim with lease and attempt counting, send with signing on every attempt, result handling, the exact retry schedule (30 s, 2 min, 10 min, 30 min, 1 h, 3 h, 6 h), dead letter, admin list and replay, and cleanup.
+- Made the first version's vague 'disabled subscriptions are handled' concrete: rows are dead-lettered at claim time if the subscription is disabled, a 410 also dead-letters the subscription's pending rows, and a replay is refused for a disabled subscription. These are marked as decisions.
+- Made the first version's lease note concrete: a 60 s lease, claimed with SKIP LOCKED, with a result write refused after the lease is lost.
+- Added a failure table covering dispatcher and worker crashes, stalled workers, database outages, 410, other 4xx, and disabled subscriptions.
+- Kept every fixed requirement from the brief: matching rules, 10 s timeout, X-Webhook-Id and signature header format, 2xx/408/429/5xx/timeout outcomes, 410 and other-4xx handling, 8 attempts, 14-day retention, admin list and replay, at-least-once, several workers, own database, no new core tables, and read-only access to subscriptions apart from status and disabled_reason.
+- Moved the first version's unresolved items into an open-questions section: the admin API's access control, retention of delivered rows, secret-decrypt failure and 3xx redirects, and the poll and cleanup intervals.
+- Cut repeated wording, such as restating the lease rule and the retry rule in several places, so each fact appears once.
+
+### Holes
+- None.

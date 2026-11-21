@@ -1,0 +1,207 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are \"presence_ver\" and the version \"v\" on join and leave events? What does Ann's browser or Ben's browser do with it?",
+     "about": "Lua join cA: INCR presence_ver / PUBLISH join ann with the new version"
+    },
+    {
+     "id": "2",
+     "text": "What is the \"gateway node\", and what do the Redis keys (presence, leases, cursors) each hold? Are they one key per document?",
+     "about": "Presence and cursors go through Redis pub/sub and a few Redis keys that the gateway nodes own"
+    },
+    {
+     "id": "3",
+     "text": "What are \"rev\", \"appliedRev\" and \"transformPosition\"? Where does Ann's browser get its appliedRev from, given the edit path is not touched?",
+     "about": "Scene 2: If rev 812 is above appliedRev, hold it as pending; otherwise transformPosition(pos, 812, appliedRev)"
+    },
+    {
+     "id": "4",
+     "text": "Why does Node 1 send \"hello cA\" after the snapshot, and why must Ben's browser answer with a fresh cursor even if idle? What does Ann see in between?",
+     "about": "N1->>R: PUBLISH presence:doc hello cA / B->>N2: cursor seq (fresh...)"
+    },
+    {
+     "id": "5",
+     "text": "What is \"seq\" and who assigns it? What happens to Ann's last-seen seq for Ben if he reconnects with a new connId, or if his counter restarts?",
+     "about": "Drop if seq is not above the last seq shown for cB"
+    },
+    {
+     "id": "6",
+     "text": "Does the snapshot's dropped stored cursor (HistoryGone) ever come back? What does Ann see for Ben and Carl until their fresh cursors arrive?",
+     "about": "A stored cursor whose rev is older than the first kept revision cannot be transformed (HistoryGone), so it is dropped for now"
+    },
+    {
+     "id": "7",
+     "text": "What happens if a node cannot reach Redis or misses heartbeats for more than 30 s while still alive? Are its users removed, and what does the node do on recovery?",
+     "about": "Scene 3: heartbeat, ZADD leases XX (Redis TIME + 30 s)"
+    },
+    {
+     "id": "8",
+     "text": "Which node sweeps for a doc, and what if no node has a local socket on that doc? Also, what happens to the sweep's results in the 40 s bound: how is that number derived?",
+     "about": "loop Every 10 s, each node that has a local socket on the doc: Lua sweep"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "presence_ver is a per-document counter that goes up by one on every join or leave, and the sweep does the same. Each presence event and each snapshot carries its value. Ann's and Ben's browsers keep the last version they applied. They ignore any event at or below the snapshot's version, because the snapshot already contains it, and apply later events in order. This is needed because the node subscribes before it reads the snapshot, so an event can arrive that the snapshot already includes. The version is how the browser tells the two apart. I have added this rule to step 1."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "A gateway node is one of the six servers that hold browsers' WebSocket connections (gateway.md). For each document there is one set of Redis keys with the document id in the name. presence maps connId to user. leases maps connId to the expiry time. cursors maps connId to its last cursor. presence_ver is a counter. The names in the diagram, such as presence:doc, stand for these keys. I named the keys in the terms and added leases to the key-expiry list. Without that, the leases set would stay in Redis for good if no node survived."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "rev is the revision number the document service gives each applied edit. The Ack and RemoteOp messages in editor-protocol.ts carry it. appliedRev is the last revision the editor has applied, and it only moves forward. The editor keeps it as it applies those messages. The presence design reads appliedRev but does not set it, so the edit path is unchanged. transformPosition(pos, fromRev, toRev) is declared in editor-protocol.ts. It throws HistoryGone when fromRev is older than the kept 500 revisions, and the caller then drops the position."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Node 1 publishes hello because the snapshot's stored cursors may be old, or may have been dropped. Every browser already in the document answers hello with its current rev and position. Idle users answer too, because the trigger is hello, not a move. Until those answers arrive, Ann sees Ben and Carl in the list. She sees a caret only where a stored cursor could be transformed. Each caret appears when its fresh answer arrives. I added the rule that every browser answers hello, not only Ben."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "seq is a counter that the sending browser keeps for each connection. It starts when the connection opens and goes up by one for each cursor update. Ann keeps the last seq she showed for each connId. A reconnect gives a new connId with its own counter, so it never meets the old seq and cannot be wrongly dropped. The old connId's cursor is removed by leave or sweep. The held-cursor rule now also checks seq at draw time, so an older held cursor cannot jump backwards after a newer one is shown."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "A dropped stored cursor does not come back from the snapshot. It comes back only when that connection sends a fresh update. Ben's and Carl's answers to hello are such updates. Until they arrive, Ann sees Ben and Carl in the presence list with no caret. I clarified this in the failure table."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "If Redis is unreachable, or the node stalls for more than 30 s, the lease expires. Other nodes then remove those users, usually within 40 s. The node itself keeps its sockets open, because the WebSocket ping is separate. When the heartbeat recovers, ZADD with XX reports the lease as missing, because XX updates only existing members. The original text did not say what happens then, so I added that the node runs the join steps again and sends a fresh snapshot to its local sockets. Its users then reappear with no extra mechanism. If Redis reconnects, the node also resubscribes and sends a fresh snapshot. This covers presence events lost while subscribed."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Every node that has a local socket on the document runs the sweep every 10 s. The Lua script is atomic, and only the call that removes a connId handles it, so overlapping sweeps are harmless. If no node has a socket on the document, nothing sweeps. Nobody is viewing the document then. The next join runs the sweep before it reads the snapshot, so stale users are not shown. If nobody ever joins again, the 120 s key expiry removes the entries. The 40 s figure is derived as follows. The last refresh came at or before the crash, so the lease ends at most 30 s after the crash. The sweep runs every 10 s, so removal comes at most 10 s after that. The total is 40 s. The limit is 45 s, so there is margin. I changed the join to sweep first."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The join script and the sweep both run Lua on Redis. Does one node run them with a single call, and is the join script's check 'ann has no other presence entry' made inside the same script as the HSET? What if two of Ann's tabs join at the same moment on different nodes?",
+     "about": "Lua join cA: HSET presence cA ... If ann has no other presence entry, the script PUBLISHes join ann"
+    },
+    {
+     "id": "10",
+     "text": "What does a browser do with a presence leave event whose version has a gap, for example it has v10 and receives v12? Does it ask for a new snapshot?",
+     "about": "Step 1 Join: The browser ignores any event whose version is at or below the snapshot's version, and applies the rest in order"
+    },
+    {
+     "id": "11",
+     "text": "Cursor updates carry no presence_ver. Is it a problem if a cursor message for a connId arrives before Ann's browser has that user in its list, or after the leave? What does Ann do with it?",
+     "about": "Scene 2: R-->>N1: cursor cB ... N1-->>A: cursor cB"
+    },
+    {
+     "id": "12",
+     "text": "Step 4 says that after a rejoin the node 'sends its local sockets a new snapshot'. Do those browsers throw away their old list and held carets? Is hello published again so carets come back?",
+     "about": "Step 4 Heartbeat: the node runs the join steps again for that connection. It then sends its local sockets a new snapshot"
+    },
+    {
+     "id": "13",
+     "text": "When a node sweeps a connId that belongs to a live node (for example after a stall), what happens to that live node's browser? Does it learn it was removed before the heartbeat finds the lease missing, up to 10 s later?",
+     "about": "Scene 3: Lua sweep ... Only the call that removes it continues"
+    },
+    {
+     "id": "14",
+     "text": "Where does the node keep each connection's 'last accepted update' time for the 50 ms rule, and is the drop silent for the browser? Does a dropped final caret position ever get sent later?",
+     "about": "Scene 2: Silently drop if the last accepted update from cB was under 50 ms ago"
+    },
+    {
+     "id": "15",
+     "text": "How does a node know a Redis subscription was lost so that it resubscribes and sends a fresh snapshot? What triggers this?",
+     "about": "When things fail: A node loses its Redis subscription"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Each node runs one Lua script per action: one call for the join, one for the sweep, one for leave, heartbeat and cursor. Redis runs a script alone, so the HSET and the 'only entry' check are one atomic step. The join writes cA, then counts ann's entries. If cA is the only one, it publishes join. Two tabs joining at the same moment on different nodes: whichever script runs second counts two entries and publishes nothing. The order is now written in step 1. The old text raised presence_ver on every join, which would have left gaps; see Q10."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The old text raised presence_ver on every join, including the second tab's join that publishes nothing, so browsers would see gaps that mean nothing. Now presence_ver rises only when a join or leave is published, so each value is one real event and a gap means a missed event. The browser asks its node for a new snapshot on a gap. Snapshots already come after a subscription loss, so this only adds the case where the browser alone missed one. A snapshot always sets the browser's version, even when lower, because the counter can expire after 120 s with no heartbeat."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Pub/sub delivers in publish order on a node's subscription, and Ben's join is published before any cursor from Ben. So a cursor for a connId not in Ann's list is either older than her snapshot or late after a leave. Ann drops it. The cursor write in Redis also had a bug: a late update after a leave could re-add a cursor. The cursor script now writes only if the connId still has a lease. Node 1 also forwards cursor events only after the snapshot, the same as presence events."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, the browsers throw away their list and carets. The join steps end with hello, and step 4 runs them again, so hello is published again and fresh carets come back. The old text only said 'new snapshot'. Step 4 now says that the snapshot replaces the list and stored cursors and drops held and shown carets, and that hello restores them."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The live node receives the leave through its own subscription, like every node, and forwards it to its local browsers, so they drop Ann at once. Ann's own browser also drops her until the heartbeat rejoins, up to 10 s later. This is a deliberate trade-off: a stall that lasts over 30 s has to drop the lease, and the user comes back at the next heartbeat. The gap sits inside the 45 s bound. The failure table now says so."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The node keeps the last accepted time for each connection in its memory, so no Redis write is needed for the rule. The drop is silent, and the browser never learns of it. The old text had no answer for the final position, which would have left a stale caret until the next move. Now the browser keeps its latest position and sends it when the 50 ms window ends. The server's drop then only hits clients that go over the rate. Step 3 says so."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "The design relies on the Redis client reporting that the subscription dropped, and on the node then resubscribing and sending snapshots. The gateway doc does not name the Redis client library, and I have not checked which event it gives for a lost subscription. What the node does after that report is decided: resubscribe, send a snapshot, publish hello. This is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "A new snapshot drops the browser's held and shown carets. When a browser asks for a snapshot after a gap, is hello published too, so carets come back? Or do they stay hidden until each user moves?",
+     "about": "Step 1 Join: a gap (for example v10 then v12) makes the browser ask its node for a new snapshot"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "No. As the text stood, the carets stayed hidden until each user moved. Step 1 published hello only with the join, so a snapshot sent after a version gap cleared the held and shown carets and nothing asked for them back. I fixed this by making hello follow every snapshot, not only the join. The rejoin and resubscribe paths already did this, so one rule now covers every case. The cost is one extra hello per gap, and gaps are rare."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow Ann opening a document on Node 1 while Ben (Node 2) and Carl (Node 3) are already in it. The steps below go through her join, caret moves, heartbeats and sweeps, a clean close, and a node crash.\n\n1. Trigger: Ann's browser opens the document on Node 1. It uses connId cA (a random id for this WebSocket) and userId ann (from her session). Node 1 first subscribes to the Redis pub/sub channels presence:doc and cursor:doc. It does this first so it can't miss an event. Pub/sub stores nothing, so only nodes subscribed at that moment get a message.\n\n2. Node 1 runs the Lua sweep, which removes any expired leases (see step 8). It then runs the Lua join script. In Redis, state is kept in four per-document keys. The join script does HSET presence cA (connId to user) and ZADD leases cA with a deadline of Redis TIME + 30 s. Redis TIME is Redis's own clock, so the nodes' clocks don't matter.\n\n3. In the same script, Redis counts ann's presence entries. If cA is her only one, it does INCR presence_ver and PUBLISHes \"join ann v\" on presence:doc. If she already has another tab, nothing is published. The count and the write are one atomic script, so two tabs joining at the same moment still produce one join. Node 2 receives the join and forwards \"presence join ann v\" to Ben's browser.\n\n4. Node 1 does one atomic read of presence, cursors and presence_ver. It gets presence (cB ben, cC carl), the stored cursors (cB at rev r0, cC at rev r1) and version v. It sends Ann a snapshot with users ann, ben and carl, their stored cursors and v. Only after the snapshot does it forward presence and cursor events to Ann. A snapshot replaces her list, stored cursors and version, and clears any held or shown carets. It always sets her version, even if the new value is lower, because presence_ver can expire.\n\n5. Ann's browser then reconciles events against the snapshot. It ignores any presence event whose version is at or below the snapshot's version, and applies the rest in order. If an event skips a number (v10 then v12), it asks its node for a new snapshot.\n\n6. Node 1 PUBLISHes \"hello cA\" on presence:doc. Node 2 forwards it to Ben, and every browser in the document gets it. Each browser answers with its own cursor, using its current rev and position, even if the user is idle. The reason is that stored cursors may be old or dropped. Ben's answer goes to Node 2, which runs the cursor script (step 7). Node 1 then forwards the resulting cursor to Ann. Every snapshot is followed by a hello, which is how carets come back after a join, a version gap, a rejoin or a resubscribe.\n\n7. Moving a caret, for example Ben moving his:\n   - Ben's browser sends at most one update per 50 ms, carrying seq (a per-connection counter), rev and pos. If he moves again inside the window, the browser keeps only the latest position and sends it when the window ends.\n   - Node 2 keeps the time of the last accepted update per connId in its memory. It silently drops an update that arrives less than 50 ms after the last accepted one, and the browser never learns of the drop.\n   - Otherwise a Lua script does HSET cursors cB, but only if cB still has a lease, and then PUBLISHes on cursor:doc. A late update after a leave therefore can't bring a cursor back.\n   - Node 1 forwards the cursor to Ann. Pub/sub keeps publish order, so a user's join arrives before that user's cursors.\n   - Ann's browser applies four rules in order:\n     - a. Drop the cursor if its connId isn't in her list.\n     - b. Drop it if seq is not above the last seq shown for that connId.\n     - c. If its rev is above appliedRev, hold it. A newer seq from the same connId replaces the held one. Draw it when that rev is applied, if its seq is still newer than the last one shown.\n     - d. Otherwise call transformPosition(pos, rev, appliedRev) and draw the result. If it throws HistoryGone, drop the cursor until that connection's next update.\n   - Stored cursors in a snapshot go through the same rules.\n\n8. Heartbeat and sweep run every 10 s and publish no caret or presence events.\n   - Heartbeat: for each local connection, the node runs the Lua heartbeat. ZADD XX moves the lease to Redis TIME + 30 s, but only if the lease already exists. The script also sets presence, cursors, leases and presence_ver to expire in 120 s. If the lease is missing, because it expired during a stall or a Redis outage, the node reruns the join steps for that connection. That sends a new snapshot and hello.\n   - Sweep: every node with a local socket on the document runs the Lua sweep, and a sweep also runs before each join. It removes leases past their deadline. For each removed connId it removes the presence and cursor entries. If that was the user's last connection, it increments presence_ver and publishes leave. Because the script is atomic, only the call that actually removes a connId continues. If no node has a socket on the document, nothing sweeps, and the next join sweeps first.\n\n9. Ann closes her tab cleanly.\n   - The socket closes and Node 1 runs the Lua leave script. It does ZREM leases, HDEL presence and HDEL cursors for cA.\n   - If ann has no presence entries left, it increments presence_ver and publishes \"leave ann\". Node 2 forwards it to Ben, whose list drops Ann within 2 s. If she has another tab, nothing is published and she stays listed.\n   - Node 1 then unsubscribes from presence:doc and cursor:doc if it has no local socket left on the document.\n\n10. Node 3 crashes, which affects Carl.\n   - It runs no cleanup, so cC stays in Redis. Its lease was last refreshed at or before the crash, so it expires at most 30 s later.\n   - A surviving node's sweep, which runs every 10 s, removes it. That makes removal at most 40 s after the crash, inside the 45 s limit.\n   - That sweep removes cC's presence and cursor entries. If it was carl's last connection, it increments presence_ver and publishes \"leave carl\". Node 2 forwards it to Ann and Ben.\n   - Carl's browser reconnects to a live node with a new connId and is listed again.\n   - If no node survives, the 120 s key expiry clears the keys.\n\n11. Failures the document covers:\n   - Redis is down at open: the join fails, the node closes the socket, and the browser reconnects and rejoins.\n   - Redis is down, or a live node stalls for more than 30 s: its leases expire and its users are removed. The next heartbeat finds the lease missing and rejoins, so a new snapshot and hello go out. Until then the user is missing from every list.\n   - A node loses its Redis subscription: the client reports the drop and reconnects. The node resubscribes, sends its local sockets a fresh snapshot and publishes hello.\n   - A browser sees a version gap: it asks for a new snapshot.\n   - A cursor update is lost: the caret is stale until the next move or hello.\n   - HistoryGone: the caret is hidden until that connection's next update.\n   - A held cursor's rev never gets applied: the caret stays hidden.\n   - A node dies and no other node has a socket on the document: the next join sweeps, or key expiry removes the entries.",
+   "gaps": [
+    "The document does not say how a node hands a browser's reconnect to a particular node, or how the load balancer picks the new node. It only says the browser reconnects to a live node.",
+    "The document does not say how a browser tells its node that it wants a fresh snapshot after a version gap. Only the outcome is described.",
+    "The document does not say how the node learns which connId or user a Redis pub/sub message belongs to for forwarding to local sockets. It does not describe the routing from a subscribed channel to specific local WebSockets, or whether a node filters out its own published messages.",
+    "The document does not say how a browser learns its own connId, or whether the node assigns it or the browser generates it. Terms say only that it is a random id for one connection.",
+    "The document does not say what format the join, leave, snapshot, hello and cursor messages take on the WebSocket, such as field names or whether snapshots are chunked for large documents.",
+    "The document does not say how the browser learns the editor's appliedRev advances, or how it triggers drawing a held cursor 'when that rev is applied'. It does not say what hook the edit path exposes.",
+    "The document does not say how the sweep or heartbeat interacts with a connection whose lease was removed while its socket is still open and healthy, beyond the heartbeat rejoin. It also does not say whether Ann's own browser is told about her own removal, apart from the 'its own browsers see the leave too' remark.",
+    "The document does not say what a browser does with a received hello when it has no current caret, for example a read-only viewer. It says only that every browser answers.",
+    "The document does not say how the 2 s bound on seeing a leave is achieved, since pub/sub is immediate. It does not explain where the 2 s comes from.",
+    "The document does not say how the sweep (and its publish of leave) is related to the 120 s EXPIRE when the keys are refreshed by only one connection's heartbeat. It also does not say what happens to the sweep's publish if the presence_ver key has expired and reset.",
+    "The document does not say who writes the user (name, avatar) into the presence entry beyond 'maps connId to user', or what data a presence event contains beyond ann and the version. The colour source is explicitly undecided."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

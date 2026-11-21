@@ -1,0 +1,17 @@
+## Review of ev-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Summary rewritten in three sentences: today's synchronous flow, the new event flow, and the rule that Order Service sets the final status and the card is charged only after stock is reserved.
+- Added a terms section defining event, outbox, relay, topic, consumer group, inbox, idempotency key, reservation and DLQ. Removed the first version's jargon-only summary.
+- Replaced the happy-path-only diagram with one Mermaid sequenceDiagram that covers the happy path, the stock-unavailable path and the card-declined path, with notes showing where state is written and the duplicate check.
+- Added the missing messages the first version left out: StockUnavailable, PaymentDeclined and OrderCancelled. Notification now receives OrderCancelled, so the cancellation email is sent.
+- Restored brief facts the first version dropped: 202 response with the order ID, the single transaction for order plus outbox row, relay polling every 500 ms with at-least-once delivery, topic key and eventId, each service's own database and consumer group, the rule that the card is never charged without a reservation, the release of a reservation on decline, the card provider's idempotency and error rules, the 1 s / 10 s / 60 s retries, the DLQ and on-call page, and best-effort email.
+- Decided the Yours-to-decide items and defended them in the notes: duplicates are skipped through an inbox of eventIds; Inventory and Payment publish through their own outbox; Payment uses the order ID as the idempotency key and never retries a charge after a decline; Order Service learns outcomes from events and changes status only from PENDING; the email is triggered by the final-status events; a failed email is not retried.
+- Merged the repeated retry and failure wording into one failure table, and merged the per-service 'via outbox' labels into the diagram and one note. No requirement, limit, number or rule from the brief or first version was removed.
+- Open questions were added for the three gaps the brief leaves open: who resolves a DLQ'd order, who releases a reservation left held by a Payment DLQ, and whether a failed email should page on-call. Also added the unstated retention period for events and inbox rows.
+- No junior questions were shown, so no answers were used. The rewrite was done for a newcomer from the first version and the brief alone.
+
+### Holes
+- None.

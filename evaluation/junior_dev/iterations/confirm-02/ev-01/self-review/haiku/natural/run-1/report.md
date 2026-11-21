@@ -1,0 +1,35 @@
+## Review of ev-01 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a "What this changes" paragraph explaining the problem and the new flow in plain words for a reader new to the project.
+- Added a "Terms used here" section defining event, topic, outbox, relay, consumer group, processed events, idempotency key and dead-letter queue.
+- Fixed the happy-path diagram so PaymentDeclined goes from the topic to Order and Inventory directly; previously Inventory appeared to receive it only after Order.
+- Stated that the 1 s, 10 s and 60 s waits mean four attempts in total.
+- Stated that Inventory's release publishes no event, in the diagram and in the state table.
+- Added that the Payment row stays PENDING_CHARGE when retries are exhausted, so the stranded state is explicit.
+- Split the notes into shorter bullets and replaced phrases such as "Business rules are a second guard" and "Writes happen in the same transaction" with plainer wording.
+- Clarified the email decision: each attempt is recorded, a failure is never retried and nobody is paged.
+- Explained the outbox guarantee and the at-least-once relay behaviour in plain terms, without changing the design.
+- Added a short plain-language summary of the whole flow under 'What this changes', so a reader can follow the design before reaching the diagrams.
+- Explained that each service has its own relay and outbox, and that the topic is shared while each consumer group is per service, in the Terms section.
+- Rewrote the relay definition in plain sentences: it marks a row sent after the broker confirms it, and a crash in between causes a resend, so delivery is at-least-once.
+- Defined the order statuses (PENDING, CONFIRMED, CANCELLED) and the 'Order API' and 'Service' terms in the Terms section.
+- Clarified the card-call note: Payment calls the provider before saving the result, and the same idempotency key makes the retry safe.
+- Clarified the retry-exhaustion note to say that the consumer moves to the next message and the order keeps its status.
+- Clarified the uniqueness guard as a unique key on orderId, and the decision on Order Service's outcome handling, without changing any rule.
+- Replaced abbreviations such as 'ack' and 'mark' with plain words in the prose, and kept the Mermaid diagrams' structure, participants and messages unchanged apart from wording in the labels.
+- Opened with a plainer summary of the problem and the new flow, and added a numbered list of the five steps.
+- Rewrote the terms section in plain language. Defined outbox, relay, at-least-once delivery, processed events, idempotency key and DLQ in full sentences, and separated 'consumer' from 'consumer group'.
+- Explained why each event carries orderId as its key, so the reader can see why events for one order stay in sequence.
+- Diagram: renamed participants so each service's reader is called 'consumer' and each publishing step goes through its own relay, instead of mixing 'group' and direct arrows.
+- Diagram: added the idempotency key `charge:orderId` to the PENDING_CHARGE step, which the decisions section already described but the diagram did not show.
+- Diagram: shows the broker's confirmation and the relay marking the row SENT, so the at-least-once step is visible.
+- Duplicates diagram: each retry wait is now shown before the attempt it precedes (1 s, 10 s, 60 s), instead of an ambiguous single loop label.
+- Notes and decisions: shortened and reworded in plain language, with the same rules kept. The notes now explain what 'in one transaction' means and why the card call sits outside the transaction.
+- Where-state table: the Charge row now mentions the idempotency key stored with the PENDING_CHARGE row.
+- Open holes: kept all five. The stranded-order hole now spells out the sequence of events in plain words. No design decisions were changed.
+
+### Holes
+- None.

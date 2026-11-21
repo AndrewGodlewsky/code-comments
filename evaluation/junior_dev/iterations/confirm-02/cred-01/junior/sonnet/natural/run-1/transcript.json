@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In flow 1, the name check and the limit count are only about active tokens. If I revoke a token named \"ci\" and create a new \"ci\", does the old row stay in the table with the same name? Is name uniqueness only enforced in application code, with no DB constraint?",
+     "about": "FLOW 1 - CREATE A TOKEN, \"Count active tokens, check name among active tokens\""
+    },
+    {
+     "id": "2",
+     "text": "What does the \"existing session check\" do and what does it return? The document says a 401 uses \"existing login behaviour\". What does the browser see or do on that 401?",
+     "about": "Existing session check / 401, existing login behaviour"
+    },
+    {
+     "id": "3",
+     "text": "In flow 3, how does the server know which user the request is for? Is it the user_id on the matched row? And does the token get any limits on what it can do beyond being blocked from the token-management endpoints?",
+     "about": "FLOW 3 - Handle request as token's user"
+    },
+    {
+     "id": "4",
+     "text": "Who or what runs \"SELECT FOR UPDATE\" on the user's row, and what happens to a second create for the same user while the first holds the lock? Does it wait, and for how long, or fail?",
+     "about": "BEGIN, lock this user's row (SELECT FOR UPDATE)"
+    },
+    {
+     "id": "5",
+     "text": "In the lost-response case, how does the browser decide it timed out? Is there a fixed timeout, and what does the user see in the dialog while waiting?",
+     "about": "opt create response never reaches the browser"
+    },
+    {
+     "id": "6",
+     "text": "What does the \"Revoke\" step do with expired tokens? The list hides them, so how can a user reach DELETE on one? The 404 row says \"expired\" is possible.",
+     "about": "FLOW 4 - REVOKE A TOKEN, 0 rows updated"
+    },
+    {
+     "id": "7",
+     "text": "The create flow says the response is 201 with the plaintext, and the server redacts the create response body from logs and analytics. What does the redaction, and where in the request path does it happen? Is it per-endpoint config or a general filter?",
+     "about": "Where state lives, Token plaintext on later API calls / Log redaction"
+    },
+    {
+     "id": "8",
+     "text": "In flow 3, the 401 for a malformed header happens before any DB call. Does the document intend that response timing or any other signal is the same as for an unknown token, or only status and body?",
+     "about": "Using a token, All failures return the same status and body"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Yes. Revoked rows stay in the table with their name. Uniqueness is enforced only in application code, by the name check inside the locked create transaction, because 'active' depends on now() and a partial unique index cannot express it. Added one sentence under the table saying this."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The existing session check and the browser's handling of its 401 belong to the existing login code, which this document does not describe. Added to Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the request runs as the user_id on the matched row. The brief has no per-token scopes, so a token has the same API access as that user's session, except that it cannot call the token-management endpoints. Added one line under Using a token and clarified the diagram step."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The server code in the create transaction runs SELECT FOR UPDATE on the user's row. A second create for that user waits until the first commits or rolls back, then checks against committed state. No lock timeout is configured, so the database default applies and a timeout would surface as a 500 with nothing created. The wait duration is not decided, so it is listed in Open questions."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "The brief and the document do not fix a timeout value or the waiting display. The create button is disabled while the request is in flight. The timeout value and waiting display are listed in Open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "You found a real inconsistency. The revoke UPDATE does not check expiry, so a DELETE on an expired token id would update 1 row and return 204, not 404. The list hides expired tokens, so the UI never offers Revoke on one. I removed 'expired' from the 404 case in the diagram and added a note that a direct DELETE on an expired id returns 204, which is harmless."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "The requirement is fixed: the create response body, the Authorization header and analytics payloads must be excluded or scrubbed, and only the token id is logged. Whether that is a general filter or per-endpoint config depends on the existing logging stack, which I have not seen. Added to Open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Only status and body are meant to be identical. Timing is not equalised: the format check returns before any DB call. That is acceptable because valid tokens are about 190 bits of random data, so timing cannot be used to guess one. Added a sentence under Using a token."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. Tokens live in one Postgres table, `api_tokens`. It is the only durable state and the single source of truth. There is no cache. Users manage tokens on the Account Settings page, using the existing session cookie. A bearer token can never create, list or revoke tokens.\n\nCREATE (following one request)\n2. The user enters a name on Account Settings and clicks create. The button is disabled while the request is in flight, and creates are never auto-retried. The browser sends POST /settings/tokens with the name and the session cookie.\n3. The server runs the existing session check. If it fails, the server returns 401 with \"existing login behaviour\".\n4. The server checks that the name is 1 to 40 characters. If not, it returns 422.\n5. The server opens a transaction (BEGIN) and runs SELECT FOR UPDATE on the user's row. This lock makes concurrent creates for the same user wait, so the limit and name checks cannot race.\n6. Inside the transaction it counts the user's active tokens and checks the name against active tokens. An active token has revoked_at NULL and expires_at in the future.\n   - If there are 10 or more active tokens, it rolls back and returns 409 \"revoke a token first\".\n   - If an active token already has that name, it rolls back and returns 409 \"name already in use\".\n   - Name uniqueness is enforced only by this check, not by a DB constraint.\n7. If the checks pass, the server generates `pat_` plus 32 characters from the OS CSPRNG, using rejection sampling. It computes the SHA-256 of the full token and INSERTs user_id, name, token_hash and expires_at (now plus 90 days). Then it COMMITs.\n8. The server returns 201 with the plaintext token in the body and Cache-Control no-store. Then it drops the plaintext. The plaintext is never stored, logged, or sent to analytics.\n9. The browser shows the token once, with a Copy button. Closing the dialog discards it, and nothing can show it again.\n10. Create failures:\n   - A DB error before COMMIT rolls back and returns a generic 500. No token exists.\n   - A lock-wait timeout would count as a DB error: 500, nothing created.\n   - If the response is lost after COMMIT, the token is an \"orphan\". It exists, but nobody has its plaintext. The browser shows a timeout message, \"Could not confirm. Check the list below before retrying\". The user lists tokens, sees the new name with last used \"Never\", revokes it (step 17), then creates again. An unrevoked orphan still counts toward the limit of 10 and blocks the same name. If ignored, it expires after 90 days.\n\nLIST\n11. The browser sends GET /settings/tokens with the session cookie. The server runs the session check and takes the user id from the session. It never takes a user id from the request.\n12. The server SELECTs id, name, created_at, expires_at and last_used_at for that user's active tokens. It never selects token_hash. It returns 200. A null last_used_at is shown as \"Never\".\n13. A DB error returns 500. The page shows a retry message and no stale list.\n\nUSE A TOKEN\n14. A script or CI job sends any API request with `Authorization: Bearer <token>`. The server checks that the header is present, that it has the `pat_` prefix, and that the token is 36 characters long. If not, it returns 401 with the generic body. The same status and body are used for every kind of token failure.\n15. The server computes the SHA-256 of the presented token. It does not log the token. It then SELECTs id, user_id and last_used_at where token_hash matches, revoked_at is NULL, and expires_at is in the future. The UNIQUE index on token_hash serves as the lookup index. If there is no row (unknown, revoked or expired), it returns the same generic 401.\n16. If a row is found:\n   - If last_used_at is NULL or older than 1 hour, the server runs a guarded UPDATE of last_used_at. The guard is in the WHERE clause, so at most one write happens per token per hour. Concurrent requests race on that guard and only one writes. If the write fails, the server logs the token id and the request still succeeds.\n   - The server then handles the request as the user_id on the matched row. A token has the same API access as that user's session, except for the token-management endpoints. These accept the session cookie only, so a bearer token is rejected there.\n   - The server returns the normal API response.\n\nREVOKE\n17. The user clicks Revoke and confirms in a dialog. The browser sends DELETE /settings/tokens/id with the session cookie. After the session check, the server runs UPDATE SET revoked_at = now() WHERE id matches AND user_id = the session user AND revoked_at IS NULL.\n   - If 1 row is updated, the server returns 204 and the row disappears from the list.\n   - If 0 rows are updated (not found, someone else's, or already revoked), the server returns 404, and the page refreshes the list. Another user's token id looks exactly like a nonexistent one.\n   - The row is kept, which preserves an audit trail and frees the name for reuse.\n   - If the response is lost, the user retries the DELETE or refreshes the list.\n18. After the revoke commits, the next API request with that token fails the step 15 lookup and gets the generic 401. A request that passed the lookup just before the commit may still finish.",
+   "gaps": [
+    "What the existing session check returns on failure, and what the browser does on that 401 (for example redirect to login), is not specified.",
+    "How the browser sends the create request and how the Account Settings page triggers it (for example form or fetch) is not described. The document also does not say how the list is rendered beyond the fields shown.",
+    "The generic 401 body is not described. We do not know its content, only that it is fixed and identical for every failure.",
+    "The browser timeout value for a create request, and what the dialog shows while waiting, are not decided. So we cannot say when the orphan path triggers.",
+    "The lock wait timeout for the per-user row lock is unspecified. It uses the database default, so we cannot say how long a waiting create blocks.",
+    "Whether redaction of logs and analytics is done by one general filter or per endpoint is not decided. So we cannot say where in the request path the Authorization header and create body are scrubbed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

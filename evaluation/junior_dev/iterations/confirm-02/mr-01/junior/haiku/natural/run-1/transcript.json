@@ -1,0 +1,397 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the lease store in practice (which product), and what exactly does the failover command write to and read from it? Who else writes to it besides the command and A's fencer?",
+     "about": "Where the active-region record is kept / R0 Read active-region record from lease store"
+    },
+    {
+     "id": "2",
+     "text": "What is the fencer: how does it renew A's write lease (what does it call, and where does it run relative to the lease store voters), and what does 'A's write lease' actually grant to Postgres?",
+     "about": "Fencing (why it works without A's cloud API) / A fencer"
+    },
+    {
+     "id": "3",
+     "text": "In the RPO gate, where do 'B recorded replay lag', 'time since last WAL receipt' and 'estimated unreplicated commit age' come from, and who computes them when A is down?",
+     "about": "RPO gate: B recorded replay lag 30 s or less, ..."
+    },
+    {
+     "id": "4",
+     "text": "If the fencer confirms the stop, how is the lease store updated so that A can never again hold the write lease? What stops A's fencer from renewing and restarting Postgres if A comes back mid-failover?",
+     "about": "Fencer confirms Postgres stopped? / A fenced. No node can hold A write lease"
+    },
+    {
+     "id": "5",
+     "text": "What exactly is the epoch, who increments it, and how do workers and Postgres writes on B use epoch n+1 when claiming jobs?",
+     "about": "Worker claims job with lease heartbeat and epoch n+1"
+    },
+    {
+     "id": "6",
+     "text": "What is the side-effect ledger, where does it live, and how does reconcile read it if A is down?",
+     "about": "Side-effect ledger shows this job done?"
+    },
+    {
+     "id": "7",
+     "text": "The summary says DNS is last, but the flowchart shows Scale B web tier starting after PREC while workers start after reconcile. Do web scaling and workers run in parallel, and does a worker start failure block DNS?",
+     "about": "Start B workers / Scale B web/API tier to full size"
+    },
+    {
+     "id": "8",
+     "text": "When the command is re-run after a crash, how does it know which step to resume at, and what stops two on-call people from running it at once?",
+     "about": "Command interrupted at any step"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The product is not chosen yet (see Open questions). The design needs a 3-voter store with compare-and-set writes. The command reads the record at start and reads each step's markers. It writes start and finish markers per step, db_promoted with epoch n+1 (compare-and-set on n), the A-fenced record, active_region B at step 7, and any override with its approver. Only the command and A's fencer write to the store. The fencer writes renewals and heartbeats. DNS is a projection written after the store, not a store writer."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The fencer runs on A's database host, outside Postgres and the app. It renews A's lease every 10 s by writing to the store's voters, with a 30 s TTL. Each renewal also sends A's commit position and time. If A is cut off, the fencer cannot reach the voters, renewals fail, and it stops Postgres at 25 s. The lease grants nothing inside Postgres: Postgres does not check it. It only tells the fencer that A may keep Postgres running. The fence works because the fencer stops Postgres. The text now says this."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The brief says B's replica records replay lag each time it receives WAL from A, so that value is B's record. Seconds since last WAL receipt is B's own record of its last receipt time, read on B, and it grows while A is down. Estimated unreplicated commit age is computed by the command, read-only, from A's last heartbeat (commit position and time, held in the store) and B's replayed position. The brief does not say where B stores its recorded lag, so that is not specified."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Once the fencer confirms the stop, the command writes A fenced at epoch n to the store. The store then refuses later renewals at epoch n. The epoch n+1 write at promotion also makes old-epoch renewals invalid. A's fencer never starts Postgres as primary once it has stopped it, and Postgres does not start on boot, so A returns only as a standby. The rule is now in the fencing section and in step 3. The remaining risk is a wedged host, which is the game-day test."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The epoch is a whole number in the lease store. The command moves it from n to n+1 at promotion, as a compare-and-set on n. Workers do not change it. The command starts B's workers at epoch n+1, after it is recorded. Each job claim stamps n+1 on the job row, and reconcile reads that claim epoch. Postgres writes on B do not check the epoch. Once promoted, B is the only writable database, so the epoch is not needed to fence B's writes."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The plan does not say where the side-effect ledger lives, or whether B can read it while A is down. The brief describes ledgers that record external side effects keyed by idempotency key, so they may sit outside A's database. If the ledger is only in A's database, reconcile rule 1 cannot run. This is added to Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Web scaling and reconcile run in parallel after step 4 is recorded. Workers start after reconcile. DNS waits for both B's web health pass at full size and B's workers running. A worker start failure blocks DNS, because the brief's 'B's app' is read as web tier plus workers, and jobs would stall without workers. This changes the flowchart and the failure table. The team should confirm this reading."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Each step writes a start marker and a finish marker to the store with its name, epoch, time and operator. A re-run reads the last finished step and resumes at the next one, after re-checking that step's precondition. Two people cannot run it at once because the start marker is a compare-and-set on the last finished step. The second run loses and stops, with no separate lock. Limit: a slow run that has not crashed could still overlap a re-run. The precondition checks reduce that risk but do not remove it, so it is in Open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Detection pages on-call, but who decides it is a real regional failure rather than a probe or network problem, and what does on-call check before running the command?",
+     "about": "1 Detect / On-call runs failover command"
+    },
+    {
+     "id": "10",
+     "text": "After the fencer confirms Postgres stopped, the gate is re-run with A's final position. If that re-run fails and there is no override, what happens, given A is already fenced?",
+     "about": "Fence A: After the fence, re-run the gate with A's final position"
+    },
+    {
+     "id": "11",
+     "text": "Where does the command run from, and which things must it reach (lease store, B's database, B's scaling, DNS)? What if it cannot reach B's database?",
+     "about": "On-call runs failover command"
+    },
+    {
+     "id": "12",
+     "text": "How does the command know B's workers are running and healthy, and what does 'B /healthz passes' check?",
+     "about": "B /healthz passes at full size, and B workers running?"
+    },
+    {
+     "id": "13",
+     "text": "The wait for A's lease expiry plus 5 s: what if A's fencer is partitioned but still alive and keeps Postgres running until its own 25 s timer? Why is waiting for the store's 30 s expiry enough to be sure A has stopped writing?",
+     "about": "Wait until store shows A lease expired, plus 5 s"
+    },
+    {
+     "id": "14",
+     "text": "How are jobs claimed on B: what does a worker do on the jobs table to claim a row, and how do the heartbeat and the claim expiry work?",
+     "about": "Worker claims job, heartbeats, stamps claim epoch n+1"
+    },
+    {
+     "id": "15",
+     "text": "Who or what sets the idempotency key and writes the ledger entry for a job, and does the external system honour the key on a repeat?",
+     "about": "Job has idempotency key? / Side-effect ledger"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The brief sets no checklist for on-call, and the command does not diagnose the cause. Detection requires 2 of 3 probe sites to agree, which filters a single site's fault, but it does not prove the cause. Step 2 now says on-call decides whether the page shows a real loss before running the command. The on-call checklist is unknown and is listed in Open questions."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The post-fence gate re-run was missing from the flowchart, so it is now a node after the fence. If it fails with no override, the command stops before promotion. A stays fenced, nothing is promoted, and service stays down until an override is given. I do not unfence A, because the plan has no safe path back. Whether a fenced A can be restarted after an abandoned failover is in Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The brief does not name a host. The command needs the lease store (for the gate and the markers), B's database (promotion and reconcile), B's scaling and health, and DNS. It needs no path to A. If it cannot reach the store or B's database, it stops before changing anything, and the operator re-runs once it can. Where the operator host sits is not in the brief."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The brief does not define B's health check. I decided that /healthz at full size is the same check the probes use: the app answers and reaches B's database. Workers count as running when each one the command started has polled the jobs table. This needs no new mechanism. The team should confirm it."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The fencer stops Postgres 25 s after it sends its last renewal, on its monotonic clock. The store expires the lease 30 s after it receives that renewal. Receipt comes after the send, so the store's expiry is always later than the fencer's stop. The 5 s margin covers clock-rate drift. This holds only if the fencer is working. A wedged host with a live postmaster is not covered by this timing, which is why it is the game-day test in the build list."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A worker claims a queued row with one update that sets it to running and stamps its ID, epoch n+1 and an expiry time. It sends heartbeats to move the expiry later. If the expiry passes with no heartbeat, the reaper requeues the row and adds one attempt. The brief does not give the claim length or the heartbeat interval, so those are unknown and listed in Open questions."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "The brief does not say who sets the idempotency key or writes the ledger entry. The decided part is that the job's code sets the key and writes its ledger entry right after the external call. The ledger write comes after the external call, so a crash between the two can repeat an action, and the key is what prevents that. Whether each external system honours a repeated key is unknown. Open questions already asks this for every job type."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "After promotion, A's un-replicated commits are gone from B. What happens to users' data that was committed on A but never reached B, and does anyone find out which rows were lost?",
+     "about": "4 Promote B database / Gate: RPO"
+    },
+    {
+     "id": "17",
+     "text": "The reconcile step looks for rows 'running under an epoch below n+1'. B's replica may show a job as queued while A had actually claimed and started it. How is that job handled, and can its side effect happen twice?",
+     "about": "Jobs in flight on A / Reconcile, one row at a time"
+    },
+    {
+     "id": "18",
+     "text": "Between the fence and B workers starting, what do users see? Traffic still goes to A's DNS while A is fenced. Is that the outage window, and does anything tell users or on-call?",
+     "about": "6 Serve on B / Move global DNS name to B"
+    },
+    {
+     "id": "19",
+     "text": "What does the command do while it waits (fence expiry wait, scale, health)? Does it poll, how often, and is there a timeout after which it stops and reports?",
+     "about": "Wait until store shows A lease expired, plus 5 s / B /healthz passes at full size"
+    },
+    {
+     "id": "20",
+     "text": "If the lease store loses a voter (for example the region B voter goes down along with A), can the command still write fence and epoch records? What happens if the store has no majority?",
+     "about": "Lease store: 3 voters"
+    },
+    {
+     "id": "21",
+     "text": "What is needs_review in practice: where does a person see these jobs, and do B's workers skip them until someone decides?",
+     "about": "Set needs_review. A person decides"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Rows committed on A after B's replayed position are not on B, and the plan cannot list them from B. The loss covers every table (invoices, payments), not only jobs, and it is bounded by the unreplicated commit age that the gate measures. After promotion the command records the gate values, the final loss estimate and any override approver in the store, and prints them for on-call. Nobody is told which rows were lost. Finding them needs a comparison with A's old database, which the rebuild wipes, so this is in Open questions."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, B can show a queued row whose claim and side effect happened on A, because the claim did not replicate. Reconcile now checks the side-effect ledger for every unfinished row, queued or running, so a row whose effect is in the ledger is marked done and not run again. The remaining gap is an effect whose ledger entry did not replicate. That can repeat, and only an external system that honours the idempotency key prevents it. Whether each external system honours keys is unknown and is in Open questions."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Yes. The outage runs from the fence in step 3 until DNS moves in step 7. Traffic still reaches A, but A's database is stopped, so users get failures. The command prints each step and its elapsed time for on-call. The brief sets no user notice, and the plan adds no status page. Whether users get a notice is in Open questions."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "While waiting for the fence, the command polls the store once per second and checks the fencer on each poll. It continues when either the fencer confirms the stop or the store shows the lease expired plus 5 s. It has no timeout of its own, because a timeout that proceeds would break the no-early-promotion rule, and one that stops leaves the same state. If A keeps renewing, the lease never expires and the command keeps waiting. That case is in Open questions. Reconcile runs to completion with no timeout. The B health check polls every 15 s. The brief sets no failure deadline, so the value is unknown and is in Open questions, to be set from the game day."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "With one voter lost, 2 of 3 still form a majority and the command writes normally. If the A and B voters are both lost, there is no majority. The command then reads and writes nothing, promotes nothing, and stops before changing anything. A's own fencer stops A's Postgres 25 s after its last renewal, because A cannot renew. Service stays down until the store has a majority again. If a majority is lost mid-run, the command stops at its next write and a re-run resumes. The plan does not cover losing two of the three voters, and that is now stated as a limit."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "needs_review is a status value on the jobs row, set by reconcile rule 3 for a running job from an old epoch that has no idempotency key. B's workers poll only queued rows, so they skip needs_review rows until someone acts. The command prints the count and IDs at the end of step 5. A person sets a row to queued to run it again, or to done after checking the ledger. Where the team sees the list is not decided, so it is in Open questions."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "22",
+     "text": "Step 4 says the command does a compare-and-set on n to record db_promoted, but pg_promote already ran on B. If that compare-and-set fails (another run, or the store changed), what happens to a B database that is already writable?",
+     "about": "4 Promote B database / Record db_promoted and epoch n+1 in store, compare-and-set on n"
+    },
+    {
+     "id": "23",
+     "text": "A's commit position and time come from its last lease renewal, sent every 10 s. If the link broke earlier, the store's last heartbeat is old. How can the third gate check measure A's real final position, and what does 'A's final position' in the post-fence re-run mean when A is unreachable?",
+     "about": "Gate re-run with A's final position passes, or override given?"
+    },
+    {
+     "id": "24",
+     "text": "Step 6 says the health check needs the B workers running, yet step 5 starts them only after reconcile finishes. If reconcile is slow (the 2 min estimate), does the health poll just keep waiting, and does the web tier serve users against B's database before reconcile ends?",
+     "about": "6 Serve on B / B /healthz passes at full size, and B workers running?"
+    },
+    {
+     "id": "25",
+     "text": "After the command stops (health fails, B not writable, gate fails after fence), what exactly does on-call do to get service back, and does the re-run resume at the failed step with the same epoch?",
+     "about": "Re-run after a crash / Stop. Fix forward and re-run"
+    },
+    {
+     "id": "26",
+     "text": "Where does the fencer's stop confirmation reach the command, given the command has no path to A? How does the command learn the fencer confirmed Postgres stopped?",
+     "about": "Fencer confirms Postgres stopped, or store shows A lease expired plus 5 s?"
+    },
+    {
+     "id": "27",
+     "text": "Reconcile rule 1 marks a job done if the ledger shows it, but a job that ran on A and committed 'done' before the fence yet was lost in replication shows as queued on B. Is it right that only the ledger prevents a re-run in that case, and what does on-call see about it?",
+     "about": "Side-effect ledger shows this job done?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The order was wrong. The command now records \"promoting to epoch n+1\" as a compare-and-set on n before running pg_promote. If that write is refused, nothing has been promoted, so B stays a standby and no writable database exists. If the command crashes after pg_promote, a re-run sees the store at promoting n+1 from the same failover, skips the compare-and-set, and continues from the writable check."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The store only holds A's last renewal that it acknowledged. Commits after that are not in the store, and the fencer stops Postgres at most 25 s after that renewal was sent, so those commits are unmeasured. The gate now adds 25 s to the last acknowledged position. If the fencer can still reach the store to confirm its stop, it writes its final position with the confirmation, and the gate uses that real value. Under a long partition the 25 s allowance is a bound that holds only if the fencer's timer works, which the game day tests."
+    },
+    {
+     "id": "24",
+     "tag": "checked",
+     "text": "The health poll waits for the B workers, and the workers start only after reconcile. So the poll waits for reconcile to finish. Users reach B only after DNS moves in step 7, and DNS waits for the health pass. So B's web tier serves no users while reconcile runs. Step 6 now says this."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "On-call fixes the cause the command printed, then runs the command again. The re-run reads the last finished step and resumes at the next unfinished step with the same epoch n+1, because the store already shows that failover in progress. A gate failure after the fence needs an override, or the command stops again. This is now in the Interrupted section."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "The command has no path to A, so the earlier step 3 wording, which sent a stop request to A's fencer, could not work. The command now writes a fence request to the store. The fencer reads it on its renewal, which needs the store, then stops Postgres and writes its stop report to the store. The command reads that report from the store. If the fencer cannot reach the store, it never reads the request, and the command waits for lease expiry plus 5 s instead."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "Yes. Reconcile rule 1 is the only protection for a job whose external effect ran on A but whose row and ledger entry did not reach B. If the ledger lives in A's database and is lost in replication too, step 5 cannot see it. On-call now sees every requeued row, with its ID and attempt count, printed at step 5, so they can check the external system for a repeat. Whether external systems honour the key is already an open question."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "28",
+     "text": "The fencer stops Postgres when a fence request appears, but step 3 says the fencer reads requests only on renewal. If A is partitioned from the store, it can't renew, so it stops at 25 s on its own timer. Is that right, and is the command's wait then always about 35 s in that case?",
+     "about": "3 Fence A / Fencer reads it on its next renewal"
+    },
+    {
+     "id": "29",
+     "text": "Step 5 rule 1 marks a job done from the ledger. What does 'mark done' write on B, and what does the job's row status look like for a job whose claim and completion were both lost in replication?",
+     "about": "Side-effect ledger shows this job done? / Mark done. Do not re-run"
+    },
+    {
+     "id": "30",
+     "text": "Who or what scales B's workers up and how many start? The text says 'scales B's workers up at epoch n+1'. How do the workers learn their epoch, and what does 'each one the command started' mean?",
+     "about": "Start B workers at epoch n+1"
+    },
+    {
+     "id": "31",
+     "text": "At step 7 the store records active_region B before DNS moves. If the store write succeeds but DNS write fails, what does a re-run do, and what do users see meanwhile?",
+     "about": "Record active_region B and epoch n+1 in store / Move global DNS name to B"
+    },
+    {
+     "id": "32",
+     "text": "The reaper is said to requeue expired claims. Where does it run on B, and when does it start relative to reconcile and the workers?",
+     "about": "Reaper requeues with attempt plus 1"
+    },
+    {
+     "id": "33",
+     "text": "Probes call A /healthz from 3 sites. What does 'A /healthz' check, and what is on-call looking at when they decide it is a real regional loss rather than just A's web tier being down?",
+     "about": "1 Detect / Probes call A /healthz every 10 s from 3 sites"
+    }
+   ],
+   "answers": [
+    {
+     "id": "28",
+     "tag": "checked",
+     "text": "Yes. The fencer reads a fence request only on a renewal, so if it is cut off from the store it never reads one. It then stops Postgres 25 s after its last acknowledged renewal, on its own timer. The store expires the lease 30 s after it received that renewal, and the command continues at expiry plus 5 s. So the wait is about 35 s after the last renewal the store received, at most. It can be shorter if the command started polling later. Step 3 now says this, and says the fence request is read within 10 s when the fencer can reach the store."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "Mark done sets the job row's status to done on B's jobs table and does not re-run the job. For a job whose claim and completion were both lost in replication, B shows the row as queued. Reconcile rule 1 finds the ledger entry and marks it done. Reason: B cannot see A's claims, so the ledger is the only evidence the effect happened. Step 5 now prints the ID of every row marked done, so on-call can check the external system."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "The command scales B's workers up and gives each one it starts epoch n+1 as a start setting, so each worker stamps that epoch on the claims it makes. Each worker the command started means each instance that scale-up launches. The brief does not give a worker count, and B's workers are scaled to zero today, so the count is unknown and is in Open questions."
+    },
+    {
+     "id": "31",
+     "tag": "decided",
+     "text": "The store is written before DNS on purpose. The store is the source of truth, and DNS is a copy of its record. The first version said users are sent to whatever the record names, which was wrong, because only DNS sends users. Users are sent by DNS, and DNS is written after the store. If the store write succeeds and the DNS write fails, a re-run sees active_region B, re-checks B's health and repeats the DNS write. Meanwhile DNS still points at fenced A, so users keep getting failures. The summary, step 4, step 7 and the failure table now say this."
+    },
+    {
+     "id": "32",
+     "tag": "decided",
+     "text": "The reaper runs on B and starts with the B workers, after reconcile. It must not start before reconcile, because reconcile has to see old-epoch running rows first. After reconcile none remain from older epochs, so the reaper handles only epoch n+1 claims. The brief does not say which host runs the reaper, so that is in Open questions."
+    },
+    {
+     "id": "33",
+     "tag": "decided",
+     "text": "A's /healthz is the same check as B's: the app answers and reaches its database. It fails when the web tier is down, so the page cannot by itself tell a web-tier outage from a regional loss. The brief sets no on-call checklist, and what on-call checks before running the command is unknown. It is in Open questions, and step 1 now says the page does not show the cause."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough: one failover, from A dying to users landing on B.\n\n1. Detection. Three probe sites each call A's /healthz every 10 s and keep their own results. If 2 of the 3 see 3 failures in a row, A counts as down. The only automatic action is a page to on-call. Nothing is promoted. The page doesn't say why A is failing, because /healthz also fails when only the web tier is down.\n\n2. Decision. On-call decides it is a real regional loss and runs the failover command. The RTO clock starts here. The command runs on an operator host that can reach the lease store, B's database, B's scaling and DNS. It doesn't need a path to A. If it can't reach the store or B's database, it stops without changing anything.\n\n3. Reading state and the RPO gate. The command reads the lease store's one record: active region A, epoch n, and no finished failover step. The store has 3 voters (one in A, one in B, one at a third site) and needs 2 for a write. The command then runs the RPO gate, which changes nothing. It makes three checks, and each must be 30 s or less.\n   - The recorded replay lag. B records this each time it receives WAL from A. It stops growing once A stops sending, so it can miss a big loss.\n   - The seconds since B last received WAL. This grows while A is down.\n   - The estimated unreplicated commit age. The command computes it from A's commit position and time in A's last acknowledged renewal (held in the store), plus up to 25 s, compared with B's replayed position.\n   If any check fails, the command stops and reports the loss estimate. It continues only with an accept-data-loss override, which is written to the store with its approver.\n\n4. Fencing A. The command writes a fence request for A at epoch n to the store. It can't contact A directly. A's fencer is a small service on A's database host. It renews A's lease every 10 s (30 s TTL) by writing to the store's voters, and it reads any fence request on each renewal. When it sees the request, it stops Postgres at once (`pg_ctl stop -m immediate`, killing the postmaster if that hangs). It then writes \"stopped\" and its final commit position to the store.\n   - The command polls the store once per second. It continues when the \"stopped\" report appears, or when the store shows A's lease expired plus 5 s.\n   - If the fencer can't reach the store, it stops Postgres on its own timer, 25 s after its last acknowledged renewal. The store expires the lease 30 s after receiving that renewal, so the stop always comes first.\n   - The command then writes \"A fenced at epoch n\". After that, the store refuses A's renewals at epoch n.\n   - The command re-runs the gate using A's final position. That is the fencer's stop report, or else the last acknowledged position plus 25 s. If it fails and no override is given, the command stops. A stays fenced, nothing is promoted, and service is down.\n   - The command has no timeout in this wait. If A keeps renewing, the command waits forever and never promotes.\n   - The outage starts here. A's database is stopped, but traffic still goes to A.\n\n5. Promoting B. The command makes one compare-and-set in the store, recording \"promoting\" at epoch n+1 and expecting epoch n. If the store refuses it, the command stops before promotion. Then it checks that B is in recovery and runs `pg_promote`. It checks that `transaction_read_only` is off and that a test write works. Then it records `db_promoted` at epoch n+1. B is now the only writable database. It also records the loss estimate and prints it. If B isn't writable, the command stops, A stays fenced, and on-call fixes it and re-runs. Meanwhile active_region and DNS still say A.\n\n6. Reconcile jobs, then start workers. This happens before any B worker runs. For every unfinished job row on B:\n   - If the side-effect ledger shows the job done, the row is marked done and not re-run.\n   - Else if the row is running under an epoch below n+1 and the job has an idempotency key, it is requeued with attempt plus 1.\n   - Else if it is running under an old epoch and has no key, it is set to needs_review, and a person decides.\n   - Otherwise it is queued and runs normally.\n   The command prints the IDs of rows it marks done, requeues, or sets to needs_review, so on-call can check external systems for repeats. Then it scales B's workers up, giving each one epoch n+1 as a start setting, and starts the reaper with them. If the ledger can't be read from B, the command stops and service stays down.\n\n7. Scaling and health, alongside step 6. The command scales B's web tier from 2 to 12 instances. It then polls B's /healthz at full size, and the B workers, every 15 s. Both must pass. A worker counts as running once it has polled the jobs table. If the check fails, the command stops. DNS stays on A and B stays primary. A is not unfenced.\n\n8. Moving traffic. The command records active_region B at epoch n+1 in the store, then moves the global DNS name to B (TTL 60 s). The traffic manager's own health failover is off, so only the command changes DNS. Users reach B with empty sessions, because Redis isn't replicated between regions, and they sign in again. If the DNS write fails, the store already says B. A re-run re-checks health and repeats the DNS write. Until then users still hit fenced A and get failures.\n\n9. Jobs running on B. A worker claims a queued row with one update. The update sets it to running and stamps the worker ID, epoch n+1 and an expiry. Heartbeats push the expiry later. If the job commits before the claim expires, it is complete. If it errors or the worker dies, the claim expires and the reaper requeues it with attempt plus 1. Attempts are capped, and then the job goes to dead-letter. Workers skip needs_review rows until a person sets them to queued or done.\n\n10. Crashes and re-runs. Each step writes start and finish markers to the store. A re-run reads the last finished step and resumes at the next one, first re-checking that step's precondition. For example, it checks `pg_is_in_recovery` before `pg_promote`. The same failover epoch is reused. A second concurrent run loses the compare-and-set on the start marker and stops. A slow run that hasn't crashed could still overlap a re-run. The plan doesn't support rolling back to A.\n\n11. After A returns. A's database is wiped and rebuilt as a replica of B from a fresh base backup. Postgres is not set to start on boot, so A can never come back as a primary. A's app and workers stay at zero until the replica catches up. Failback is a separate planned switchover.\n\nData loss is accepted. Rows committed on A after B's replayed position are lost. They include invoices and payments, and nobody is told which rows. The gate only bounds how much is lost.",
+   "gaps": [
+    "Which lease store product is used. The document says only that it has 3 voters and needs 2 of 3 for a write.",
+    "Where B keeps the recorded replay lag value, which the first gate check reads. The document says it does not say.",
+    "Where the side-effect ledger lives, and whether B can read it while A is down. If it is only in A's database, step 5 cannot run and the command stops.",
+    "What on-call checks before running the command to tell a web-tier outage from a regional loss, since /healthz fails in both cases.",
+    "How the command's scale-up of B workers is sized. No worker count is given, and B's workers are at zero today.",
+    "Which host runs the reaper on B.",
+    "The claim length and heartbeat interval for jobs.",
+    "The deadline for B's health check at full size before it counts as failed.",
+    "Who may approve an accept-data-loss override, and how approval is checked.",
+    "What on-call does if A keeps renewing its lease but the fencer does not stop Postgres. The command waits forever and never promotes.",
+    "How the stop mechanism and monitoring for the fencer are chosen and built.",
+    "Whether every job type has an idempotency key and a ledger, and whether external systems honour a repeated key.",
+    "How a person finds needs_review rows, apart from the printed IDs.",
+    "What happens if a failover is abandoned after A is fenced. There is no path to restart A.",
+    "Whether a lock is needed to stop a slow run from overlapping a re-run.",
+    "How the command actually scales B's web tier and workers, and how it writes DNS. The document names the actions but not the mechanism.",
+    "How a re-run tells whether a step's own work already finished when the finish marker is missing, apart from the examples given for promotion."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachback-correct"
+}

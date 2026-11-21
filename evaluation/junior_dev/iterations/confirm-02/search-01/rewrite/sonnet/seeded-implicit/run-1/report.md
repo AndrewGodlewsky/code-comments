@@ -1,0 +1,23 @@
+## Review of search-01 (rewrite, author sonnet, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the whole document in the skill's order: summary, terms, diagram, numbered steps, failure table, rollout, open questions. Live sync and rebuild are separate sections.
+- Added a 2-3 sentence summary that says how the cron works today and why the new design is shaped this way.
+- Added a terms list: WAL, CDC, commit_lsn, version rule, alias, consumer group and offset, snapshot, DLQ.
+- Expanded the diagram with triggers, data labels, where offsets are stored, the switch gate and the rebuild path. Notes after it were replaced by numbered steps with failure handling.
+- Added the event-to-write mapping: c and u with status active become a write; d and non-active updates become a delete. Every write and delete carries commit_lsn, and deleting a missing document is success.
+- Merged the scattered notes (batching, retry, DLQ, active-only, WAL watch) into the steps they belong to. Kept every brief number: 1 s doubling to 60 s backoff, 20 GB alert, 50 GB slot drop, 5,000 rows/s, 5 s, 0.5%, 48 h, 7-day retention, 12 partitions.
+- Added the rule that offsets are saved only after the index acks, and that DLQ writes must succeed first.
+- Added the rebuild mechanics. Take WAL position S before the snapshot. Backfill carries version S. Replay runs only after backfill, from the time of S. Replaying after the backfill, rather than alongside it, means a late snapshot write cannot undo a delete.
+- Added the design choice that each index has its own indexer group. The old index stays current for 48 hours, so switching back loses nothing.
+- Added recovery after a dropped slot: recreate the slot first, then take S, so no gap exists.
+- Added a failure table, including the gate never holding (alert, no switch) and the backfill dying (delete the new index and restart, no resume).
+- Added a rollout section for the first cutover: the cron keeps feeding products_v3 for 48 hours as the rollback copy, since it writes unversioned docs that cannot mix with the indexer's versioned ones.
+- Added a small number of new decisions of my own: batch flush at 500 ms or 1,000 events, a once-a-minute gate check, and an alert after one hour of a gate that never holds. Also added no second rebuild while an old index is kept.
+- Added open questions: delete-version retention in the store, refresh interval, Debezium unchanged large columns, the 2.5 h vs 40M row arithmetic, cost of count(*) on the primary, and doc format across two mappings.
+- Cut the component list line, which the terms and diagram now cover.
+
+### Holes
+- None.

@@ -1,0 +1,236 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is in the 'presence store' that Node 1 registers in Redis, and what does the 'snapshot' sent back to Alice contain?",
+     "about": "N1->>R: register presence / N1-->>A: snapshot"
+    },
+    {
+     "id": "2",
+     "text": "The diagram has Node 1 register presence and then publish join. Does the snapshot include people already there, and how does Alice learn about someone who joins between the snapshot and her subscription?",
+     "about": "snapshot and publish join"
+    },
+    {
+     "id": "3",
+     "text": "Which Redis channel does each node publish to and subscribe to? Is it one channel per document or one for everything, and how does Node 2 know which of its clients (Bob) should get a message?",
+     "about": "R-->>N2: join / cursor"
+    },
+    {
+     "id": "4",
+     "text": "What do 'Cursors are throttled' and 'Seq numbers on cursors' mean here? Who throttles, at what rate, and what does the receiver do with the seq number?",
+     "about": "Notes: Cursors are throttled / Seq numbers on cursors"
+    },
+    {
+     "id": "5",
+     "text": "What is transformPosition, and who calls it? When a cursor arrives for a revision that differs from the receiver's document, what happens step by step?",
+     "about": "Notes: Handle revisions with transformPosition"
+    },
+    {
+     "id": "6",
+     "text": "What do the ping/pong and 'refresh' do exactly? How often do they happen, what is the TTL on entries, and what happens if the pong never comes?",
+     "about": "N1->>A: ping / A-->>N1: pong / N1->>R: refresh"
+    },
+    {
+     "id": "7",
+     "text": "In the crash step, who runs the sweep, what triggers it and how does it decide Node 2's entries are dead? Why does the arrow say 'N1-->>A: leave' and not a leave to Bob?",
+     "about": "Note over N2: crash / N1->>R: sweep / N1-->>A: leave"
+    },
+    {
+     "id": "8",
+     "text": "What does 'Dedupe tabs on the client' mean? If Alice has two tabs open, what is registered in Redis, and what do other users see when one tab closes?",
+     "about": "Notes: Dedupe tabs on the client"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The presence store is Redis state, not a client store. For each document there is a hash conns:<docId> with one field per tab (connId), holding that tab's userId and nodeId. There is also one set users:<docId>:<userId> per user, holding that user's connIds. The cursor hash cursors:<docId> holds each tab's last cursor. The snapshot Alice gets back is the list of connected users (from conns, grouped by userId) plus each tab's last cursor from cursors, so idle users show up too. The per-tab record lets the server know when a user's last tab goes. The per-user set lets the join and leave decision be atomic."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes, the snapshot includes everyone already there. Node 1 subscribes to the document's channel first, then writes Alice's record, then publishes join if she is the user's first tab, then reads the snapshot. Someone who joins in between is either in the snapshot or sends a live join. A join seen twice is ignored by clients. I changed the diagram text and step 1 to make this order explicit."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "There is one Redis pub/sub channel per document, presence:<docId>. It carries join, leave and cursor messages. A node subscribes to it while it has at least one local socket on that document, the same rule the gateway doc gives for ops:{docId}. Node 2 does not pick out Bob. It forwards every message on the channel to its own local sockets for that document, and Bob gets it because his socket is in Node 2's local map for that document."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Throttling: the client sends at most one cursor per 50 ms. The node that receives a cursor drops it silently if it arrives less than 50 ms after the last accepted cursor from the same connection. Seq: every cursor a client sends carries an increasing number. The receiver remembers the highest seq seen per connId and drops any cursor whose seq is not higher. The reason is that the snapshot read and live messages can overlap, so an older cursor can arrive after a newer one. Seq stops the caret from jumping backwards."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "transformPosition is declared in existing/editor-protocol.ts. It is a client editor function that maps a position from fromRev to toRev, and throws HistoryGone when fromRev is older than the 500 kept revisions. The receiving browser calls it. The server never does. For an incoming cursor the client checks seq first. If rev is higher than appliedRev, it holds the cursor (keeping only the latest per connId) and draws nothing. If rev is at or below appliedRev, it calls transformPosition(pos, rev, appliedRev). On HistoryGone it drops the cursor until the next update. When appliedRev moves, the held cursors are re-run through the same step."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Ping and pong are the existing WebSocket liveness check: the node pings every 10 s, and a socket with no pong for 20 s is closed, which triggers the clean leave. They are not a presence message. Refresh means the node rewrites its own heartbeat key node:<nodeId> every 10 s with a 30 s TTL. It is per node, not per user. Presence records have no separate TTL. If a pong never comes, the socket closes after 20 s and the clean leave runs."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Every live node runs the sweep every 10 s. It reads the nodes set. A node whose node:<id> key has expired is dead, because the key expires 30 s after its last refresh. The sweeper reads that node's node-conns set and removes each connection the same way a clean leave does. Only the node whose removal actually deletes the record publishes leave, so two sweeping nodes cannot both publish. Worst case is 30 s to expire plus up to 10 s to the next sweep, which is 40 s, inside the 45 s limit. The arrow says N1 to Alice because Alice is on Node 1, and Node 1 is the one that tells its own users. Bob's leave is the leave of the user who was on the crashed node. I changed the diagram label to make this clear."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Dedupe is done by the server, not the client. Each tab is its own connId and its own record. The server publishes join and leave per user, and only when the user's first tab appears or the last tab goes. So the avatar list is per user. Clients still ignore a repeated join for a user they already list, but that is only a safety check. Carets are per tab, and the client shows one caret per user, from the tab that sent the latest accepted cursor. When one tab closes and the user has another, the leave message carries the connId and userGone false. The closing tab's caret is removed, the avatar stays, and the remaining tab's caret shows on its next move."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Open step 1.3 says the node publishes join if the set was empty. How does the node know the set was empty, and what if two tabs of the same user open on different nodes at the same moment?",
+     "about": "Steps 1. Open, item 3 (publishes join if first tab)"
+    },
+    {
+     "id": "10",
+     "text": "What is the 45 s limit that the 40 s worst case is compared to, and who set it?",
+     "about": "Step 5. Node crash, worst case 40 s within the 45 s limit"
+    },
+    {
+     "id": "11",
+     "text": "In a sweep, how does 'removes the connection the same way a clean leave does' work for a connection whose node is dead? How does the sweeper know the userId and whether it was the user's last tab?",
+     "about": "Step 5. Node crash, item 3 (remove each connection, only the deleting node publishes leave)"
+    },
+    {
+     "id": "12",
+     "text": "The sweeping node publishes leave on presence:<docId>. What does the sweeper do about its own subscription to that doc if it has no local sockets there, and do all clients on other nodes still get the leave?",
+     "about": "Step 5. Node crash / diagram 'R-->>N1: leave Bob'"
+    },
+    {
+     "id": "13",
+     "text": "What does the client do when it receives a leave, especially with userGone false versus true, and when a cursor arrives from a connId that is not in its list?",
+     "about": "Step 4. Clean leave and Tabs section"
+    },
+    {
+     "id": "14",
+     "text": "When a node that is still alive loses its own Redis connection and reconnects, are its subscriptions to presence channels restored, and do its clients get a fresh snapshot?",
+     "about": "What happens when things fail / Open questions (Redis unreachable)"
+    },
+    {
+     "id": "15",
+     "text": "The 50 ms throttle compares to the last accepted cursor from the same connection. Where does the node keep that timestamp, in memory or Redis? Also, in Cursor move, are the cursors:<docId> entry and the publish done as two separate steps, and what if the write succeeds but the publish fails?",
+     "about": "Step 2. Cursor move, items 1 and 2"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The node does not compare two separate reads. It runs one script on Redis that adds the connId to users:<docId>:<userId> and returns how many were there before. Redis runs a script in one step with no other command in between, so when two tabs of the same user open on different nodes at the same moment, exactly one of them sees a count of zero. Only that node publishes join. The same idea covers leave, where the script returns how many tabs remain. This is why the plan says the decision is atomic. Step 1.2 now names the script."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The 45 s limit is a requirement in the brief for this task: when a gateway node dies, its users must disappear from everyone else's list within 45 s. The plan did not choose that number. The plan's worst case is 40 s (30 s key expiry plus up to 10 s to the next sweep), which fits inside it."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "node-conns:<nodeId> stores docId, connId and userId for every tab a node owns, so the sweeper has the userId it needs. The sweeper runs the same leave script as a clean leave. The script removes the connId from conns, cursors, node-conns and the user's set, and returns whether it removed anything and how many tabs the user has left. That return value tells it whether this was the user's last tab. If the script removes nothing, nothing is published. The step now says this."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Publishing to a Redis channel does not need a subscription. The sweeper publishes leave on presence:<docId> and does not need sockets on that document. Every node that has a local socket on that document is subscribed to the channel, and it forwards the leave to those sockets. So clients on other nodes get it, because their nodes are subscribed. The sweeper only needs to be subscribed if it has its own sockets there, and then it forwards too."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Added a client section. On leave with userGone true, the client removes the avatar, the user's caret and the state for their connIds. On leave with userGone false, it removes only that connId's caret and state, and the avatar stays. A cursor from a connId the client does not list is not dropped: the message carries userId, so the client adds the user as a join would, if the user is not listed, and then applies the seq and revision rules. The snapshot gives each tab's seq, so the seq check also works for live cursors that arrive after the snapshot."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The plan no longer relies on subscriptions being restored. If a node's heartbeat write fails, it closes all its sockets with an error. Clients reconnect to any node and take a fresh snapshot, and the new node subscribes when it opens. This is the simplest handling the brief allows. It also settles the earlier open question about closing sockets on a heartbeat failure. Whether the Redis client library re-subscribes on its own is unknown, and the plan does not depend on it. Records the clean leaves could not remove are removed by a sweep."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The 50 ms timestamp is kept in the owning node's memory, per connection. A connection lives on one node, so Redis does not need it, and a restart simply resets it. The node writes cursors:<docId> first, then publishes. If the write succeeds and the publish fails, the stored cursor is correct, other clients miss this one, and the next move fixes it. A new joiner gets the stored cursor from the snapshot. The failure table now says this."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "After a failed heartbeat write the node closes its sockets, but is the node itself still running and refreshing node:<nodeId> on later ticks? If so, its key never expires and no sweep sees it as dead. What then removes the records of the tabs whose leaves could not reach Redis?",
+     "about": "Step 3. Heartbeat, item 2 (if this write fails, the node closes all its sockets)"
+    },
+    {
+     "id": "17",
+     "text": "When a node restarts after a deploy, does it come back with the same nodeId or a new random one? If it is the same, what happens to its old node-conns records and to the sweep of that id?",
+     "about": "Step 5. Node crash / `nodes` set (every node id that has run)"
+    },
+    {
+     "id": "18",
+     "text": "When does a node unsubscribe from presence:<docId>? Specifically, what happens to the subscription when the last local socket on that document closes?",
+     "about": "Step 1. Open, item 1 (subscribes to presence:<docId> if not already subscribed)"
+    },
+    {
+     "id": "19",
+     "text": "If Bob's Node 2 crashes and Bob's client reconnects to Node 1 with a new connId before the sweep runs, what do other clients see when the sweep later removes the old connId? Does Bob briefly disappear and reappear, or never disappear?",
+     "about": "Step 4. Clean leave / Step 5 sweep, user with a stale tab"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The node does not keep running. If its heartbeat write fails, it closes all its sockets and exits. A node that kept running would still be able to refresh its key later, so the key would never expire and no sweep would treat it as dead. Once it exits, its key expires within 30 s, and a sweep removes the records of tabs whose clean leaves never reached Redis. The heartbeat step and the failure table now say this."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "A node gets a new random nodeId on every start, so a restart never reuses an old id. The old id keeps its node:<id> key (which expires), its node-conns set and its entry in nodes until a sweep cleans them. The restarted process starts with a new, empty node-conns set. The terms and the failure table now say this."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The node unsubscribes from presence:<docId> when its last local socket on that document closes, as step 4 now says. It subscribes again at the next open. Reason: with no local sockets on the document, the node has no one to forward to, so the subscription would only bring traffic it does not need. The plan had not said this before."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "Bob never disappears from other users' lists. I checked this against the plan's own join and leave rules, not against code. When Bob reconnects to Node 1 with a new connId, the join script finds the old connId still counted, so it returns one, not zero, and no join is published. When the sweep later removes the old connId, Bob still has a tab, so the leave carries userGone false. His avatar stays and only the old caret is removed. Until the sweep, Bob stays listed, including while Node 2 is down, and the snapshot may show the old tab. Other clients see Bob's new caret after his next cursor move. The crash step now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one flow: Alice opens a document on Node 1 while Bob is already in it on Node 2. Alice moves her caret, then closes her tab. Later Node 2 crashes.\n\n1. **Alice opens the document.** Her client sends `open` for a document to Node 1. Node 1 is a gateway node, which holds her WebSocket (a local socket). Her tab gets a random connId. The state touched is in Redis: `conns:<docId>`, `users:<docId>:<userId>`, `node-conns:<nodeId>` and `cursors:<docId>`.\n\n2. **Node 1 subscribes.** Node 1 subscribes to the channel `presence:<docId>`, unless it is already subscribed. Redis stores no messages. Node 1 only receives what is published while it is subscribed. Node 2 is already subscribed because Bob's socket is on it.\n\n3. **Node 1 registers the tab.** Node 1 runs the join script in Redis. In one step, the script adds Alice's connId to `conns` (connId to userId and nodeId), to Alice's user set, and to `node-conns:node1` (docId, connId, userId). It returns how many tabs Alice had before. Because the script runs in one step, if two of Alice's tabs open on two nodes at once, exactly one of them sees zero.\n\n4. **Join is published.** If the count was zero, Node 1 publishes `join` (userId, connId) on `presence:<docId>`. Redis delivers it to every subscribed node. Node 2 forwards it to its own browser sockets, so Bob sees Alice's avatar. Bob's client ignores a join if Alice is already listed. If the count was above zero, nothing is published.\n\n5. **Snapshot.** Node 1 reads `conns` and `cursors` from Redis and sends Alice a snapshot. It lists every connected user and each tab's last cursor and seq, including idle tabs. The order is subscribe, then write, then read. A user who joins in between is therefore either in the snapshot or arrives as a live join, and a join seen twice is ignored. Alice's client sets its user list, cursors and per-connId seq from the snapshot. Each cursor then goes through the cursor rules in step 7.\n\n6. **Alice moves her caret.** Her client sends `cursor {docId, pos, rev, seq}` to Node 1, at most once per 50 ms. The seq is a counter the client increments per cursor message.\n   - Node 1 checks the time since the last cursor it accepted from this connection. That timestamp lives in the node's memory, not in Redis. If the new cursor arrives less than 50 ms later, Node 1 drops it silently. Otherwise it records the arrival time.\n   - Node 1 writes the cursor (pos, rev, seq) to the `cursors:<docId>` hash.\n   - Node 1 publishes `cursor` (connId, userId, pos, rev, seq) on `presence:<docId>`.\n   - Every node with a local socket on that document forwards it to its sockets, except the sender. Node 2 forwards it to Bob.\n   - If the Redis write fails, the cursor is dropped and the next move sends a new one. If the publish fails after a successful write, Bob misses that cursor. The next move fixes it, and a new joiner gets the stored cursor from the snapshot.\n\n7. **Bob's client applies the cursor.** The message names connId and userId.\n   - If the user is not listed, Bob's client adds the avatar, as a join would.\n   - If the seq is not higher than the last seq seen from that connId, it drops the cursor.\n   - If the cursor's rev is higher than Bob's `appliedRev`, it holds the cursor as that connId's pending cursor, replacing any older held one, and draws nothing.\n   - Otherwise it calls `transformPosition(pos, rev, appliedRev)`. If that throws `HistoryGone`, it drops the cursor and waits for the next one. If not, it draws the caret at the result.\n   - Each time `appliedRev` moves forward, it retries the held cursors.\n   - Bob sees one caret per user, from the tab that sent the most recent accepted cursor. The server never transforms positions.\n\n8. **Heartbeat, every 10 s on each node.**\n   - Node 1 pings each browser and expects a pong. A socket with no pong for 20 s is closed, which triggers the clean leave in step 9.\n   - Node 1 rewrites `node:node1` with a 30 s TTL. If that write fails, the node closes all its sockets and exits. Its key then expires and a sweep removes its records. Clients reconnect to other nodes and take fresh snapshots.\n   - Node 1 runs a sweep (step 11).\n   - At start, a node writes its heartbeat key before adding its id to `nodes`, so it is not swept while starting.\n\n9. **Alice's tab closes, or her socket drops.** Node 1 runs the leave script. It removes the connId from `conns`, `cursors`, `node-conns` and the user's set. It returns whether it removed anything and how many tabs the user has left. If the connId is already gone, it does nothing.\n\n10. **Leave is published.** If Node 1 removed the tab and Alice has no tabs left, it publishes `leave` with `userGone: true`. If other tabs remain, it publishes `leave` with `userGone: false`.\n    - Node 2 forwards the leave to Bob.\n    - With `userGone: true`, Bob's client removes the avatar, the caret and the connId state. With `userGone: false`, it removes only that connId's caret and state and keeps the avatar.\n    - If Node 1 has no local sockets left on that document, it unsubscribes from `presence:<docId>`.\n    - Others see the leave within 2 s.\n    - If Redis is unreachable for the leave, the records stay until the node's key expires and a sweep removes them.\n    - If the publish fails, other clients stay wrong until they reopen. The document flags this as an open question.\n\n11. **Node 2 crashes, and a sweep cleans up.** Node 2 does no cleanup, so its records stay in Redis.\n    - `node:node2` stops being refreshed and expires within 30 s.\n    - Each live node sweeps every 10 s. For each id in `nodes` whose `node:<id>` key is gone, it reads that node's `node-conns` set.\n    - For each connection found, the sweeping node runs the same leave script, using the userId stored in `node-conns`.\n    - Only the node whose script actually removed the tab publishes `leave`, so two sweepers do not both publish. The sweeper needs no subscription to publish.\n    - When done, it removes the dead id from `nodes`.\n    - Worst case is about 40 s, against a 45 s limit.\n    - Node 1 forwards the leave for Bob to Alice's socket.\n    - `nodes` keeps the dead id until it is cleaned, so records survive a restart of the whole cluster.\n\n12. **Reconnect before the sweep.** If a user reconnects to another node before the sweep, the join script still counts the old tab. It returns one, so no join is published. When the sweep removes the old tab, the leave carries `userGone: false`. The avatar stays and only the old caret goes.\n\n13. **Deliberate restart.** A node's sockets close. The clean leaves run if Redis is reachable, otherwise a sweep removes the records. Clients reconnect and take fresh snapshots. The restarted node gets a new nodeId.\n\n14. **Open at a failing Redis.** If Redis is unavailable at open, the node closes the socket with an error. The client reconnects and opens again. Any partial record is removed by its leave or by a sweep.",
+   "gaps": [
+    "The document does not say how the client learns which Redis or node it will talk to. It says the load balancer is unchanged but not how a client is routed to a node.",
+    "The document does not say how a node learns a socket has closed or dropped beyond 'the node never sees the close', so the trigger for a clean leave is not fully specified.",
+    "The document does not say how the new connId is communicated to Alice's client, or whether the client knows its own connId. Its own cursors are not echoed back, but the exclusion of the sender is described only as 'except the sender'.",
+    "The document does not say how a node knows a message's sender when forwarding, or how it excludes the sender.",
+    "The document does not say what the client does with a leave message for a connId whose cursor was only pending (held), beyond removing its 'state'.",
+    "It is unclear how the user list on the client is built when the snapshot contains several tabs per user. The document says avatars are per user but not the snapshot's exact shape.",
+    "Authentication and authorisation for `open`, such as how a node learns the userId, is not described. Only 'the logged-in user' is mentioned.",
+    "The document does not say what happens to a node's Redis subscription or to messages published while Redis pub/sub is disconnected (reconnection behaviour of the subscriber) apart from the open questions.",
+    "How a drawn caret moves when later remote edits arrive is not specified, and the document lists it as an open question.",
+    "The document does not say what a client does if the snapshot contains a cursor for a connId from a dead node that has not yet been swept. It says only that the old tab may be listed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

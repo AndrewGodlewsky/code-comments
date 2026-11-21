@@ -1,0 +1,17 @@
+## Review of ml-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a three-sentence summary covering what the system is, the main flow and why it is shaped this way. It also says how the nightly table works today.
+- Added a terms list of 13 one-line definitions for names a newcomer would not know: warehouse, online feature store, materialization, registry, alias, active and shadow versions, shadow queue and workers, prediction log, popular-items list, feature check and fallback.
+- Replaced the nine one-line plan items with sections for the request path, feature freshness, model versions and switching, shadow runs and comparison, promotion and rollback. Each step names its trigger, the data it moves, where state lives and what happens on failure.
+- Merged the separate 'model loading' and 'switch via registry' items into model versions and switching. Merged the 'daily comparison' item into shadow runs and comparison.
+- Kept every fixed requirement from the brief: the endpoint and 20 IDs, the 150 ms p99 budget, the 30 ms feature lookup, the fallback rules, the 6-hour freshness limit, immutable numbered versions with one active version, the 1-minute rollback, 10% shadow by user ID, shadow isolation, the never-run-without-features rule, and the promotion criteria with ML lead approval.
+- Kept the Product A/B decision open. The plan does not choose either option and marks the gap in promotion and in open questions.
+- Added decisions that the brief does not state, each marked as our choice: a 30-second alias check, dropping shadow jobs when the queue is full, logging the served result for shadow users, reporting overlap, and keeping the previous popular list when its job fails.
+- Added an open questions list for the unknowns that matter to the plan: the A/B gap, the 150 ms overrun case, model errors, the 6-hour age baseline, what counts as an error, storage locations, approval recording and rollback authority.
+- Length grew well past 1.5 times the first version. The first version dropped many stated requirements, and the rule to keep every stated fact meant adding them back at their steps rather than cutting.
+
+### Holes
+- None.

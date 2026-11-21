@@ -1,0 +1,286 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is in the 'presence store' on the client, and how does it differ from the presence that Node 1 registers in Redis? Who is the source of truth?",
+     "about": "Clients keep a presence store / register presence"
+    },
+    {
+     "id": "2",
+     "text": "What does 'register presence' write to Redis: what key, what data (user, tab, cursor, color?), and what is the TTL on it?",
+     "about": "N1->>R: register presence / Entries have a TTL"
+    },
+    {
+     "id": "3",
+     "text": "What is in the 'snapshot' sent to Alice, and where does it come from? How does she avoid missing or double-counting a join that happens between the snapshot read and the subscription?",
+     "about": "N1-->>A: snapshot"
+    },
+    {
+     "id": "4",
+     "text": "How does Node 2 know to listen for these messages? Is there one Redis channel per document or one global channel, and when does a node subscribe?",
+     "about": "R-->>N2: join / publish cursor"
+    },
+    {
+     "id": "5",
+     "text": "What does a cursor message contain, and what is transformPosition for? What revision is a cursor tied to, and what happens when a cursor arrives for an older revision than Bob has?",
+     "about": "Handle revisions with transformPosition"
+    },
+    {
+     "id": "6",
+     "text": "How are cursors throttled (client or server, what interval), and what are the seq numbers for? Who assigns them and what does the receiver do with an out-of-order one?",
+     "about": "Cursors are throttled / Seq numbers on cursors"
+    },
+    {
+     "id": "7",
+     "text": "How often is the ping sent, and what does 'refresh' do to Redis? What happens if a pong does not come back?",
+     "about": "N1->>A: ping / A-->>N1: pong / N1->>R: refresh"
+    },
+    {
+     "id": "8",
+     "text": "In the crash step, who is sweeping, what does the sweep look for, and how does it decide Node 2's entries are dead? Why does the diagram show 'leave' going to Alice rather than to Bob, and who publishes it?",
+     "about": "Note over N2: crash / N1->>R: sweep / N1-->>A: leave"
+    },
+    {
+     "id": "9",
+     "text": "What does 'Dedupe tabs on the client' mean? If Alice has two tabs open, how are her entries identified, and when does she count as having left?",
+     "about": "Dedupe tabs on the client"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The client store is an in-memory map from connId to entry, built from the snapshot plus later channel messages, and thrown away on disconnect. The Redis entries written by the node are the source of truth. The client store is a copy, and a new snapshot replaces it. Now defined in Terms."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "One Redis string per connection, key pc:{docId}:{connId}. It holds userId, name, colour, nodeId and the latest cursor {rev,pos,seq}. TTL is 30 s, reset by every write. A per-document set pd:{docId} lists the connIds, so a joining node can list everyone. The numbers are my choice: refresh every 10 s (the ping interval) and TTL 30 s, so a crash is noticed within 40 s, under the 45 s limit. Colour is a hash of userId so tabs and nodes agree."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The snapshot is every entry in the index with its latest cursor, read from Redis by Alice's node. The node subscribes to the channel before reading, and buffers channel messages until the snapshot is sent. It then sends the buffered messages in order. Messages are upserts or deletes keyed by connId, so duplicates are harmless and nothing is missed."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "One channel per document, presence:{docId}. A node subscribes when it gets its first local socket on that document and unsubscribes after its last. This copies how gateway.md says nodes treat ops:{docId}. I chose a channel separate from ops:{docId} so the edit path stays unchanged."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "A cursor message holds connId, userId, rev, pos and seq. rev is the sender's appliedRev, and pos was valid at that rev. If rev is above the receiver's appliedRev, the receiver holds the cursor until it has applied that rev. Otherwise it uses transformPosition(pos, rev, appliedRev), and drops the caret if HistoryGone is thrown. This follows the contract in editor-protocol.ts and the brief."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The 50 ms limit comes from the brief. The client sends at most one cursor per 50 ms, with the latest position last. The server also enforces it per connection and drops the extras. The seq is a per-connection counter that the sending client assigns, starting at 1. The receiver keeps the last seq per connId and ignores any cursor whose seq is not higher, so a caret never moves back."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The ping goes every 10 s, and a socket is closed if there is no pong within 20 s. Both are in gateway.md. Each 10 s the node also rewrites the entries of its open connections, which resets their 30 s TTL, and refreshes the index TTL. If the pong is missing, the node closes the socket after 20 s and the clean leave runs."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Any node that serves the document sweeps every 10 s. It lists the index and finds connIds whose entry key has expired, which means they went unrefreshed for 30 s, so the owning node is dead. The node that wins the SREM on the index publishes the leave. My original diagram was misleading: I have changed it so the crashed user is Bob, and the leave goes to the survivor, Alice. In the old version I mislabelled the receiver."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Each connection (tab) has its own connId and entry. The client groups entries by userId and shows one avatar per user. A user counts as having left when the last connId with their userId is removed. A second tab causes no visible change. Only one caret is drawn per user, from the most recently moved tab."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "In the join flow, the node writes Alice's entry and publishes join before it reads the index. Does Alice's own join message come back to her in the buffered messages, and what does the client do with it?",
+     "about": "Step 2. Snapshot"
+    },
+    {
+     "id": "11",
+     "text": "Which cursor does the snapshot send, and what does Alice's client do with the rev and seq in it? Alice's own appliedRev may be lower than the rev of Bob's cursor. Is a held cursor handled the same way as in step 5?",
+     "about": "Step 2. Snapshot / Step 5. Cursor receive"
+    },
+    {
+     "id": "12",
+     "text": "When Bob's node writes the entry on each cursor, how does the heartbeat refresh avoid overwriting a newer cursor with an older one? Does the node keep the cursor in memory, or read it back from Redis first?",
+     "about": "Step 6. Heartbeat"
+    },
+    {
+     "id": "13",
+     "text": "What does the client do with a leave message for a connId whose seq it has stored? If the same connId later reappears with seq 1 (a new connection reusing nothing), is anything wrong? Also, when is the stored seq for a connId deleted?",
+     "about": "Step 5. Cursor receive"
+    },
+    {
+     "id": "14",
+     "text": "The sweep removes a connId from the index only if its entry is gone. If a node is alive but its refresh is late and the entry expires, what happens to that live user, and how do they come back?",
+     "about": "Step 7. Sweep"
+    },
+    {
+     "id": "15",
+     "text": "In the crash case, what happens to Bob's carets and avatar on Alice's screen during the up to 40 s before the leave arrives? Is there any other signal?",
+     "about": "Step 9. Node crash"
+    },
+    {
+     "id": "16",
+     "text": "When the client sends its first cursor after the snapshot, which rev does it use, and what is the client's appliedRev at that time? How does the client know the document revision at open?",
+     "about": "Step 2. Snapshot / rev (in a cursor)"
+    },
+    {
+     "id": "17",
+     "text": "What happens to the client when its socket drops and it reconnects: does it keep the old connId, and is the old entry removed before the new one is written?",
+     "about": "Step 1. Open / Failures: Redis is unreachable"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes, Alice's own join comes back among the buffered messages. The client applies it as an upsert keyed by connId, so it is harmless. Now stated in step 2."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The snapshot sends each entry's latest cursor {rev,pos,seq}. The client handles each one exactly like a cursor message from step 5: it stores the seq and holds the cursor if rev is above its own appliedRev. Now stated in step 2."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The node keeps each connection's current entry, including its latest cursor, in memory, and the heartbeat rewrites from that copy. It never reads back from Redis, and only the owning node writes that entry, so an older cursor cannot overwrite a newer one. Now stated in step 6 and in where state lives."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "On leave the client deletes the entry, its stored seq, any held cursor and the caret together. A new connection always has a new connId, so seq 1 never meets an old stored seq. A snapshot replaces the whole map including seqs. Now stated in step 5."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The sweep may remove that live user and publish leave. This exposed a real hole, so I changed the heartbeat: it also runs SADD on the index and, if the entry had expired, republishes join. The user is back within 10 s. A tiny race remains where the entry was rewritten just before the sweep's SREM, and I left it as an open question rather than add a mechanism."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Nothing else signals the crash. Bob's avatar and caret stay frozen for up to about 40 s until the leave arrives. The brief allows 45 s, and adding a faster signal would need new mechanism. Now stated in step 9."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The first cursor uses the client's current appliedRev at that moment, and the client sends it only once the document is loaded and appliedRev is known. How the editor first loads the document is existing behaviour that the plan does not describe, and I have not verified it. The plan now says it is outside scope."
+    },
+    {
+     "id": "17",
+     "tag": "checked",
+     "text": "A reconnect is a new connection with a new connId, as gateway.md says connId is new for every connection. The old entry is removed by the old node's clean leave, or it expires within 30 s. The new connection gets a new snapshot that replaces the client's map. The same userId keeps the avatar showing once. Now stated in step 1."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "18",
+     "text": "Step 4 says the node stores the accepted cursor in memory and writes it to Redis, then publishes. Does Alice's browser get any acknowledgement or her own cursor echoed back? And if the Redis write fails during a cursor, what does the node do with the connection?",
+     "about": "Step 4. Cursor send"
+    },
+    {
+     "id": "19",
+     "text": "In the client, how does a held cursor get drawn when appliedRev reaches rev? What triggers that check, and is the document edit stream the only thing that moves appliedRev?",
+     "about": "Step 5. Cursor receive / Note over B: hold until appliedRev reaches rev"
+    },
+    {
+     "id": "20",
+     "text": "The heartbeat rewrites entries from memory every 10 s. If the entry in Redis is rewritten with an older cursor than one already published, could receivers see stale data? Also, how does the node know an entry 'had already expired' without reading Redis?",
+     "about": "Step 6. Heartbeat"
+    },
+    {
+     "id": "21",
+     "text": "The sweep runs on every node that serves the document, every 10 s. How does a node know which documents it serves, and does the sweep cost grow with the number of documents or connIds? What stops a node sweeping an entry that was just written but not yet visible?",
+     "about": "Step 7. Sweep"
+    },
+    {
+     "id": "22",
+     "text": "Step 3 says one caret per user is drawn, from the connection that sent a cursor most recently. How does the client decide 'most recently' (arrival order, seq, or something else), and what happens to the caret when that connection leaves but another tab of the same user remains?",
+     "about": "Step 3. Presence list in the client"
+    },
+    {
+     "id": "23",
+     "text": "What does the client show and do when its WebSocket to the node drops, before it reconnects? Does it keep showing the old presence list, and when does the new snapshot replace it?",
+     "about": "Step 1. Open / Failures"
+    },
+    {
+     "id": "24",
+     "text": "The 45 s limit for crash detection is cited. What is the 'brief' and does the 20 s pong timeout or 10 s ping interval relate to it for a vanished browser?",
+     "about": "Step 9. Node crash"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "No. The sender gets no reply and no echo; its own caret is local. If the Redis write fails on a cursor, the node closes the socket, the same handling as a failure on open, and the client reconnects with a new snapshot. This is the simplest handling and adds no mechanism. Now stated in step 4 and the failures table."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "Every time appliedRev moves, the client re-checks its held cursors and draws any whose rev is now reached. editor-protocol.ts shows appliedRev as the last revision applied and shows remote_op and ack messages carrying a rev, so those are what advance it. I have not verified that nothing else moves it, such as the first document load, so I listed that as an open question. The re-check works whatever moves it. Now in step 5 and in the appliedRev term."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "No stale data. The node's in-memory copy always holds the latest accepted cursor, and the heartbeat only rewrites that value and publishes no cursor, so receivers never see an older one. Only the owning node writes that entry. To know the entry expired without a separate read, the rewrite is SET ... EX 30 GET (Redis 7), which returns the old value, and nil means it had expired. Now in step 6."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "A node knows which documents it serves from the keys of its localSockets map. The sweep cost grows with the number of connIds in the indexes of those documents, since each connId needs an existence check on its entry. I accept that at this scale and did not add a mechanism. A just-written entry is never swept as missing, because step 1 writes the entry before it adds the connId to the index, and all reads and writes go to the Redis primary, which applies them in order. Now in step 7 and where state lives."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Most recently means arrival order at that client, because seq is per connection and cannot compare two tabs. If that connection leaves while another of the same user remains, the client draws the caret from the remaining connection that sent a cursor most recently, using the last cursor it stored for that connection. The client therefore stores the last cursor per connId, not only the seq. Now in step 3 and where state lives."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The client keeps showing its old list and carets, frozen, until it reconnects. The new snapshot then replaces the map. I chose this because it needs no new mechanism. How the editor shows a dropped connection to the user is existing behaviour that I have not checked. Now stated in step 1 and the failures table."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The 45 s limit is the node-death requirement in the brief, and it relates only to the node crash case (10 s refresh plus 30 s TTL plus 10 s sweep, about 40 s). A vanished browser is a separate case. The 10 s ping and 20 s pong timeout come from gateway.md, and the plan closes the socket within 20 s and then runs the clean leave. The brief gives no limit for that case. I replaced the plan's wording about the brief with the required 45 s, and noted this in the failures table."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow Alice opening a document that Bob (Node 2) and Carol (Node 1) are already in. Then I follow her cursor, her heartbeats, her leaving, and a Node 2 crash.\n\n1. Alice opens the document. Her browser sends `open docId` over its WebSocket to Node 1. Node 1 gives the socket a new random connId. If Node 1 is not subscribed to `presence:{docId}`, it subscribes now. Carol is already on Node 1, so it may be subscribed already. State: the node holds the socket in `localSockets`.\n\n2. Node 1 writes Alice's entry to Redis at `pc:{docId}:{connId}`. The entry holds userId, name, colour, nodeId and cursor, and it expires 30 s after its last write. The colour is a hash of userId, so every tab and node picks the same one. Node 1 then adds the connId to the index set `pd:{docId}`. The order is entry first, then index, so the index never lists a connId without an entry. Redis is the source of truth, and all reads and writes go to the primary. If Redis fails here, Node 1 closes the socket and the client reconnects with a new connId. While it is down, the client shows its old list frozen.\n\n3. Node 1 publishes `join` on the channel. Redis forwards it to Node 2, which is subscribed because Bob is there. Node 2 sends Bob a \"join Alice\" message, and Bob's client upserts Alice into its map by connId.\n\n4. Node 1 builds Alice's snapshot. It subscribed before reading, so it cannot miss a join. It reads the index and each entry, including Bob's latest cursor `{rev, pos, seq}`, and sends them as a snapshot. Channel messages that arrive in the meantime are buffered and sent after the snapshot, in order. One of these is Alice's own `join`, which is applied as an upsert. Alice's client replaces its in-memory map, including stored seq values, with the snapshot. It treats each snapshot cursor like a cursor message (see step 7), so Bob's caret appears even if he is idle.\n\n5. Alice's client shows one avatar per distinct userId and draws carets for other users only. Once the document is loaded, appliedRev is known and the snapshot has arrived, it sends its first cursor, with appliedRev as `rev`. This makes her caret visible even if she never moves.\n\n6. Alice moves her caret. Her client sends `{rev, pos, seq}` at most once per 50 ms, and the latest position always goes last. seq starts at 1 per connection and goes up by 1. Node 1 drops any cursor that comes less than 50 ms after the last accepted one, silently. For an accepted cursor, Node 1 updates the entry in its own memory, writes it to Redis with SET (which refreshes the TTL), and publishes `cursor` on the channel. Alice gets no reply and no echo. If the Redis write fails, Node 1 closes the socket. Cursors never go to the document service or Postgres.\n\n7. Redis delivers `cursor` to Node 2, which forwards it to Bob's client. Bob's client keeps the last cursor and seq per connId. It ignores any cursor whose seq is at or below the stored one. For a newer cursor, there are two cases.\n   - If its `rev` is above Bob's appliedRev, Bob holds it, replacing any older held cursor for that connection. Each time appliedRev moves, he re-checks his held cursors and draws the ones whose rev is now reached.\n   - Otherwise he draws it at `transformPosition(pos, rev, appliedRev)`, and moves the caret forward the same way as he applies more revisions. If transformPosition throws `HistoryGone`, he drops the caret, and it reappears at Alice's next cursor.\n   If Alice has two tabs, Bob draws one caret for her, from whichever connection's cursor arrived most recently.\n\n8. Heartbeat, every 10 s on each node. Node 1 pings Alice's socket and closes it if there is no pong for 20 s, which is a clean leave (step 9). Node 1 also rewrites its open connections' entries from its own memory, never reading back from Redis. The rewrite resets the 30 s expiry, runs SADD on the index (which restores a connId that was wrongly removed) and refreshes the index expiry. SET ... EX 30 GET returns the old value. If that is empty, the entry had expired, so Node 1 publishes `join` again. The heartbeat itself publishes no cursor.\n\n9. Sweep, every 10 s on each node, over the documents it serves. The node lists the index, finds connIds whose entry is gone, and runs SREM on each. Only the node whose SREM actually removed the id publishes `leave`.\n\n10. Alice closes the tab. Node 1 deletes her entry, removes her connId from the index and publishes `leave`. Node 2 tells Bob, and Bob's client deletes her entry, stored seq, held cursor and caret together. Her avatar goes only when no connId with her userId remains. When a node has no sockets left on a document, it unsubscribes. Others see the leave in well under 2 s.\n\n11. Node 2 crashes. Nothing cleans up. Bob's entry stops being refreshed and expires within 30 s. On Node 1, the next sweep finds Bob's connId in the index with no entry. It runs SREM, and if it removed the id it publishes `leave`. Node 1 is subscribed to the channel, so it receives that `leave` and passes it to Carol's client, which drops Bob. The total is at most about 40 s. Until then Bob's avatar and carets stay frozen on screen. If no node serves the document any more, the entries expire on their own and the index expires 60 s after its last write.\n\n12. Other failures:\n   - If Redis is unreachable, presence goes stale but edits still work. A Redis error on open or on a cursor write closes the socket, and the reconnect gets a new snapshot.\n   - If Redis fails over, recent writes may be lost, and the next heartbeat rewrites them.\n   - If a live node refreshes late and the entry expires, the sweep may publish `leave`. The next heartbeat re-adds the entry and publishes `join`, so the user is back within 10 s.\n   - If a browser vanishes, the pong timeout closes the socket within 20 s and then the clean leave runs.\n   - A lost or late cursor is handled by the seq rule, and the next cursor corrects it.",
+   "gaps": [
+    "How Node 2 or Node 1 turns a received channel message into a message to its local sockets is not described. For example, it does not say whether it loops over `localSockets` for that doc, or how the node tracks which docId each socket belongs to.",
+    "The wire format and message names between client and node are only partly given. `open docId` and the client-side `join`/`cursor`/`leave` messages are mentioned, but the document does not say how the client tells snapshot from channel messages.",
+    "It does not say what the client does when it receives its own `join`, or whether the client knows its own connId. Caret drawing is 'for other users only', but how 'own' is identified, by userId or connId, is not stated.",
+    "How the node knows the userId, name and authentication for the connection is not given. The `open` message carries only docId, and the source of user identity is not described.",
+    "Who triggers `open docId` and what happens if a client sends `cursor` before `open` completes, or for a document it has not opened, is not stated.",
+    "It does not say how a node that reads the index and entries during a snapshot handles an index entry whose entry has already expired or been deleted, for example whether it skips it.",
+    "The 'drop if under 50 ms' check uses the 'time of the last accepted cursor' kept per connection, but the document does not say whether the first cursor on a connection is always accepted, or what the initial value is.",
+    "Where Redis failover to the replica gets detected, and whether nodes resubscribe to the channel after failover or after a Redis disconnect, is not described. Pub/sub subscriptions are said to keep nothing, so a node that loses its subscription would miss messages.",
+    "How a node closing the socket on Redis failure interacts with its in-memory entries and `localSockets` cleanup (does the clean leave still run if Redis is down?) is not specified.",
+    "It does not say what the client does with a `join` for a connId it already has, beyond 'upsert'. It also does not say how the client handles a snapshot cursor with a lower seq than one already stored, since the map is replaced wholesale."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

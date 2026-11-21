@@ -1,0 +1,31 @@
+## Review of sync-01 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short Summary at the top so a reader sees the whole mechanism first.
+- Moved the sync triggers, ordering, batch limits and single-sync-at-a-time rule into a 'Sync rules' section, so they are no longer scattered.
+- Moved the conflict-title assumption into a clearly labelled 'Assumption to confirm' bullet and removed the duplicate at the end of the failure section.
+- Defined terms on first use: idempotent, base_version (the server version the edit started from), and the stored result in applied_changes.
+- Merged the 'Overlapping syncs' case into Sync rules.
+- Added that the phone keeps requesting pages until has_more is false.
+- Clarified the in-flight edit rule and the per-change check order on the server.
+- Reworded the log-ordering paragraph for clarity. Left the diagram unchanged.
+- Defined outbox, change log, seq, base_version and cursor in the Summary so a reader new to the project can follow it.
+- Split the long Summary into a short ordered upload/download description.
+- Defined the in_flight column and noted that full bodies (no diffs) are queued.
+- Added a sentence that the server decides conflicts, with first-to-arrive winning and no text merge.
+- Clarified the diagram note about phone A's own log entry 101 being ignored because v4 is not newer than its local v4.
+- Rewrote the in-flight edit rule: the in-flight row stays untouched, the new text goes to notes only, and a new outbox row with a new change_id is created after an accepted ack. This removes the apparent contradiction with one outbox row per note.
+- Said that a phone missing seq 101 would miss it permanently, to make the log-ordering risk concrete.
+- Added an open item for an edit made while its change is in flight that then returns as a conflict, which the design previously left silently lost.
+- Summary: turned the dense paragraph into a short list that separates conflicts, retries and downloads, and defined the change log up front.
+- Defined 'sequence number' and 'outbox' once, early, instead of leaving them implicit.
+- Collapsing rule: stated that it applies to a row that is not in flight and pointed to the Upload section for the in-flight case, removing an apparent contradiction.
+- Diagram intro: added that B's first upload reaches the server but the response is lost, so the reader knows what to watch for.
+- Reworded a few sentences for plain wording: 'acceptable' for 'fine', an explicit 101/102 example in the log-ordering rule, and 'entry' instead of 'change' for log items.
+- Removed the trailing clause 'and edits made offline still keep their original base' in the in-flight bullet, which was confusing and redundant with the collapsing rule.
+- Fixed the table cell wording for in_flight and tidied the sentence about entry 101 in the diagram note.
+
+### Holes
+- None.

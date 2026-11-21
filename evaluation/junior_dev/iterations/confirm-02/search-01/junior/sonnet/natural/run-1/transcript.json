@@ -1,0 +1,190 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The live index is products_v3 and the alias products points to it. When the first go-live rebuild creates products_v4, how does v3 get its own consumer group started at the saved offsets, and why does v3 need to be kept in sync at all if v4 becomes live?",
+     "about": "First go-live (retiring cron)"
+    },
+    {
+     "id": "2",
+     "text": "What does the 'controller' do, and what is it? The document says it can switch on its own after the first switch. What process runs the rebuild steps (create index, record offsets, load snapshot, start group, check gate)? Is it the operator, the indexer, or something else?",
+     "about": "Gate details / TRIG: operator starts rebuild"
+    },
+    {
+     "id": "3",
+     "text": "How does the version work for a hard delete? A delete has a commit_lsn, but the document is gone. How does the indexer stop an older replayed create or update from bringing the document back after the delete?",
+     "about": "MAP: version = commit_lsn, d: delete"
+    },
+    {
+     "id": "4",
+     "text": "The snapshot rows load at version 0 and 'any replayed event can overwrite them'. But the rebuild reads the snapshot while changes keep arriving. How do rows changed between the offsets being recorded and the snapshot opening end up correct, and what stops a replayed delete being lost when the row was never loaded?",
+     "about": "R2 / R3: Why this order is safe"
+    },
+    {
+     "id": "5",
+     "text": "While the new group indexer-products_vN replays events, the old group indexer-products_v3 is also reading the same topic. Do both run all the time? Does the Debezium connector or topic know about either group, or is it only offsets?",
+     "about": "LIVE: one consumer group per target index"
+    },
+    {
+     "id": "6",
+     "text": "What exactly is the 'connector head' used to measure lag, and where does the gate read it from? What does the gate read for 'doc count' and for 'unexplained DLQ'?",
+     "about": "GATE: lag under 5 s, doc count within 0.5%"
+    },
+    {
+     "id": "7",
+     "text": "When an invalid document goes to the DLQ, who looks at the DLQ and what do they do with it? Can DLQ events be replayed, and what happens if the DLQ produce itself fails or Kafka is down?",
+     "about": "DLQ: invalid document"
+    },
+    {
+     "id": "8",
+     "text": "Who or what does the 'WAL guard' check every minute and send the alert to? And what does 'restart connector' recover from, given the connector stops when Kafka is down?",
+     "about": "WAL guard, checked every minute"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "On first go-live the rebuild creates products_v4 and, at the switch, the controller starts a group indexer-products_v3 at the same saved start offsets, so v3 receives every change after the snapshot. v3 is kept in sync only so a rollback within 48 h loses no change. Later rebuilds reuse the old index's existing group. Whether the store treats the cron's unversioned v3 documents as older than any commit_lsn is not verified; added as an open item."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The rebuild controller was undefined, which was a gap. It is now defined: a small program, separate from the indexer, that the operator starts. It creates the index, records offsets, runs the snapshot load, starts the new group, checks the gate and moves the alias. The indexer only consumes events. The first switch needs a person's approval, later ones can be automatic."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A delete event carries its commit_lsn as its version. Events for one product are in one partition in commit order, and a replay always runs a contiguous range in that same order, so an older create is never applied after a later delete. After a crash a replay can briefly bring a document back and then delete it again, and the end state is correct. How long the store remembers the version of a deleted document is not verified, so the plan does not rely on it; added as an open item."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Offsets are recorded before the snapshot opens, so a change committed between the two is in both the snapshot and the replay. The replay applies it again in order, so the result is correct. A replayed delete for a row that was never loaded (deleted before the snapshot) is a no-op. A replayed delete for a loaded row removes it. Added one line to the safety list."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes, both groups run all the time and independently. Debezium and the topic know nothing about groups. Kafka only stores committed offsets per group. Added one line."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The connector head was vague. Now lag is defined as the commit time of the newest event in the topic (end of each partition) minus the commit time of the newest event the new group applied, and the controller reads both from Kafka. Doc count is the count of products_vN read from the search store, compared with the sync_control active row count. 'Unexplained DLQ' is replaced by: no DLQ events from this rebuild's group since its start offsets unless a person marked them reviewed in sync_control."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "The search on-call is alerted for DLQ events and decides the fix (data or mapping). Who exactly is on that rota and which alerting system is used is not known; added as an open item. DLQ events keep the original event and commit_lsn, so a person can replay them by hand after the fix, and the version rule makes a replay safe. If the DLQ produce fails, it is treated as a transient failure: same backoff, partition paused, offsets not committed. Added to the doc."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The WAL guard is a monitoring check that reads retained WAL of search_slot from pg_replication_slots every minute and alerts ops on-call. Restarting the connector recovers from a connector crash or an ended Kafka outage, because Debezium resumes from the slot's confirmed position and loses nothing. If Kafka is still down, Kafka must be fixed first, which the alert text already says. The exact alerting system is not known."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "In the live loop, MAP turns a non-active update into a delete. If a product goes active, then inactive, then active again, how does the order of those events decide what ends up in the index?",
+     "about": "MAP: c or u with other status, or d: delete"
+    },
+    {
+     "id": "10",
+     "text": "The rebuild loads snapshot rows at version 0, and the new group starts only after the load finishes. What does the live index v3 do for the 2.5 h load, and is anything lost or stale in v3 while a new index is being built?",
+     "about": "R3 / R4: Load finished, start group indexer-products_vN"
+    },
+    {
+     "id": "11",
+     "text": "When the snapshot load crashes, the controller deletes products_vN and restarts under a new name. Who notices the crash and who starts the restart: the operator or the controller? And is a person told?",
+     "about": "LOADFAIL: Loader crash or snapshot lost"
+    },
+    {
+     "id": "12",
+     "text": "What does the controller check before a rollback besides old group lag under 5 s? What do search users see during the swap back, and after rollback what happens to the new index and its group?",
+     "about": "ROLL: Roll back: confirm old group lag under 5 s"
+    },
+    {
+     "id": "13",
+     "text": "What does the canary probe do exactly: which product does it update, where does it read it back, and what happens when it sees the change late or never?",
+     "about": "5-second target: synthetic canary product"
+    },
+    {
+     "id": "14",
+     "text": "When the indexer says an event is stale and counts it in stale_total, who watches that number, and what level would mean something is wrong?",
+     "about": "STALE: Version conflict: event is stale"
+    },
+    {
+     "id": "15",
+     "text": "A Postgres hard delete is one event with op d. What does the event carry (id only?), and how does the indexer know which document to delete when the 'after' field is empty?",
+     "about": "CDC: one event per change: op, id, after, commit_lsn"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Events for one product are in one partition in commit order, each with its own commit_lsn. Active, inactive, active gives index (v1), delete (v2), index (v3). Each is accepted because its version is at least the stored one, so the last event wins and the product ends up in the index. A replay of the same range runs in the same order and gives the same end state. Added one line to the notes."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Nothing is touched in the live index by a rebuild. It keeps serving search, and after the first go-live it is kept current by its own consumer group, so nothing in it is lost or stale because a build is running. Before the first go-live it is still fed by cron, with cron's known gaps. The only effect on the primary is the snapshot read and delayed vacuum. Added one line to the rebuild safety list."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The controller notices its own loader failing and alerts the search on-call. The operator restarts the rebuild, not the controller automatically, because a restart costs another 2.5 h of reads against the DBA-limited primary and a person should choose the time. If the controller process itself dies, the missing progress shows in sync_control and the gate alert. Added to the doc and the flowchart."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Before a rollback the controller only checks that the old group lag is under 5 s, which is what guarantees no change is lost. Beyond that, nothing else is checked, since the swap is atomic and a person decides to roll back. During the swap, search users see the new index or the old one, never neither. After the rollback the new index and its group are left running so it can be inspected, until a person deletes them. I chose this as the simplest handling and added it to the doc."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The canary is one dedicated active product row. The probe writes a new counter into its description in Postgres every 30 s, then polls the alias products until it sees that counter and records the delay. It alerts the search on-call if the 95th percentile of delays is over 5 s, or if one update is not visible after 30 s. How the canary is excluded from real results is not decided; added as an open item. One extra document is far inside the 0.5% gate tolerance."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "Nobody has been named to watch stale_total, and no alert level has been chosen. It is expected to be non-zero in normal running (overlapping retries) and high while a new group replays, so a naive threshold would be wrong. Added as an open item."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Per search-setup.md the event shape always has the top-level field id, and for a delete after is null. The indexer uses the event's id as the document id, as the cron job does with r.id, so it knows which document to delete. Added one line to the notes."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A commit on the `products` table in Postgres (`catalog-primary`) is written to the WAL. The replication slot `search_slot` makes Postgres keep that WAL until the slot's reader confirms it.\n\n2. Debezium reads the slot and publishes one event per row change to Kafka topic `catalog.products`: `{op: c|u|d, id, after, commit_lsn}`. The topic has 12 partitions keyed by product id, so all changes to one product land in one partition in commit order. Retention is 7 days. Debezium confirms its position to the slot (`confirmed_flush_lsn`) only after Kafka acknowledges. If the connector errors or Kafka is down, the connector stops and WAL grows. Restarting resumes from the confirmed position with no loss.\n\n3. WAL guard. A monitoring check on `pg_replication_slots` runs every minute. At 20 GB retained WAL it alerts ops on-call to check the connector and Kafka and restart the connector. At 50 GB ops drop the slot. The connector then fails, and the only way back is a full rebuild. Changes between the drop and the new slot are lost.\n\n4. The indexer service runs one consumer group per target index, for example `indexer-products_v3`. It polls a batch from its partitions, up to 500 events or 200 ms. The group's committed Kafka offsets hold its progress.\n\n5. Each event is mapped. The document id is the event's `id`. A create or update with status `active` becomes an index of the full document. A create or update with any other status, or a delete (`op=d`), becomes a delete of the document. A null tombstone record is ignored. Every write carries `commit_lsn` as its version, deletes included.\n\n6. The indexer sends a bulk write to the concrete index, `products_v3`, never through the alias. The search store applies a write only if its version is at least the stored version. Otherwise it returns a version conflict.\n\n7. Each document's result is handled separately.\n   - Written: done.\n   - Version conflict (409): the event is stale. The indexer counts it in `stale_total`, treats it as not an error and moves on.\n   - Transient failure (timeout, 5xx, throttle): the indexer retries only the failed documents, in the same order with the same versions. It waits 1 s, 2 s, 4 s and so on, up to 60 s. The partition is paused and the indexer never skips ahead. It alerts if stuck at the 60 s cap for more than 5 minutes.\n   - Rejected as invalid: the indexer produces the event and the error to `catalog.products.dlq` and waits for the ack. It alerts the search on-call and carries on. If the DLQ produce fails, it is handled like a transient failure, with the same backoff, the partition paused and offsets not committed.\n\n8. Offsets are committed up to the last resolved event of each partition. Resolved means written, stale, or confirmed in the DLQ. Then the next batch is polled. After a crash or rebalance the indexer resumes from the committed offsets. Replays are harmless because an equal version is accepted and older versions conflict. A replay may briefly bring a document back and delete it again, but the end state is correct.\n\n9. Search API queries use the alias `products`, which points at one concrete index (`products_v3`).\n\n10. Delay measurement. A canary probe updates a counter in a dedicated `active` canary row every 30 s. It then polls the alias until it sees the counter and records the delay. It alerts the search on-call if p95 is above 5 s, or if one update is not visible after 30 s. The budget is about 1 s for capture and Kafka, 0.2 s batch wait, under 1 s bulk write and 1 s index refresh. That leaves about 1.5 s of slack. The target is 95% of changes searchable within 5 s.\n\n11. Rebuild. This is triggered by a new mapping, data loss, a dropped slot, or a group down longer than 7 days. The operator starts the rebuild controller. Progress is kept in the `sync_control` index.\n    - a. If the slot was dropped, recreate `search_slot` and restart the connector first.\n    - b. Create `products_vN` with refresh off and 0 replicas, and write a rebuild record to `sync_control`.\n    - c. Record the end offsets of all 12 partitions as the start offsets, and save them to `sync_control`.\n    - d. Open one repeatable-read snapshot on the primary. Load `active` rows in id order into `products_vN` at version 0, capped at 5,000 rows/s (about 2.5 h). Save the id cursor and row count. Watch for vacuum delay and bloat on the primary.\n    - e. When the load finishes, restore refresh to 1 s and the replicas. Start group `indexer-products_vN` at the saved start offsets. It runs the same loop as steps 4 to 8. Replaying from before the snapshot is safe because replayed events carry the same or newer state and the last event per key wins. Version 0 lets any event overwrite a snapshot row. A replayed delete for a row that was never loaded does nothing.\n\n12. Gate. It is checked every minute and must hold on 3 checks in a row.\n    - Lag is under 5 s. This is the commit-time difference between the newest event the new group has applied and the newest event in the topic, both read from Kafka.\n    - The doc count of `products_vN` is within 0.5% of the active row count. That row count is the snapshot count plus created minus deleted from the bulk results.\n    - There are no unreviewed DLQ events from this group.\n\n    If the gate is not met, the controller keeps catching up and alerts after 6 h. A person approves the first switch. After that the controller may switch on its own.\n\n13. Switch. One atomic alias request removes `products_v3` and adds `products_vN`. The switch time is recorded in `sync_control`. Queries go to the old index or the new one, never neither.\n\n14. Hold. The old index keeps its own group for 48 h. If there is a problem, confirm the old group's lag is under 5 s, then atomically swap the alias back. The new index and its group stay until a person deletes them. If there is no problem, delete the old index and its group after 48 h.\n\n15. Rebuild failure. If the loader crashes or the snapshot is lost, the snapshot cannot be resumed. The controller alerts the search on-call. The operator deletes `products_vN` and starts again under a new name with new start offsets. A person decides when.\n\n16. First go-live. Deploy the connector and indexer, then run a rebuild to create `products_v4`. At the switch, stop cron and start group `indexer-products_v3` at the same saved start offsets, so rollback within 48 h loses nothing. Before that switch, `products_v3` is still fed by cron.",
+   "gaps": [
+    "How the DLQ-lag or error is detected as 'invalid' versus transient is not defined. The document does not say which store errors count as 'rejected as invalid' (for example a 400 or a mapping error).",
+    "How the loader's 'created minus deleted from the bulk results' is obtained is unclear. The document does not say how the new group reports created and deleted counts back to the controller, or how the controller reads them.",
+    "What process runs the controller's every-minute gate check, and where the controller runs and stays alive (for example whether it survives a restart mid-catch-up), is not stated. Only the operator starting it is stated.",
+    "Who or what 'a person approves the first switch' means in practice is not described. It does not say how the approval is given to the controller, or how a person marks DLQ events as reviewed in `sync_control`.",
+    "Exactly how the indexer knows which index its group writes to, and how the controller starts a new group at specific saved offsets, is not specified.",
+    "How `commit_lsn` is converted to a 64-bit integer is not described. The document also does not say how a version-0 snapshot document interacts with the unversioned documents cron wrote into `products_v3`. This is listed as an open question.",
+    "How the lag is computed for the live group `indexer-products_v3` against the old-index rollback check, and what the controller does if that lag is over 5 s at rollback time, is not said.",
+    "How cron's documents behave during first go-live while `products_v3` receives both cron writes and group writes is not stated. Cron is stopped at the switch, but the document does not say what order or version rules apply to cron's unversioned writes.",
+    "What the rebuild does about events whose mapping differs for a new mapping, meaning how the indexer writes both old and new document shapes during the hold, is an open question.",
+    "Who is on the search on-call rota and which alerting system is used is undecided.",
+    "How the canary row is excluded from real search results is undecided."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,77 @@
+## Review of mr-01 (junior, author haiku, natural)
+
+Rounds: 5. Ended: teachback-correct.
+
+### What changed
+- Changed: added a Terms section defining WAL, replay lag, lease store, epoch, lease, fencer, fenced, job claim, claim epoch, reaper, idempotency key and side-effect ledger, and placed it before the flowchart.
+- Changed: lease store record now lists its fields once, and the 3-voter layout is stated once in Terms.
+- Changed: step 2 specifies who computes each RPO gate check (B records the first two, the command computes the third from the store and B), and states that the gate is an admission check, not a guarantee.
+- Changed: fencing now writes an A-fenced record at epoch n, so later renewals are refused, and states that the fencer never restarts Postgres as primary. Renewals and heartbeats are described as sent to the store.
+- Changed: promotion records epoch n+1 as a compare-and-set on n, and the file states that active_region stays A until the traffic step, while the database primary is B from promotion.
+- Changed: the DNS and health gate now requires B's workers to be running, not only B's web tier. The flowchart and failure table reflect this.
+- Changed: reconcile and worker start are split into their own step, and the flowchart shows web scaling running in parallel with reconcile.
+- Changed: the interrupted-run rules now use start and finish markers, with the compare-and-set guard against two operators running at once. No lock was added.
+- Changed: replaced the separate triggers-and-owners table with trigger lines in each step, to avoid repeating the same facts.
+- Changed: added a single failure table that covers each failure and what happens, and removed the per-step repetition of it.
+- Changed: moved settings to verify and game-day items under Building and rolling out, separate from how the system runs.
+- Changed: open items reworded. The 30 s threshold is fixed by the brief, so the open item is confirming which checks it applies to and who may approve an override. Added the ledger location and overlapping-run questions.
+- Step 2: added that on-call decides whether the page is a real loss, and that the command runs from an operator host needing store, B's database, B's scaling and DNS, with no path to A (Q9, Q11).
+- Step 3: added why the fencer's 25 s stop always comes before the store's 30 s expiry, and what happens when the post-fence gate fails with no override (Q10, Q13).
+- Flowchart: OC label now says on-call confirms a real loss (Q9). Added the post-fence gate re-run (G2) and its stop path (STOP2), which were missing, and routed the Yes branch to promotion (Q10).
+- Step 6: defined what B's /healthz at full size checks and what counts as workers running (Q12).
+- New section 'Job claims on B': claim by one update, heartbeats, and reaper requeue (Q14).
+- Terms, idempotency key: added who sets the key and writes the ledger entry, and that external honouring is not yet checked (Q15).
+- Failure table: added the row for a gate failure after the fence with no override (Q10).
+- Open questions: added abandoned-failover restart after fence, claim length and heartbeat interval, and the on-call checklist (Q9, Q10, Q14).
+- Not run: the helper loop (start, ask, answer, teach-back, report) was not executed, because this round used no tools. The file has had targeted fixes only, not the full step 6 rewrite, and it has not been through teach-back.
+- Reconcile (step 5) now checks the side-effect ledger for every unfinished row, queued or running, not only rows running under an old epoch, because B cannot see A's claims (Q17).
+- Step 5 now says the command stops before starting workers if the ledger cannot be read from B, which the first version left implied (Q17 and the ledger open question).
+- Step 4 now says the command records and prints the loss estimate, the gate values and any override approver after promotion. Lost-row identification is stated as not possible from B (Q16).
+- Step 3 now says the fence wait polls the store once a second, ends on fencer confirm or lease expiry plus 5 s, has no timeout of its own, and keeps waiting while the lease is live (Q19).
+- Step 6 now says the health and worker check polls every 15 s, and the failure deadline is left open (Q19).
+- Added an outage-window paragraph after step 7 stating that users see failures from the fence until DNS moves, and that the command prints progress for on-call (Q18).
+- Added a fail-table row for lost majority mid-run and for both A and B voters down. A's own fencer still stops A's Postgres at 25 s. The plan's limit of losing 2 of 3 voters is stated (Q20).
+- Added the needs_review definition in the terms and a clear statement that workers skip it. The command prints the list, and a person sets rows to queued or done (Q21).
+- Merged the duplicate fencing rules from steps 3 and the fencing section into one place, and merged the job claim rules from the Jobs and Claims sections into one Jobs section. The summary is cut to three sentences, and the terms are each one line.
+- Removed the open question about which gate check applies to each of the three checks, because step 2 already states that all three must be 30 s or less.
+- Added open questions: keep A's old database until lost rows are checked, user notice during the outage, health-check failure deadline, the live-lease case with a silent fencer, where needs_review rows are shown, and whether external systems honour idempotency keys. The fencer stop mechanism question was kept.
+- Added the term Dead-letter, the term Compare-and-set, and a one-line definition of heartbeat, so the terms are complete for a newcomer.
+- Step 3: the command writes a fence request to the store instead of contacting A's fencer, which it cannot reach. The fencer reads the request on renewal, stops Postgres and writes a stop report with its final position to the store.
+- Step 3: the post-fence gate re-run uses the fencer's final position if reported, or else the last acknowledged renewal plus 25 s.
+- Step 2, third gate check: adds up to 25 s for commits made between the last acknowledged renewal and the fencer's stop.
+- Step 4: the epoch record (promoting to epoch n+1, compare-and-set on n) now comes before pg_promote, so a refused write stops before any promotion. Added how a re-run handles a crash after promotion.
+- Flowchart, fence and promote subgraphs: the fence node, the fence check, the new promoting record and its refused-write stop all match the revised steps.
+- Step 5: the command prints the ID and attempt count of each requeued row, and the ID of each row set to needs_review.
+- Step 6: states that the health poll waits for workers and that no user reaches B before DNS moves, so B serves nobody during reconcile.
+- Interrupted section: added how on-call resumes after a stop, with the same epoch and the next unfinished step.
+- Fencing section: the 25 s timer counts from the last acknowledged renewal send, which matches the store's 30 s expiry. Added that the fencer reads fence requests on renewal and reports its final position. Added the unmeasured window and its 25 s bound.
+- Terms: added fence request.
+- Failure table: added a row for a refused promoting write, and changed the failure-before-promote row to match the new order.
+- Restructured into the skill's order: summary, terms, flowchart with notes, steps, failure table, timing, after-A-returns, building and rolling out, open questions. Each fact now appears in one place.
+- Summary now says how the system works today, before the new failover flow.
+- Added terms: recorded replay lag, active region and /healthz, each in one line.
+- Step 1: noted that A's /healthz also fails on a web-tier outage, so the page cannot tell the two apart (Q33).
+- Step 3: the fencer reads a fence request at its next renewal, within 10 s when it can reach the store. If it is cut off, it never reads one and stops at 25 s on its own timer. The command then continues about 35 s after the last renewal the store received, at the latest (Q28).
+- Step 4 and step 7: fixed the claim that the record sends users anywhere. DNS sends users, and DNS is a copy of the store written after the store (Q31).
+- Step 5: the command prints the ID of every row it marks done, in addition to requeued and needs_review rows (Q29). The epoch is passed as each started worker's start setting (Q30). The reaper starts with the workers, after reconcile (Q32). Flowchart updated to match.
+- Interrupted-runs section and flowchart: a re-run that finds the fence already recorded no longer goes back to the pre-fence gate. It re-runs the post-fence gate before promotion, and otherwise resumes at the step after the last marker. This was a real error in the first version: a re-run could repeat the pre-fence gate after the fence, and the gate could then fail for a reason that no longer applied.
+- Failure table: the DNS-write-failure row now says the store already records B, and that users keep failing until DNS moves (Q31). Added a row for two people running the command at once, which was in the text only.
+- Timing: the fence estimate is now stated as about 35 s after the last renewal the store received. The RTO clock start is stated as the brief sets it.
+- Open questions: added the worker count (Q30), the reaper's host (Q32), and the on-call checklist must separate a web-tier outage from a regional loss (Q33).
+- Summary: cut to one paragraph of three sentences. It now says how region A works today, then how failover goes and why it is shaped that way, instead of repeating the step list.
+- Terms: added one-line definitions for RPO, RTO, standby, promote, monotonic clock, postmaster, heartbeat, reaper, dead-letter, needs_review, idempotency key, side-effect ledger and the global traffic manager, which a newcomer would not know. Dropped the separate term for the store's record, which is now in its own section.
+- Fenced: redefined. It no longer says that Postgres checks the lease, which contradicted the wedged-host limit. It now says the command treats A as fenced once the fencer confirms the stop or the lease has expired plus 5 s, and that the second case relies on the fencer having stopped Postgres.
+- Flowchart: rebuilt as seven step subgraphs that match the Steps section. Removed the long questions and internal codes from node labels. Added one re-run decision that shows where a re-run resumes, instead of separate dotted paths from every step. Each subgraph is labelled with its step, and the cross-step edges are grouped at the end.
+- Flowchart: added a short Notes section after the diagram. It explains solid and dashed arrows, and points to the re-run.
+- Cut the 'Triggers and owners' table, which repeated each step's trigger. Each trigger now sits in its step.
+- Cut the separate failure table. Each step now ends with 'If it goes wrong'. The cross-cutting failures (store majority loss, both A and B voters down, A returning, two people running the command, job failure on B) are kept, in the lease store and interrupted-runs sections.
+- Merged the fencer timing (10 s renewals, 25 s stop, 30 s expiry, 5 s margin, 35 s worst case) so each number is stated once, in step 3 and the fencing section. The fencing section no longer repeats the fence-request mechanics.
+- Step 4: the recovery rule after a crash is stated once. A re-run that finds 'promoting' skips the compare-and-set. If B is no longer in recovery, it goes to the writable check. If B is still in recovery, it runs pg_promote. The first version gave two different rules for this.
+- Step 2: the RPO gate's three checks are each defined with what they measure. The non-guarantee note now appears once, in the Data loss section. Kept the override rule and the note that the brief does not say where B keeps its recorded lag.
+- Added the Data loss section (invoices and payments lost, bounded by the gate's measure, nobody told which rows). Added the Lease store section (3 voters, 2 of 3 majority, loss of one voter and of both A and B voters, majority loss mid-run). Both were in the first version's text and are now in one place each.
+- Settings: removed the duplicate 'sessions empty' and 'Postgres not on boot' items, which are already stated in step 7 and the fencing section. Kept the three settings that must be checked before go-live.
+- Open questions: kept all of the first version's open items and merged the slow-run overlap question into the list. Each open item is a single line.
+
+### Holes
+- Q6: What is the side-effect ledger, where does it live, and how does reconcile read it if A is down? (author: The plan does not say where the side-effect ledger lives, or whether B can read it while A is down. The brief describes ledgers that record external side effects keyed by idempotency key, so they may sit outside A's database. If the ledger is only in A's database, reconcile rule 1 cannot run. This is added to Open questions.)
+- Q15: Who or what sets the idempotency key and writes the ledger entry for a job, and does the external system honour the key on a repeat? (author: The brief does not say who sets the idempotency key or writes the ledger entry. The decided part is that the job's code sets the key and writes its ledger entry right after the external call. The ledger write comes after the external call, so a crash between the two can repeat an action, and the key is what prevents that. Whether each external system honours a repeated key is unknown. Open questions already asks this for every job type.)

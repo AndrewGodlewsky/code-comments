@@ -1,0 +1,34 @@
+## Review of ev-02 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a Terms section that defines outbox, ack, dead-letter topic, delivery, lease, SKIP LOCKED, fenced write, HMAC-SHA256 and dead, since the reader may not know the stack.
+- Added a short list of guarantees (one delivery per pair, at least once, unordered, no loss on crash, several instances).
+- Explicitly mapped the retry waits to attempts: attempt 1 goes out right after the event, a failure before attempt n+1 waits the n-th wait, and a failure on attempt 8 dead-letters.
+- Flowchart: the claim step now explicitly sets status in_flight, because the expired-lease rule depends on it and the text never said so. Expired-lease recovery now also clears the lease.
+- Flowchart: the 410 branch said 'cancel' the other pending deliveries; changed to 'mark dead' to match the failure section.
+- Flowchart: the subscription-check failure edge now says no request is sent, and the transaction label says 'Service DB' instead of 'Our DB'.
+- Renamed the 'fan-in' terms: the matching step is fan-out (one event to many deliveries), and the crash case is 'crash before commit'.
+- Rewrote retention. The old rule deleted an event 14 days after receipt, which could delete a dead delivery before its own 14 days ended. The event and its deliveries are now deleted together only when the event is at least 14 days old and every delivery is delivered or past its own retention date.
+- Subscription disabled by a customer: pending deliveries are now marked dead when they next come due, not 'at their next claim', because a retry can be hours away.
+- Stated the 60 s lease against the 10 s timeout, and that a worker delayed past its lease can still send a duplicate request. Fencing protects the database state, not the send.
+- Replay refused for a disabled subscription now says it returns HTTP 409.
+- Dedupe-window and subscription-timing open questions now state the consequence in plain words: a message redelivered after its events row is deleted would create a second set of deliveries; matching uses the subscriptions that exist when the message is read.
+- Added a plain-language opening that explains what the service does and why it exists, before any terms.
+- Expanded the terms so a reader new to the stack can follow them. Added 'attempt', defined 'fenced write' in terms of the lease token, and explained `FOR UPDATE SKIP LOCKED` in plain words.
+- Rewrote the guarantees as short statements and removed repeated wording.
+- Added a 'Where state lives' section that names the core and service tables and their columns, states which core fields are written, and explains why the schedule is in the database (the queue's 15 minute maximum delay is shorter than the 6 hour wait).
+- Simplified the flowchart: merged the two claim paths into a claim step and a reaper step, named the outcome writes as fenced writes, dropped the redundant 'mark pending deliveries dead' branch on 410, and rewrote node labels as plain phrases with the exact values.
+- Added notes under the flowchart on timing, ack order, signing on every attempt, and what the 410 path does to other pending deliveries.
+- Added a 'Failure cases' section that walks through each crash point, a slow worker that lost its lease, disabled subscriptions, replay, and retention.
+- Added an 'Open points' section for things the brief leaves open or that need a decision: `events` retention, malformed messages that can only be recovered by hand, and the treatment of 3xx responses, which the brief does not address.
+- Added a Terms entry for Event and Subscription, and expanded the abbreviations for Outbox, Delivery, Attempt, Lease, Fenced write and HMAC, so a reader outside the project can follow them.
+- Added a numbered step-by-step section before the diagram that walks through the same path in plain language, including the duplicate check, the reaper and replay.
+- Rewrote the Where state lives entries so they say what each database and table is for and why the schedule sits in the database rather than the queue.
+- Shortened and reworded the Mermaid node labels and replaced the symbols and abbreviations that were hard to read, keeping the same nodes and edges.
+- Clarified the subscription-disabled and replay failure cases so they name the exact conditions (active subscription, no request sent, fresh cycle of 8 attempts).
+- Added an open point: the 410 path writes to two databases that cannot share a transaction, so the order of the writes and the failure handling must be decided. The brief did not cover this.
+
+### Holes
+- None.

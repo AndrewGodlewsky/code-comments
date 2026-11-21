@@ -1,0 +1,28 @@
+## Review of cred-02 (junior, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a state section naming the columns of user_totp, recovery_codes and pending_logins, including a separate pending_secret_sealed column so a replacement leaves the old authenticator working until confirmed.
+- Labelled every diagram transition with its trigger.
+- Restored brief requirements missing from the first version: the 5-minute and 5-attempt limits, 3-step drift window, replay rule via last_step, 10 recovery codes shown once, signing out other sessions on confirm, non-blocking email with remaining count, and password plus code required to disable.
+- Defined terms: TOTP code, step, recovery code, pending login, p2f, seal().
+- Replaced the vague notes with numbered steps and a failure table, with the lifecycle, sign-in and rollout kept in separate sections.
+- Decided that lost-phone replacement needs only the current session and is not forced after a recovery-code sign-in.
+- Kept the support reset for users with no phone and no codes as an open question and did not design it.
+- Terms: defined a recovery code's shape (10 letters and digits, never 6 digits, input normalised) so it cannot overlap with a TOTP code.
+- Sign-in step 4: said a value of exactly 6 digits is checked only as TOTP and any other value only as a recovery code.
+- Sign-in step 5: said every failed entry, TOTP or recovery, counts the same toward the 5 attempts.
+- Failure table: the wrong-code row now says TOTP or recovery.
+- Rewrote the summary as a short description of today's sign-in and the new flow, replacing the repeated detail.
+- Terms: added pending secret; shortened seal() and p2f definitions; kept the recovery code shape and normalisation rule.
+- Moved the p2f 'not sealed' and seal() scope notes into the terms, and listed the new cookie under state.
+- Added one-line reason why replacement exists (swap authenticators while 2FA stays on) and why all failed entries count the same (stops unlimited recovery-code guessing).
+- Merged the two failure rows for recovery/used codes into one; reordered failure table to follow the sign-in flow; added setup or replacement to the confirm-failure row.
+- Added a note under the diagram saying the two halves link only through 2FA on.
+- Recovery-code success: restored that the email says a code was used and how many remain; moved lost-phone note into step 4 sign-in result.
+- Step 3 of lifecycle now also says old recovery codes keep working during an abandoned replacement.
+- Cut repeated wording in sign-in step 5/6 and the lost-phone sentence; no requirement, limit or number dropped (checked against first version).
+
+### Holes
+- None.

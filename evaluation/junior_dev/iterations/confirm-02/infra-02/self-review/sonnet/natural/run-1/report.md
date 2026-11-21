@@ -1,0 +1,30 @@
+## Review of infra-02 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a one-paragraph summary and a Terms section defining SHA, SSM tags, stable vs canary, lock, and the deploy.sh commands, so readers new to the repo can follow the chart.
+- Added a color legend and a note that ending runs release their locks.
+- Reworded the superseded check to say 'this SHA is already in it or an ancestor of it', consistent in the chart and the notes.
+- Added a missing failure edge: a second integration failure cancels the unit job.
+- Labelled the self-approval loop as keeping the same deadline.
+- Clarified that the 72-hour limit covers approval only, not the window wait.
+- Reorganized the notes into plainer headings and shorter bullets; renamed the rollback section to describe the actual rule; merged duplicated window and lock explanations.
+- Kept the flowchart structure, locks, canary rule and all decisions unchanged.
+- Added a six-step Overview so readers get the whole flow before the chart.
+- Defined Superseded and Migrations in the terms list, since the chart and notes use them before explaining them.
+- Added a line saying every red path into the failure box also posts to #deploys.
+- Simplified sentences: 'never writes them directly' to 'never writes them', 'Rollback ... would pick the wrong tag' now says it restores previous_tag, one version too far back.
+- Reordered the supersede explanation so the check is described as the alternative to cancelling runs.
+- Explained why the staging lock is needed in a single sentence, and made the approval and window wording more direct.
+- Kept the flowchart and all design decisions unchanged.
+- Overview step 4 now says the run ends after a staging rollback.
+- Overview and Terms now briefly explain SSM as a key-value store and the canary as a trial deployment.
+- Moved the canary-not-recorded-in-SSM fact into the Terms entry for stable and canary.
+- Reworded 'Superseded' to say a newer version is already running.
+- Changed 'is this SHA already in it, or an ancestor' to 'equal to it or an ancestor of it' in the flowchart for precision.
+- Clarified that every arrow into Announce failure posts to #deploys, and fixed minor wording such as 'why:' for the lock reason.
+- Tightened a few sentences in the notes (lock rationale, supersede check, state rules) without changing meaning; flowchart structure is unchanged.
+
+### Holes
+- None.

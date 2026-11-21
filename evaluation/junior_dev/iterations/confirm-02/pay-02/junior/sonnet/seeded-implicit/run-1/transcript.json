@@ -1,0 +1,112 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly does the refund form submit, and who is allowed to submit it? What does 'permission check' check, and what does the admin see if it fails?",
+     "about": "API endpoint: POST /refunds (permission check)"
+    },
+    {
+     "id": "2",
+     "text": "What is 'what's left on the payment'? Where is it stored or computed, and does it count refunds that are still pending?",
+     "about": "Validate amount against what's left on the payment"
+    },
+    {
+     "id": "3",
+     "text": "What fields and starting status does the refund record have, and is it created before the provider call? What state is it left in if the provider call never answers?",
+     "about": "Create refund record"
+    },
+    {
+     "id": "4",
+     "text": "Where does the idempotency key come from, and what happens after the 10s timeout? Which failures are retried, how many times, and how is the outcome known if the provider may have processed it?",
+     "about": "Call provider create-refund (idempotency key, 10s timeout, retries)"
+    },
+    {
+     "id": "5",
+     "text": "What provider errors are expected (declined, invalid, provider down), and what does each do to the refund record and what does the admin see?",
+     "about": "Handle provider errors"
+    },
+    {
+     "id": "6",
+     "text": "Does POST /refunds return to the admin after the provider call, or only after the webhook? How does the admin see the final result?",
+     "about": "API endpoint: POST /refunds (permission check)"
+    },
+    {
+     "id": "7",
+     "text": "How is the webhook signature verified, what happens to an invalid one, and how is a refund matched to the event? What if the same event arrives twice or out of order?",
+     "about": "Webhook endpoint for refund.succeeded / refund.failed (verify signature)"
+    },
+    {
+     "id": "8",
+     "text": "How is the order status chosen between Partially refunded and Refunded, and what happens to it when a refund fails? Is the customer email sent on success only?",
+     "about": "Update order status (Partially refunded / Refunded)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The form submits payment_id, amount_cents, reason and note. The check is: admin with refund permission, payment captured, amount a whole number above 0, reason in the list. No permission gives 403 and the form says so; bad input gives 400 with what is wrong. Nothing is stored in either case. Added to steps 1 and 2."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "It is the captured amount minus the sum of pending and succeeded refunds for the payment, computed fresh from the refunds table inside a transaction that locks the payment row, so two simultaneous admins cannot both pass. Pending refunds count; failed do not. Added to step 3."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The record has id (UUID, doubles as idempotency key), payment_id, amount_cents, reason, note, status, provider_refund_id, failure_message, requested_by, email_sent_at, timestamps. It starts as pending and is created in the same transaction as validation, before the provider call, so the money is reserved. If the provider call never answers it stays pending with no provider id and the reconciliation job resolves it. Added to steps 4, 5 and 11."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The key is the refund's own UUID, created in step 4, so every retry reuses it. After a 10s timeout or a 5xx we retry up to 3 times with the same key. If all fail the refund stays pending and reconciliation repeats the call with the same key (safe within 24h, since the provider returns the original) or asks the provider for status. 4xx is not retried. Added to steps 5 and 11."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The brief only fixes two cases: 4xx means rejected, so the refund is marked failed, not retried, and the admin sees the provider's message; timeout or 5xx after retries leaves it pending with the admin told it is awaiting the provider. I did not invent a finer list of provider error codes, since we show the provider's own message. Added to steps 5 and 6."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "POST /refunds returns after the provider call, not after the webhook, because the webhook can take days. It returns the current status (pending or failed with message). The admin sees the final result when they reload the payment page, which lists refunds with status. No live push. Added to steps 2 and 6."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Signature is verified over the raw body with the provider's shared secret before anything else; the exact algorithm follows the provider's docs and is not decided here. Invalid gets 400 and is ignored. A refund is matched by provider_refund_id; if none matches yet we return non-2xx so it is redelivered. Duplicates and out-of-order events are safe because only a pending refund can be updated and final states never change; contradictions go to the audit log. Added to steps 7 and 8. Matching before provider_refund_id is saved depends on whether the provider supports metadata or lookup by key, listed under open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Order status is computed from succeeded refunds only: sum equal to captured gives Refunded, less than captured but above 0 gives Partially refunded. A failed refund changes nothing, because it never counted and the status is recalculated from succeeded refunds each time. The email is sent only when the update moves a refund to succeeded, once, guarded by email_sent_at. Added to steps 9 and 10."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Following one refund from the admin's click to the end. I use \"R\" for the refund record.\n\n1. **Admin opens the payment page.** The admin opens a payment's page. The page reads the payment and its refunds and shows a form (amount in cents, reason, optional note) plus a list of this payment's refunds with their status. The form is hidden if the payment is not captured or the admin lacks refund permission. This step only reads, so the document says nothing can fail here.\n\n2. **Admin submits the form.** The browser sends `POST /refunds` with `payment_id`, `amount_cents`, `reason` and `note` to our server. The server checks four things. The admin has permission. The payment is captured. The amount is a whole number above 0. The reason is in the fixed list (duplicate, fraudulent, customer request, other). If permission is missing, the server returns 403 and the form says \"You do not have permission to refund\". Any other bad input returns 400 and the form says what is wrong. In both cases nothing is stored and the provider is not called.\n\n3. **Reserve the money in one database transaction.** The server opens a transaction and locks the payment row. A second admin refunding the same payment has to wait until this one commits. Inside the lock it computes what is left. That is the captured amount minus the sum of `pending` and `succeeded` refunds, read fresh from the `refunds` table. If the requested amount is more than what is left, it rolls back, returns 409, and the form shows how much is left. Otherwise it inserts R with `status = pending`. R has a UUID `id`, `provider_refund_id` empty, and `requested_by` set. It also writes an `audit_log` row, then commits, which releases the lock. Because R exists before any provider call, the money counts as reserved. If the transaction itself fails, nothing is stored and the admin sees a generic error and can retry.\n\n4. **Ask the provider to refund, after the commit.** The server calls the provider's create-refund API. It sends the payment's charge id and the amount, with R's `id` as the idempotency key. The timeout is 10 seconds. On a timeout or a 5xx it retries up to 3 times with the same key, so a retry cannot refund twice. The outcomes are:\n   - **Accepted.** The server saves `provider_refund_id` on R and R stays `pending`. Accepted does not mean the money has moved.\n   - **4xx.** The server does not retry. It sets R to `failed`, saves the provider's message in `failure_message`, writes the audit entry in the same transaction, and shows the admin the message. A failed R no longer counts toward what is left, so the amount is available again.\n   - **Every retry fails.** R stays `pending` with no `provider_refund_id`. The admin sees \"Refund requested, awaiting provider\". We can't tell whether the provider received the request. Step 8 sorts it out.\n   \n   `POST /refunds` returns after this step, not after the webhook. The response is R's current status (`pending`, or `failed` with the message). The admin sees the final result by reloading the page.\n\n5. **Provider sends a webhook.** Later, possibly days later, the provider calls our server with `refund.succeeded` or `refund.failed`. The server first verifies the signature over the raw body using the shared secret. An invalid signature gets 400 and the event is ignored and logged. A valid event is matched to R by `provider_refund_id`. If nothing matches yet, because the event beat step 4 saving the id, the server returns a non-2xx code so the provider redelivers. Otherwise it runs step 6 and replies 200. If our processing errors, it returns 500 so the provider redelivers. Webhooks can be duplicated or arrive out of order.\n\n6. **Update R's status.** This runs for each valid webhook and for each result found by step 8. It does `UPDATE ... WHERE status = 'pending'`, so it only changes a refund that is still `pending`, and running it twice is safe. A duplicate event, or one that contradicts the final state (for example `failed` after `succeeded`), changes nothing. The contradiction is written to the audit log for a human. A real change to `succeeded` or `failed` writes its audit entry in the same transaction, with the actor recorded as \"system\". If the transaction fails, it rolls back and the provider redelivers.\n\n7. **Update the order status and send the email.**\n   - **Order status.** In the same transaction as step 6, the server sums the payment's `succeeded` refunds. A sum of 0 means no change. A sum below the captured amount gives \"Partially refunded\". A sum equal to the captured amount gives \"Refunded\". It is recalculated each time, so `pending` and `failed` refunds never affect it.\n   - **Email.** After that commit, and only if this update moved R to `succeeded`, the customer is emailed. The same update set `email_sent_at`, so only the run that made the change sends, and a duplicate webhook cannot send a second email. If sending fails, the server logs it and clears `email_sent_at` so step 8 retries.\n\n8. **Reconciliation job.** Every 15 minutes it finds refunds that are `pending` and older than 1 hour. This is how the rule is met that no refund stays pending for 24 hours without us asking the provider directly.\n   - **Has `provider_refund_id`.** It asks the provider for the refund's status and applies the result through step 6.\n   - **No id and under 24 hours old.** It repeats the create call with the same key. The provider returns the original refund, so this is safe. The document does not say what the job does with that reply (see gaps).\n   - **No id and past 24 hours.** The key has expired, so repeating is unsafe. It marks R `failed` with a message, and a human checks the provider dashboard.\n   - **Also.** It resends the email for `succeeded` refunds with no `email_sent_at`.\n   - **Errors.** Errors are logged and the job tries again at its next run.\n\n   Every request and every status change gets an audit entry. The job and webhooks write theirs as \"system\".",
+   "gaps": [
+    "How a refund-specific signal gets from the provider's webhook to our matching: the document does not say what the webhook payload contains. It does not say which field carries the provider's refund id, or how the event says succeeded or failed beyond its type name, or where a failure reason would come from.",
+    "What the job does with the reply to a repeated create call when R had no `provider_refund_id`. It is implied that it saves the id, but the document does not say so. It also does not say whether R is settled then or waits for a webhook.",
+    "What the job does when the provider's status reply is still 'pending'. It could leave R alone and re-check at the next run, but the document does not say so.",
+    "How the 'awaiting provider' pending refund (no `provider_refund_id`) can be matched by a webhook that arrives before the id is saved. The document lists this as an open question, so for now the webhook is rejected until the job or step 4 saves the id.",
+    "How the system keeps the audit entry and the 'failed' status for a 4xx result consistent with the later order-status recalculation. Step 4's failure path writes the status and audit entry but the document does not say whether the order status is recalculated there. This looks harmless, since failed refunds do not affect it.",
+    "What the email contains, which address it goes to, and how email sending is triggered technically, because the document only says the customer is emailed after success.",
+    "How the audit log's 'who' is stored for webhook/job actions beyond being written as 'system'. It also does not say whether the audit entries for a contradiction have an old and new status.",
+    "Who or what runs the reconciliation job (its scheduler), and how the job is prevented from running at the same time as a webhook on the same refund. Step 6's conditional update makes this safe for status, but the email path is less clear.",
+    "What the admin page shows for the order status and how it updates, and whether the order status is stored in a field or computed, since 'order' and its status field are not described in the existing schema.",
+    "What exactly the 'generic error' for a failed transaction in step 3 looks like, and whether a failed audit write in step 4's 4xx transaction leaves the refund `pending`."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

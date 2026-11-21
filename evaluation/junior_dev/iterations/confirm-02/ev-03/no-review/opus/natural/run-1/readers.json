@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "After steps 1-4: the message and outbox row are committed (or a duplicate key returns the stored result). The ack gives msg_id and seq.",
+  "q2": "The sender gets an error and nobody receives anything. The retry must reuse the same client_msg_id, so the unique key returns the original msg_id and seq.",
+  "q3": "30 seconds after its last heartbeat, when the presence entry's TTL expires.",
+  "q4": "Gateway B sends a push (only if it flips push_attempted), closes the socket, and removes presence only if it still names this conn_id. The entry stays undelivered.",
+  "q5": "It is logged and never retried. Stored state is unchanged.",
+  "q6": "Drain runs in seq order from the lowest pending seq per conversation. Clients drop duplicates by msg_id and place messages by seq; Gateway C skips msg_ids already sent.",
+  "q7": "The message and its fanout_outbox row commit in one transaction. Rows not marked done are claimed and redone by another worker after the 15 s lease expires.",
+  "q8": "The Presence Registry (user_id to gateway, conn_id), a soft-state record. Its 30 s TTL, refreshed by heartbeats, removes the entry once heartbeats stop.",
+  "q9": "The worker makes a deliver RPC to the gateway in presence, which sends it over the open socket. The recipient's ack(msg_id) within 5 s confirms receipt.",
+  "q10": "In the Offline Inbox, keyed by user_id. Written for every recipient at step 7 before live delivery. Removed by marking delivered on client ack, or expiring after 30 days.",
+  "q11": "It reads undelivered Offline Inbox entries by (conv_id, seq), then fetches their bodies from the Message Store by (conv_id, seq).",
+  "q12": "Rows not marked done are redone by another worker after the 15 s lease expires. Inserts are insert-if-absent, so redoing is safe."
+ },
+ "sonnet": {
+  "q1": "After step 2-3: the single transaction (conv.seq += 1, INSERT message, INSERT outbox row) commits (or a duplicate key returns the stored result). The ack(msg_id, seq) means the message is durably stored with its assigned msg_id and seq and fan-out work is recorded in the outbox. It does not say anything about delivery to recipients (fan-out is asynchronous).",
+  "q2": "The transaction rolls back, so no message and no outbox row exist; the sender gets an error and nobody receives anything. The retry must carry the same client_msg_id (with the same sender, so UNIQUE(sender_id, client_msg_id) dedupes it).",
+  "q3": "Presence expires 30 s after the last heartbeat (TTL 30 s, heartbeats every 10 s). Until then deliveries hit the 5 s timeout path; after that the worker goes straight to push (9b).",
+  "q4": "Gateway B sends a push (guarded by the push_attempted flag, so at most once) and closes the socket, removing the presence entry only if it still names this conn_id. The inbox entry stays undelivered; a live client reconnects at once and drains it, and the message is resent and de-duplicated by msg_id.",
+  "q5": "It is logged and never retried. Stored state is unchanged (push_attempted was already set before the call).",
+  "q6": "Each conversation's messages arrive in seq order (drain lists entries by (conv_id, seq); drain restarts from the lowest pending seq per conversation); the client places messages by seq. Live messages are held back during the drain and sent afterward, skipping msg_ids already sent. Duplicates are dropped by the recipient client using its seen msg_ids.",
+  "q7": "The outbox row is written in the same transaction as the message, so an acknowledged message always has a durable fan-out_outbox row. Workers poll the outbox and process pending rows, so fan-out proceeds even if Gateway A crashes after the commit.",
+  "q8": "In the Presence Registry (user_id -> (gateway, conn_id)), soft state that can be lost. Its 30 s TTL (refreshed by 10 s heartbeats) removes the entry when heartbeats stop; Gateway B also removes it on a 5 s ack timeout if it still names that conn_id.",
+  "q9": "The worker looks up presence (step 8) to find the gateway and conn_id, then makes a deliver RPC to that gateway (9a), which sends the message to the recipient (step 11). The recipient's ack(msg_id) (step 12) confirms arrival; Gateway B keeps a 5 s ack timer, and on ack the inbox entry is marked delivered.",
+  "q10": "In the Offline Inbox, keyed by user_id and ordered by (conv_id, seq). The fan-out worker writes an entry (insert-if-absent) for every recipient at step 7, before checking presence or delivering live. An entry stops being pending when the client acks (marked delivered, kept as a tombstone for 24 h), or when the 30-day TTL expires for undelivered entries.",
+  "q11": "Gateway C sets presence (R2), then reads the Offline Inbox's undelivered entries by (conv_id, seq) (R3), then fetches message bodies by (conv_id, seq) from the Message Store (R4), and sends them per conversation in seq order (R5).",
+  "q12": "The 15 s shard lease expires, another worker claims the shard and redoes any outbox rows not marked done. This is safe because inserts are insert-if-absent, tombstones block already-acked entries, the push_attempted flag keeps push at most once, and clients drop repeated live messages by msg_id."
+ }
+}

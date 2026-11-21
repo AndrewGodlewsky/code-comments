@@ -1,0 +1,30 @@
+{
+ "q4": {
+  "answer": "Payment starts a charge only when it consumes a StockReserved event from order-events, which Inventory publishes only after writing a reservation in the same transaction as its StockReserved outbox row. Stock is never reserved without a prior OrderPlaced, and Payment never subscribes to OrderPlaced, so no StockReserved means no card call.",
+  "decided": true
+ },
+ "q5": {
+  "answer": "Inventory and Payment each write their result (StockReserved or StockRejected, PaymentCharged or PaymentDeclined) to their own outbox in the same transaction as their state change, and their own relay publishes it to order-events keyed by orderId. If a service crashes after committing but before publishing, the outbox row is still unsent, so the relay publishes it on its next poll; the relay marks it sent only after the broker ack, so a crash between ack and mark causes a repeat that consumers skip.",
+  "decided": true
+ },
+ "q6": {
+  "answer": "Each consumer inserts the incoming eventId into its own processed_events table in the same local transaction as its final state change, so a second delivery hits the primary key and does nothing. Each state change is also guarded by a natural key (unique orderId on reservations and payments, or WHERE status = 'PENDING' on orders), so a repeat stays correct even if the processed_events row is lost. Payment's ATTEMPTING row is the exception: it has no processed_events row until its final commit, and its unique orderId row guards the card call.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Payment saves an ATTEMPTING row with a unique orderId before every card call, and calls the card with idempotency key orderId, not eventId. When the message is redelivered after the crash, Payment finds no processed_events row, sees ATTEMPTING, and calls the card again with the same key; the provider returns the first result, so the customer is not charged twice. Once CHARGED or DECLINED is saved, Payment never calls the card again.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Inventory releases the reservation. When the card declines, Payment publishes PaymentDeclined, and Inventory consumes it and, in one transaction with its processed_events insert, sets the reservation to RELEASED (doing nothing if it is already released). This runs in parallel with Order Service cancelling the order, and the two consumers are independent.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Order Service consumes order-events like the other services. On PaymentCharged it runs a guarded update to set the order CONFIRMED, and on StockRejected or PaymentDeclined it sets the order CANCELLED, each only WHERE status = 'PENDING'. Each change is written in one transaction with a processed_events insert and an OrderConfirmed or OrderCancelled outbox row, and only Order Service publishes those final events.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Notification sends the customer email only when it consumes OrderConfirmed or OrderCancelled, which Order Service publishes after committing the final status, so the email follows a status already set and never raw inventory or payment events. A failed email send is recorded in the notifications row and does not throw, so it never changes order status and does not enter the retry or DLQ path; the policy for it is still open question 7.",
+  "decided": true
+ }
+}

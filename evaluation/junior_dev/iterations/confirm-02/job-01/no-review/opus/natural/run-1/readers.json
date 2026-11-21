@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Only the most recent missed fire time gets a run, created after reaping stale runs. Older missed fire times are dropped and get no row.",
+  "q2": "It is recorded as a run with status 'skipped' and finished_at set. Skipped runs have no attempts.",
+  "q3": "Tried 3 times. Wait 1 minute after the first failure, 5 minutes after the second. Third failure ends the run as 'failed'.",
+  "q4": "After no heartbeat for over 2 minutes, the reaper marks the attempt presumed_dead and retries. Yes, it counts as an attempt, with the same backoff.",
+  "q5": "The running job finishes normally; if it fails or dies, it is cancelled, not retried. Queued and retry_wait runs are cancelled. No catch-up: on resume, next_fire_at is recomputed from now.",
+  "q6": "The schedule row lock (FOR UPDATE SKIP LOCKED) lets only one worker handle a due schedule at a time. The UNIQUE (schedule_id, fire_at) constraint is a backstop.",
+  "q7": "In schedules.next_fire_at, as a UTC instant. It advances after each run creation, on re-enable or resume, and on cron_expr or timezone edits.",
+  "q8": "A claim query with FOR UPDATE SKIP LOCKED selects one queued or retry_wait run and updates it to running with attempt_no incremented, in one statement.",
+  "q9": "In runs.heartbeat_at while running. The reap step finds running runs whose heartbeat is older than 2 minutes, using runs_stale_idx.",
+  "q10": "In runs.next_attempt_at, with status retry_wait. The claim query starts the retry once next_attempt_at is at or before now().",
+  "q11": "One runs row per fire time. One run_attempts row per execution try.",
+  "q12": "Its completion writes are conditional on its attempt_no fencing token and status 'running'. After takeover they match 0 rows and roll back."
+ },
+ "sonnet": {
+  "q1": "The first worker back reaps stale runs first, then creates one run for each due schedule, for only the most recent missed fire time. The two older fire times are dropped and get no row. If the previous run is still in progress after reaping (e.g. retry_wait), that recovered fire time is recorded as skipped.",
+  "q2": "A run row is still inserted for it, with status 'skipped' and finished_at = now(), because the schedule already has an in-progress run (queued, running or retry_wait). It never executes. The runs_one_active index guarantees no second active run.",
+  "q3": "Up to 3 attempts. After failed attempt 1 it waits 1 minute (retry_wait), after attempt 2 it waits 5 minutes. After the third failure the run becomes 'failed' with finished_at set. A fourth attempt is impossible (CHECK attempt_no <= 3). Exception: if the schedule is disabled or deleted or the tenant paused, the run goes to 'cancelled' instead of retrying.",
+  "q4": "The reaper treats a running run as stale when heartbeat_at is older than 2 minutes (heartbeats come every 30 s). It marks the attempt presumed_dead and moves the run on by the failure rules. Yes, a presumed-dead attempt counts as a used attempt. Backoff is 1 minute, then 5 minutes, then failed after the third, measured from when the reaper declares the attempt dead. The run can be claimed once it is in retry_wait and next_attempt_at has passed. If the schedule is paused or disabled, it goes to cancelled.",
+  "q5": "The waiting job (queued or retry_wait) is cancelled. The executing job is not touched and finishes normally. If it fails or dies it goes to cancelled instead of being retried. No fire times are created during the pause, since creation checks jobs_paused_at. On resume, next_fire_at is recomputed as the first fire time after now(), so missed fire times are not caught up. Schedules the tenant had disabled separately stay disabled.",
+  "q6": "The creation query takes the due schedule row with FOR UPDATE SKIP LOCKED, so only one worker handles it and the other skips it. As a backstop, UNIQUE (schedule_id, fire_at) and the insert's ON CONFLICT (schedule_id, fire_at) DO NOTHING prevent a duplicate run.",
+  "q7": "In schedules.next_fire_at, a UTC timestamp. It is advanced by run creation to the first fire time after the db now(). It is recomputed from now() on re-enable or resume, and when cron_expr or timezone is edited.",
+  "q8": "The claim query selects one queued or retry_wait run whose next_attempt_at has passed, using FOR UPDATE OF r SKIP LOCKED. In the same statement it sets status = 'running', increments attempt_no, sets heartbeat_at and clears next_attempt_at. It also inserts a run_attempts row in the same transaction. Locked rows are skipped by other workers, and a running run no longer matches the queued/retry_wait filter.",
+  "q9": "In runs.heartbeat_at, which the worker updates every 30 seconds while the run is running. The reap step, which every worker runs each loop, finds runs with status running and heartbeat_at older than 2 minutes, using runs_stale_idx.",
+  "q10": "The run is in status retry_wait with next_attempt_at set to now() + 1 minute (after attempt 1) or + 5 minutes (after attempt 2). The retry starts when a worker's claim query finds it with next_attempt_at <= now() and claims it like any queued run, raising attempt_no.",
+  "q11": "Once per fire time: one row in runs (UNIQUE (schedule_id, fire_at)), with its final status. Once per execution try: one row in run_attempts (UNIQUE (run_id, attempt_no), 1 to 3), holding worker, start and end times, outcome and error. Skipped runs have no attempts.",
+  "q12": "Its writes are conditional on the fencing token. The completion update requires id = run AND attempt_no = its token AND status = 'running', and the run_attempts update requires outcome = 'running'. After the reaper changed status or a newer claim raised attempt_no, these match 0 rows, so the worker rolls back and the newer outcome stays. If the reaper and a late completion race, the row lock decides: the first commit wins and the other matches 0 rows."
+ }
+}

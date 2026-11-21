@@ -1,0 +1,188 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the user creates a token, what do they send, and what exactly is stored in the DB versus returned to them?",
+     "about": "User->>Server: create token / Server->>DB: insert token"
+    },
+    {
+     "id": "2",
+     "text": "What does 'hashed' mean here: which hash, and how does the server find and match a token on an API call if only the hash is stored?",
+     "about": "Hashed"
+    },
+    {
+     "id": "3",
+     "text": "What does 'check token' verify (exists, not revoked, not expired, whose it is), and what does the Client get back when it fails?",
+     "about": "Server->>DB: check token"
+    },
+    {
+     "id": "4",
+     "text": "How does the Client send the token in the API call (header, query), and how does the server know which User it belongs to?",
+     "about": "Client->>Server: API call with token"
+    },
+    {
+     "id": "5",
+     "text": "What happens when a user tries to create an 11th token? Do revoked or expired tokens count toward the max of 10?",
+     "about": "Max 10"
+    },
+    {
+     "id": "6",
+     "text": "What happens at day 90: is the token deleted, marked expired, or just rejected on check? Can it be renewed?",
+     "about": "90-day expiry"
+    },
+    {
+     "id": "7",
+     "text": "How does the User identify which token to revoke, and what does the list show if the token is shown once only?",
+     "about": "User->>Server: list tokens / revoke token"
+    },
+    {
+     "id": "8",
+     "text": "What do 'update last used' failures or slowness do to the API call, and is it a separate write on every request?",
+     "about": "Server->>DB: update last used"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The user sends only the name (1 to 40 characters). The DB stores a new row with the name, user id, SHA-256 hash, created_at, expires_at and nulls for revoked_at and last_used_at. The full token is returned only in the create response and never stored. Reason: the brief forbids storing plaintext."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "SHA-256 of the full token string. On an API call the server hashes the presented token and looks up the row by a unique index on token_hash, so no plaintext is needed. Plain unsalted SHA-256 is fine because the token is 32 random characters, so it cannot be guessed from its hash."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It finds the row by hash and checks that the row exists, revoked_at is null and expires_at is in the future. The row's user_id is the caller's identity. On any failure the Client gets 401 with the same generic body, so it does not reveal which check failed."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Via the header Authorization: Bearer <token> as the brief requires. Query-string tokens are not supported. The server learns the user from user_id on the matched row."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The 11th create is refused with 409 and a message telling the user to revoke a token first. Only active tokens count, so revoked and expired ones do not. The count and insert share one transaction that locks the user's row, so concurrent creates cannot exceed 10."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Nothing happens at day 90 except that the check rejects the token with 401 and the list stops showing it. The row stays in the table. It cannot be renewed, per the brief. Whether old rows are ever deleted is listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The list returns each token's row id along with name and dates, and Revoke sends that id. The list shows name, created date, expiry date and last used (or Never). It never shows the token or the hash, so showing it once does not affect the list. Revoking an id that is not the caller's gets 404."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "It is not a write on every request. A conditional update runs only when last_used_at is null or older than 1 hour, after the response is sent. If it fails or is slow, the API call is unaffected and the failure is logged without the token. This is why last used can be up to 1 hour stale, as the brief allows."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The doc says the user's row is locked during create. Which table is that row in, and what else, if anything, waits on that lock?",
+     "about": "Create: in one transaction: lock user row, count active tokens, check name is free"
+    },
+    {
+     "id": "10",
+     "text": "How does the server know who the User is when a session cookie arrives on create, list and revoke? Is that the existing login, unchanged?",
+     "about": "Session (existing cookie login)"
+    },
+    {
+     "id": "11",
+     "text": "What does the list return for revoked tokens, and does the revoke of an already revoked or expired token return 200 or 404?",
+     "about": "4. Revoke: set revoked_at = now() where id and user_id match"
+    },
+    {
+     "id": "12",
+     "text": "When a request has both a session cookie and a Bearer token, or a token on a token-management endpoint, what does the server do? How does it decide which login to use?",
+     "about": "A token cannot manage tokens / 3. API call with a token"
+    },
+    {
+     "id": "13",
+     "text": "For the 400 versus 409 on create: which cases get which status, and what is the response body shape?",
+     "about": "else name empty, over 40 chars or already used: 400 or 409 with the reason"
+    },
+    {
+     "id": "14",
+     "text": "The doc says last used is written only if null or older than 1 hour. Is that check done in the UPDATE's WHERE clause or from the row already read? What happens if two calls race?",
+     "about": "set last_used_at = now() only if null or older than 1 hour"
+    },
+    {
+     "id": "15",
+     "text": "What does the user see on the Account Settings page after create, and what happens to the shown token when they leave the page?",
+     "about": "201 with the full token, once, with Copy button"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "It is the user's row in the existing users table. Only other creates by the same user wait on it. List, revoke and API calls never take the lock, so they are not slowed. I chose a user-row lock because it serializes per user without a new mechanism."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. The brief says session-cookie login already works and the settings endpoints already sit behind it. The new endpoints use that login unchanged and take the user from the session."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The list returns only active tokens, so revoked and expired ones are not shown. Revoking an already revoked or expired token returns 404, because only active tokens are revocable and they are not in the list anyway. This is the simplest rule and avoids a special case."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Token-management endpoints use the session only and ignore the Authorization header, so a token alone there gets 401 for having no session. On other API endpoints an Authorization header, if present, decides: a bad token gets 401 and does not fall back to the cookie. This stops a token from managing tokens and keeps each request on one login. I do not know whether the existing API accepts cookies on non-management endpoints, so that is listed as open."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "400 for an empty name or one over 40 characters. 409 for a name already used by an active token, and 409 for the 10-token limit with a revoke-first message. The body is JSON with a human-readable message in the shape the settings endpoints already use. I have not checked the exact field names, so that is listed as open."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Both. The server skips the write when the row it just read is fresh. When it does write, the UPDATE repeats the condition in its WHERE clause. If two calls race, the database applies one update and the second matches no row or writes a value seconds later. Neither case matters, since last used may be an hour stale."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "A dialog shows the full token with a Copy button. Closing the dialog or leaving the page discards the token from the browser, and the server never has the plaintext, so it cannot be shown again. The list then reloads and shows the new token as Never used. A user who did not copy it revokes it and creates another."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. A signed-in user (using the existing session cookie) opens Account Settings. A new Postgres table, api_tokens, stores one row per token: id, user_id, name, token_hash, created_at, expires_at, revoked_at, last_used_at. Only the SHA-256 hash is stored, never the token. One server handles both the web pages and the REST API. No token cache is kept, so Postgres is the only place state lives.\n\n2. Create, trigger. The user submits a name and the browser sends POST create to the server. The session cookie identifies the user. Any Authorization header on this request is ignored. A bearer token sent here gets 401 because it counts as no session.\n\n3. Create, checks. The server opens one transaction and first locks this user's row in the existing users table. Only other creates by the same user wait on that lock. Inside the transaction it counts the user's active tokens (not revoked, not expired) and checks the name is free among their active tokens. If the name is empty or over 40 characters, the user gets 400 with a reason. If an active token already has that name, the user gets 409. If the user already has 10 active tokens, the user gets 409 telling them to revoke one first. The lock is why two simultaneous creates cannot exceed 10 or reuse a name.\n\n4. Create, success. The server generates the token, which is \"pat_\" plus 32 characters from a secure random source. It computes the SHA-256 hash and inserts a row with the hash, name and user_id. expires_at is created_at plus 90 days. revoked_at and last_used_at are null. It then returns 201 with the full token in the response body. This is the only time the token exists in readable form. It is never written to the database, logs or analytics, and the create response body must not be logged either. The page shows a dialog with the token and a Copy button. Closing the dialog or leaving the page discards the token, and the list reloads.\n\n5. Create, failure edge. If the 201 response never reaches the user, the row still exists but nobody has the token. The user will see it in the list as \"Never\" used, revokes it and creates a new one. Nobody, including support and engineering, can recover a token.\n\n6. List. The page sends GET list with the session cookie. The server selects that user's active tokens and returns id, name, created, expires and last used (or \"Never\"). It never returns the token or the hash. Revoked and expired tokens do not appear. A user only sees their own tokens.\n\n7. Using a token, trigger. A script or CI job sends any API request with \"Authorization: Bearer <token>\". Tokens are only accepted in that header, never in the query string.\n\n8. Using a token, lookup. The server hashes the presented token with SHA-256 and looks up the row by token_hash (a unique index). It reads revoked_at, expires_at, user_id and last_used_at from Postgres on every call.\n\n9. Using a token, outcome. If there is no row, or the row is revoked or expired, the server returns 401 with the same generic body for every cause. On a non-management endpoint a bad token gets no fallback to the session cookie. If the row is valid, the server handles the request as that row's user and returns the normal response. A token cannot be used on the create, list or revoke endpoints. Those use the session only.\n\n10. Last-used update. If the row it just read has last_used_at null or older than 1 hour, the server runs an UPDATE after responding. The UPDATE sets last_used_at = now() where the id matches and last_used_at is still null or older than 1 hour. The condition is repeated so that of two racing calls, the second matches no row. If the write fails or is slow, the API call is unaffected and the failure is logged without the token. Most calls do no write, so last used can be up to 1 hour stale.\n\n11. Revoke, trigger. The user clicks Revoke in the list and confirms. The browser sends DELETE by token id with the session cookie.\n\n12. Revoke, action. The server runs an update setting revoked_at = now() where the id and user_id match and revoked_at is null and the token is not expired. The row is not deleted. If no row matched, the user gets 404. This covers a token that is already revoked, expired or belongs to another user. If a row matched, the user gets 200.\n\n13. Revoke, effect. Because every API call reads the row from Postgres, the next call with that token gets 401. Nothing needs to be flushed.\n\n14. Expiry. A token expires 90 days after creation and cannot be renewed. An expired token stays in the table. It is rejected on use and no longer appears in the list.\n\n15. Errors. Create and revoke errors are JSON with a human-readable message, in the same shape the existing settings endpoints use.",
+   "gaps": [
+    "How the user's session is turned into a user identity on the management endpoints is only said to be 'the existing cookie login, unchanged', so I cannot explain how the user is identified.",
+    "How the server decides whether an endpoint is a token-management endpoint or an 'other API endpoint', and what the routes and URLs look like, is not stated. Only 'POST create', 'GET list' and 'DELETE by token id' are named.",
+    "The exact JSON field names and shape of the error bodies are not known, since the document says they follow the existing settings endpoints and have not been checked.",
+    "What non-management API endpoints do when no Authorization header is present is not stated, because it is unchecked whether they accept session cookies.",
+    "The 401 body for a bad token is described only as 'generic', with no format.",
+    "The document does not say whether expiry is checked against the current time at lookup, though the flow implies it. It also does not say when a token counts as expired, for example at exactly the 90-day boundary.",
+    "Which characters the 32-character random part uses is undecided, so I cannot describe the token format precisely.",
+    "Whether expired tokens are ever deleted from the table is undecided.",
+    "The document does not say how the Account Settings page talks to the server, such as whether it uses fetch or a form post, or how the list reload after closing the dialog is triggered."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

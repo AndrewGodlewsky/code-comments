@@ -1,0 +1,23 @@
+## Review of cred-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a two-to-three sentence summary that says what the feature is, how the main flow works and why the server checks the table on every call.
+- Added how the system works today (session cookie login, no token table) as the first thing after the summary, because this changes an existing system.
+- Added a terms section that defines session cookie, personal API token, Bearer header, SHA-256 hash, CSPRNG, active token, revoke and last-used time, each in one line.
+- Added a where-state-lives table so a reader can find the full token, the hash, the row fields and the session in one place.
+- Kept the Mermaid sequenceDiagram form, with four labelled flows (create, list, API call, revoke), alt branches for every failure case in the brief, and notes that show where state lives.
+- Changed the last-used write: the first version wrote last-used on every API call, which the brief forbids. The rewrite writes it only when the stored value is empty or over 1 hour old.
+- Changed the API-call check so validity is read from the row on every request with no cache, so a revoke is seen on the next call, as the brief requires.
+- Added every fixed requirement from the brief that the first version left out: name rules (1 to 40 characters, unique among active tokens), token format (pat_ plus 32 CSPRNG characters), SHA-256 storage with no plaintext in database, logs or analytics, 90-day expiry that cannot be renewed, 10 active-token limit with the revoke-first message, list fields with the Never rule, the generic 401 for missing, unknown, revoked or expired tokens, and own-tokens-only visibility.
+- Added the once-only display of the full token with a Copy button, and the rule that nobody can show it again, including support and engineering.
+- Decided, and recorded as a decision: a lost create response leaves a row that counts toward the 10-token limit until the user revokes it or it expires; the user finds it by name on the list.
+- Decided, and recorded as a decision: a failed last-used write does not fail the API call.
+- Decided, and recorded as a decision: revoking another user's or a missing token returns 404 with nothing changed, and revoking an already revoked token returns OK so retries are safe.
+- Merged the first version's error line into the failure table, and kept the 4xx rule and the 401 for bad tokens.
+- Cut nothing from the brief or the first version. Removed the first version's bare diagram with no labels and no failure paths, which the new diagram replaces.
+- Open questions added: the character set for the 32 random characters is not specified, and concurrent creates could exceed the 10-token limit unless the count and insert are checked together.
+
+### Holes
+- None.

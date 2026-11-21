@@ -1,0 +1,231 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The core idea says rows become visible in change_seq order because it is assigned at commit. What actually assigns change_seq at commit, and what happens to two transactions that commit at nearly the same moment?",
+     "about": "Core idea / change_seq is assigned at commit"
+    },
+    {
+     "id": "2",
+     "text": "The watermark is MAX(change_seq) from /sync/begin. If a product was edited after the watermark but before its page is read, the page holds the new version. Then the feed replays it. How does the client tell this apart from a normal update, and why is replaying it safe?",
+     "about": "Core idea: newer change_seq wins"
+    },
+    {
+     "id": "3",
+     "text": "In step 6, an upsert keeps the row with the higher change_seq. In step 9 the rule is 'greater than or equal'. Why are the two rules different, and which one applies when a page row and a feed change carry the same change_seq?",
+     "about": "Step 6 and step 9 rule for each change"
+    },
+    {
+     "id": "4",
+     "text": "A product is deleted after its page was downloaded. The page query returns only non-deleted products, so how does the client learn about the delete, and what if the product was deleted before the page was read?",
+     "about": "Step 9 / GET /catalogue/products and tombstones"
+    },
+    {
+     "id": "5",
+     "text": "Step 4 sends a download in progress to step 8, and step 8 can send it to step 9. Does step 8 itself check Wi-Fi before the drain, and what does 'Allow any network' mean for a drain when the status was paused_cellular?",
+     "about": "Step 8 and step 9 network rules"
+    },
+    {
+     "id": "6",
+     "text": "Step 4 says a trigger with active_gen none and download_status none goes to step 5 only if Wi-Fi is on. What does the user see in that state, and what happens when download_status is none, active_gen is none, and Wi-Fi is off?",
+     "about": "Step 4: Decide what to do at a trigger"
+    },
+    {
+     "id": "7",
+     "text": "Step 11 says that without Wi-Fi it leaves download_status = none and starts the download when Wi-Fi returns. Which rule in step 4 starts it then, given active_gen is set and download_status is none, and where is the need for a resync remembered?",
+     "about": "Step 11: Resync required"
+    },
+    {
+     "id": "8",
+     "text": "What does the 'draining' status with download_drain_seq mean for step 8 when status is stopped_error but all pages were already downloaded? How does step 8 know whether to continue at step 6 or step 9?",
+     "about": "Step 8: Resume an interrupted download"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief states that change_seq comes from one global increasing sequence and is assigned at commit so rows become visible in change_seq order. I do not know the mechanism, and I will not invent one. If two transactions commit together, the guarantee means they are ordered and visible in that order. The plan relies on the guarantee, and I added an open item to confirm it with the Catalogue team."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The client does not need to tell them apart. A page row holds the edited version with its change_seq, and the feed then replays the same change_seq. The apply rule writes the row only if the incoming change_seq is greater than or equal to the stored one, so equal data is written again and nothing changes. Replaying is safe because the same version is written twice. I added this to the core idea."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "They were inconsistent, which was my mistake. I replaced both with one apply rule, greater than or equal, defined once in the summary and used in steps 6, 9 and 10. When a page row and a feed change have the same change_seq, they are the same version, so which one is written does not matter."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A delete after the page was read has a tombstone with change_seq above the watermark, so the feed delivers it and step 9 removes the row. A delete before the page was read means the page excludes the product. If its tombstone is after the watermark, the feed delete finds no row and does nothing. If it is at or before the watermark, the product is correctly absent from the page. I added a short paragraph on this to the core idea."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "No. Step 8 checks Wi-Fi only when it continues at step 6, since only page downloads are Wi-Fi-only. A drain, reached when the status is draining or ready_to_swap, runs on any network. A status of paused_cellular always means pages are still missing, because step 6 now sets draining in the same transaction as the last page. I stated this in steps 8 and 9."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The rep has no catalogue, so the app shows a message asking them to connect to Wi-Fi (wording is Product's), or a progress screen once it starts. This is tied to the open question about browsing during the first download. With active_gen none, download_status none and Wi-Fi off, step 4 does nothing and the next trigger tries again. I added this to step 4."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "You found a real gap. As written, step 4 would have sent that state to incremental sync, which would hit the 410 again, and nothing recorded the need. I added a download_status value, resync_pending. Steps 11 and 12 set it, step 4's first rule starts step 5 when it is set and Wi-Fi is on, and step 5 resets the status to running. It also covers the case where step 5 declines to start for lack of disk space."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Step 8 decides by the stored status alone. Draining or ready_to_swap means all pages are saved, so continue at step 9. Anything else means pages are missing, so continue at step 6. To make that always true, step 6 now sets draining in the same transaction that saves the last page, so stopped_error cannot occur with all pages saved. I also fixed a contradiction. The shared rule used to say every give-up sets stopped_error, but a drain give-up leaves the status as draining. I also added ready_to_swap to the in-progress list in steps 4 and 8."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Why is the stale-watermark limit 6 days, when the tombstone purge job keeps tombstones for 7 days? How do the two numbers relate?",
+     "about": "Step 8: Resume an interrupted download, rule 1 / Step 2"
+    },
+    {
+     "id": "10",
+     "text": "A 4xx other than 410 sets stopped_error, and the next trigger resumes through step 8. If the server keeps returning the same 4xx, does the client retry on every trigger forever, or does something stop it?",
+     "about": "A3 and Step 6 On failure"
+    },
+    {
+     "id": "11",
+     "text": "When the status is paused_cellular or stopped_error, is the in-memory 'sync running' flag cleared? Otherwise the Wi-Fi trigger would be ignored. When exactly is the flag cleared?",
+     "about": "Step 4: Decide what to do at a trigger, State kept"
+    },
+    {
+     "id": "12",
+     "text": "During a download, how does the client know the total number of products for the progress display, given /sync/begin returns only watermark_seq and server_time?",
+     "about": "Open question for Product / POST /sync/begin"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The server answers 410 once the position is older than 7 days. If the client allowed a watermark up to 7 days old, the drain could cross that limit and hit 410 right at the end. 6 days leaves a one-day margin for the drain. The 6-day figure is my choice, not from the brief. I added the reason to step 8."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Nothing stops it beyond the triggers themselves. Each trigger makes one request (a 4xx is not retried), fails, logs, and sets stopped_error again. That costs one request per trigger, which is cheap, and I did not add a lockout or backoff because the brief does not require one. I noted this in step 6."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, the flag is cleared. It is held only while a sync pass is executing, and cleared when the pass ends for any reason: finished, paused for cellular, gave up, stopped on error or unexpected exception. It is never stored, so a killed app starts with it cleared. A paused or stopped download therefore does not block the Wi-Fi trigger. I added this to step 4."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It could not, which was a gap. I added an approx_total field to the begin response, an estimate from table statistics so no full count is needed, and stored it as download_approx_total so a resumed download keeps it. It is used only for the progress display. Whether a progress screen exists is still Product's open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "13",
+     "text": "In step 4, the first rule covers active_gen none and download_status none. But what sets download_status to running and does step 5 happen on every first install automatically at launch, with no user action?",
+     "about": "Step 4: Decide what to do at a trigger"
+    },
+    {
+     "id": "14",
+     "text": "When the changes feed is replayed during the drain (step 9), the download generation holds only some products from before the watermark. A feed update for a product the page already passed is applied, fine. But what does an update do for a product whose page has not been read yet? Is it written and later overwritten by the page row?",
+     "about": "Step 9: Catch up and swap in the new catalogue"
+    },
+    {
+     "id": "15",
+     "text": "Step 9 drain starts at download_watermark_seq, but the drain only happens after all pages are saved. How does the client know the feed rows between the watermark and the end of the drain are all caught up, given that edits keep arriving while it drains?",
+     "about": "Step 9: Catch up and swap in the new catalogue, has_more"
+    },
+    {
+     "id": "16",
+     "text": "How does the page endpoint treat a product edited between two page requests whose id was already passed (an earlier page)? Does the client ever see its new version before the drain, and what do reps see in the meantime?",
+     "about": "GET /catalogue/products keyset pagination"
+    },
+    {
+     "id": "17",
+     "text": "In step 10, a normal incremental sync starts at live_cursor_seq. Where does live_cursor_seq first get its value for a new install, and is it the drain seq from step 9?",
+     "about": "Step 9 item 5 / Step 10 Incremental sync"
+    },
+    {
+     "id": "18",
+     "text": "Step 9 empties the old generation in the background. If the app is killed during that, or a new resync starts before it finishes, what happens to the old generation's contents?",
+     "about": "Step 9 item 6: empty the old generation"
+    },
+    {
+     "id": "19",
+     "text": "If the app is killed mid-step 9 between the swap transaction and the status being none, or while status is resync_pending and an inactive generation holds leftover partial rows, which table does step 5 empty and is it always safe?",
+     "about": "Step 5: Begin a full download"
+    }
+   ],
+   "answers": [
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. On a first install active_gen is none and download_status is none, so at launch step 4 goes to step 5 with no user action if Wi-Fi is on. Step 5 is what sets download_status to running. Added to step 4."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The drain starts only after every page is saved, so there is no product whose page is still unread when the feed is replayed. A feed update for a product missing from the table (created after its page range passed) is written, which is correct. Nothing is overwritten later by a page row. Stated in the core idea and step 9."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The drain ends when has_more is false, and edits after that are not part of the swap. Because live_cursor_seq is set to the final drain position at the swap, the first incremental sync fetches them. It does not need to catch everything. Added to the core idea and step 9."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Keyset pagination only moves forward, so the page endpoint never returns an earlier page again. The client first sees that product's new version in the drain. Meanwhile reps see the old catalogue (or what Product decides for a first install). Added to the core idea."
+    },
+    {
+     "id": "17",
+     "tag": "checked",
+     "text": "live_cursor_seq is null after the migration and first gets a value in the swap transaction, where it is set to download_drain_seq. Clarified in the state table and step 9 item 5."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Emptying the old generation is only housekeeping. If the app is killed first, or a new resync starts first, the old rows stay until step 5 empties that table in its start transaction. Nothing reads the inactive generation, so leftovers are harmless apart from disk space (covered by the disk check). Added to step 9 item 6 and the two-generation paragraph."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Step 5 empties the download_gen table, the one that is not active (0 when active_gen is none). There is no state between swapped and status none, because the swap is one transaction. With resync_pending, the inactive table holds only leftovers, so emptying it is always safe. Added to step 5."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. A trigger is app launch, return to the foreground, or (for full download only) the network returning to Wi-Fi. If the in-memory \"sync running\" flag is set, the trigger is ignored. Otherwise the app reads the single-row `sync_state` in local SQLite and picks a path in this order. (a) If `download_status` is `resync_pending`, or `active_gen` is none and `download_status` is `none` (first install), it goes to step 2 when Wi-Fi is on. If Wi-Fi is off it does nothing. A first install shows a \"connect to Wi-Fi\" message, and a rep with a live catalogue keeps using it. (b) If a download is in progress (`running`, `paused_cellular`, `stopped_error`, `draining`, `ready_to_swap`), it goes to step 5. Incremental sync is skipped. (c) If `active_gen` is set and `download_status` is `none`, it goes to step 7, but only if at least 15 minutes have passed since `last_incremental_attempt_at`. If an unexpected exception happens, it is logged and the flag is cleared.\n\n2. Begin a full download (first install, or a replacement). The app sends one `POST /sync/begin` through the wrapper. The server reads `MAX(change_seq)` in its own transaction and returns `watermark_seq`, `server_time` and `approx_total`. Then, in one SQLite transaction, the app empties the `download_gen` table and writes the download fields into `sync_state`. These are `download_gen` (the generation that is not active, or 0 if none is active), the watermark, the time it was taken, `approx_total`, `download_last_saved_id = null`, and `download_drain_seq = watermark`. It also sets `download_status = running`. If the request gives up or the transaction fails, nothing changes and the next trigger retries. Before a resync the app checks for about 1 GB of free disk beyond the live catalogue. If there is not enough, it does not start, leaves `resync_pending`, keeps showing the old catalogue, logs the reason, and checks again at the next trigger.\n\n3. Download pages. The pages are fetched one at a time, with no parallel requests, until `is_last_page`. Before each page the app checks that the network is Wi-Fi. If it is not, it goes to step 4. It then calls `GET /catalogue/products?after_id=<download_last_saved_id>&limit=500` through the wrapper. The server returns non-deleted products in `id` order with their `change_seq`, plus `last_id` and `is_last_page`. In one SQLite transaction the app saves the rows with the apply rule and sets `download_last_saved_id` to the page's last id. On the last page, the same transaction also sets `download_status = draining`. It then goes to step 6. The saved cursor is the resume point. Failures are handled as follows.\n   - If the wrapper gives up, status becomes `stopped_error` and saved pages stay.\n   - If the app crashes before the commit, that page is fetched again later, which is harmless.\n   - If the save fails, for example on a full disk, status becomes `stopped_error` and the cursor does not advance.\n   - A 4xx other than 410 stops with `stopped_error` and is logged. Each trigger then makes one more request, with no lockout.\n\n   The wrapper makes up to 5 attempts, waiting 2, 4, 8 and 16 s between them. It retries on a network error or a 5xx. After the fifth failure it reports \"gave up\".\n\n4. Pause on cellular. If the network turns cellular while a download is running, the page in progress finishes, including its retries, and is saved. No further page is requested, and `download_status = paused_cellular`. Incremental sync does not run. When Wi-Fi returns, the step 1 trigger leads to step 5. If the in-progress page gives up, it is treated as in step 3 (`stopped_error`).\n\n5. Resume. This is reached from step 1 when a download is in progress, including after a kill, restart or lost network. It uses the stored state only. If the watermark is older than 6 days, it goes to step 9. If the status is `draining` or `ready_to_swap`, all pages are saved, so it goes to step 6 on any network. Otherwise it continues step 3 from `download_last_saved_id`, not from page 1. If Wi-Fi is off, it sets `paused_cellular` and waits.\n\n6. Drain and swap. The app loops `GET /catalogue/changes?after_seq=<download_drain_seq>&limit=1000`, starting at the watermark, on any network, until `has_more` is false. Each response is applied to the download generation in one transaction with the apply rule, and `download_drain_seq = next_seq` is saved in the same transaction. A change for a product not in the table is written, or ignored if it is a delete. When `has_more` is false, the status becomes `ready_to_swap`. Then one transaction sets `active_gen = download_gen`, `live_cursor_seq = download_drain_seq` and `download_status = none`. Reps now see the new catalogue. The old generation is emptied in the background, and if that is skipped, step 2 empties it later. Failures are handled as follows.\n   - If the wrapper gives up, the status stays `draining` and the next trigger resumes via step 5.\n   - A 410 goes to step 9.\n   - A crash before the swap commit leaves the old catalogue active. A crash after it is safe.\n\n   Safety rests on the watermark. A product edited after its page was read arrives in the drain. A product edited before its page was read is already in the page, and any replay is harmless under the apply rule. The apply rule writes a row if its `change_seq` is greater than or equal to the stored one, or if no row is stored. A delete removes the row if present and otherwise does nothing.\n\n7. Incremental sync. It runs only when `active_gen` is set, `download_status` is `none`, and 15 or more minutes have passed. The app first stores `last_incremental_attempt_at = now`. It then loops `GET /catalogue/changes?after_seq=<live_cursor_seq>&limit=1000` on any network until `has_more` is false. Each response is applied to the active generation, and `live_cursor_seq = next_seq` is set in the same transaction. If the wrapper gives up, it stops with no status change, and the next trigger at least 15 minutes later continues from the cursor. A 410 goes to step 8.\n\n8. Resync required. After a 410 in step 7, the live generation and cursor are left alone, so reps keep the old catalogue. The app sets `download_status = resync_pending`. If Wi-Fi is on it goes to step 2, otherwise it stops, and step 1 starts the download at the next Wi-Fi trigger. The swap happens only in step 6.\n\n9. Watermark too old. From step 5 (older than 6 days) or step 6 (410), the app discards the partial download, empties the download generation, and sets `resync_pending`. The active generation is kept if there is one. With Wi-Fi it goes to step 2 for a fresh watermark and restarts from page 1, and otherwise it waits for Wi-Fi.\n\nServer side. The 7-day purge job first stores `purged_through_seq`, the highest `change_seq` among the tombstones it purges, in a one-row table. The changes endpoint returns 410 `resync_required` when `after_seq < purged_through_seq`. If the purge job fails, nothing is purged and the value is unchanged. Tombstones are soft-deleted rows. They appear in the feed as `{id, deleted:true, change_seq}`.\n\nRollout. The app migration creates `product_g0`, `product_g1` and `sync_state` at launch, in a transaction. If it fails, sync stays disabled until a later launch succeeds.",
+   "gaps": [
+    "What the app shows reps during a first-install download is undecided. The document leaves open whether they can browse the partial download generation or see a progress screen, so what the user sees during steps 2 to 6 on a first install is unknown.",
+    "The document does not say how the app detects whether the network is Wi-Fi or cellular, for example for a hotspot or a metered Wi-Fi network. Step 1's Wi-Fi checks and the step 3 check before each page therefore have no defined input.",
+    "The document does not say how the server guarantees that rows become visible in `change_seq` order. The whole watermark argument depends on this, and the plan only states it as assumed.",
+    "The free-disk threshold is only given as 'about 1 GB', and the message shown when a resync cannot start is not defined.",
+    "The document does not say what happens when the 15-minute limit blocks a launch trigger, or whether launch should bypass it. This is an open question, so the flow after launch is ambiguous."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

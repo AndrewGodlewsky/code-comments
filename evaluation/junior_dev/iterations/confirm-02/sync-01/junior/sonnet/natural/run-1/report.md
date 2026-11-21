@@ -1,0 +1,26 @@
+## Review of sync-01 (junior, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a 'When a sync starts' section: the three triggers, how offline is detected, and that retries wait for the next trigger.
+- Added `sent` and `next_body` columns to outbox and the rule for when an edit goes to next_body.
+- Fixed a bug: a conflict response now carries N's current state, which the phone applies at once. This stops a skipped download entry from losing the winning body.
+- Simplified the in-flight conflict case: base_version comes from the conflict response, so there is no wait for the download.
+- Defined a failed batch and said that the whole batch is resent on the next trigger.
+- Explained when the download skip happens and why the cursor passing it is safe.
+- Noted that the phone never uses the conflict note's id and gets N' only through the download.
+- Said the starting cursor of a never-synced phone is 0 and that the scenario starts after an earlier sync.
+- Updated the diagram so that B's conflict response carries N's current state and B applies it before the download, and noted that B's UI keeps its own edit during the retry wait.
+- Added failure-table row for conflict then download failure, and open points for user notification and malformed changes.
+- Added an opening summary of how today's app works (local-only) and the upload-then-download flow, and why it is shaped that way.
+- Added a Terms section defining outbox, change, base version, version, change log, cursor, conflict, conflict note, batch and page, with the 100 and 500 limits.
+- Merged the 'When a sync starts' section and the overlap row of the failure table into one 'How a sync runs' section; moved the cursor-starts-at-0 note into the cursor term.
+- Nested Upload and Download as numbered steps 1 and 2 under 'How a sync runs'; removed repeated definitions (cursor, version, collapse) from the state section.
+- Merged the 'failed request ends the sync, retry is never immediate, UI keeps showing own edit' statements into one place instead of three.
+- Moved the cursor-safety sentence into the change_log definition where seq is assigned; moved the conflict-title open point into the conflict note term.
+- Removed the triggers-overlap row from the failure table (now stated once in How a sync runs); kept every other failure row.
+- Kept all stated facts: 100/500 limits, 60s timer, three triggers, full body no diffs, collapse keeping the original base version, deterministic conflict note id, ' (conflict)' title, sent/next_body mechanism, the four open points, and the full diagram unchanged.
+
+### Holes
+- None.

@@ -1,0 +1,33 @@
+## Review of ml-01 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Expanded the nine-line outline into a plan where every step states what starts it, what data moves, where state lives and what happens on failure, as the brief required.
+- Added a Terms section defining online feature store, materialization, registry, immutable versions, aliases, shadow and fallback, so a reader new to the stack can follow.
+- Made the freshness rule explicit: stale rows older than 6 hours count as missing and trigger fallback.
+- Spelled out the request path: 30 ms lookup, no model call on missing features, fallback marked in the response, plus an assumed fallback on model failure.
+- Added a feature check as a gate before any alias moves, at promotion time and at instance load, covering the shadow and active cases.
+- Specified shadow isolation: hash-based user selection, non-blocking bounded queue, separate workers, and a prediction log with defined fields.
+- Detailed the daily comparison job and the promotion criteria (7 days, under 0.5% errors, p99 under 80 ms, ML lead approval).
+- Replaced the 'A/B test step TBD' note with an explicit open-decision step that does not choose either option and says what each answer would change.
+- Described switching and rollback mechanics: instances poll the registry every 15 seconds, keep the previous model loaded, and need no redeploy.
+- Marked two assumptions for confirmation: model-failure fallback and ungated rollback.
+- Added a short 'How it fits together' overview so a reader new to the stack sees the whole flow first.
+- Defined p99 inline and added 'Stale' to the terms.
+- Fixed a gap in step 8: the queue message carried only the features the active model read, which a candidate with new features cannot use. The shadow worker now reads the candidate's own features from the online store and applies the same freshness rule, skipping and counting users with missing or stale rows.
+- Moved the per-user skip rule from step 6 into step 8, where it happens, and made step 6 say it checks per version.
+- Step 4 now says what is enqueued and rewrote its failure line, which previously described the normal path.
+- Step 7 puts the order of events first (check, then record start time) and clarifies that moving the alias to a different version restarts the clock.
+- Step 12 trimmed: removed the redundant 'rest of plan is the same' line, since the open-decision section says it.
+- Step 14 notes the 15-second rollback sits inside the 1-minute requirement.
+- Tightened wording throughout and made step 9 refer to 'the candidate' only.
+- Fixed the overview: aliases say which version plays which role, not only which is live.
+- Overview now says promotion needs 7 days in shadow plus the metric thresholds, not just '7 clean days'.
+- Removed the stray 'real' from the step 4 fallback reason.
+- Defined 'atomically' in step 5 in plain words.
+- Reworded the step 8 sentence about why the worker reads its own features so the reason is stated directly.
+- Minor wording cleanups for clarity (step 6, step 8, step 10, step 12).
+
+### Holes
+- None.

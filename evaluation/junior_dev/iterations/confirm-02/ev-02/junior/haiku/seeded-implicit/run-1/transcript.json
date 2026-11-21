@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the \"domain-events\"? Where do they come from, and how does the Dispatcher receive them (queue, polling, direct call)?",
+     "about": "domain-events -> Dispatcher"
+    },
+    {
+     "id": "2",
+     "text": "What is a subscription, where is it stored, and how does the Dispatcher decide which ones \"match\" an event?",
+     "about": "Dispatcher fans out to matching subscriptions"
+    },
+    {
+     "id": "3",
+     "text": "What does a row in the `deliveries` table hold, and what states can it be in? Is it the only queue, or is there something else between the table and the workers?",
+     "about": "deliveries table"
+    },
+    {
+     "id": "4",
+     "text": "How do workers pick up rows, and how does a \"lease\" work? How long does it last, and what happens if a worker dies mid-POST?",
+     "about": "Delivery workers / Workers use leases"
+    },
+    {
+     "id": "5",
+     "text": "What is \"the agreed schedule\" for the 8 attempts? Where is it defined and who agreed it?",
+     "about": "Retry with backoff / Up to 8 attempts on the agreed schedule"
+    },
+    {
+     "id": "6",
+     "text": "How does a worker classify a Result as delivered, retry or permanent failure? Which status codes, timeouts or network errors fall in each?",
+     "about": "Result"
+    },
+    {
+     "id": "7",
+     "text": "What happens to the delivery when attempt 8 fails? Does it go to dead letter, and is dead letter a separate table or a state in `deliveries`?",
+     "about": "Retry with backoff -> Dead letter"
+    },
+    {
+     "id": "8",
+     "text": "What does the cleanup job delete and how often does it run? What does \"Disabled subscriptions are handled\" mean: what happens to their pending and future deliveries?",
+     "about": "Cleanup job / Disabled subscriptions are handled"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "domain-events is a managed-queue topic. The outbox relay runs every 1 s, reads up to 200 unpublished rows from the core app's outbox table, and publishes one message per row. The Dispatcher pulls messages from the queue and acks each one after writing its deliveries. It is not called directly."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "A subscription is one customer endpoint: URL, event types and secret. It is a row in webhook_subscriptions in the core database, written by the dashboard API. A subscription matches an event when it has the same account_id, its status is active, and its event_types contains the event type or '*'. The Dispatcher reads this table and matches only subscriptions that are active when it handles the event."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A row holds the delivery id (sent as X-Webhook-Id), event_id, subscription_id, a copy of the event body, state, attempts, next_attempt_at, lease_until, last_status_code, last_error and dead_at. States are pending, delivered, dead and cancelled. The table is the only queue. Workers poll it, and no broker sits between it and the workers. The message queue cannot hold 6-hour waits, so the wait is stored as next_attempt_at."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A worker claims due rows with FOR UPDATE SKIP LOCKED and sets lease_until to 60 s ahead. The 10 s send timeout fits well inside that. If the worker dies mid-POST, the lease expires after 60 s and another worker re-sends with the same X-Webhook-Id. The receiver may then get the event twice, which at-least-once delivery allows and the stable id lets receivers dedupe. attempts is incremented at claim time, so a crashing row still stops after 8 attempts."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The schedule is part of the service requirements the author was given: attempt 1 goes out within a few seconds of the event, and the waits before attempts 2 to 8 are 30 s, 2 min, 10 min, 30 min, 1 h, 3 h and 6 h. The document now states these values. I do not know who agreed them."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "From the requirements: 2xx is delivered. 408, 429, any 5xx, a timeout or a connection error is retried. 410 is dead now and disables the subscription with disabled_reason 'gone'. Any other 4xx is dead now with no retry. 3xx is not covered by the requirements. I decided it is a permanent failure with redirects not followed, because a redirect is not a success and following it would send the signed body to a host the customer did not register."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "When attempt 8 fails, the row becomes state dead with dead_at set. Dead letter is a state in the deliveries table, not a separate table. The support list and replay both read that table, and a state keeps one row per delivery id, which replay needs."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The cleanup job deletes dead rows whose dead_at is more than 14 days old, once an hour. It deletes nothing else. Disabled subscriptions: the Dispatcher no longer matches them. Their pending rows become cancelled at their next claim, with no POST. A send already in flight finishes. Replay of a delivery for a disabled subscription is refused. I chose to check at claim time rather than cancel rows in bulk when a subscription is disabled, because it is one check and it also covers disabling by the core app."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. A customer's webhook endpoint is stored by the core app as a row in `webhook_subscriptions` (https URL, list of event types, secret, `status`). The core app's outbox relay publishes every business event to the `domain-events` topic. The event carries `event_id`, `event_type`, `account_id` and a JSON `payload`. This service sits between the two.\n\n2. Dispatcher receives the event. A message arriving on `domain-events` starts it. The Dispatcher looks in the core database for subscriptions that are `active`, have the same `account_id`, and list the event's type or `'*'`. For each match it inserts a `deliveries` row in this service's own Postgres. The row is `pending`, has `next_attempt_at = now`, and holds a copy of the event body. A unique key on (`event_id`, `subscription_id`) means a repeated message creates nothing new. The Dispatcher then acks the message, and the queue forgets it. If the Dispatcher crashes before the ack, or Postgres is down so it never acks, the queue redelivers the message after the visibility timeout (default 30 s). The insert is idempotent, so redelivery is safe.\n\n3. Worker claims a row. About once per second, each of several workers runs a query. It selects up to a batch of `pending` rows whose `next_attempt_at` has passed and whose lease is empty or expired. `FOR UPDATE SKIP LOCKED` keeps two workers off the same row. The worker sets `lease_until = now + 60 s` and adds 1 to `attempts`. The count goes up at claim time, not after the send. So a row whose worker keeps crashing still stops at 8 attempts. If a worker dies, the lease expires after 60 s and another worker claims the row.\n\n4. Subscription check. The worker reads the subscription. If `status` is not `active` (disabled by a 410 or by the core app), the row becomes `cancelled` and nothing is sent.\n\n5. Sign and send. The worker decrypts the secret with `libs/secrets.decrypt()` and takes the current Unix time as `t`. It computes HMAC-SHA256 over `<t>.<raw body>` with the secret. It POSTs the event JSON to the subscription URL with a 10 s timeout. The headers are `X-Webhook-Id` (the delivery id, constant across attempts and replays so receivers can dedupe) and `X-Webhook-Signature: t=<t>,v1=<hex>`. The signature is made fresh on every attempt, because receivers reject a `t` older than 5 minutes. If the worker dies mid-POST, the lease expires and another worker POSTs again with the same id. A receiver may therefore see the event twice.\n\n6. Record the result. The worker stores the status code in `last_status_code`, or the error text in `last_error`, and clears the lease. It then acts on the result.\n   - 2xx: the row becomes `delivered`.\n   - 408, 429, any 5xx, a timeout or a connection error: this is retryable. With fewer than 8 attempts used, the row stays `pending` and `next_attempt_at` is set to now plus the wait. The waits after attempts 1 to 7 are 30 s, 2 min, 10 min, 30 min, 1 h, 3 h and 6 h. If all 8 attempts are used, the row becomes `dead`.\n   - 410: the row becomes `dead` at once. The worker also sets the subscription to `disabled` with `disabled_reason = 'gone'`.\n   - Any other 4xx, or a 3xx: the row becomes `dead` with no retry. Redirects are not followed, so the signed body never goes to an unregistered host.\n   If the worker dies before recording, the lease expires and the row is claimed again, as in step 3.\n\n7. Dead letters and replay. A dead row stays in `deliveries` with `dead_at` set. Support can list a subscription's dead deliveries with each one's last status code or error. An admin can replay one. The row goes back to `pending` with `attempts = 0` and `next_attempt_at = now`, and keeps the same id, so it gets a fresh cycle of 8 attempts. A replay is refused if the subscription is disabled.\n\n8. Cleanup. Once an hour, a job deletes `dead` rows whose `dead_at` is more than 14 days old. It deletes nothing else. If a run fails, the next hourly run does the deletion.\n\n9. Disabled subscriptions. New events no longer match a disabled subscription. Its existing `pending` rows become `cancelled` one by one as workers claim them. A send already in flight finishes.\n\n10. Guarantees. Delivery is at-least-once, and a crash can cause a repeat but not a loss. There is no ordering between events.",
+   "gaps": [
+    "How a subscription's secret is encrypted or stored, and how the receiver gets it. This does not stop the flow. `libs/secrets.decrypt()` is only named.",
+    "What the Admin API actually is: endpoints, who authenticates, and how 'support' versus 'admin' is distinguished. Step 7 relies on it, but the document gives no interface.",
+    "The worker's batch size is never stated ('up to a batch'). The document does not say what happens to rows in a batch that cannot all be sent within the 60 s lease.",
+    "A worker reads `webhook_subscriptions` in step 3 after claiming the row. The document does not say what happens if the core database is unavailable at that moment (the failure is only described for Postgres in the Dispatcher). The same gap applies to the subscription writes on a 410."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,38 @@
+## Review of infra-02 (junior, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the document in the order summary, terms, flow diagram, steps, merge handling, failures and open questions. The first version had only a bare diagram and a list of fragments.
+- Replaced the diagram with one that shows each step's trigger, what it writes and its failure path, including the pull request path and the 72 h expiry.
+- Removed 'Rollout failures use kubectl rollout undo'. It would bypass the SSM tags that deploy.sh keeps. Rollback now uses deploy.sh rollback staging after smoke failures only. I explained why a failed staging or production deploy must not use rollback, because the tags are not yet written and rollback would pick the wrong tag.
+- Defined the trigger, which is a merge to main, and the PR behaviour.
+- Defined the integration retry as one whole-job retry (two attempts) and unit tests as no retry.
+- Defined the staging and production locks: who takes them, when they are released, and that waiting runs queue. The staging lock is my addition.
+- Defined the canary measurement: the exact Prometheus query, a 30 s read interval for 15 min, a failed query counts as failing, and no data is not a breach.
+- Defined supersede as stale-run cancellation with three rules, including that a run holding the production lock is never cancelled.
+- Added the approval rules: the approver is compared with the commit author after approval; rejection fails the run; expiry announces and leaves staging in place; the 72 h cover only the approval wait.
+- Added the deployment window and lock wait behaviour in step 6.
+- Added definitions of deploy.sh modes, SSM tags, forward-only migrations, smoke tests and the other terms a newcomer would not know.
+- Added a failure table and an open questions section for a partly rolled stable deployment, author exclusion in CI, and laptop credentials.
+- Step 3 and checkpoints: stale check runs on arrival and again after the staging lock is taken (Q10).
+- Step 4 and terms: stated that previous_tag is the tag from before this run's deploy (Q11).
+- Step 6: wait for window polls the clock every minute and holds no lock; window and stale checked again after taking the production lock (Q12).
+- Several merges at once: defined how a run learns about newer runs and made the newer run cancel older waiting runs at step 4; added an open question on CI support (Q13).
+- Step 7 and 8: said why the migration runs before the canary is proven and what happens to traffic and the migration if the canary fails (Q14).
+- Step 9: said the canary keeps running during the stable rollout, the second migration is a no-op, and the 300 s wait is for stable (Q15).
+- Step 9, diagram and failure table: the #deploys message says a person must check the stable deployment (Q16).
+- Flow note and failure section: Run fails is a cleanup step that runs on any failure or cancellation; added open question about a dead runner and locks (Q17).
+- Terms: said migrations are idempotent, canary-off sends all traffic to stable, and the window starts at the canary call.
+- Merged the intro into three sentences and moved the cleanup rule (release locks, post to #deploys) into the top of Steps, so it is said once instead of in the flow notes, the failure table and a closing paragraph.
+- Cut the failure table: every failure is now described in its own step, and the common rules are stated once.
+- Folded the 'wait for window' and stale-run checks into step 6 and the staging-rejection rationale into step 5, plus the reason a failed Prometheus query counts as a failure into step 8.
+- Added to the terms: Prometheus is the metrics store, and a stale run is defined by pointer to its section.
+- Merged the two CI-capability open questions (run list, cancel, lock freeing on runner death) into one.
+- Moved the laptop-credentials item out of Open questions into a separate Rolling out section, apart from how the system runs.
+- Added to Several merges: an approval lost to staleness means the newer run needs its own approval.
+- Kept every fact from the brief and first version. The first version's kubectl rollout undo is deliberately not carried over, because the brief requires rollback through deploy.sh, and undo would leave the SSM tags wrong.
+
+### Holes
+- Q13: How does a run know a 'newer run exists' or that a newer run 'passed its smoke tests'? Where is that recorded and who checks it? (author: I decided that a newer run means a run for a later commit on main, and that each run asks CI for the list of runs and their step status at its checkpoints. The newer run also cancels older waiting runs when its smoke tests pass. I do not know whether CI offers a run list with step status or run cancellation. environments.md does not say. I added this to the open questions.)
+- Q17: If a failure happens while the run waits for the production lock or the runner dies mid-run, what releases the locks? Does the 'Run fails' step always execute? (author: I decided that the Run fails step is a cleanup step that CI runs on any failure or cancellation, and a run waiting for a lock or the window holds no production lock, so there is nothing to release. I do not know what CI does with a lock when the runner itself dies. environments.md says nothing. I added this to the open questions.)

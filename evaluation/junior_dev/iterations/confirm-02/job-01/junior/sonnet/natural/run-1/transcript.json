@@ -1,0 +1,338 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What actually runs the job handler? Where does job_type and payload get turned into real work, and who defines what a handler is?",
+     "about": "Heartbeats and fenced writes / schedules.job_type, payload"
+    },
+    {
+     "id": "2",
+     "text": "What is the handler timeout, and what enforces it? The doc says 'throws or times out' but gives no duration.",
+     "about": "4. Retries"
+    },
+    {
+     "id": "3",
+     "text": "Which comes first inside a tick: the claim picks one run (LIMIT 1). Does a worker claim one run per tick, or loop until nothing is claimable? Can one worker run several handlers at once?",
+     "about": "2. Claiming"
+    },
+    {
+     "id": "4",
+     "text": "The claim orders by created_at for both queued and retry_wait runs. Does a retry_wait run that becomes due wait behind newer queued runs? How is starvation avoided?",
+     "about": "2. Claiming"
+    },
+    {
+     "id": "5",
+     "text": "A skipped run still takes the UNIQUE (schedule_id, fire_time) slot. If a schedule is skipped while the active run is retrying, is next_fire_at still advanced in that same transaction? Confirm what the scan does when ON CONFLICT DO NOTHING hits.",
+     "about": "1. Run creation, steps 3 and 4"
+    },
+    {
+     "id": "6",
+     "text": "When the reaper marks a run lost and the handler on the stalled worker keeps going, what does that worker do when its final fenced write matches 0 rows, and how does the 100-second self-lost rule relate to the 2-minute reaper threshold?",
+     "about": "3. Heartbeats and fenced writes / 5. Crash recovery"
+    },
+    {
+     "id": "7",
+     "text": "Is the claimed run's attempt row insert in the same transaction as the claim UPDATE? If the worker dies between claim and insert, what does the reaper's 'close the open attempt' do?",
+     "about": "2. Claiming / 5. Crash recovery step 1"
+    },
+    {
+     "id": "8",
+     "text": "What happens to a schedule whose cron_expr never yields a next fire time or whose handler job_type has no registered handler? Does the run just fail 3 times?",
+     "about": "schedules.job_type / 4. Retries"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The app keeps a registry mapping job_type to a handler function that receives payload. Defining handlers is application code outside this data model, so I added one line saying so."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The brief gives no handler timeout. I assumed the worker enforces a per-job-type timeout and treats expiry as a thrown error. The duration is added under Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A worker repeats the claim in its tick until nothing is claimable or it hits a concurrency limit (app setting), and runs handlers concurrently with a heartbeat each. This is the simplest way to avoid a one-run-per-tick throughput cap. The limit value is an open question."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, as written it was unfair, because retries ordered by created_at sat behind newer queued runs. Changed the order to COALESCE(next_attempt_at, created_at), which is the time a run became ready, so due retries are not starved."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. next_fire_at is advanced in the same transaction in every case: queued insert, skipped insert, or ON CONFLICT DO NOTHING. I made this explicit in step 4 of run creation."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "A stale worker whose fenced write matches 0 rows discards its result and does nothing further for that run. The 100 second self-lost rule is deliberately shorter than the 2 minute reaper threshold, so a worker normally stops itself before takeover. I added this to the heartbeat section."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Yes, the claim UPDATE and the attempt insert are one transaction, as the doc states. If the worker dies between them the transaction rolls back and the run is untouched. So a running run always has an open attempt row, which the reaper relies on. I added this to claiming and to reaper step 1."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "A cron expression with no fire time in the 12-month validation window is rejected by the app on create or update, so it never reaches the scan. A job_type with no registered handler is an ordinary failed attempt and the run fails after 3 attempts. I chose this because a separate unrunnable state would add a mechanism the brief does not need."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "ON CONFLICT (schedule_id, fire_time) only covers that one constraint. When a queued insert violates the partial unique index instead, how is it 'retried as skipped' inside the same scan transaction, given the row lock on the schedule is held?",
+     "about": "1. Run creation, step 3 (partial unique index backstop)"
+    },
+    {
+     "id": "10",
+     "text": "When a handler times out, what happens to the handler that is still running on the worker, and does the worker keep heartbeating that run until it stops?",
+     "about": "4. Retries (handler timeout)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The retry as skipped was wrong, because ON CONFLICT does not cover the partial index and a failed insert would abort the transaction anyway. It is also unnecessary. Only the scan creates runs, and it holds the schedule row lock, so no other worker can add an active run between the active-run check and the insert. An active run can only become inactive meanwhile, which is harmless. So the partial unique index never fires in normal operation. It is a safety net for bugs: if it rejects an insert, the scan transaction rolls back and the next tick redoes it. I chose this over savepoints because it adds no mechanism."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "On timeout the worker signals the handler to stop on a best-effort basis, records the failure immediately through the fenced transaction, and stops heartbeating that run. A handler that ignores the signal may keep running in the background, and a retry can start while it still runs. I accept this because handlers are idempotent and the brief allows repeated partial work. Heartbeating until it stops would keep a failed run looking alive and block the retry, so I did not choose that."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "11",
+     "text": "When the reaper or a failure writes retry_wait, then a worker claims it, does the claim path also write a fresh run_attempts row for attempt 2 or 3, and is the previous attempt row already closed by then?",
+     "about": "4. Retries / 2. Claiming"
+    },
+    {
+     "id": "12",
+     "text": "A run is queued but its schedule is disabled or tenant paused and the cancel never happens (or it was queued before pause). The claim ignores it. Does it just sit as queued forever, and does that block the schedule's next fire times as skipped after re-enable?",
+     "about": "6. Pausing and disabling / Race with claim"
+    },
+    {
+     "id": "13",
+     "text": "When a handler succeeds, what exactly does the fenced transaction set on runs (status, finished_at, worker_id, heartbeat_at), and does it need to clear worker_id and heartbeat_at to satisfy the CHECKs?",
+     "about": "3. Heartbeats and fenced writes"
+    },
+    {
+     "id": "14",
+     "text": "What does a worker do on a tick if the DB is unreachable during reap, scan or claim? Does the loop just retry on the next tick, and does anything else matter besides the 100-second self-lost rule?",
+     "about": "Every worker runs the same loop"
+    },
+    {
+     "id": "15",
+     "text": "In the fire-time scan, how is the 'most recent cron fire time at or before now()' computed when a schedule's next_fire_at is only slightly late: is fire_time that most recent time or next_fire_at itself? What if they differ?",
+     "about": "1. Run creation, step 2"
+    },
+    {
+     "id": "16",
+     "text": "For a tenant with many due schedules across all tenants, the scan takes LIMIT 50 ordered by next_fire_at. If more than 50 are due, what happens to the rest and can a heavy tenant delay others?",
+     "about": "1. Run creation (the fire-time scan)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. Claim always inserts a new run_attempts row with attempt_no equal to the new attempt_count. The previous attempt row is already closed: the failure transaction or the reaper closes it before the run enters retry_wait. I added one sentence to the claiming section."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Disable cannot leave one, because the scan re-checks enabled after taking the schedule row lock. Pause can: a scan that read the tenant just before the pause committed may insert a queued run after the pause's cancel step. It would sit queued, count as active, and make every fire time after resume skipped. That was a real hole. Fix: the resume and enable transactions first cancel any queued runs of that tenant or schedule. I chose this over making the scan lock the tenant row, because it adds no new locking."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Success sets status='succeeded' and finished_at=now(). I also clear worker_id and heartbeat_at on every exit from running (success, failure, retry_wait, reaper), since the column notes say heartbeat_at is set only in running. The CHECKs only require them while running, so clearing is not forced by them. The worker identity is kept in run_attempts. I put this in the fenced-write SQL."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "If the DB is unreachable the tick fails, is logged, and the loop retries on the next tick. Nothing else is needed for reap, scan or claim, as each is one transaction that rolls back. For running handlers, the 100-second self-lost rule applies. If a handler finishes during an outage, the worker retries its fenced outcome write until it succeeds or the fence rejects it (the reaper took over). I added both lines."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "fire_time is the most recent cron fire time at or before now(), not next_fire_at itself. When the scan is only slightly late they are the same instant. They differ only when several fire times were missed, and then the latest one wins, as the brief requires. I added this to run creation step 2."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The rest stay due (next_fire_at still in the past) and are picked up on the next tick, by any worker. Ordering is oldest next_fire_at first across all tenants, so no tenant is starved. A tenant has at most 50 schedules, so it cannot flood the queue. I added one sentence to step 1."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "17",
+     "text": "Where does the app compute the next cron fire time, and what happens if cron computation across a DST change in the schedule's timezone yields a skipped or repeated local time?",
+     "about": "1. Run creation, step 2 and 4 (timezone, next_fire_at)"
+    },
+    {
+     "id": "18",
+     "text": "When a new schedule is created, who sets its first next_fire_at, and is it set in the same insert as the 50-schedule trigger check?",
+     "about": "schedules.next_fire_at / BEFORE INSERT trigger"
+    },
+    {
+     "id": "19",
+     "text": "When a handler fails and the run goes to retry_wait, the claim query orders by COALESCE(next_attempt_at, created_at). Does the claim of a retry_wait run also check enabled and jobs_paused_at? The doc says retries continue after pause, so is that deliberate in the SQL?",
+     "about": "2. Claiming (WHERE clause)"
+    },
+    {
+     "id": "20",
+     "text": "How does a worker decide a handler 'timed out', and what is the timeout clock based on, given the doc says no timestamps come from worker clocks?",
+     "about": "4. Retries (handler timeout) / Clock"
+    },
+    {
+     "id": "21",
+     "text": "In the reaper, the SELECT ... FOR UPDATE SKIP LOCKED returns rows, then each is handled in its own transaction. Is the lock held across those transactions, or could the run be changed between the select and the transition?",
+     "about": "5. Crash recovery (reaper)"
+    },
+    {
+     "id": "22",
+     "text": "What does cleanup do about a run that is stuck in queued, running or retry_wait forever for 90 days, and how does the daily once-a-day trigger get decided across workers (what records that it already ran today)?",
+     "about": "7. History and cleanup"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The app computes fire times with a cron library in the schedule's timezone; the 5-minute validation walk uses the same function. For a local time that does not exist (spring forward) the job fires at the first instant after the gap; for a local time that occurs twice (fall back) it fires once, at the first occurrence. I chose this so a DST change never causes a missed or doubled run. The brief does not specify it, so it is listed under Open questions."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The app sets the first next_fire_at (first fire time after now()) in the same INSERT that fires the BEFORE INSERT trigger, so a live schedule never lacks next_fire_at. Added one line to run creation."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "No, the retry_wait branch of the claim WHERE clause has no enabled or paused check, and that is deliberate: a retry belongs to a run that already started, and started runs finish normally. Only the queued branch checks them. Added a line to the claiming section pointing at section 6, which already holds the assumption to confirm."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The worker starts a local duration timer when the handler starts and treats expiry as a thrown error. A duration timer compares no timestamps across machines, so it does not conflict with the DB-clock rule, which covers stored timestamps and decisions about them (heartbeat age, retry delay, dueness). Clarified the Clock bullet and the retries section."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "As written, it was a real gap: the lock from the SELECT would not last across separate transactions. Fixed: the reaper now does a plain read for candidates, then per candidate, in its own transaction, re-selects the row with status='running' and a stale heartbeat FOR UPDATE SKIP LOCKED and skips it if no row comes back. The lock is held through the transition, so the run cannot change in between."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Cleanup deletes only finished runs, so active ones are never deleted. A run cannot normally be stuck 90 days: running runs are reaped, retry_wait runs are claimed, queued runs are claimed or cancelled. The one leftover is a queued run in a tenant paused forever, which I accept. There is no record of a daily run: each worker uses a local 24-hour timer, the advisory lock prevents overlap, and an extra run is harmless because the delete is idempotent. Updated the tick description and the cleanup bullet."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "23",
+     "text": "In the fire-time scan, the run is inserted with status 'queued'. If the handler is never claimed because all workers are at their concurrency limit, does the queued run just wait, and what stops a long-waiting queued run from being a problem when the next fire time arrives (it becomes skipped)?",
+     "about": "1. Run creation, step 3 / 2. Claiming"
+    },
+    {
+     "id": "24",
+     "text": "The retry_wait claim branch has no enabled/paused check, but the claim join requires the schedule and tenant rows. If a schedule is soft-deleted while a run is in retry_wait, does the retry still run, and does it still need the schedule row to exist?",
+     "about": "2. Claiming / 6. Pausing and disabling (Deleting a schedule)"
+    },
+    {
+     "id": "25",
+     "text": "When a handler fails and the fenced transaction writes retry_wait, the retry delay is 1 or 5 minutes but the tick is 5 to 10 seconds. Who sets 'now() + interval', and does a failed attempt close its run_attempts row with outcome 'failed' in the same transaction as the status change? Confirm the exact order of the two UPDATEs for failure versus success.",
+     "about": "4. Retries / 3. Heartbeats and fenced writes"
+    },
+    {
+     "id": "26",
+     "text": "Worker heartbeats every 30 seconds, self-lost at about 100 seconds, reaper at 2 minutes. Where is the 100 seconds measured from, given the worker cannot compare timestamps across machines, and what exactly does the worker do at that point (stop handler, write nothing)?",
+     "about": "3. Heartbeats and fenced writes"
+    },
+    {
+     "id": "27",
+     "text": "In the reaper step 3, 'apply the same transition as a failure': does it set finished_at and clear worker_id and heartbeat_at, and is the reaper's transition fenced the same way, given it holds the row lock?",
+     "about": "5. Crash recovery (reaper), step 3"
+    },
+    {
+     "id": "28",
+     "text": "On resume of a tenant, the transaction cancels queued runs, clears jobs_paused_at and recomputes next_fire_at. Who computes next_fire_at for each schedule (the app, in a loop) and is that done in a single transaction with the cancel step?",
+     "about": "6. Pausing and disabling (No catch-up on re-enable or resume)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "Yes, a queued run just waits until some worker has capacity. If the next fire time arrives first, the scan sees an active run and records the new fire time as skipped, which is exactly the brief's rule, so nothing breaks. Added one clause to run creation step 3."
+    },
+    {
+     "id": "24",
+     "tag": "checked",
+     "text": "Yes, the retry still runs. Soft delete keeps the schedule row, so the claim join still finds it, and the retry_wait branch has no enabled or deleted check. The row is only purged after its runs are gone. Added one sentence to claiming and to the deleting bullet."
+    },
+    {
+     "id": "25",
+     "tag": "checked",
+     "text": "The database sets it: next_attempt_at = now() + interval is computed inside the fenced UPDATE on runs, so no worker clock is involved. The tick does not wait on it; each tick's claim query picks the run up once the time has passed, so a retry starts within one tick of due. Order is the same for success and failure: first the fenced runs UPDATE, then, only if it matched 1 row, the run_attempts UPDATE closing the attempt (outcome failed or succeeded), all in one transaction. Stated this in section 4."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "It is measured by a local timer on the worker that restarts at each successful heartbeat, so it is a duration on one machine and compares no timestamps across machines. At about 100 seconds without a successful heartbeat the worker treats itself as lost: it stops the handler best-effort and writes nothing. Spelled this out in section 3."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "Yes to the first part: the reaper applies the same run update as a failure, so it clears worker_id and heartbeat_at, and sets finished_at only when attempts are exhausted and the run becomes failed. It is not token-fenced, because its FOR UPDATE re-check of status running and a stale heartbeat holds the row lock until the transaction ends, which gives the same protection. Stated in reaper steps 1 and 3."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "Yes. The app computes each schedule's next fire time in a loop (at most 50 enabled schedules per tenant) and does all of it in one transaction: cancel queued runs, clear jobs_paused_at, update every next_fire_at. One transaction means a failure leaves the tenant paused with nothing half-applied. Made this explicit in section 6."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. The app was a Postgres system with a `tenants` table. This design adds four tables (`schedules`, `runs`, `run_attempts`, plus the fourth table the document never names) and a `tenants.jobs_paused_at` column. There is no leader, no scheduler process and no broker. Several identical workers (3 to 10) all run the same loop, and Postgres is the only shared thing. All timestamps and timeout decisions use the database's `now()`, never a worker's clock.\n\n2. Creating a schedule. A tenant creates a schedule with a `job_type`, a JSON `payload`, a 5-field cron expression and an IANA timezone. The app first checks that the shortest gap between fire times is at least 5 minutes. It walks 12 months of fire times in that timezone and rejects any gap under 5 minutes or an empty window. The app then computes the first fire time after `now()` and sets `next_fire_at` in the same INSERT. A BEFORE INSERT trigger locks the tenant row and counts live schedules, so a tenant cannot exceed 50.\n\n3. The tick. Every worker loops on a jittered 5 to 10 second tick. Each tick does reap, then create runs, then claim, then (about daily) cleanup. Each step is its own transaction. If the DB is unreachable the tick fails, is logged and is retried on the next tick. Handlers already running keep going.\n\n4. Run creation, which starts when a tick reaches the scan. In one transaction the worker selects up to 50 due schedules: enabled, not deleted, tenant not paused, `next_fire_at <= now()`. It orders them oldest first, using `FOR UPDATE SKIP LOCKED`. Another worker that has locked a schedule means this worker never sees it. For each schedule it computes `fire_time`, the most recent cron fire time at or before `now()`, in the schedule's timezone and stored as UTC. Older missed times are never computed and leave no history. It then inserts a `runs` row. The row is `skipped` if the schedule already has an active run (queued, running or retry_wait). Otherwise it is `queued`. Both inserts use `ON CONFLICT (schedule_id, fire_time) DO NOTHING`. Finally it sets `next_fire_at` to the first fire time strictly after `now()`, whether or not a row was created. The row lock holds the active-run check steady. The unique index on active runs is only a safety net. If it rejects an insert, the transaction rolls back and the next tick redoes the scan. A crash mid-scan also rolls everything back.\n\n5. Claiming, which follows the scan in each tick. The worker repeats a single UPDATE until nothing is claimable or it hits its concurrency limit. The UPDATE picks one run with `FOR UPDATE SKIP LOCKED`. The run is either `queued` (with its schedule enabled, not deleted, and its tenant not paused) or `retry_wait` with `next_attempt_at <= now()`. It is ordered by `COALESCE(next_attempt_at, created_at)`. The UPDATE sets `status='running'`, increments `attempt_count`, sets `worker_id` and `heartbeat_at = now()` and clears `next_attempt_at`. In the same transaction the worker inserts a `run_attempts` row using the returned `attempt_count` as `attempt_no`. If the worker dies in between, everything rolls back and the run looks unclaimed. The returned `attempt_count` is the worker's fencing token. A retry in `retry_wait` is deliberately not checked for enabled or paused, because started runs finish.\n\n6. Running the handler. The worker looks up the handler registered for the `job_type` and calls it with `payload`. The registry is outside this document. Every 30 seconds the worker updates `heartbeat_at = now()` where the run is still `running` with the same token and `worker_id`. If that matches 0 rows, the run was lost, so the worker stops the handler best-effort and writes nothing more. A local timer also restarts at each successful heartbeat. If it reaches about 100 seconds without one, the worker treats itself as lost in the same way.\n\n7. Success. When the handler finishes, one transaction does a fenced UPDATE on `runs`. It sets `status='succeeded'` and `finished_at = now()`, clears `worker_id` and `heartbeat_at`, and requires status `running` with the matching token and `worker_id`. Only if that matched 1 row, it then closes the `run_attempts` row (`ended_at`, `outcome`, `error`), guarded by `ended_at IS NULL`. If the DB is down at this point, the worker retries the write until it succeeds or the fence rejects it. A stale worker's write matches 0 rows and its result is discarded.\n\n8. Failure and retry. If the handler throws or exceeds a local timeout timer, the same fenced transaction closes the attempt as `failed` with the error text. If `attempt_count < 3`, the run goes to `retry_wait` with `next_attempt_at = now() + 1 minute` after attempt 1, or `+ 5 minutes` after attempt 2. At attempt 3 it goes to `failed`. A timed-out handler is signalled best-effort and may keep running, which is accepted because handlers are idempotent. A `job_type` with no handler is just a failed attempt. Nothing waits on the delay. A later tick's claim picks the run up once `next_attempt_at` has passed, and that starts attempt 2 or 3. A run in `retry_wait` still counts as active, so any fire time that arrives meanwhile becomes `skipped`.\n\n9. Crash recovery. Every tick, every worker lists `running` runs whose `heartbeat_at` is older than 2 minutes. For each one, a separate transaction re-selects it `FOR UPDATE SKIP LOCKED` with the same condition, and skips it if no row comes back. It then closes the open attempt as `lost` with a fixed error message, and applies the same update as a failure. That is `retry_wait` with the 1 or 5 minute delay, or `failed` at attempt 3. The lost attempt counts as used. The reaper needs no token check because the lock and re-check stand in for it. The old worker may still be alive, so two handlers may briefly overlap. The fence stops the stale one from recording anything. If all workers were down, the first tick reaps stale runs, and the scan then creates at most one run per schedule, for its latest missed fire time. That run is `skipped` if a reaped run is in `retry_wait`.\n\n10. Pause and disable. Disabling a schedule sets `enabled=false` and `next_fire_at=NULL` and cancels its `queued` runs. Pausing a tenant sets `jobs_paused_at` and cancels its queued runs. Running runs, including their remaining retries, carry on. The claim query re-checks enabled and paused for queued runs. Resume and enable first cancel leftover queued runs. They then clear the pause and recompute `next_fire_at` for each enabled live schedule, so nothing is caught up. Editing the cron or timezone recomputes `next_fire_at`. Deleting is a soft delete (`deleted_at`, `enabled=false`, queued runs cancelled), and a run already in `retry_wait` keeps retrying.\n\n11. History and cleanup. The tenant history API reads `runs` by `tenant_id` ordered by `fire_time DESC`, with keyset pagination on `(fire_time, id)`. It reads attempts from `run_attempts`. Skipped and cancelled runs have no attempts. About every 24 hours, each worker's local timer starts cleanup. It tries `pg_try_advisory_lock`, and a worker that doesn't get the lock skips cleanup. The winner deletes finished runs with `fire_time` older than 90 days in batches of 1000, until nothing is left. Attempts go with them by cascade. Soft-deleted schedules with no runs left are then purged.",
+   "gaps": [
+    "The document says 'four tables' but names only schedules, runs and run_attempts, plus a tenants column. The fourth table is never identified.",
+    "How a tenant actually creates, edits, enables, disables, pauses or resumes a schedule is not described: there is no API or entry point. Only the SQL and app behaviour are given.",
+    "How 'enabled' relates to 'live', and what the disable and enable transactions do to a retry_wait run, is clear only through an assumption the document itself flags as unconfirmed.",
+    "What the handler receives besides payload, how it reports success or throws, and how the worker 'stops' a handler or signals it to stop, are not described.",
+    "The handler timeout duration per job type and the per-worker concurrency limit are not given (listed by the document as open questions).",
+    "It is not stated when the worker starts and stops heartbeating relative to the claim transaction, or whether the heartbeat loop is per run on its own timer. Only 'every 30 seconds' is given.",
+    "The document does not say how the claim's tenant and schedule joins treat a retry_wait run whose schedule row has been purged (cleanup purges soft-deleted schedules only once they have no runs left, so it may not arise).",
+    "How a cancelled run's final status, finished_at and attempt rows relate to a run that was queued and then cancelled is given, but how the worker running a handler learns of a pause or disable is not (it does not, by design)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachback-correct"
+}

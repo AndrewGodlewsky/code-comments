@@ -1,0 +1,184 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Step 4 inserts the refund with status pending and commits. Then step 5 calls the provider. What process runs step 5: the same web request that handled the admin's POST, or a background worker? Does the admin's browser wait for all of the 10-second attempts and retries before getting a response?",
+     "about": "Step 5: Call the provider's create-refund API (first attempt)"
+    },
+    {
+     "id": "2",
+     "text": "Step 5 says 'attempts is incremented and persisted before the call'. Which transaction or write does that happen in, given that step 4 has already committed?",
+     "about": "Step 5, State"
+    },
+    {
+     "id": "3",
+     "text": "Step 8 says that if the refund is not found by provider_refund_id, it returns 503. But in step 5b, when all attempts fail, provider_refund_id is unknown to us. How does a webhook for that refund ever get matched? Does step 9 fill in the id?",
+     "about": "Step 8 Lookup and lock / Step 5b"
+    },
+    {
+     "id": "4",
+     "text": "Step 9 says that for a pending refund with no provider_refund_id and under 2 hours old, it re-sends create. What happens to the response of that re-sent call? Does it go through step 6 to store the id?",
+     "about": "Step 9, Refunds with no provider_refund_id"
+    },
+    {
+     "id": "5",
+     "text": "Step 7 handles a 4xx on the first attempt only. What happens if a 4xx comes on a retry in step 5b, or from a re-sent create in step 9?",
+     "about": "Step 7 / Step 5b / Step 9"
+    },
+    {
+     "id": "6",
+     "text": "In step 9, the reconciliation job gets a status from the provider's retrieve API. What statuses can the provider return, and how do they map to our pending, succeeded and failed? What happens when it returns something still in progress?",
+     "about": "Step 9, State: applyRefundTransition with source = reconciliation"
+    },
+    {
+     "id": "7",
+     "text": "Step 11 says it runs inside the transaction from step 8 or 9. Step 6 also can apply succeeded with source provider_response. Does step 11 and the email outbox insert run on that path too?",
+     "about": "Step 6 / Step 11 / Step 10"
+    },
+    {
+     "id": "8",
+     "text": "Step 12 writes the refund.final audit row. Which code writes it, and in which transaction? Is it separate from applyRefundTransition, which already writes an audit row?",
+     "about": "Step 12: Record the final outcome and close"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The provider calls run in a background worker, not in the admin's web request. The request ends once step 4 commits and returns 'submitted'. A call with retries can take over 40 seconds, the admin should not wait for it, and no lock may be held during it."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The attempt count is its own short write, committed before the HTTP call. It is not part of step 4's transaction, which has already committed. Each retry does the same."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Step 9 fills in the id. A re-sent create with the same key returns the original refund if an earlier attempt created it, so the 2xx response carries the provider id, and step 6 stores it. A webhook that arrives before then gets 503 and is redelivered."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Yes. A 2xx from the re-sent create goes through step 6 and stores the id. A 4xx goes to step 7, and a timeout or 5xx goes to step 5b."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Same as step 7: the refund is marked failed, with no more retries. If an earlier attempt had created the refund, the provider would have returned it under the same key, so a 4xx means the provider refused it. This is an assumption to confirm, listed under open questions."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The brief does not name the status values the retrieve API returns. Assumed: succeeded maps to succeeded, failed maps to failed, and any other value keeps the refund pending and updates last_status_check_at. Listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Yes. The email outbox insert and the order status recompute are part of applyRefundTransition, so they run on every path that moves a refund to succeeded: step 6, step 8 and step 9."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "No separate refund.final row. applyRefundTransition already writes one audit row for every status change, including the move to a terminal status, so that row is the final record. A second row would repeat it. The final step now lists only what to check."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 5 says the worker finds a pending refund with attempts = 0. What does the worker poll, and how often? And if two workers (or the worker and step 9) pick up the same refund at once, what stops two calls running together?",
+     "about": "Step 5: First provider call / Step 4 Hand-off"
+    },
+    {
+     "id": "10",
+     "text": "After step 5b exhausts its 4 attempts, attempts is 4. Step 5 only picks refunds with attempts = 0. How does step 9's re-sent create get made, and does it count attempts and get the same retry handling again?",
+     "about": "Step 5b: All attempts fail / Step 9: Without a provider_refund_id"
+    },
+    {
+     "id": "11",
+     "text": "Step 9 says a refund without a provider id and 2+ hours old is looked up 'by our metadata'. What exactly is that lookup (which provider API call) and what do we do with the result? If the provider cannot do it, what does the refund look like to the admin in the meantime?",
+     "about": "Step 9: Without a provider_refund_id, created 2 hours or more ago"
+    },
+    {
+     "id": "12",
+     "text": "Step 9 selects refunds only once they are an hour past last_status_check_at or created_at. Does that mean a refund with no id (after step 5b fails) waits up to an hour before its first re-sent create? Is that intended?",
+     "about": "Step 9: Selection"
+    },
+    {
+     "id": "13",
+     "text": "In step 8, when the webhook arrives and the refund is found and pending, does applyRefundTransition update provider-side fields or last_status_check_at? Also, what does the webhook body contain that identifies the refund (provider refund id only, or also our metadata refund id)?",
+     "about": "Step 8: Find / Apply"
+    },
+    {
+     "id": "14",
+     "text": "Step 6 stores provider_refund_id and audits refund.submitted. Is that done in one transaction? What if the webhook for the same refund arrives while step 6 is still writing, and how does step 8's row lock interact with it?",
+     "about": "Step 6: Record the provider's acceptance / Step 8: Find"
+    },
+    {
+     "id": "15",
+     "text": "Step 10: how does the outbox row get the customer email, currency and payment reference? Where do those come from, since the payments table assumed only has four columns?",
+     "about": "Step 10: Send the customer email once, after success"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The step 5 worker polls once a minute for pending refunds with attempts = 0 and no provider id. Two callers cannot both run a call: every attempt first runs a conditional update that sets attempts to the value read plus one, only if the row is still pending, has no provider id, and attempts is unchanged. Only the caller whose update changed one row makes the HTTP call. Step 10 uses the same claim. The claim commits before the call, so a crash leaves a record."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Step 6 exhausting its attempts leaves attempts at 4, and step 5 only picks attempts = 0, so step 5 never re-sends. Step 10's re-send is a separate, later path. Each run that re-sends makes one full sequence of up to 4 attempts with the same key, claiming each attempt the same way and handling 2xx, 4xx and timeouts as steps 5 and 6 do. attempts counts all calls made, not a budget, because a reconciliation re-send must still be possible after step 6 has used its 4 attempts. The re-send is safe because the provider returns the original refund for the same key."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The brief does not say whether the provider can search or list refunds by our metadata refund id, so the exact API call is unknown. The plan uses the provider's search or list call with that metadata. If a refund is found, its id is stored as in step 7 and its status applied. If not found, it stays pending. Meanwhile the admin sees 'submitted, status being confirmed', because the refund is pending. If the provider cannot do this lookup, the open question on refunds with no id applies."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, that was not intended. A refund with no id after step 6 could wait up to an hour from creation before its first re-send, because last_status_check_at is empty and the check used created_at plus one hour. Fixed: a refund with no id and created less than 2 hours ago is checked on every 15-minute run, so the first re-send follows within about 15 minutes. Refunds with an id keep the one-hour rule."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "applyRefundTransition changes only the status, the audit row, the email outbox row and the order status. It does not change provider fields or last_status_check_at. The plan matches a webhook to its refund only by provider_refund_id and does not assume the body carries our refund id. Whether the body contains the provider id at all is not in the brief, so it is an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Step 7 is one short transaction: lock the refund row FOR UPDATE, store provider_refund_id only if it is still empty, audit refund.submitted, commit. A webhook cannot match the refund before that commit, because step 9 looks up the id. If it arrives early it gets 503 and is redelivered. If it arrives during the write, it waits on the same row lock. Step 7 now spells this out."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The outbox row holds only refund_id and type, so the payments table does not need new columns. The email worker reads the customer email, the refund amount, the currency and the payment reference from the refund's payment and its customer when it sends. The brief does not say where the customer's email or the currency are stored, so the plan lists this as an assumption and as an open question to confirm."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one refund from the admin's click to the customer email. The example is a partial refund that the provider accepts and confirms later by webhook.\n\n1. **The admin opens the payment page.** An admin opens a payment in the internal admin page. The server loads `captured_amount_cents`, `status` and `remaining_cents`. `remaining_cents` is captured minus the sum of this payment's refunds that are `pending` or `succeeded`. It is for display only and nothing is written. An unknown payment gives 404. A payment whose status is not `captured` shows no refund form. Users without refund permission don't see the button.\n\n2. **The admin submits the form.** The admin clicks \"Refund\" and enters an amount in integer cents, a reason (`duplicate`, `fraudulent`, `customer_request` or `other`) and an optional note. The browser makes a `refund_request_id` UUID when it draws the form. It posts everything to `POST /admin/payments/:id/refunds` on our server. It never calls the provider. Field errors show inline and nothing is sent. A double-click sends the same UUID, which is what makes it safe to repeat. No state is held at this point.\n\n3. **The server checks and audits the request.** The server re-checks refund permission, because the UI check is not enough. It also checks that the payment status is `captured`, the amount is an integer above 0, the reason is in the list and the note is short enough. It deliberately does not check the amount against the remaining balance, because that check would race. It writes an `audit_log` row for every request, accepted or rejected. Permission failure returns 403 and validation or status failure returns 422. Both are audited as rejected, no refund row is made and the provider is not called.\n\n4. **The server reserves the amount, then answers the admin.** In one transaction:\n   - It locks the payment row with `FOR UPDATE`, so concurrent refunds on this payment wait.\n   - It sums the `pending` and `succeeded` refunds for the payment. Failed refunds are excluded, which frees their amount.\n   - If sum plus the requested amount exceeds the captured amount, it audits the rejection and rolls back.\n   - Otherwise it inserts a `refunds` row. The row has `id = refund_request_id`, status `pending`, `idempotency_key = id`, `provider_refund_id = NULL` and `attempts = 0`. The primary key makes a repeated submit do nothing, and the handler returns the existing refund's state.\n   - It audits `refund.created` and commits.\n\n   The admin then sees \"Refund submitted, awaiting provider confirmation\" with the refund id, amount and `pending` status. The browser doesn't wait for the provider. If the database errors, everything rolls back, the admin is asked to retry and the provider has not been called. A second admin refunding the same payment waits at the lock. That admin then sees the first pending row and is rejected if the total would be too high.\n\n5. **The worker makes the first provider call.** A background worker checks once a minute for `pending` refunds with `attempts = 0` and no `provider_refund_id`. Before calling, it runs a short claim transaction. The claim sets `attempts` to the value it read plus 1, only if the refund is still `pending`, has no provider id and `attempts` still equals the value read. Only a caller whose update changed one row may call, so two workers, or a worker and step 10, never both call. If the claim fails, that caller stops. The claim commits before the HTTP call. The call goes from our server to the provider with the charge id, `amount_cents`, the idempotency key (the refund id) and metadata holding our refund id. Its timeout is 10 seconds. A 2xx goes to step 7, a timeout or 5xx goes to step 6, and a 4xx goes to step 8. The provider is not called while the payment row lock is held.\n\n6. **Timeouts and 5xx are retried.** The worker retries up to 3 times, so 4 attempts in total, with backoff and jitter. Each attempt claims first, uses the same key and has a 10-second timeout. The same key means the provider returns the original refund if an earlier attempt created it. The last error is stored in `provider_error`. A 2xx on any attempt goes to step 7 and a 4xx goes to step 8. If all attempts fail, the refund stays `pending` with no provider id. It is not marked failed, because the provider may have created it. The worker audits `refund.submit_exhausted`, the admin sees \"submitted, status being confirmed\", and step 10 takes over. After a crash mid-retry the row stays `pending` with `attempts` recorded, and step 10 picks it up.\n\n7. **The provider's acceptance is recorded.** After a 2xx, a short transaction locks the refund row and stores `provider_refund_id` if it is still empty. It then audits `refund.submitted` and commits. Normally the status stays `pending`, because a 2xx means \"accepted\". In our example the provider has accepted it and the refund stays `pending`. If the response already says `succeeded`, the same transaction calls `applyRefundTransition(pending → succeeded, provider_response)`. A webhook for this refund can't match until this commit. If one arrives during the write, it waits on the row lock. A malformed 2xx is treated as an unknown outcome, handled as in step 6, and never marked failed.\n\n8. **A 4xx rejection fails the refund.** This is not on our main path, but it is the failure branch. `provider_error` stores the provider's message. `applyRefundTransition(pending → failed, provider_response)` runs and audits with the message. The amount is released automatically, because step 4's sum ignores failed refunds. There are no retries and no customer email. The admin sees the escaped provider message on the refund list. The order status does not change.\n\n9. **A signed webhook applies the final result.** Days later the provider posts `refund.succeeded` to `POST /webhooks/provider`.\n   - The server verifies the signature over the raw body with the webhook secret. A bad signature returns 400, and a timestamp outside the tolerance window is rejected.\n   - In the same transaction as the change, it inserts `event_id` into `refund_webhook_events`, which has a unique constraint. A repeated `event_id` returns 200 and does nothing. A failed run doesn't count as seen.\n   - It looks up the refund by `provider_refund_id` and locks it. If nothing matches, step 7 hasn't stored the id yet, so it rolls back and returns 503 so the provider redelivers.\n   - If the refund is `pending`, it calls `applyRefundTransition` with the event's status and `event_id`. If the refund is already terminal and the event agrees, nothing happens. If they conflict, nothing changes, it audits `conflicting_event` and raises an alert.\n   - It commits and returns 200, or returns 500 on a processing failure so the provider retries.\n\n   `applyRefundTransition` runs inside this transaction. It allows a change only from `pending` and audits `refund.status_changed` with the source `webhook`. On `succeeded` it also inserts one `email_outbox` row per refund and recomputes the order status. The label goes into `payments.refund_status` in the same transaction. It is \"Partially refunded\" if the succeeded sum is above 0 but below captured, and \"Refunded\" if the sum equals captured.\n\n10. **The reconciliation job is the safety net.** It is scheduled every 15 minutes. It selects `pending` refunds in three groups.\n    - With a provider id, a refund is selected when `now - coalesce(last_status_check_at, created_at) >= 1 hour`. The job calls the provider's retrieve API. A `succeeded` or `failed` answer calls `applyRefundTransition` with the source `reconciliation`. Any other answer leaves it pending.\n    - With no provider id and created less than 2 hours ago, it is selected on every run. The job re-sends the create call with the same key, as one full sequence of up to 4 attempts, each claiming first. A 2xx goes to step 7 and a 4xx goes to step 8. If every attempt fails, the refund stays pending for the next run.\n    - With no provider id and created 2 hours or more ago, it is selected on the hourly schedule. The job never re-sends create. It looks the refund up by our metadata refund id. If found, it stores the id as in step 7 and applies the status. If not found, it leaves the refund pending.\n\n    After any call that got an answer, it updates `last_status_check_at`. If the call itself fails, it doesn't update it, and the next run retries. Monitoring alerts at 20 hours without a check and pages on-call at 24 hours.\n\n11. **The customer email is sent once.** The email worker polls `email_outbox` for rows with `sent_at IS NULL`. The row holds only the refund id and type. At send time the worker reads the customer email, amount, currency and payment reference from the payment and customer. The unique (`refund_id`, `type`) constraint allows one row per refund. It records `sent_at` and `attempts`. A send failure leaves the row unsent and the worker retries with backoff, then alerts after a set number of attempts. A crash after sending but before `sent_at` is written can produce a duplicate. The planned mitigation is to pass the outbox id as the email provider's idempotency key, if it supports one.\n\n12. **The final outcome is recorded.** Nothing extra is written. The `refund.status_changed` audit row is the final record. The admin's refund list shows the final status and the payment shows the recomputed order status. The plan is done when every refund ends `succeeded` or `failed`, every request and status change has an audit row, and a succeeded refund has exactly one email row.",
+   "gaps": [
+    "The document never says what the email worker's poll interval, retry count or backoff timings are. It only says 'a set number of attempts'.",
+    "The document doesn't say what the admin sees or what happens after a refund becomes terminal while the admin is still on the page. Nothing says whether the page refreshes or polls.",
+    "It doesn't say how the one-minute worker's selection picks up a refund when attempts > 0 and no provider id. Step 10 handles that, but the handoff timing between the worker's first call and step 10's 'every run' re-send is not defined, and neither is how the two avoid contending beyond the claim.",
+    "It doesn't say what mechanism makes an uncommitted-id refund's webhooks eventually resolve if the provider can't search by metadata. The open question leaves this undecided, so the 503 loop's end state is unknown.",
+    "It doesn't say how the retry or backoff schedule is implemented across processes (in-process sleep versus requeue). That affects whether the step 5 claim row is held during waits, and the document says only that each attempt claims first."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

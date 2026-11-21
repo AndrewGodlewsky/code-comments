@@ -1,0 +1,43 @@
+## Review of ev-02 (junior, author sonnet, natural)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Added ingest_rejects as a fourth table (diagram referenced it but the table list did not), with its purge at 14 days.
+- Core DB or decrypt failure after claim now gives the claim back (attempts - 1, 30 s retry) so an outage cannot burn attempts or dead-letter; added a diagram edge, a Crash recovery line and updated the Core DB down row.
+- Clarified that the claim making attempts 8 is still sent, and the worker_lost rule applies only to an expired lease with attempts already 8.
+- State the retry wait mapping (nth wait after failed attempt n, measured from failure) and the signature formula.
+- Result write now also requires state = 'pending', so a sweep of leased rows discards in-flight results; stated that the sweep includes leased rows.
+- Stated last_status 410 and last_error 'gone' for the 410 delivery.
+- Defined event_types and '*', noted the 30 s visibility timeout default, and stated replay is one delivery per call.
+- Added Open questions for admin API authentication and how receivers get the secret.
+- Core database section now lists the columns the service reads, including `url` (the endpoint, always https), and states that `status` is only 'active' or 'disabled'.
+- The send step in the diagram now says the POST goes to the subscription url.
+- Recording the outcome now says what a 2xx writes (delivered, last_status, lease cleared, attempt row) and what happens when the lease was lost (result discarded, a later send decides the state).
+- Added an open question about who re-enables a disabled subscription.
+- Decisions: defined the queue and the domain-events message (published by outbox-relay, body is the event JSON), answering Q12.
+- Duplicates and fan-out: added that the queue hides a message from other workers until ack or timeout, and stated the order read core DB, commit, ack (Q15).
+- Recording the outcome: stated that only the status code matters and the body is never read or stored (Q13), and what happens when the result write fails (Q14).
+- 410 and disabled subscriptions: stated that a manual disable is noticed only at claim time, with no sweeper (Q16).
+- Dead letters and purge node: purge now deletes a delivery's delivery_attempts rows with it, and support sees nothing after that (Q17).
+- Failure summary: Service DB down row now covers a failed result write.
+- Added subscription_id (and event_id) as listed columns of deliveries, and said the worker looks up the subscription by it at send time (Q18).
+- Diagram: the subscription check node now says it looks up by subscription_id (Q18).
+- Stated that the result write clears the lease on every outcome, and that a pending row with a future next_attempt_at is skipped by polls (Q19).
+- Fixed a wrong claim in the 410 section: after a crash between the core update and the local dead-letter, the next claim sees the subscription disabled and dead-letters as subscription_disabled, rather than getting a second 410 (Q20).
+- Replay now says which fields it resets or clears (dead_at, purge_after, lease) and what happens if the subscription is disabled before the claim (Q21).
+- Duplicates section now says a core DB outage retries a message every 30 s with no service limit, and added an open question about queue retention and the failed-receives threshold (Q22).
+- Reordered into the skill layout: a 3-sentence summary (including how events reach the service today and why Postgres holds the schedule), a Terms section, state, the diagram, numbered steps in time order, failure table, assumptions, open questions.
+- Added a Terms section defining event, queue, subscription, delivery, worker, lease, cycle, dead and core database, answering the junior's what-does-this-mean questions (Q1, Q10, Q12).
+- Merged the old 'How the pieces work' groups (Duplicates, Sharing work, Attempt timing, Recording the outcome, Crash recovery, 410, Dead letters) into eight numbered steps: Ingest, Claim, Send, Record and retry, Crash recovery, 410 and disabled, Dead letters and replay, Retention. Each fact now appears once.
+- Moved the request rules (10 s timeout, headers, signature format, 5 minute rule, status classification) into one Send step and the retry waits, jitter and Retry-After into the Record step, so they are no longer split between the diagram notes and several sections.
+- Cut repeated statements: the duplicate lease-lost explanations in Recording the outcome and the crash section, the repeated 'idempotent insert absorbs it' lines, and the repeated 'lease expires and another worker retries' wording. The failure table keeps the summary.
+- Moved the claim-time subscription check (disabled leads to dead, core DB or decrypt error leads to giving the claim back) into the Claim step where it happens, and removed the separate Crash-recovery bullet that described it.
+- Kept every stated fact from the first version: 3 original tables plus ingest_rejects, indexes, 60 s lease, 8 attempts, wait list, 14 day dead retention, 7 day delivered retention, 10% jitter, Retry-After cap, 409 on replay, secret never copied, core DB role limited to status and disabled_reason, alert on dead-letter topic depth, high failed-receives threshold.
+- Kept the Mermaid diagram unchanged, and put the summary and terms before it and the notes after it.
+- Dropped the sentence that restated the 'not silently dropped' reasoning and merged it into the 410 section; left out nothing the junior asked about. Details the plan does not need yet (exact queue retention, admin auth, secret delivery to receivers) remain only in Open questions.
+
+### Holes
+- Q6: Who calls the Admin API and how are they authenticated? What does the GET return for a subscription, and is there any way to replay many dead deliveries at once? (author: Authentication of admin API callers is not specified by the brief or existing files, so I do not know it. Listed under Open questions. The GET returns the subscription's dead deliveries with last_status, last_error, dead_at and attempt history. Replay is one delivery per call, as the brief asks, with no bulk replay.)
+- Q10: What values can a subscription's status take besides active and disabled, and who or what re-enables a subscription (the customer, support, the dashboard)? (author: The schema comment says `status` is 'active' or 'disabled', so there are no other values; the file now says so. Who re-enables a subscription is not in the brief or the files. The dashboard API writes that table, so probably the customer, but I do not know whether support can. Added to Open questions.)
+- Q22: The queue's visibility timeout is 30 s but the 'core DB error' path says no ack and retry. How long can a message keep retrying, and what finally happens to it if the core DB outage is long? (author: The service has no limit of its own: the message stays un-acked and reappears every 30 s until the core DB recovers. If the queue's failed-receives threshold is reached it lands in the dead-letter topic, so we set that threshold high and alert on depth above 0. I do not know the queue's maximum retention for an un-acked message or the exact threshold value, since the queue facts do not give them. Added to Open questions.)

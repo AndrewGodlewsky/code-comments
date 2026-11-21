@@ -1,0 +1,459 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does the admin do and see after submitting the refund form? Does the page wait for the provider's answer, or does it return right away and show a pending status?",
+     "about": "Admin page: add refund form to the payment page"
+    },
+    {
+     "id": "2",
+     "text": "What is the permission check on POST /refunds? Which role or permission is needed, and what does the caller get back if it fails?",
+     "about": "API endpoint: POST /refunds (permission check)"
+    },
+    {
+     "id": "3",
+     "text": "What does 'what's left on the payment' mean exactly? Is it the original amount minus refunds already made, and do pending refunds count against it? What happens if two refunds are submitted at the same time?",
+     "about": "Validate amount against what's left on the payment"
+    },
+    {
+     "id": "4",
+     "text": "What fields and statuses does the refund record have, and what status does it start with? Is it created before the provider call, and who stores it?",
+     "about": "Create refund record"
+    },
+    {
+     "id": "5",
+     "text": "What is the idempotency key made of, and who generates it? Is the same key reused on each retry?",
+     "about": "Call provider create-refund (idempotency key, 10s timeout, retries)"
+    },
+    {
+     "id": "6",
+     "text": "What happens to the refund record if the provider call times out after 10s or still fails after the retries? Is the refund marked failed, left pending, or something else?",
+     "about": "Call provider create-refund (idempotency key, 10s timeout, retries)"
+    },
+    {
+     "id": "7",
+     "text": "Which provider errors does 'Handle provider errors' cover, and what does each one do to the refund status and to what the admin sees?",
+     "about": "Handle provider errors"
+    },
+    {
+     "id": "8",
+     "text": "How does the webhook find the matching refund, and what happens if the signature check fails or the same event arrives twice or out of order?",
+     "about": "Webhook endpoint for refund.succeeded / refund.failed (verify signature)"
+    },
+    {
+     "id": "9",
+     "text": "What does the reconciliation job do, when does it run, and what does it compare against what?",
+     "about": "Reconciliation job"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The page waits for the provider's first answer, meaning accepted, rejected, or retries used up. It then shows pending or failed, with the provider's message on a rejection. The final result arrives later by webhook or reconciliation and shows on the next load. Reason: the brief says accepted only means accepted, so the admin needs a clear answer for a rejection, and the final result cannot be shown at that moment."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Only admins with refund permission pass the check. Anyone else gets a 403 and no record is written. The brief does not name the permission, so its exact name is left to the existing admin roles. Rejected requests are still audited."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the refundable amount is the captured amount minus the sum of pending and succeeded refunds. Failed refunds do not count. Pending refunds count against it because a pending refund may still succeed. Concurrency: the server locks the payment row in one transaction for both the check and the insert, so a second request waits and then sees the first request's record."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Fields: id, payment id, amount in cents, reason, note, status, provider refund id, idempotency key, provider message on failure, requested by, created time, and an email-sent flag. It starts as pending. The server creates it in step 3, before the provider call, and stores it in our database."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The server makes the key when it saves the record, as a random UUID, and stores it on the record. The same key is sent on every retry and on any reconciliation re-send. Reason: the provider only returns the original refund when the key matches, so the key must be stored and reused."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "If every attempt times out or gets a 5xx, the record stays pending and is not marked failed, because the provider may already have made the refund. Step 7 checks it. A 4xx is different: the record is marked failed in step 5, with no retry."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "It covers the provider's answers to create-refund. A 4xx marks the refund failed, does not retry, shows the admin the provider's message and writes an audit entry. A timeout or 5xx is retried up to 3 times with the same key, and if all attempts fail the refund stays pending as in Q6."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The webhook finds the refund by the provider refund id saved in step 4. A failed signature check rejects the request, changes nothing and is logged. Duplicates and late events do nothing, because a final status does not change. A conflicting event after a final status keeps the first result and is audited. An unknown refund id returns an error so the provider sends the event again, because step 4 may not have saved the id yet."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The reconciliation job runs every hour. My choice of interval leaves a wide margin under the 24-hour limit. For each pending refund it asks the provider for the status, using the provider refund id. If there is no id, it re-sends create-refund with the same key. Results follow the webhook rules. Reason: the brief says webhooks alone are not enough, so this job is the required direct check."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Step 4 says the page waits until the call ends. If the admin closes the tab or the server crashes mid-call, what happens to the pending record that has no provider refund id?",
+     "about": "4. Server asks the provider to make the refund"
+    },
+    {
+     "id": "11",
+     "text": "When the 4xx in step 5 comes from a retry, or when reconciliation's re-send gets a 4xx, is the record marked failed the same way? Who runs step 5 in the reconciliation case?",
+     "about": "5. Server handles a provider rejection (4xx)"
+    },
+    {
+     "id": "12",
+     "text": "Step 6 returns an error when no record has the provider refund id. If the id never gets saved (the step 4 save fails after the provider accepted), how does the record ever get its id and final status?",
+     "about": "6. Provider sends a webhook"
+    },
+    {
+     "id": "13",
+     "text": "What does the reconciliation job do when it re-sends create-refund after the 24-hour key window has passed? Could that make a second refund?",
+     "about": "7. Reconciliation job checks pending refunds"
+    },
+    {
+     "id": "14",
+     "text": "Step 9 says the order status is saved in the same transaction as the refund status change. Does the webhook/reconciliation path lock the payment row like step 3 does? What stops it racing with a new refund request?",
+     "about": "9. Order status update"
+    },
+    {
+     "id": "15",
+     "text": "Step 9 is triggered by step 5, but step 5 only sets failed. What does the order status recalculation do for a failed refund, and is it run in step 3 when a pending refund is created?",
+     "about": "9. Order status update"
+    },
+    {
+     "id": "16",
+     "text": "Where does the customer email get sent from in step 8, and is it inside or after the status-change transaction? Which record is the email sent flag on?",
+     "about": "8. Customer email on success"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The record is saved in step 3, before the provider call, so a crash or closed tab leaves it in the database as pending with no provider refund id. Step 7 re-sends create-refund with the same key while the record is less than 24 hours old, and the provider returns the original refund if the first call got through. Step 4 now says this."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. A 4xx from a retry goes to step 5, and a 4xx from a reconciliation re-send also goes to step 5. Step 5 is marked as the same handling for every path, with the actor set to the admin for a request or to system for step 7. Steps 5 and 7 now say this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "If the id save fails after the provider accepted, the record stays pending with no id. Step 7 re-sends with the same key, the provider returns the original refund, the server saves its id, and applies any final status from the reply. The brief does not confirm that the reply carries a status, so this is listed as an open question."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "It could, if the key window had passed and the first call had in fact reached the provider, because a re-send would then be a new refund. The plan now measures 24 hours from record creation, which ends before the provider's window starts, so re-sends stay inside the window. Records with no id that are 24 hours old are not re-sent. They stay pending, are audited, and need a person to check the provider. Step 7 and the open questions now say this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "In the first version, no. Step 9 now locks the same payment row that step 3 locks, so a status change and a new refund request on the same payment wait for each other. This matters because a failed refund frees up amount, and the lock stops a new request from reading the amount before that change is saved."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "For a failed refund, step 9 recalculates from succeeded refunds only, so the order status usually stays the same, and the recalculation still runs. Step 3 does not run step 9, because a new pending refund does not change the order status. Step 9 now states both points."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The email is sent in step 8, after the step 9 transaction commits, so it is never sent for a result that was not saved. The email flag is on the refund record, one per refund, not on the order. Steps 6 and 8 now state this order."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "In step 4, when the provider accepts, what exactly does the first answer contain? Does it already carry a status like succeeded, or only the provider refund id?",
+     "about": "4. Server asks the provider to make the refund"
+    },
+    {
+     "id": "18",
+     "text": "In step 7, what exactly is the provider status lookup, and what does it return for a pending refund that has become final? How does the job turn that into step 6 rules?",
+     "about": "7. Reconciliation job checks pending refunds"
+    },
+    {
+     "id": "19",
+     "text": "In step 9, who does the step 5, 6 and 7 work? Where does the 'new status' get saved: is it step 9 that writes the refund status, and what do steps 5 and 6 themselves write?",
+     "about": "9. Order status update"
+    },
+    {
+     "id": "20",
+     "text": "When step 9's transaction fails after a webhook, the doc says it is retried on the next webhook or reconciliation run. What does the webhook endpoint return to the provider in that case, so it re-sends?",
+     "about": "9. Order status update (On failure)"
+    },
+    {
+     "id": "21",
+     "text": "In step 8, the email flag is checked how? Which record does the reconciliation job look at to retry emails, and does it need the customer's address from somewhere (payment, order)?",
+     "about": "8. Customer email on success"
+    },
+    {
+     "id": "22",
+     "text": "How does a pending refund with no provider id and 24 hours old get noticed by a person? Where does the audit entry appear, and is it written every hourly run?",
+     "about": "7. Reconciliation job checks pending refunds"
+    },
+    {
+     "id": "23",
+     "text": "What does the admin see for the payment page's order status if a refund is still pending? And how does step 1 refresh later, is there any live update or only reload?",
+     "about": "1. Admin opens the payment page"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "unknown",
+     "text": "The brief only says an immediate response means \"accepted\". It does not say what else the reply contains. The plan uses only the accepted answer and the provider refund id from it, and does not rely on a status in that reply. If the reply does show a final status, step 7 applies it. This is listed as an open question."
+    },
+    {
+     "id": "18",
+     "tag": "unknown",
+     "text": "The brief does not name a status lookup or say what it returns. The plan assumes it returns the refund's current status (pending, succeeded or failed). If it is still pending, nothing changes. If it is final, the job applies it with the step 6 rules. The provider behaviour itself is not confirmed, so it stays in the open questions."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Steps 5, 6 and 7 only decide the new status and pass it to step 9. Step 9 is the only step that writes a refund's status and its audit entry, in the same transaction as the order status. Reason: one lock and one write path mean the refund status and the order status cannot be written by different steps and disagree. Step 5 writes no status itself; it passes the status and the provider message to step 9. The step 9 change is in the file."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "When step 9 fails, the webhook endpoint returns an error status (not a 2xx), so the provider sends the event again. A 2xx would tell the provider the event is done, and the reconciliation job is only a backup. Step 6 now says this."
+    },
+    {
+     "id": "21",
+     "tag": "unknown",
+     "text": "Decided part: the reconciliation job finds the refunds to retry by selecting succeeded refunds whose \"email sent\" flag is unset, and runs step 8 for each. The flag is on the refund record. Unknown part: the customer's email address. The brief does not say where it comes from, and the stored payment fields it names do not include an address. This is an open question."
+    },
+    {
+     "id": "22",
+     "tag": "unknown",
+     "text": "The audit entry is written once, when a pending refund with no provider id first reaches 24 hours old, not on every hourly run. Reason: repeated entries would fill the audit log with the same fact. How a person is actually alerted is not decided by the brief, so it stays an open question. Step 7 now says the audit is written once."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "The order status shown on the payment page does not change while a refund is pending, because step 9 counts succeeded refunds only. The page refreshes only on reload, with no live update, because the brief sets no need for live updates. Step 1 now says both points."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "24",
+     "text": "Step 4 saves the provider refund id on the record, and step 9 saves the status. Both change the same pending record. Does saving the id take the payment row lock, or can it race with a webhook that is already updating the status?",
+     "about": "4. Server asks the provider to make the refund"
+    },
+    {
+     "id": "25",
+     "text": "When step 7 re-sends create-refund and the provider returns the original refund, how does the job know the reply is a re-sent original and not a new refund? What does the job see on the record afterward?",
+     "about": "7. Reconciliation job checks pending refunds (Less than 24 hours old)"
+    },
+    {
+     "id": "26",
+     "text": "A refund is rejected with a 4xx in step 5 and the admin sees failed. If the admin then submits the form again, is that a brand new refund with a new key, or can the failed one be retried?",
+     "about": "5. Server marks a provider rejection (4xx) as failed"
+    },
+    {
+     "id": "27",
+     "text": "What does the admin see on the page when the retries are used up and the record stays pending? Is it shown as an error or as a normal pending refund?",
+     "about": "4. Server asks the provider to make the refund (retries used up)"
+    },
+    {
+     "id": "28",
+     "text": "Step 6 says a webhook for an unknown provider refund id returns an error so it is sent again. How long does the provider keep re-sending, and if it gives up, what then ties the record to its result?",
+     "about": "6. Provider sends a webhook: refund.succeeded or refund.failed"
+    },
+    {
+     "id": "29",
+     "text": "Step 5 passes the failed status to step 9, and step 9 only writes if the record is still pending. If step 9 fails after a 4xx in step 4, who retries it, since no webhook comes for a rejected call?",
+     "about": "9. Order status update (On failure)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "Saving the provider refund id takes the same payment row lock as steps 3 and 9, so the id save and any status write on that record run one at a time. A webhook cannot race the id save on the id itself: a webhook for an id not yet saved gets an error and is sent again. Step 4 and the rules now say this."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "The job cannot tell a re-sent original from a new refund from the reply alone. It relies on the provider's key rule: within the window, the same key returns the original refund. The job saves the id it gets back. The record then has that id, and its status is pending unless the reply shows a final status, which is unconfirmed (open question). Step 7 now says this."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "A failed refund is never retried. A new submission is a new request, so it goes through steps 2 and 3 with a new record and a new key. Reason: a 4xx is the provider's refusal of that request, and failed refunds do not count toward the refundable amount. Step 5 now says this."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "When retries are used up and the record stays pending, the admin sees a normal pending refund with a note that the provider has not confirmed it and the status will update by itself. It is not an error, because the refund may already have been made. Step 4 now says this."
+    },
+    {
+     "id": "28",
+     "tag": "unknown",
+     "text": "The brief does not say how long the provider keeps re-sending a webhook. The plan does not depend on it: records with an id are checked every hour by step 7, and records with no id are re-sent by step 7, so a lost webhook does not leave a record stuck. The provider's retry period is listed as an open question."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "Step 7 is the retry path. A rejected refund has no provider id, so while it is under 24 hours old the hourly job re-sends with the same key, gets the 4xx again and reruns step 5, which passes the status to step 9. After 24 hours it is not retried and is audited. This depends on the provider repeating the rejection, which is an open question. Step 9's failure text now says this."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "30",
+     "text": "When the admin submits and step 4 retries three times, the page waits about 40 seconds. When the provider accepts, what exactly is returned to the browser, and where does the page get the pending or failed status it shows: from the saved record or from the provider's reply?",
+     "about": "4. Server asks the provider to make the refund"
+    },
+    {
+     "id": "31",
+     "text": "Step 4 says the id save happens under the payment row lock, and step 9 also takes that lock. Is the provider call itself made while holding the lock, or only the saves before and after it?",
+     "about": "4. Server asks the provider to make the refund"
+    },
+    {
+     "id": "32",
+     "text": "In step 7, when the job finds a final status for a record with a provider id, does it go through the webhook endpoint or call step 9 directly? And can the job and a webhook act on the same record at the same moment?",
+     "about": "7. Reconciliation job checks pending refunds"
+    },
+    {
+     "id": "33",
+     "text": "Step 8 says the email is sent after step 9 commits. Who triggers it on the webhook path: does the webhook handler send the email itself before returning its response, or does it wait for the job? What does the webhook return if the email fails?",
+     "about": "8. Customer email on success"
+    },
+    {
+     "id": "34",
+     "text": "What does the job do for a pending refund with an id that stays pending for a very long time, for example days? Is there any limit or audit entry for it, like the 24-hour one for records without an id?",
+     "about": "7. Reconciliation job checks pending refunds (Pending refund with a provider refund id)"
+    },
+    {
+     "id": "35",
+     "text": "If a payment's refunds add up to the captured amount, does the refund form still show for that payment? What does the admin see when the refundable amount is 0?",
+     "about": "1. Admin opens the payment page"
+    }
+   ],
+   "answers": [
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "The page does not take the status from the provider's reply. After step 4 ends, the server reads the refund record from our database and returns its status and, on a rejection, the message that step 9 saved. An accepted call shows the record as pending. Reason: the saved record is the one source that the page, the webhook and the job all agree on. Step 4 now says this."
+    },
+    {
+     "id": "31",
+     "tag": "decided",
+     "text": "Only the saves take the lock. The provider call is made outside it. Step 3's transaction commits before the call, and the id save is a short transaction that takes the lock afterwards. Reason: a call that can wait about 40 seconds must not block other refunds on the same payment. The refundable-amount check still holds, because pending refunds already count from step 3. Step 4 and the rules now say this."
+    },
+    {
+     "id": "32",
+     "tag": "decided",
+     "text": "The job calls step 9 directly and applies the step 6 rules. It does not go through the webhook endpoint. If the job and a webhook reach the same record together, both wait on the payment row lock in step 9. The first write sets the final status, and the second sees a final status and changes nothing. Step 9 now audits only a conflicting status, not a repeat of the same final status, which matches step 6. Step 7 now says this."
+    },
+    {
+     "id": "33",
+     "tag": "decided",
+     "text": "The webhook handler runs step 8 itself, right after step 9 commits. The reconciliation job does the same when it applies a result. The handler returns 2xx once step 9 has committed, even if the email fails. Reason: the result is saved, and returning an error would make the provider resend an event that changes nothing. Step 7 retries any failed email. Step 8 now says this."
+    },
+    {
+     "id": "34",
+     "tag": "decided",
+     "text": "There is no separate limit or audit entry. The record stays pending and step 7 checks it every hour, which meets the brief's 24-hour rule through the direct check. No audit entry is written on each run, because the status does not change. Whether a person should be told is left as an open question, since the brief does not decide it."
+    },
+    {
+     "id": "35",
+     "tag": "decided",
+     "text": "The form is hidden when the refundable amount is 0. The page shows a note that nothing is left to refund and that pending refunds count toward this. Reason: step 3 would reject any amount when the refundable amount is 0, and every rejected request is audited, so showing the form would only add rejected requests to the audit log. Step 1 now says this."
+    }
+   ]
+  },
+  {
+   "round": 6,
+   "questions": [
+    {
+     "id": "36",
+     "text": "When the provider's create-refund call is accepted, what does the server send back to the browser, and does the browser have to call anything else afterwards to see the saved record?",
+     "about": "4. Server asks the provider to make the refund (the admin's page waits)"
+    },
+    {
+     "id": "37",
+     "text": "The 4xx path says step 5 passes 'failed' and the provider's message to step 9, and the page then shows that message from the record. What happens on the admin's page if step 9's transaction fails at that moment?",
+     "about": "5. Server marks a provider rejection (4xx) as failed"
+    },
+    {
+     "id": "38",
+     "text": "For a webhook, what does the event contain, and which field is the 'provider refund id' that the server matches on? Is the new status taken from the event name?",
+     "about": "6. Provider sends a webhook: refund.succeeded or refund.failed"
+    },
+    {
+     "id": "39",
+     "text": "Step 7 and step 8 both run in the job. Is the email retry in the same hourly run as the status checks, and does it send the email inside the loop over refunds or in a separate pass?",
+     "about": "7. Reconciliation job checks pending refunds (Email retry)"
+    },
+    {
+     "id": "40",
+     "text": "The refund record has an 'email sent' flag but the customer's email address is unknown. What does step 8 do right now when it cannot find an address: does it fail and retry every hour?",
+     "about": "8. Customer email on success"
+    },
+    {
+     "id": "41",
+     "text": "Step 2 audits every request including rejected ones, and step 3 writes another audit entry for the new refund. Is that one audit entry or two for a successful request, and what does the 403 request record as 'who'?",
+     "about": "2. Admin submits the refund form (Audit)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "36",
+     "tag": "decided",
+     "text": "The server reads the refund record from our database after step 4 ends, and returns its status to the page. On a rejection it also returns the provider message that step 9 saved. The browser makes no second call to see this result. Reason: the page then shows the same saved record that the webhook and the job update. Later changes show only when the admin reloads the payment page (step 1). Step 4 now says this."
+    },
+    {
+     "id": "37",
+     "tag": "decided",
+     "text": "If step 9 fails after a rejection, nothing is saved, so the record stays pending with no provider id. The page then shows the pending note, not failed, and no error. Step 7 re-sends with the same key while the record is under 24 hours old. The provider rejects again, step 5 reruns, and step 9 is tried again. The page shows failed on a later load, once step 9 has saved it. Reason: the page reads only the saved record, so it cannot show a status that is not saved. Steps 4 and 9 now say this."
+    },
+    {
+     "id": "38",
+     "tag": "unknown",
+     "text": "The brief names the two event types but not the webhook's fields, so the field that holds the provider refund id is not known. The plan takes the new status from the event name: refund.succeeded gives succeeded, and refund.failed gives failed. This is listed in the open questions."
+    },
+    {
+     "id": "39",
+     "tag": "decided",
+     "text": "The email pass runs in the same hourly run, as a separate pass after the status checks. Reason: a refund that the status checks finish in this run gets its email from step 8 right after its commit. The separate pass then retries any email that failed in this run or an earlier one. Step 7 now says this."
+    },
+    {
+     "id": "40",
+     "tag": "decided",
+     "text": "Right now step 8 cannot find an address, so the send fails. The flag stays unset, the failure is logged, and the hourly email pass tries again. It retries every hour with no limit until the address source is decided. Reason: the plan has no address to send to yet, and a retry each hour costs little. Step 8 now says a missing address counts as a failed send. The retry limit is a hole, listed in the open questions."
+    },
+    {
+     "id": "41",
+     "tag": "decided",
+     "text": "A successful request writes two audit entries. Step 2 records the request: who made it, what was asked, when, and that it passed the checks. Step 3 records the new pending refund as a status change, in the same transaction as the refund record. Reason: the brief requires an entry for each request and each status change, and these are two different facts. A 403 records the signed-in caller's id as who, with the reason it was refused. Step 2 now says this. What a request with no signed-in user records is not decided and is listed in the open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [],
+ "rounds": 6,
+ "end_reason": "cap"
+}

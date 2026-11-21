@@ -1,0 +1,18 @@
+## Review of search-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short summary that states how the cron job fails (hard deletes, overlapping runs, 15-minute delay) and how the new flow works, then the scale figures.
+- Added a terms list defining CDC, Debezium, replication slot, WAL, topic and partitions, consumer offset, commit_lsn, version rule, alias, DLQ and repeatable-read snapshot, placed before the diagram.
+- Rewrote the Mermaid flowchart. Each edge now names its trigger and the data it moves. The unclear edge from the Kafka topic to products_v4 is replaced by a catch-up consumer with its own offsets. Retry, stale count, DLQ, WAL alert and rollback are drawn as separate branches.
+- Added the rule that the live indexer keeps writing products_v3 for 48 hours after the switch. The brief's requirement to switch back without losing changes implies it, and the first version did not state it.
+- Added that the rebuild job records the Kafka position when it opens the snapshot, which the first version did not say.
+- Merged the notes into numbered steps for the live path and the rebuild. Each step names its trigger, the data it keeps and what happens on failure. The steps add only what the diagram cannot show.
+- Replaced the failure notes with one failure table covering connector stop, transient errors, invalid documents, version conflicts, crashes, lag, retention, count mismatch and rollback.
+- Kept every fixed requirement and number from the brief and first version: CDC and the topic, cron retirement, 95% within 5 s, commit_lsn as version, the version rule, active-only search, offsets committed after acks, backoff 1 s to 60 s with no skipping, DLQ with alert, WAL alerts at 20 GB and 50 GB, alias-only queries, 5,000 rows/s snapshot, the 5 s and 0.5% gate, and 48 hours of v3.
+- Moved decisions the brief does not make into Open questions: the snapshot row version, the catch-up start point, resume after a failed snapshot, DLQ offset timing, the post-switch write path and v3 removal, and how lag is measured. No lock, lease, retry queue or takeover rule was added.
+- Separated build steps (Debezium repoint, new indexer, cron retirement) into their own section, apart from how the system runs.
+
+### Holes
+- None.

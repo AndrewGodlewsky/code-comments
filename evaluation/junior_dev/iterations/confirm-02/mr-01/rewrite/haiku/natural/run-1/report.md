@@ -1,0 +1,19 @@
+## Review of mr-01 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Summary cut to three sentences and now states how Region A and B work today before the flow, since this changes an existing system.
+- Added a Terms section defining replica, WAL, replay lag, LSN, promote, epoch, lease, fence, witness store, watchdog, skew margin, reaper and idempotency key. Failback terms (base backup, pg_rewind) are defined where they appear.
+- Diagram gate now uses the largest of the three lag measures, not the brief's single measure that the first draft still drew.
+- Diagram now fans out from one Gate node to scale-up and fencing, so the parallel run is visible; the first draft drew fencing after scale-up. The health check now requires B scaled to 12 instances.
+- Steps rewritten as one list per step with trigger, action, data kept and failure, so the flow is stated once. Step 2 spells out the three lag numbers and that the 30 s threshold applies to the largest.
+- Merged the repeated fencing statements (watchdog, promotion wait, override never skips the fence, cloud API best effort, residual risk) into one list in the fencing section.
+- Merged failed-run rules into one list: job leases, max attempts, interrupted command, promotion failure.
+- Moved the rehearsal advice into a Rollout section, separate from how the system runs.
+- Turned the three decisions to confirm into open questions, and added the lag-check change as an open question needing sign-off.
+- Kept the timeline table, the three job cases, the idempotency and reconciliation rules, and the failback notes. No requirement, limit, number or rule from the brief or the first draft was removed.
+- No junior questions or answers were supplied with the task, so this rewrite is built from the first draft and the brief alone.
+
+### Holes
+- None.

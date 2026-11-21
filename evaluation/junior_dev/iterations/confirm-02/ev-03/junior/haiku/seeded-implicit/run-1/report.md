@@ -1,0 +1,63 @@
+## Review of ev-03 (junior, author haiku, seeded-implicit)
+
+Rounds: 5. Ended: teachback-correct.
+
+### What changed
+- Added a summary paragraph with how today's system works, the out-of-scope line, and a terms section. The first version had none of these.
+- Changed the Offline Inbox write from a fallback on failure to the first action for every recipient, before the presence check and the live send. Reason: otherwise a message can fall between the presence check and the inbox write during reconnect and be lost.
+- Added that the client acks each live message, that the gateway deletes the inbox row on the ack, and that the 5-second check looks for that row. The first version did not say how the worker learns of delivery.
+- Set presence before the reconnect read, and explained why the write and read order means no message is missed.
+- Made the owner of seq (Message Store) and msg_id (sender client) explicit, and stated that a repeated msg_id returns the existing seq.
+- Added the heartbeat and expiry mechanics: 10-second heartbeats, 30-second TTL, and what a dropped user looks like.
+- Added the failure table, covering save, ack, relay, bus, worker, presence, late ack, push, reconnect and inbox expiry.
+- Kept every fact from the first version and the brief: 10-second heartbeat, 30-second offline threshold, 5-second timeout, 30-day inbox, 200-member cap with sender excluded, push best effort and never retried, at-least-once with clients dropping duplicates by msg_id, one device per user, and sync ordered by seq.
+- Added open questions for message history past 30 days, the connected-client gap, schema uniqueness on msg_id, and inbox write cost.
+- Ack now marks the Offline Inbox row delivered instead of deleting it (Q13, Q14, Q16). Reason: deleting let a repeated fan-out write the row again and send the message again.
+- Step 4a now skips recipients whose row is already delivered, and the failure table says so (Q13, Q14).
+- Step 4 now says recipients run in parallel and that the worker finishes one event before the next on its partition, which keeps seq order (Q12, Q17).
+- Step 4 now reads membership from the Message Store at fan-out time, and open questions now list the save-time question (Q11).
+- Presence entry now names the gateway node, and step 4b uses it to route the live send (Q15).
+- Terms now define the delivered flag, the members table and the gateway entry, so the steps can refer to them (Q14, Q15).
+- Reconnect step now says each ack marks the row delivered, and that a message can go out both live and in the read, with duplicates expected (Q16, Q18).
+- Failure table: worker crash row now describes skipped delivered recipients and a possible second push. Added rows for a live send during the reconnect read and for a slow recipient (Q12, Q13, Q18).
+- Open questions: added the Event Bus retention limit (under 30 days) and the fan-out-time membership question (Q11, Q14).
+- Kept every fact from the brief and first version, including the 200-member limit, sender exclusion, heartbeat and offline timings, one device per user, the error-and-nothing-stored rule, at-least-once delivery, and push never retried.
+- Summary: now says how the system works today, as the step-1 rule requires for a change to an existing system.
+- Terms: added Heartbeat, Ack, Gateway (with WebSocket), and At-least-once, so the reader does not need outside knowledge.
+- Step 3: the relay polls, and several relays may run at once, so a row can be published twice; the worker tolerates that (Q21).
+- Step 4: the event is confirmed to the bus only after all recipients finish; an unexpected error leaves the event unconfirmed; a push failure is not an error; the worker does not wait for the push result (Q22).
+- Step 4: withdrew the claim that live sends are in seq order. Two saves can commit out of seq order, so clients sort by seq (Q19).
+- Step 4c: the gateway reports the ack to the worker, and the worker waits on that report instead of watching the inbox row (Q20). A send that fails at once counts as not delivered with no 5-second wait (Q24).
+- Step 5: the push carries only conversation id and msg_id, not the message text (Q23).
+- Step 6: the closing sentence about a read that is interrupted was removed, since the failure table already states it.
+- Presence: the heartbeat now also writes the gateway id, as the Q15 answer says.
+- Failure table: added a row for a failed live send (Q24), a row for out-of-order live messages (Q19), and a worker-error row covering step a. The slow-recipient row no longer says order is kept.
+- Open questions: added where push device tokens live (Q23) and whether seq stays unique under concurrent saves (step 1 depends on it). Existing open questions kept.
+- Kept every requirement from the brief and the first version: one device per user, 200 members, sender excluded, 10 s heartbeat, 30 s offline, 5 s ack, 30-day inbox, best-effort push, seq-ordered reconnect, at-least-once delivery, and out-of-scope items.
+- Step 6 and the reconnect box in the diagram: the reconnect read now skips conversations the user has left (Q25).
+- Step 4c: the gateway writes the delivered mark before it reports the ack, and a failed mark means no report (Q27).
+- Step 6: reconnect sets presence to the new gateway, replacing the old entry (Q28).
+- Failure table: the late-ack row now says what the late ack does and does not stop (Q26). Added rows for a lost report, a failed mark write, a stale gateway after reconnect, and a user who left a conversation (Q25, Q27, Q28).
+- Open questions: added save-retry timing and count (Q29). Sharpened the connected-client question, because the brief's 'eventually reach every recipient' may not hold for a connected client that never acks.
+- Terms: defined Message Service, Outbox Relay and Fan-out Worker, which the steps use but did not define before. Step 3 now says there is no database trigger and no lock, as in A21.
+- Terms, Event Bus: added that an event carries only ids (conversation id, seq, msg_id, sender id) and not the message text, answering Q30.
+- Diagram, fan-out: added that the event is ids only and the worker reads the message text once from the Message Store, and that step 4c sends the text through the gateway, answering Q31.
+- Step 3 (Publish): the relay publishes only the ids, answering Q30.
+- Step 4 (Fan-out): added that the worker reads the message text once per event from the Message Store, and that a failed read leaves the event unconfirmed, answering Q31. Step 4c now says the text is sent through the gateway.
+- Failure table: added a row for a failed text read in step 4, consistent with the step 4 rule for unexpected errors.
+- Rewrote the summary as three sentences: today's behaviour first, then the main flow, then the aim of reaching every recipient. Moved the sender-wait and crash guarantee into it.
+- Merged the one-device rule, the 200-member limit, sender exclusion, at-least-once delivery, 30-day retention and out-of-scope items into one Rules list. Each fact now appears once.
+- Added defined terms a newcomer needs: Partition, WebSocket, Gateway (with 'several' nodes), and the Push Service role. Defined Event Bus events as ids only, and Offline Inbox rows as kept after delivery.
+- Replaced the earlier 'ack deletes the row' wording with the final design: the gateway marks the row delivered, then reports the ack. The worker waits on that one report with a timer, and does not poll.
+- Step 4 now says the worker loads the text once per event, reads members at fan-out time, runs recipients in parallel, and confirms the event only after all recipients finish a to d. It does not wait for the push result.
+- Step 4 drops the earlier claim that live messages go out in seq order. Live order is not guaranteed; clients sort by seq. The reconnect read still sends in seq order.
+- Each step now lists its trigger, what it does, where its data is stored and what happens on failure. Step 5 and step 6 say why presence is set first and rows are written before the presence check.
+- Presence got its own short section (heartbeat, TTL, offline after 30 seconds). Its content was previously split between the terms and the notes.
+- Failure table keeps every row from the earlier version and updates the ones that changed: late ack, mark write fails, stale gateway, and the worker and recipient error cases. Member added after the save was split out as its own row.
+- Open questions keep all nine from the earlier version, and each one is stated once. Nothing was dropped.
+- Removed repeated explanations, such as the 5-second wait being described in several places. Removed the earlier duplicate of the two-part intro and the separate 'Diagram' notes. The diagram now shows the final worker flow, including the single text read and the confirm-after-all-recipients rule.
+- Diagram sections now say which step is on the request path and which runs in the background, so a newcomer does not need to ask whether the send waits on fan-out.
+
+### Holes
+- Q23: What does a push notification contain and how does Push Service know where to send it for a user, given that the user may be offline with no gateway? (author: The push content is decided: it carries only the conversation id and msg_id, not the message text, so the text stays in the Message Store. Reason: no message body reaches the push provider. How Push Service finds the user's device token is not known. The brief does not say where device tokens are stored or who writes them. This is added as an open question.)
+- Q29: When the client retries a save with the same msg_id after a failure, how does the client know whether to retry, and how long does it wait before giving up? (author: The plan says the client retries with the same msg_id after an error, and the brief reuses that msg_id. Neither sets how long the client waits for an ack before it retries, how many times it retries, or when it gives up. I have no basis for those numbers, so they are listed under open questions.)
