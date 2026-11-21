@@ -47,6 +47,9 @@ def parse(text: str) -> dict:
         tail_cut = block.find("\n\n")       # a block ends at its first blank line; the rest is the agent's text
         body = " ".join((block if tail_cut == -1 else block[:tail_cut]).split())
         calls = CALL.findall(body)
+        # A shell variable that holds the helper's path ($h="...junior.py"; python $h ask ...).
+        for var in set(re.findall(r'\$(\w+)\s*=\s*"[^"]*junior\.py"', body)):
+            calls = re.findall(r'(?:junior\.py"?|\$' + var + r')\s+(' + "|".join(COMMANDS) + r')\b', body)
         if not calls:
             continue
         if block.lstrip().startswith(("✗", "x ")) or "Permission denied" in body:

@@ -57,6 +57,20 @@ class CopilotLiveParseTest(unittest.TestCase):
         self.assertEqual(parsed["helper"], [])
         self.assertEqual(parsed["denied"], 1)
 
+    def test_calls_through_a_shell_variable_holding_the_helper_path(self):
+        # Sonnet on Copilot stores the helper in a PowerShell variable: $h="...junior.py"; python $h teachback ...
+        log = ''' $ Shell Run teach-back 50 lines
+   $h="C:/x/scripts/junior.py";
+   python $h teachback ".junior-dev/plan-1"
+
+ $ Shell Verdict and report 12 lines
+   $h="C:/x/scripts/junior.py";
+   $s=".junior-dev/plan-1"; python $h verdict $s correct; python $h report $s
+
+Done.
+'''
+        self.assertEqual(copilot_live.parse(log)["helper"], ["teachback", "verdict", "report"])
+
     def test_fidelity_uses_the_shared_checks(self):
         result = copilot_live.fidelity(copilot_live.parse(LOG), {"end_reason": "teachback-correct", "round": 2})
         self.assertTrue(result["ok"], result["problems"])
