@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "A message arriving on the domain-events topic starts ingest. The outbox relay produces it by publishing every business event to that topic.",
+  "q2": "Ingest inserts one delivery per matching active subscription in one transaction. A unique key on (event_id, subscription_id) with ON CONFLICT DO NOTHING ignores redelivered duplicates.",
+  "q3": "Signature covers <t>.<raw body> as HMAC-SHA256 keyed with the secret. It is made fresh on every attempt and every replay, not once per delivery.",
+  "q4": "2xx: delivered. 410: disables subscription, kills its other pending rows. Other 4xx or 3xx: dead, no retry. 408, 429, 5xx, timeouts: retried until 8 attempts.",
+  "q5": "At most 8 attempts. The third is due 2 minutes after the second fails.",
+  "q6": "In the service database's deliveries table: state, attempt_count, next_attempt_at, last_status and last_error.",
+  "q7": "It waits as a pending row with next_attempt_at in Postgres. A poll about every 1 s, or LISTEN/NOTIFY, claims rows once due.",
+  "q8": "Its lease expires and another worker reclaims the same delivery id. The crashed attempt still counts; on attempt 8 it goes dead as lease_expired.",
+  "q9": "Dead rows in the service's deliveries table. Replay sets state pending, attempt_count 0, due now, same delivery id.",
+  "q10": "The delivery id, sent as X-Webhook-Id. It is unchanged across retries and replays, so receivers can deduplicate.",
+  "q11": "They are marked dead with reason subscription_disabled at their next claim, and no request is sent. They stay listed with that reason.",
+  "q12": "Yes. Queue delivery is at-least-once with no ordering, and each delivery retries on its own schedule."
+ },
+ "sonnet": {
+  "q1": "A message arriving on the `domain-events` topic starts it. The outbox relay publishes every business event to that topic.",
+  "q2": "The worker reads the active subscriptions in the core DB with the same account_id whose event_types contain the event type or '*'. In one service-DB transaction it inserts the event and one delivery per match. A unique key on (event_id, subscription_id) plus ON CONFLICT DO NOTHING ignores duplicates, and event_id is the primary key of events, so a redelivered message creates no second delivery.",
+  "q3": "It is HMAC-SHA256 over `<t>.<raw body>`, keyed with the subscription secret, where t is the current unix seconds. It is made fresh on every attempt and every replay, because receivers reject a t older than 5 minutes. The stored body never changes.",
+  "q4": "2xx: state delivered, delivered_at set. 410: the core DB sets the subscription to disabled with reason gone (only if still active), the service marks the subscription's other pending rows dead with reason gone, and this delivery goes dead. Other 4xx or 3xx: dead with reason rejected, no retry, redirects not followed. Transient failures (408, 429, 5xx, timeout, connection error): pending again with next_attempt_at = now + wait if fewer than 8 attempts, otherwise dead with reason retries_exhausted.",
+  "q5": "At most 8 attempts. The wait before attempt 3 is 2 minutes.",
+  "q6": "In the service database, `deliveries` table: state, attempt_count, next_attempt_at, last_status and last_error (plus lease_owner, lease_until, dead_reason and other columns).",
+  "q7": "It waits in the service's Postgres `deliveries` table as a pending row with next_attempt_at set. Every worker polls about every 1 s (LISTEN/NOTIFY is optional) and claims due rows with SKIP LOCKED, which triggers the next attempt.",
+  "q8": "The row stays in state sending until its 30 s lease expires. Another worker can then claim it with the same delivery id and send it again. The crashed attempt still counts toward the 8. If the expired lease was on attempt 8, the row is marked dead with reason lease_expired and not sent again.",
+  "q9": "Dead deliveries stay in the service database `deliveries` table, with state dead and a reason, for 14 days after dead_at. (The queue's dead-letter topic holds only unparseable messages and cannot be queried or replayed.) Replay sets the row back to pending, due at once, with attempt_count 0 (8 new attempts) and the same delivery id. It is refused if the row is not dead or the subscription is disabled.",
+  "q10": "The `X-Webhook-Id` header carries the delivery id. It does not change between retries or after a replay.",
+  "q11": "At their next claim they are marked dead with reason `subscription_disabled` and no request is sent. They stay in the dead listing with that reason. Replay is refused while the subscription is disabled, and after re-enabling, dead rows within 14 days can be replayed. For a 410, the other pending rows are marked dead with reason gone immediately.",
+  "q12": "Yes, the document implies it. The queue gives no ordering, and workers claim and send due rows independently. A retried earlier event can also arrive after a later one. The document has no ordering guarantee."
+ }
+}

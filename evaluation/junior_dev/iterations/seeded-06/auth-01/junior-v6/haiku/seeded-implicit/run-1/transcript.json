@@ -1,0 +1,106 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is stored in a sessions row, and what is the sid cookie value: the session ID itself or something derived from it?",
+     "about": "Server-side sessions in Postgres, cookie sid / create session"
+    },
+    {
+     "id": "2",
+     "text": "How are the 'check login_locks' and the failure counting connected? When is a row written to login_failures, and when does a row appear in login_locks?",
+     "about": "Lockout: 5 fails / 10 min, 15 min lock"
+    },
+    {
+     "id": "3",
+     "text": "If the account is locked, what does the user see, and does the app still check the password? Is the lock per user, per IP, or both?",
+     "about": "A->>DB: check login_locks"
+    },
+    {
+     "id": "4",
+     "text": "What does 'validate session' check exactly, and how does the 30 min idle timeout get enforced? Is the session updated on each page request?",
+     "about": "GET page / validate session / Timeouts: 30 min idle, 12 h max"
+    },
+    {
+     "id": "5",
+     "text": "When the user is unknown or the password is wrong, what is returned and is the same message used in both cases? Does a failed login for an unknown user get counted?",
+     "about": "Bad login goes back to the login page with an error"
+    },
+    {
+     "id": "6",
+     "text": "What does 'Handle DB errors' mean here: what does the user see and what does the app do if Postgres is down or slow during login or page validation?",
+     "about": "Handle DB errors"
+    },
+    {
+     "id": "7",
+     "text": "What does 'New session ID on each login' mean when the browser already has a sid cookie? Is the old session deleted?",
+     "about": "New session ID on each login / create session"
+    },
+    {
+     "id": "8",
+     "text": "How does the cleanup job run (what triggers it, how often) and which rows does it delete?",
+     "about": "Cleanup job for expired rows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A sessions row holds session_id_hash (SHA-256 of the session ID, the primary key), user_id, created_at, last_seen_at and expires_at (created_at plus 12 hours). The sid cookie value is the raw random session ID, not a derivation of it. The table stores only the hash, so a copy of the table cannot be replayed as a cookie."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The lock check reads login_locks first. Every failed attempt, unknown email or wrong password, inserts a login_failures row. After that insert, the app counts this email's failure rows from the last 10 minutes. If the count is 5 or more, it upserts a login_locks row with locked_until set to now plus 15 minutes. So the lock row appears on the 5th failure. A request refused by the lock is not recorded as a failure. A successful login deletes the email's failure rows and lock row."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A locked email gets HTTP 429 and the login page with the text Too many failed attempts. Try again in 15 minutes. The password is not checked. The lock is per email only, as the brief says, not per IP. An unlocked email, whether real or unknown, does get a password check. The per-IP risk is listed as an open question."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Validation is one UPDATE. It matches the row whose hash equals the hash of the sid cookie, where expires_at is later than now and last_seen_at is later than now minus 30 minutes. It sets last_seen_at to now and returns user_id. Yes, every valid request refreshes the idle clock. The 30-minute idle limit is enforced by that timestamp comparison, not by a database expiry job. The 12-hour limit is enforced by expires_at in the same comparison."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "An unknown email and a wrong password both return HTTP 401 and the same login page text, Invalid email or password. Both count as failed attempts. For an unknown email the app still runs a bcrypt check against a dummy hash, so the response time is similar."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "On database errors the app fails closed. During login it shows a 503 page, Sign-in is unavailable right now, and sets no cookie and changes no rows. On a protected page it shows a 503 error page and keeps the cookie, so a short outage does not sign users out. On logout it shows a 503 and keeps the cookie. A slow database is handled by a timeout on each call, which turns into the same 503. The timeout value is not chosen yet and is listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Every login makes a new random session ID, even when the browser already sent a sid cookie. The server looks up the incoming cookie's hash and deletes that session row in the same transaction as the new insert, whether or not the old session is still valid. If the transaction fails, nothing changes, the user sees the 503 page, and the old session stays until it expires."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Each app instance runs a timer every 10 minutes. Each run issues one delete per table. It removes sessions past expires_at or idle for more than 30 minutes, failure rows older than 10 minutes, and locks past locked_until. Both instances can run it at the same time without harm. Expired sessions are refused by the validation query even before cleanup runs, so a missed run does not let an expired session in."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. The app runs as two identical instances behind a load balancer with no sticky sessions, so a request can land on either one. Session state, failure counts and locks therefore live in the shared Postgres database, not in instance memory. The pages are server-rendered HTML and users submit forms.\n\n2. Login starts. A user submits the login form, which sends POST /login with an email and password. Any page other than /login needs a signed-in user, so this is the entry point.\n\n3. Normalise the email. The app lowercases the submitted email before doing anything else. The `users` table stores emails in lowercase.\n\n4. Check for a lock. The app reads the `login_locks` row for that email from Postgres. If a row exists and its `locked_until` is later than now, the app returns a 429 login page (\"Too many failed attempts. Try again in 15 minutes.\") and stops. It does no password check. This refused request is not recorded as a failure, so it does not extend the lock. A lock whose `locked_until` has passed is ignored.\n\n5. Look up the user and check the password. With no active lock, the app finds the user in `users` by email. It checks the password against the user's bcrypt `password_hash`. If there is no such user, it checks against a fixed dummy hash, so the response takes about as long either way.\n\n6. Successful login. If the password matches, the app runs one transaction that does three things. It deletes the `sessions` row for the incoming `sid` cookie, if there is one, whether or not that session is still valid. It deletes this email's `login_failures` rows and its `login_locks` row. It inserts a new `sessions` row. The new row stores the SHA-256 hash of a freshly generated random session ID, the `user_id`, `created_at`, `last_seen_at` and `expires_at` (`created_at` plus 12 hours). The app then replies 302 to /dashboard and sets the `sid` cookie. The cookie holds only the raw session ID. It is HttpOnly, Secure and SameSite=Lax. Every successful login gets a new session ID.\n\n7. Failed login. If the email is unknown or the password is wrong, the app inserts a `login_failures` row (email, attempted_at). It then counts that email's failures in the last 10 minutes. If the count is 5 or more, it upserts a `login_locks` row with `locked_until` set to now plus 15 minutes. It replies 401 with the login page and \"Invalid email or password\". Unknown email and wrong password give the same response. The 5th failure still gets the 401, and later attempts get 429. Unknown emails are counted too, so a 429 does not reveal that an account exists.\n\n8. Protected request, for example GET /dashboard. The browser sends the `sid` cookie. If there is no cookie, the app clears `sid` and redirects (302) to /login.\n\n9. Session check. If there is a cookie, the app hashes the cookie's ID and runs one UPDATE on `sessions`. The UPDATE matches the row with that hash where `expires_at` is later than now and `last_seen_at` is later than now minus 30 minutes. It sets `last_seen_at` to now and returns `user_id`. If a row matched, the app serves the page with 200. This also keeps the idle timer moving. If no row matched (unknown, expired by the 12-hour limit, or idle for over 30 minutes), the app clears the cookie and redirects to /login. Expiry is checked by comparing timestamps on every request, so it does not depend on cleanup.\n\n10. Logout. The browser sends POST /logout. If the request has a cookie, the app deletes the matching `sessions` row before replying. It then clears the cookie and redirects to /login. The result is the same with a valid session, an unknown session, or no cookie.\n\n11. Cleanup. Each app instance runs a timer every 10 minutes. It does one delete per table. It deletes `sessions` rows past `expires_at` or idle over 30 minutes, `login_failures` rows older than 10 minutes, and `login_locks` rows past `locked_until`. Both instances may run it at once without harm. If it fails, it logs the error and tries again at the next tick.\n\n12. Failures. The document describes these cases.\n- A database error or timeout on the lock check, user lookup or session write gives a 503 login page (\"Sign-in is unavailable right now. Try again shortly.\"). No cookie is set and nothing changes. The transaction is all or nothing.\n- A database error when recording a failed attempt gives the same 503 page. The app does not accept the login and does not silently skip the lock step.\n- A database error on a protected request gives a 503 error page. The app keeps the cookie and does not redirect.\n- A database error on logout gives a 503 error page and keeps the cookie. The session then ends by itself through the timeouts.\n- Each database call has a timeout, so a slow database becomes a 503 and not a hanging request.",
+   "gaps": [
+    "The document gives no timeout value for each database call. It lists this as an open question, so I cannot say how long a slow request waits before it becomes a 503.",
+    "The document does not say what a user sees when they go to a page other than /login without being signed in, beyond the redirect. It also does not say how a user who is already signed in is handled when they visit /login.",
+    "The document does not say how the app generates or reads the cookie's expiry, for example whether `sid` is a session cookie or has a Max-Age. It also does not say what the 302 from logout or refused requests does with any original destination (no return-to URL is mentioned).",
+    "Whether the failure-count step and the lock upsert run in one transaction is not stated. The document does not say what happens if two failed attempts arrive at the same moment on different instances."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

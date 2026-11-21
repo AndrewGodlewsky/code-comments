@@ -1,0 +1,23 @@
+## Review of sync-02 (rewrite, author sonnet, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the 8-line outline into the skill's order: summary, terms, rules, endpoints, steps, failure table, open questions.
+- Added a summary that explains how the system works today and why staging, catch-up and swap exist.
+- Added a terms list defining change_seq, tombstone, keyset pagination, start_seq, last_seq, staging and resync required.
+- Merged the old steps 1 and 2 (endpoints and tables) into separate Server endpoints and Client state sections, with each endpoint's trigger, data and failure.
+- Merged the old step 3 (full download) and cursor into step 2, with the page and cursor saved in one transaction.
+- Expanded old step 4 into catch-up (step 3) and swap (step 4), and added how start_seq is taken and why it misses no changes.
+- Merged the old step 5 into step 5 and added the apply rule: the higher change_seq wins, and a delete removes the row.
+- Turned the old 410 step into step 6, keeping the old catalogue visible until the swap.
+- Merged the old steps 7 and 8 (backoff, throttle) into a shared rules list and step 5; the retry schedule is now spelled out as 2, 4, 8 and 16 s with 5 attempts in total.
+- Added back every brief fact: page sizes, one page at a time, Wi-Fi only, finishing the page before pausing, cellular allowed for incremental sync, 7-day window, soft deletes, and the 15-minute limit.
+- Added a failure table.
+- Added decided details, each flagged in the text: full download returns live products only, the 15-minute throttle counts any attempt, and incremental sync is skipped while a full download is in progress.
+- Kept the open question on browsing during the first download undecided, and noted the staging consequence.
+- Added one open question about the server query's efficiency, as an unknown, not a decision.
+- Cut nothing from the first version; the file is longer than 1.5 times because the brief's stated requirements had to be added back.
+
+### Holes
+- None.

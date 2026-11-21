@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Status lives in the App DB (primary) table `report_exports` (queued/running/done/failed, plus attempt, lease_expires_at, object_key). The page loads it via `GET /api/reports/{id}/exports/current`, polls every 5 s (paused when the tab is hidden) while queued or running, and a returning user gets the same state from the DB. The status read also applies reclaim rule 3, so a lost job shows as failed.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "It streams. The job reads the replica by keyset pages of 5,000 rows, encodes them to CSV in an 8 MB buffer, and uploads each full buffer as a multipart part (about 113 parts for 900 MB), so only about 30 MB (estimated, to be benchmarked) is held at once. The whole report is never in memory.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Parts already uploaded are invisible, because nothing is visible at the key until `complete_multipart`. On an exception the attempt calls `abort_multipart` (best effort) and re-raises. If the worker is killed, the bucket discards the incomplete upload after 24 hours. The next attempt starts from the beginning with a fresh upload and its own key (`{report_id}/{id}-{attempt}.csv`), since the queue keeps no progress. A resumable fallback is built only if the benchmark fails the time target, and there the retry would continue from `resume_row_id`.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The page sends them in the POST, the server validates them with the rows API's parser and stores them in the `filters` and `cols` columns of the `report_exports` row. The job payload is only `{export_id}`, and the job reads filters and cols from that row, which is the single source of truth.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A unique partial index in the App DB on `(user_id, report_id) WHERE status IN ('queued','running')`. The second concurrent insert is rejected, and that request loads and returns the existing export (after `reclaim` checks whether it is a lost job).",
+  "decided": true
+ },
+ "q11": {
+  "answer": "The multipart upload must have completed, then the conditional `done` update (status running, matching attempt) must have succeeded and recorded `object_key`. Then the job builds a 24-hour `signed_url` and sends the email, and sets `notified_at`. If the queue runs the job again, step 5.1 sees the row already `done` and only sends the email if `notified_at` is empty, so no second stream and no duplicate email, apart from a small window if it dies between sending and recording `notified_at`.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The response is fully buffered in memory and sent only when complete, so a replica error returns a 500 and the user receives no partial file. Nothing is stored and there is no job or retry; the user clicks again. If the read passes 10,000 rows because `row_count` was stale, the buffer is discarded and the request continues down the large path with a 202.",
+  "decided": true
+ }
+}

@@ -1,0 +1,195 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the difference between `next` and `return_to`? Where does each one come from, and where does the user end up for each outcome?",
+     "about": "START and Flow record: intent, user_id, next, return_to"
+    },
+    {
+     "id": "2",
+     "text": "What ties the callback to the browser that started the flow? The callback finds the flow record only by `state`, and no cookie is mentioned there. What stops someone else's callback from being used in this browser?",
+     "about": "CB: Atomically GETDEL the flow record by state"
+    },
+    {
+     "id": "3",
+     "text": "For intent=link, where does the flow record's user_id come from, and how does the callback know which session is the current one?",
+     "about": "LSESS: Session sid valid and user equals flow user_id?"
+    },
+    {
+     "id": "4",
+     "text": "What are `sub` and `email_verified`, and what does 'ID token valid' check for each of iss, aud, nonce and the JWKS signature in this system?",
+     "about": "VAL: ID token valid? JWKS signature, iss, aud, exp, nonce"
+    },
+    {
+     "id": "5",
+     "text": "What are the existing lockout rules (failed_logins, locked_until, the 'Right' rule)? When is the count reset, and does Google login with a linked sub ever check locked_until?",
+     "about": "PLOCK, FAIL and the `failed_logins`, `locked_until` row"
+    },
+    {
+     "id": "6",
+     "text": "Why does a matched account need a password confirmation before linking? What does the password step protect against?",
+     "about": "MATCH -> PEND -> CONF (pending record and gpl cookie)"
+    },
+    {
+     "id": "7",
+     "text": "What happens if Redis is down or slow when saving or reading the flow record or the pending record?",
+     "about": "START: Save flow record in Redis with TTL 10 min"
+    },
+    {
+     "id": "8",
+     "text": "In start_session, what is the 'old sid row' and when would one be sent? What happens if a signed-in user starts a login-intent flow?",
+     "about": "SESS: start_session user"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "`next` is the next query parameter of /auth/google/start, used for login only, and it is checked as a relative path and used after sign-in by start_session. `return_to` was never defined, so I removed it: the start page is set by intent (login page for login, Account Settings for link). Login success goes to next or /home, link success goes to Account Settings, and cancel or Google error goes back to the start page with a neutral message."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Nothing tied the callback to the starting browser, which was a gap. I added cookie gstate, set at start to the same value as state, and the callback compares it before the GETDEL. Without it, an attacker could make a victim's browser finish the attacker's flow and sign the victim into the attacker's Google account. PKCE does not stop this because the verifier is kept on the server under the attacker's state."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The start request must carry a valid sid cookie. The server reads the user from that sessions row and stores it as user_id in the flow record; without a valid session it redirects to login and saves nothing. The callback also carries the sid cookie, because auth_flow.md sets it SameSite=Lax and browsers send Lax cookies on top-level navigation such as Google's redirect back to us. LSESS compares that session's user with the stored user_id."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "sub is Google's permanent ID for the Google account and does not change with the email. email_verified is Google's claim that it verified the email. ID token valid means: the signature is checked against Google's published keys (cached by key id), iss is Google's issuer, aud equals our client ID, exp is in the future, and nonce equals the nonce in the flow record. A standard OIDC library does these checks, and we do not write them ourselves."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "From auth_flow.md: each wrong password adds 1 to failed_logins; at 5 it sets locked_until to now plus 15 minutes and resets failed_logins to 0. While locked_until is in the future the password is not checked. A correct password sets failed_logins to 0. The docs do not say locked_until is cleared at expiry, so a past value means not locked. A linked Google sign-in never checks locked_until and never changes the counters; I chose this because the lock limits password guessing and Google sign-in checks no password. It is listed as an open question for the owner to confirm."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It protects against taking over an existing account through a Google account whose verified email matches that user's email but which belongs to someone else, for example a reassigned work-domain address or an address the user once owned. Entering the password proves control of our account, not only of the email. Without it, anyone who could sign in to a Google account with that email could take over the account."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Any Redis error or timeout is treated as a failed step with nothing changed in Postgres. At start, the user gets an error page and no flow record is kept. At GETDEL, an error stops the flow before any Google exchange. If the GETDEL succeeds but the response is lost, the user starts again. A pending-record save error gives an error page and no link. Redis holds only short-lived data and a link is written only in Postgres, so a Redis failure cannot leave a half-made link. Short client timeouts are an implementation detail and are not in the plan."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The old sid row is the sessions row named by the sid cookie the browser sent with this request. start_session deletes it before inserting a new one, so a session id never survives a login, as auth_flow.md already says. A signed-in user who starts a login-intent flow is allowed, and on success start_session replaces the current session with one for the Google account's user, the same as a password login while signed in. The link intent never calls start_session, so the current session is kept."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "After the callback finds a user U with the same email, the flow goes to PEND and then CONF. How does the browser get from the callback to GET /auth/google/confirm? Is it a redirect, and does the gpl cookie travel with it?",
+     "about": "PEND -> CONF"
+    },
+    {
+     "id": "10",
+     "text": "What is the CSRF token here, and how is it made and checked? The doc says it is bound to the pending id. What does that mean?",
+     "about": "FORM: Password form with CSRF token bound to pending id"
+    },
+    {
+     "id": "11",
+     "text": "The state cookie gstate is cleared at callback, but the flowchart never shows where. Is it cleared on every outcome, including when the cookie and state do not match?",
+     "about": "COOK: gstate cookie equals state parameter?"
+    },
+    {
+     "id": "12",
+     "text": "In the link path, the callback checks that the sid session user equals the flow user_id. What does this stop, given that the flow record is already keyed by state and tied to the browser by gstate?",
+     "about": "LSESS: sid session valid and its user equals flow user_id?"
+    },
+    {
+     "id": "13",
+     "text": "When a wrong password leaves the account unlocked, the form is shown again with the same pending record and its original TTL. Is there any limit on how many tries the user gets other than the 5-failure lockout? What happens if the TTL runs out in the middle?",
+     "about": "WRONG -> FORM"
+    },
+    {
+     "id": "14",
+     "text": "In the create path, the new user gets email_verified_at = now. Which email goes into users.email, and where is the Google email stored? The doc says it is not persisted.",
+     "about": "CREATE: INSERT users with NULL password_hash and email_verified_at = now"
+    },
+    {
+     "id": "15",
+     "text": "A Google-only user has no password. How can that user ever sign in again, and what does the Forgot password path do for them?",
+     "about": "Passwordless accounts and Unlink"
+    },
+    {
+     "id": "16",
+     "text": "At the confirm step, how does the server know which user is being confirmed? Does it use the user U stored in the pending record only, or is a sid session involved too? What if the browser has a different signed-in user?",
+     "about": "POST /auth/google/confirm"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The browser gets to the confirm page by a redirect. The callback response that saves the pending record sets the HttpOnly gpl cookie and returns a 302 to /auth/google/confirm. The browser then makes a top-level GET to that URL, and it sends gpl because the cookie is SameSite=Lax and the request is a same-site top-level navigation. The flowchart now says so in the PEND node."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The CSRF token is a random value made at the callback. It is stored in the pending record and put in the password form as a hidden field. The confirm POST must send it back, and the server compares it with the pending record before it checks the password. A form from another site cannot read the token, so it cannot confirm. Binding it to the pending id means the token belongs to that one pending record, so it dies with the record. The mechanism is added as a term and in the FORM node."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The callback clears gstate on every response, including the state-mismatch error, because the cookie has done its job once the callback is reached. Clearing it on mismatch changes only the browser cookie, not server state, and it gives an attacker nothing. The flowchart node CB and the state table now say this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The sid check at callback stops a flow started by one user from linking after the browser signs out or switches to another user. gstate already stops a flow started in another browser. Without the sid check, a sign-out or account switch between start and callback would still link the Google account to the account stored at start. Note 13 explains this."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Only the existing lockout limits wrong passwords on the confirm form. auth_flow.md sets 5 failures to a 15-minute lock, and the design adds no other count. The pending record keeps its original TTL, so the user gets until that TTL to try. If it runs out mid-form, the next POST finds no record and shows sign-in expired, as the flowchart already says. Whether Redis rate limits apply to this form is not in the existing docs, so it is listed as an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The Google email is lowercased and written into users.email when the account is created, because that column needs a value. Google's email is not stored anywhere else, and later sign-ins ignore it. The old line saying the Google email is not persisted was wrong and contradicted the CREATE node, so it is rewritten to say the email is written once at creation. The CREATE node now names the source of the email."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "A Google-only user cannot sign in with a password, because POST /login treats NULL password_hash like an unknown email (note 8). They sign in again with Google through the linked sub. For a password, they use Forgot password. auth_flow.md describes /forgot and the reset without any condition on an existing password, so the reset email still works for them, and using the link sets password_hash. Note 8 now says this. This is a reading of the docs, not a test run."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The confirm step uses only the user U stored in the pending record. It reads the gpl cookie to find the pending record and never reads the sid cookie. If the browser has another user signed in, a correct password signs in as U, and start_session replaces the current sid session, as a password login does while signed in (A8). I did not refuse this case, because the brief only requires that every success end in start_session. Note 14 says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a user clicks \"Sign in with Google\" on the login page, and Google's email matches an existing account that has a password.\n\n1. Start. The click sends the browser to `GET /auth/google/start?intent=login&next=...`. The server makes a `state`, a `nonce`, and a PKCE verifier and challenge. It checks that `next` is a relative path on our site. It saves a flow record in Redis, keyed by `state`, with a 10 minute TTL. The record holds the intent, nonce, verifier and `next`. The server also sets the HttpOnly `gstate` cookie to the same `state`. The browser is then sent to Google. If Redis fails here, the user sees an error page (\"sign-in unavailable, try again\") and nothing is saved. (For the link intent the server first needs a valid `sid` session, or it redirects to login. It stores that session's `user_id` in the flow record.)\n\n2. Google. The user sees Google's consent screen. Approve or cancel, Google redirects the browser to `GET /auth/google/callback`. The browser carries the `state` parameter and either a code or an error param.\n\n3. Callback, cookie check. The callback clears `gstate` on every response, whatever the outcome. First it compares the `gstate` cookie to the `state` parameter. This ties the callback to the browser that started the flow. If they differ, the user gets an error page and the flow record is not touched.\n\n4. Callback, flow record. The server runs GETDEL on the flow record by `state`. This reads and deletes it in one step, so a record can be used only once. If the record is unknown, expired or already used, the user gets an error page. If Redis errors here, the user gets an error page and any leftover record expires by TTL.\n\n5. Google error param. If Google sent an error (for example Cancel), the user is redirected to the start page (login page for login, Settings for link) with a neutral \"cancelled\" message. Nothing changes.\n\n6. Code exchange. The server POSTs the code and the PKCE verifier to Google's token endpoint. A network error, a non-200 reply or a bad body gives an error page (\"sign-in failed, try again\"). Nothing changes. The flow record is already gone, so a retry starts over with a new state.\n\n7. ID token validation. The server checks the signature against Google's published keys, which are cached by key id. It checks `iss`, that `aud` equals our client ID, that `exp` is in the future, and that `nonce` equals the nonce in the flow record. If any check fails, the user gets an error page. If all pass, it keeps only `sub`, `email` and `email_verified`. The email is lowercased.\n\n8. Branch by intent. The intent from the flow record decides the path. In the login path:\n   - If `sub` is in `google_identities`, the linked user is used and the email is ignored. Go to step 13.\n   - If `sub` is not linked and `email_verified` is false, the user is sent to the login page with a refusal (\"use email and password\"). Nothing is created.\n   - If the email is verified and no user has that lowercased email, one transaction inserts a `users` row (Google's lowercased email, NULL `password_hash`, `email_verified_at` = now) and a `google_identities` row. Then go to step 13. If that transaction fails (email unique violation or DB error), it rolls back and the user sees an error page.\n   - If the email is verified and a user U has that email, go to step 9.\n\n9. Matching account. If U already has a different Google account, the user is sent to the login page with a refusal and nothing is created. Otherwise the server saves a pending record in Redis with a 10 minute TTL. It holds U, `sub`, `next` and a CSRF token. It sets the HttpOnly `gpl` cookie to the record's id and redirects to `/auth/google/confirm`. The reason for the password step is that a verified email match does not prove the Google account belongs to U, because addresses can be reassigned. If Redis fails saving the record, the user gets an error page and nothing changes.\n\n10. Confirm page. `GET /auth/google/confirm` reads `gpl` and loads the pending record. If it is missing (expired or cleared), the user is sent to the login page with \"sign-in expired\". Otherwise the server shows a password form for U, with the CSRF token as a hidden field. If Redis errors on the read, the user gets an error page.\n\n11. Confirm POST. The browser sends the password and the CSRF token to `POST /auth/google/confirm`.\n   - A bad CSRF token gives an error page, and the pending record is kept.\n   - If the pending record is gone, the user sees \"sign-in expired\".\n   - If `locked_until` is in the future, the pending record is deleted, `gpl` is cleared, and the user goes to the login page with \"Account temporarily locked\". The password is not checked.\n   - The server checks the password with bcrypt. A wrong password adds 1 to `failed_logins`. At 5, `locked_until` is set to now plus 15 minutes and `failed_logins` goes back to 0. That locked state ends as above (record deleted, cookie cleared, locked message). If it is not locked, the form is shown again with a generic wrong-password message. The pending record keeps its original TTL.\n   - A correct password sets `failed_logins` to 0.\n\n12. Recheck and link. The server rechecks that U still has no other Google account and that `sub` is still unlinked. If either check fails, or the insert hits a unique violation, the pending record is deleted, `gpl` is cleared, and the user gets a login refusal. No identity row is made, but `failed_logins` stays reset. A Postgres error on the insert gives an error page. If the checks pass, the server inserts the `google_identities` row (`sub`, U), then deletes the pending record and clears `gpl`. If the Redis delete fails, sign-in still completes, and the leftover record expires by TTL and cannot link again because the `sub` is already linked. The confirm step uses only U from the pending record. It does not read `sid`.\n\n13. Session. All successful Google logins end in `start_session`. It deletes the old `sid` session row if the browser sent one, inserts a new `sessions` row, and sets the `sid` cookie. It redirects to `next` if that is a relative path, else `/home`.\n\nThe link intent (from Account Settings) differs after step 7. The server checks that the browser's `sid` session is valid and belongs to the flow's `user_id`, or it shows an error page. If `sub` is already linked to this user, Settings shows \"already linked\". If `sub` is linked to another user, or this user has a different Google account, Settings shows a refusal. Otherwise it inserts the identity row. A unique violation (a lost race) is a Settings refusal, and a successful insert shows \"already linked\" on Settings. It does not call `start_session`, so the current session is kept.\n\nSide notes. A Google-only user has a NULL `password_hash`. `POST /login` treats that like an unknown email: a dummy bcrypt compare, the generic message, and no counter changes. The user gets a password through Forgot password. Unlink requires a non-NULL `password_hash`, deletes the identity row, and keeps sessions. Password reset does not touch `google_identities`.",
+   "gaps": [
+    "Where the Google client ID, the Google redirect URI and the exact authorization request parameters are set is not stated. The document does not say how the start step builds the redirect to Google, including how the PKCE challenge and nonce are sent.",
+    "It does not say what the Redis `state` and pending-record ids look like, or how the CSRF token is generated and compared. The wording 'CSRF token invalid' covers a missing token, a wrong token and a missing cookie without saying which is which.",
+    "`start_session` and the existing lockout rules live in `existing/auth_flow.md` and `existing/schema.sql`, which I was not given. So I cannot say how a session is made, how long it lives, or how `failed_logins` and `locked_until` are updated beyond the summary in this document.",
+    "For the link intent, 'already linked' (same user) and the success redirect go to Account Settings, but the document does not say whether the success message differs from the already-linked message.",
+    "It does not say what happens if the callback arrives with both a valid code and an error param, or with neither. It does not say what the callback does if the `intent` in the flow record is neither login nor link.",
+    "It does not say when a locked account is refused for the Google login path where the match needs a password. That is an open question, so I could not say whether the user sees the password page first. The document also leaves open whether a linked Google sign-in bypasses a lock, and whether the confirm form has a rate limit."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

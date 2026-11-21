@@ -1,0 +1,77 @@
+{
+ "label": "act-t-cancel-spec-haiku-hooks",
+ "model": "haiku",
+ "hooks": true,
+ "wall_s": 38.2,
+ "cost_usd": 0.010455830000000001,
+ "junior_cost_usd": 0.0,
+ "num_turns": 12,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-x3dk6zcx\\project\\docs\\specs\\cancel-orders.md",
+  "artifact_hash": "d4e9a82ddfc5fd1e6b0cc39d20066531d47081cd9dec5f5fa66e668dcdd96de0",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The spec is written at `docs/specs/cancel-orders.md`. No code was changed.\n\n**Junior-dev review: not a real check.** The junior returned \"(activation run: the junior is stubbed)\" at teach-back, so no one read the spec back. Round one had no questions, but that proves nothing. I did not mark it `correct`, since that would be a false verdict. The spec has not been independently checked.\n\n**What the spec covers**\n- **Endpoint:** `POST /orders/{id}/cancel`, with `cancel_order(order_id, reason)` in `app.py`. Results map to 200 (cancelled), 404 (not found), 409 (already cancelled), and 502 (refund failed, order unchanged, retry allowed).\n- **Refund:** a new `refund(payment_id, amount_cents, idempotency_key)` in `payments.py`, following the same never-raises contract as `charge`.\n- **Order of operations:** refund first, then mark cancelled and restore stock. A fixed idempotency key `cancel-order-{id}` prevents a double refund if the file write fails after a successful refund.\n- **Data:** new orders store `amount_cents`, `status`, `cancelled_at`, `cancel_reason`, and `refund`. Existing orders are treated as `placed`.\n- **Tests:** nine cases, including a concurrent double-cancel and a legacy order with no stored amount.\n\n**Problems I found in the code while writing it**\n- `app.py` has no HTTP server, although the README describes `POST /orders` and `python -m src.app`. The route has no framework to attach to.\n- Orders store no amount, so legacy refunds would use current `PRICES`, which may be wrong.\n- `STOCK` is in-memory and resets on restart.\n- `order[\"customer\"]` is a free-form string, and there is no authentication. The spec says the endpoint must not be exposed publicly until auth exists.\n- Order ids are `len(orders) + 1`, which can collide after removals.\n\n**Open questions** (listed in §10 of the spec): authentication, whether a shipping state exists to block cancellation, backfilling legacy amounts, whether the real payment provider supports refunds and idempotency keys, multi-process locking, stock persistence, cancellation emails, and the HTTP framework.\n\nThe junior-dev review should be re-run with a working junior before the spec is treated as checked. Its working files are in `.junior-dev/cancel-orders-26eb387b` in the project.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/specs/cancel-orders.md": "# Spec: Cancel an order and refund the card\n\nStatus: draft\nScope: `src/app.py`, `src/payments.py`, `data/orders.json`, and the HTTP route once one exists.\n\n## 1. Summary\n\nAdd a way to cancel a placed order. Cancelling refunds the full amount charged to the card, returns the ordered quantities to stock, and marks the order as cancelled. A cancelled order cannot be cancelled again.\n\n## 2. Current state (what the spec builds on)\n\n- `app.place_order(customer, items, card_token)` checks stock, calls `payments.charge`, decrements `STOCK`, and appends an order to `data/orders.json`. It returns `{\"status\": \"placed\", \"order\": ...}` or `{\"status\": \"rejected\", \"reason\": ...}`.\n- A stored order has `id`, `customer`, `items`, and `payment` (the provider charge id). It does **not** store the amount, a status, or a timestamp.\n- `payments.charge(card_token, amount_cents)` returns `{\"ok\": bool, \"id\": str|None}` and never raises. It is currently a stub.\n- There is **no refund function** and **no HTTP route**. The README describes `POST /orders`, but `app.py` has no server entry point.\n- `STOCK` is an in-memory dict. Its changes are lost on restart; `data/orders.json` is the only persisted state.\n- Prices are in integer cents: `PRICES` and `total()`.\n\n## 3. Endpoint\n\n```\nPOST /orders/{order_id}/cancel\n```\n\nRequest body: none. An optional `reason` string may be sent; it is stored on the order and is not validated beyond length (max 500 chars).\n\nService-level function, which the route calls:\n\n```python\ncancel_order(order_id: int, reason: str | None = None) -> dict\n```\n\nIt returns one of these shapes, following the existing `place_order` convention:\n\n| Result | HTTP | Body |\n|---|---|---|\n| `{\"status\": \"cancelled\", \"order_id\", \"refund_id\", \"amount_cents\"}` | 200 | same |\n| `{\"status\": \"not_found\"}` | 404 | `{\"error\": \"order not found\"}` |\n| `{\"status\": \"already_cancelled\"}` | 409 | `{\"error\": \"order already cancelled\"}` |\n| `{\"status\": \"refund_failed\", \"reason\": \"...\"}` | 502 | `{\"error\": \"refund failed; order not cancelled, retry\"}` |\n\n## 4. Payments: new `refund`\n\nAdd to `src/payments.py`, following the same contract as `charge`:\n\n```python\nrefund(payment_id: str, amount_cents: int, idempotency_key: str) -> {\"ok\": bool, \"id\": str | None}\n```\n\n- Never raises. Returns `ok: False` on any failure.\n- Passes `idempotency_key` to the provider so a retried call cannot refund twice.\n- Refunds `amount_cents` and never more than was charged.\n\n## 5. Data changes to stored orders\n\nNew orders get these fields:\n\n| Field | Type | Notes |\n|---|---|---|\n| `amount_cents` | int | Amount charged, set at placement. |\n| `status` | `\"placed\"` \\| `\"cancelled\"` | Missing means `\"placed\"` (existing orders). |\n| `cancelled_at` | ISO-8601 UTC string or null | |\n| `cancel_reason` | str or null | |\n| `refund` | str or null | Provider refund id. |\n\n**Existing orders** have no `amount_cents`. For these, the refund amount is `total(items)` computed from the current `PRICES`. This is wrong if prices changed since the order was placed. Accepted as a known limitation until a migration is decided (see §10).\n\n`place_order` must store `amount_cents = total(items)` and `status = \"placed\"` in the new order. Existing behavior is otherwise unchanged.\n\n## 6. Behavior\n\nSteps, in order:\n\n1. Load orders. If no order has `id == order_id`, return `not_found`.\n2. If the order's status is `\"cancelled\"`, return `already_cancelled`. Do not call the provider.\n3. Determine the amount: `order[\"amount_cents\"]` if present, else `total(order[\"items\"])`.\n4. Call `payments.refund(order[\"payment\"], amount, idempotency_key=f\"cancel-order-{order_id}\")`.\n   - If `ok` is false, return `refund_failed`. Nothing is written. The order stays `placed` and the caller may retry.\n5. Mark the order `cancelled`, set `cancelled_at`, `cancel_reason`, and `refund = refund_id`, and write `orders.json`.\n6. Add each item's quantity back to `STOCK`. Items not in `STOCK` are skipped.\n7. Return `cancelled`.\n\nWhy refund before writing: if the refund fails, no state changes. Why the fixed idempotency key: if step 5 fails after a successful refund, a retry hits the same key and does not refund again.\n\nSteps 4 to 6 must run under one lock per process, so two concurrent cancels of the same order cannot both reach step 4. (A process lock is enough for the single-process service; see §10 for multi-process.)\n\n## 7. Non-goals\n\n- Partial cancellation or cancelling single line items.\n- Cancelling an order that has shipped. No shipping state exists yet.\n- Un-cancelling an order.\n- Restocking when an order is cancelled after it shipped (not applicable yet).\n- Sending a cancellation email. The README mentions receipts, but no email code exists.\n- Changing the order id scheme. `id = len(orders) + 1` can collide after records are removed; it is not changed here, but cancel relies on ids being unique.\n\n## 8. Authorization\n\nOnly the customer who placed an order should be able to cancel it. `order[\"customer\"]` is a free-form string and the service has no authentication. **Until an auth layer exists, the endpoint must not be exposed publicly.** This is an open question (§10).\n\n## 9. Tests\n\nUse a fake `refund` and a temporary `ORDERS` path.\n\n1. Cancel a placed order: status 200, `refund` id stored, status `cancelled`, stock restored, refund called with the order's total and the `cancel-order-{id}` key.\n2. Cancel an unknown id: `not_found`, no provider call, file unchanged.\n3. Cancel twice: second call is `already_cancelled`, provider called once.\n4. Refund returns `ok: False`: `refund_failed`, order still `placed`, stock unchanged, file unchanged.\n5. Refund succeeds but the file write fails: a retry calls refund with the same key and does not double-refund (provider dedupes), and the order ends `cancelled`.\n6. Legacy order without `amount_cents`: refund amount equals `total(items)`.\n7. Order with a `payment` value of `None` (charge was never made): `refund_failed`-style rejection, not a crash. Refund is not called.\n8. Two concurrent cancels of the same order: exactly one refund.\n9. Items whose name is no longer in `STOCK`: cancel still succeeds, unknown names are skipped.\n\n## 10. Open questions\n\n1. **Authentication.** How is the caller identified, and is `customer` matched against it? Blocks public exposure.\n2. **Refund window.** Should cancellation be allowed at any time? Is there a shipping or fulfillment status to check first?\n3. **Legacy prices.** Should old orders be backfilled with `amount_cents` from the time of charge? Recomputing from current `PRICES` may refund the wrong amount.\n4. **Provider.** `charge` is a stub. Does the real provider support refunds and idempotency keys? Its limits (refund window, partial refunds) need confirming before `refund` is final.\n5. **Multi-process.** If the service runs in more than one process, the in-memory `STOCK` and the process lock are not enough. A file lock or database is needed.\n6. **Stock persistence.** `STOCK` resets on restart, so restored stock is lost if the process restarts. Persisting stock is out of scope here.\n7. **Receipts.** Should a cancellation email be sent? The README implies email exists; no code does.\n8. **HTTP layer.** `app.py` has no server. Which framework serves `POST /orders/{id}/cancel`, and does the README's `python -m src.app` need to change?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-cancel-spec",
+ "kind": "trigger",
+ "prompt": "Write a spec for an endpoint that cancels an order and refunds the card: docs/specs/cancel-orders.md. Do not change any code."
+}

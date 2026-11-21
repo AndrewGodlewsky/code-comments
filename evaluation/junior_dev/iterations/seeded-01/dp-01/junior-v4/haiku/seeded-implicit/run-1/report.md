@@ -1,0 +1,27 @@
+## Review of dp-01 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a short summary at the top saying what the job does and how the main flow goes.
+- Added a terms section that defines replica, warehouse, watermark, lookback, stg_orders, fact_orders, etl_runs and attempt, each in one line.
+- Redrew the flowchart so every arrow says what data moves, and added nodes for the scheduler, the cutoff, the watermark write, etl_runs, the retry loop, the 06:00 check and the reconciliation.
+- Set the watermark in the same commit as the merge, with its value fixed as the time Extract started reading. This is my decision, since the brief leaves the value open.
+- Stated that stg_orders is emptied and rewritten on every attempt.
+- Stated the merge rule: insert new order_ids, replace an existing row when the staged updated_at is equal or newer, and set is_deleted from deleted_at.
+- Stated that etl_runs holds one row per attempt and who reads it.
+- Stated the retry count, the 15-minute spacing, and that each retry reruns Extract and Merge.
+- Replaced the six original bullets with numbered steps. The retry, deadline and reconciliation facts now sit in their own steps, so nothing is said twice.
+- Added open questions for the scheduler and paging tools, the first-ever run's start point, failures of paging or the 06:00 check, and reconciliation after a missed load. The brief does not answer these, so I did not guess.
+- The file is about three times its original length, which is over the 1.5x guideline. The brief asks for the full flow, and the step layout requires each step to state its start, action, data and failure handling. I cut repeated wording where I could.
+- Shortened the opening to two sentences: what the job is and how the main flow goes. Stated that it is new, so there is no existing system to describe.
+- Cut the duplicate 'Flow' paragraph that repeated step 5 and the diagram, and kept its one idea as a short note under the diagram.
+- Moved the lookback and the watermark meaning into the terms, one line each. Kept the 'Attempt' term, since the retry rule depends on it.
+- Kept the diagram unchanged, placed after the terms and before the notes, as the diagram layout requires.
+- Gave every step the same four parts (Starts, Does, Data, If it fails) and broke the merge rules into numbered sub-steps in step 3.
+- Removed a separate failure table, because each step already states what happens when it goes wrong. This avoids saying the same thing twice.
+- Added one open question found while simplifying: step 4's three-attempt limit is written for the night's load, and it is unclear whether it also governs a Sunday reload. The plan does not decide this, so it is listed rather than guessed.
+- Did not change the plan's behaviour: the watermark, the lookback, the merge rule, the retry count and the 06:00 check are all as before.
+
+### Holes
+- None.

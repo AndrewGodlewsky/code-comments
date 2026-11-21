@@ -1,0 +1,109 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly does the Scheduler do at 02:00 UTC, and what tool runs it? Does it start Extract directly?",
+     "about": "Scheduler --> Extract"
+    },
+    {
+     "id": "2",
+     "text": "How does Extract know where to start reading? Does it read etl_watermark, and what value does it use as the cutoff?",
+     "about": "Incremental on updated_at, with a 2h lookback / etl_watermark"
+    },
+    {
+     "id": "3",
+     "text": "When is etl_watermark updated: after Extract, or only after Merge succeeds? What if the run fails in between?",
+     "about": "etl_watermark"
+    },
+    {
+     "id": "4",
+     "text": "What does stg_orders hold? Is it emptied each night, and does Extract write rows there in full each run?",
+     "about": "Extract --> stg_orders"
+    },
+    {
+     "id": "5",
+     "text": "The 2h lookback re-reads rows already loaded. How does Merge avoid duplicates, and what does 'latest version wins' compare?",
+     "about": "Merge on order_id, latest version wins"
+    },
+    {
+     "id": "6",
+     "text": "How are soft deletes detected? Does the source replica have a deleted flag or timestamp, and what if a row is hard-deleted?",
+     "about": "Soft deletes become is_deleted"
+    },
+    {
+     "id": "7",
+     "text": "What does etl_runs record, and who reads it? Where do the 06:00 check and Alerts fit in the arrows, since they have none?",
+     "about": "etl_runs / 06:00 check / Alerts"
+    },
+    {
+     "id": "8",
+     "text": "How many retries, how far apart, and which steps are retried? Who gets paged after that and through what?",
+     "about": "Retries on failure, then pages"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The brief says the scheduler starts the job at 02:00 UTC, and the job's first step is Extract, so the scheduler starts the run and Extract is the first step it runs. The brief does not name the scheduler tool, so that is in Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Extract reads the watermark from etl_watermark and sets the cutoff to the watermark minus 2 hours. It then reads replica rows with updated_at later than the cutoff. The brief does not say where the first-ever run starts, since no watermark exists yet, so that is in Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The watermark is updated only after Merge succeeds, in the same warehouse commit as the merge, so the two cannot disagree. The new value is the time Extract started reading. I chose that value because a row stamped just before the read but committed after it still falls inside the next run's lookback. If the run fails between Extract and Merge, the watermark does not change and the next attempt reads the same window again."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "stg_orders holds only the rows one attempt read. Each attempt empties it and writes every row in the window in full. It is not kept between runs, so a retry starts from clean staging and cannot mix two attempts."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The overlap re-reads rows, but each order_id appears once in the replica, so one staged batch has no duplicates. Merge matches on order_id. A new order is inserted. An existing order is replaced when the staged updated_at is equal or newer, so latest version means the highest updated_at. Equal is allowed, so re-running a night gives the same result."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The brief says the app never hard-deletes and that a soft delete sets deleted_at. That write also sets updated_at, so the normal incremental read picks the delete up. Merge sets is_deleted when deleted_at is set. Under the brief a hard delete cannot happen, so the file has no handling for it."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "etl_runs has one row per attempt: night, attempt number, start, end, status, the cutoff used, and row counts. Step 4 counts failed attempts in it, step 5 looks for a committed merge in it, and people use it to debug. Reconciliation also writes its reload results there. The diagram now draws these arrows and the 06:00 check."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The brief sets this: two more attempts after the first, 15 minutes apart, so three attempts in total. Each retry reruns Extract and Merge from the start, which is safe because the watermark has not moved. After the third failure, on-call is paged. The brief does not name the paging tool, so that is in Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The scheduler starts the run at 02:00 UTC. This begins attempt 1 for the night and goes straight to Extract. No data is stored at this point. The attempt is only logged in `etl_runs` when it ends.\n\n2. Extract reads `etl_watermark` from the warehouse. This row holds the time the last successful run started reading. It subtracts 2 hours from that time to get the cutoff. The 2 hours is the \"lookback\". It is there because bulk imports can make a row show up to 90 minutes after its `updated_at`. Extract then reads every row in the replica's `orders` table with `updated_at` after the cutoff. The replica is read-only and is never written to. Extract empties `stg_orders` and writes the rows it read into it. `stg_orders` is the scratch table holding what this attempt read. Extract records the time it started reading, and the merge step uses that time later.\n\n3. If Extract fails, the attempt is logged as failed in `etl_runs` and the flow goes to step 6 (Retry or page). Nothing else changes.\n\n4. If Extract finishes without error, Merge starts. In one warehouse transaction, it goes through each row in `stg_orders`. If the `order_id` is not yet in `fact_orders`, it inserts the row. If the `order_id` already exists, it replaces that row only when the staged `updated_at` is equal to or newer than the existing one. It sets `is_deleted` to true when `deleted_at` is set. Then it sets `etl_watermark` to the time Extract started reading, and commits. `fact_orders` and the watermark therefore change in the same commit, or not at all. After the commit, the attempt is logged as committed in `etl_runs`.\n\n5. If Merge fails, the transaction rolls back. `fact_orders` and the watermark stay as they were, and the attempt is logged as failed. Because the watermark only moves when the merge commits, a failed night is re-read next time from the old watermark.\n\n6. Retry or page runs after a failed Extract or Merge. It counts the failed attempts for the night in `etl_runs`. If fewer than three have failed, it waits 15 minutes and starts a new attempt at Extract. A night gets at most three attempts. If three have failed, it pages on-call.\n\n7. At 06:00 UTC two things happen. The analyst dashboards read `fact_orders` whatever its state. Because the merge is one transaction, they see either the whole previous night or the whole new one. The separate 06:00 check looks in `etl_runs` for a committed merge since 02:00 UTC. If there is none, it posts a staleness alert to #data-alerts. It writes nothing to the warehouse tables.\n\n8. On Sundays, after that night's load, reconciliation runs. For each order-creation day in the last 30 days, it compares the row count and a checksum of `order_id` plus `updated_at` between the replica and `fact_orders`. For each day that differs, it re-reads all of that day's rows from the replica, ignoring the watermark. It writes them into `stg_orders` and merges them into `fact_orders` with the step 4 rule. It does not change the watermark. It also writes to `etl_runs`. A failed reload follows the retry rule from step 6. This catches rows that arrive later than the 2-hour overlap covers.",
+   "gaps": [
+    "The document does not say what happens if the scheduler fails to start the job at 02:00. Step 1 says 'see open questions', and the open questions only ask which scheduler it is, not what happens on failure.",
+    "The document does not say who can tell that the retry or page step itself failed. For example, it does not say what happens if the page is not delivered or the failure count cannot be read from `etl_runs`.",
+    "The document does not say what happens if the 06:00 check fails, or if the page or alert is not delivered. Its open questions say this directly.",
+    "The document does not say how the first-ever run works when no watermark exists, so I cannot explain what cutoff Extract uses on night one.",
+    "The document does not say whether the Sunday reconciliation still runs when the night's load is missing at 06:00. 'After that night's load' leaves the exact trigger and timing unclear.",
+    "The document does not say how a failed attempt's time is handled. A retry could re-read from the same watermark, but the document does not say whether the 'read start time' written to the watermark comes from the attempt that finally succeeds. I assumed it does.",
+    "The document does not say what a reconciliation reload counts as in `etl_runs`. It is unclear whether those attempts count toward the 3-failure limit, or whether a committed reload could satisfy the 06:00 check."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

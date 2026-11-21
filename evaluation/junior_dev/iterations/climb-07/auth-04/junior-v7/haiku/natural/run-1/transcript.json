@@ -1,0 +1,166 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"start page\" exactly? When the flow began from Settings, do the Cancel and did-not-finish messages appear on the Settings page or the login page?",
+     "about": "Back to start page (E_CANCEL, E_EX)"
+    },
+    {
+     "id": "2",
+     "text": "How is the sid cookie checked as valid at start: a lookup of the sessions row? And what does the settings txn store as \"sid hash\" and why a hash rather than the sid itself?",
+     "about": "Settings page / Valid sid cookie?"
+    },
+    {
+     "id": "3",
+     "text": "How does the callback find the txn? Does it read the gauth_txn cookie, look up gauth:txn:{state}, and also compare to the state query parameter from Google? What exactly counts as a mismatch?",
+     "about": "Cookie matches state, and txn still in Redis?"
+    },
+    {
+     "id": "4",
+     "text": "On the login branch, a linked sub goes straight to start_session without any locked_until check. Is that the decided behaviour or still open? What does a locked user see?",
+     "about": "Things to confirm, item 1 / sub linked to a user? (LSUB)"
+    },
+    {
+     "id": "5",
+     "text": "If another user row is created with the same email between the MATCH check and the insert, or the users insert hits a unique violation, what happens? Is the email column unique and compared lowercased?",
+     "about": "CREATE (One DB transaction)"
+    },
+    {
+     "id": "6",
+     "text": "The prompt page: how does it know which user's password to check, from gauth_link only? And on a wrong password that does not lock, is the link record's TTL extended or does it keep counting from the original 600 s?",
+     "about": "PROMPT / SUBMIT / FAIL"
+    },
+    {
+     "id": "7",
+     "text": "Who can call unlink and how is the caller identified? What does the user see on success, and does unlink touch sessions or anything else?",
+     "about": "Unlink (SQL statement) and POST /auth/google/unlink"
+    },
+    {
+     "id": "8",
+     "text": "The link record is deleted inside the COMMIT but Redis is not part of the DB transaction. What order happens, and what if the Redis delete fails after the DB commit or the reverse?",
+     "about": "Redis gauth:link:{id} / COMMIT"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "\"Start page\" means the page the flow began on. For the login entry that is the login page. For the settings entry it is the Settings page. Both the Cancel message and the did-not-finish message appear there. Reason: a user who started from Settings should not be sent to the login page for a Google-side problem. The diagram, notes and failure table now say \"the page the flow began on\"."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "At start, the settings entry is accepted only when the sid cookie matches a sessions row that is not expired, the same way the app treats any signed-in request. Otherwise the user goes to the login page. The txn stores SHA-256 of the sid, not the sid, because the sid is a live session credential. If Redis contents leak, the hash cannot be used as a cookie. The callback hashes the current cookie and compares it with the stored hash."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The callback reads the gauth_txn cookie and the state query parameter from Google. Both must be present and equal. Only then does it run GETDEL on gauth:txn:{state}. A mismatch means the cookie is missing, the state parameter is missing, the two values differ, or no Redis key exists (unknown, expired or used). Any mismatch shows the error page, does not GETDEL, and clears the cookie. The step text and the diagram now say this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Google sign-in for a linked sub is allowed while the account is locked. This was a proposed default and is now the design. Reason: lockout exists to limit password guessing, and Google does its own password check. A locked user who signs in with Google gets the normal session. Password login is still blocked until locked_until passes, and the lock is not cleared by Google sign-in. The Login branch step states this."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. The schema has email TEXT NOT NULL UNIQUE, and the schema comment says emails are lowercased on every write. The Google email is lowercased before the match. If a concurrent insert takes the same email, or the sub insert hits a unique key, the whole transaction rolls back. No user and no link row is kept. The login page then says \"Sign-in did not finish, try again.\" That row is added to the failure table, and the diagram shows the branch."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The prompt gets the user from the link record's user_id, which was set at the callback from the email match. The form does not name a user, and the password is checked only for that user. The TTL is not extended by wrong passwords. The 10 minutes run from the callback, when the link record was written. Reason: the brief gives 10 minutes to confirm, and extending the window on each wrong password would allow unlimited guessing over time. The Password prompt step now states this."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The caller is identified from the sid cookie. The sid gives a sessions row, and that row gives user_id. With no valid session the user goes to the login page. The request also needs the CSRF token. On success the settings page says \"Google account unlinked.\" Unlink deletes only the google_identities row and does not touch sessions. Reason: the user is already signed in, and the brief does not ask for other sessions to end. A new Unlink section describes this. The zero-row message is split: no password gives the reset-email message, and otherwise the page says no Google account is linked."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Order: the DB transaction commits first. It sets failed_logins to 0, sets email_verified_at if NULL, and inserts the google_identities row. Only after that is the Redis link record deleted, because Redis cannot join the DB transaction. If the DB commit fails, the prompt shows again with \"Could not finish, try again\" and the record stays until its TTL. If the Redis delete fails after the commit, the error is logged and the user still signs in. The leftover record expires, and if it is reused, the commit check finds the sub already linked to this user and signs in without changes. The commit check gets a new branch for this case."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "After the callback writes the link record, is the password prompt rendered directly in the callback response, or does the callback redirect to a separate prompt URL? What URL does the Cancel button call, and is it a POST?",
+     "about": "LINK / PROMPT (Password prompt)"
+    },
+    {
+     "id": "10",
+     "text": "The callback already ran GETDEL on the txn before it writes the link record. If Redis fails when writing the link record, what does the user see, and can they retry without starting over?",
+     "about": "Redis unavailable at the password prompt / callback"
+    },
+    {
+     "id": "11",
+     "text": "When start_session runs from Google sign-in, what if the browser already has a sid cookie from another session? Is the old one replaced or does it stay valid?",
+     "about": "Terms: sid and start_session(user_id)"
+    },
+    {
+     "id": "12",
+     "text": "How does the start endpoint receive next, and is it checked as a relative path at start or only at the final redirect? What is stored if next is missing?",
+     "about": "Start: next kept (GET /auth/google/start entry = login, next kept)"
+    },
+    {
+     "id": "13",
+     "text": "Until that is decided, what happens at the password prompt or at POST /login if a user has a NULL password_hash? Can a Google-only user ever reach the prompt?",
+     "about": "Open questions, item 1 (POST /login for NULL password_hash)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The callback does not render the prompt. It answers with a 303 redirect to GET /auth/google/confirm, which renders the password form from the gauth_link cookie. Cancel is a POST to /auth/google/cancel with the form CSRF token. It deletes the link record and cookie and shows the login page. Reason: the callback response stays a plain redirect, and Cancel as a POST cannot be triggered by a plain link from another site. The file now says this in note 7."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The callback has already used the txn with GETDEL, so a failed write of the link record cannot be retried from the same state. Nothing has changed in PostgreSQL at that point, because no DB write happens before the password prompt. The user sees the error page 'Google sign-in did not finish. Start again.' and must start again from the login or settings page. Reason: this keeps one rule for the failure with no retry mechanism. The failure table has a new row for it."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "auth_flow.md, start_session: if the browser already sent a sid cookie, the existing sessions row for it is deleted first, then a new row is inserted and the cookie is set. Google sign-in calls the same function, so the old session is replaced and not kept valid. A settings link does not call start_session, so the current session stays as it is. Note 9 now says the deletion happens first."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The start endpoint reads next from the query string of GET /auth/google/start. It keeps next only if it is a relative path on our site. A missing or non-relative value is kept as nothing, so the user lands on /home. start_session checks next again at the final redirect. Reason: a checked value stored in the txn and link record keeps the redirect safe at both ends, and the final check is the existing behaviour. Note 1 now says this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "A NULL password_hash at POST /login is treated as a wrong password: same generic message, failed_logins plus 1, same lockout at 5. Reason: the login page must not reveal which accounts have a password. A Google-only user cannot reach the password prompt, because such an account always has a google_identities row (unlink needs a password). The callback then signs them in through the linked-sub check, or refuses a different Google account, and never shows the prompt. Open question 1 is now decided in note 10 and removed from the open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start. The user clicks \"Sign in with Google\" on the login page, or \"Link Google\" on the Settings page. Both go to GET /auth/google/start. For Settings, the server first checks that the sid cookie matches a live, unexpired sessions row. If it doesn't, the user goes to the login page. The server keeps `next` only if it is a relative path on our site. Otherwise nothing is kept and the user ends up on /home.\n2. Save the txn. The server makes a random state, nonce and PKCE code_verifier. It writes them to Redis under gauth:txn:{state} with a 600 s TTL. The same record holds entry (login or settings) and next. For Settings only, it also holds user_id and the SHA-256 hash of the sid. A hash is stored because the sid is a live credential and a Redis leak must not expose a usable cookie. The server sets cookie gauth_txn to the state value. If Redis fails here, the user sees the error page and nothing changes.\n3. Redirect to Google. The browser is sent to Google with scope \"openid email profile\", the state, the nonce and the code_challenge (the SHA-256 of the verifier, method S256). Google authenticates the user and redirects back to GET /auth/google/callback.\n4. Callback state check. The callback needs the gauth_txn cookie and the state query parameter, both present and equal, and a txn in Redis under that state. If any of these is missing, differs, unknown, expired or already used, the user sees the error page, the cookie is cleared and nothing changes. GETDEL is not run in that case. Otherwise it runs GETDEL, which reads and deletes the txn in one step, so it can be used only once. The gauth_txn cookie is cleared on every callback response.\n5. Google error. Only after the state check passes does the callback look at whether Google sent an error, for example because the user pressed Cancel. If so, the user goes back to the page the flow began on (login page or Settings) with \"Google sign-in was cancelled.\" Nothing changes. The txn is already consumed.\n6. Code exchange. The server POSTs the authorization code and the PKCE verifier to Google's token endpoint. It then validates the ID token: signature, iss, aud, exp and nonce. It reads only sub, email and email_verified. A non-2xx reply, timeout, network error or bad token sends the user back to the page the flow began on with \"Google sign-in did not finish. Try again, or use email and password.\" Details go to the server logs only. Nothing changes, and the code can't be retried because the txn is used.\n7. Branch on entry, from the txn.\n   Settings branch:\n   a. Re-check the session. The hash of the current sid cookie must equal the txn's hash, and the sessions row must still exist and be unexpired. If not, the user goes to the login page with \"Please sign in again.\" and nothing changes. This stops an attacker from starting a link with their own Google account and getting a victim to finish it.\n   b. Look at sub. If it is already linked to this user, show \"Already linked.\" If it is linked to another user, refuse. If this user already has a different Google account, refuse and tell them to unlink first.\n   c. Otherwise insert a google_identities row. Email is neither compared nor stored. A unique violation (a race) shows \"refused after a race, nothing changed.\" Success shows \"Google linked.\" start_session is not called, so the user stays on the same session.\n8. Login branch, case by case.\n   a. If sub is linked to a user, call start_session(user_id). Email isn't used, so a changed Google email still works. A locked account can still sign in this way, and the lock stays in place for password login.\n   b. If sub is not linked and email_verified is false, the login page says to verify with email and password first. Nothing is created.\n   c. If sub is not linked, the email is verified and no user matches the lowercased email, then one DB transaction inserts a users row (password_hash NULL, email_verified_at now) and a google_identities row. On success the flow goes to start_session. On a unique violation the transaction rolls back and the user sees \"Sign-in did not finish, try again.\"\n   d. If a user matches the email and already has a different Google account, refuse. Nothing changes.\n   e. If a user matches and has no other Google account, write Redis gauth:link:{id} (sub, user_id, next; 600 s TTL) and set cookie gauth_link to the id. Then send a 303 redirect to GET /auth/google/confirm. If that Redis write fails, the user sees an error page saying \"Google sign-in did not finish. Start again.\" and nothing changes.\n9. Password confirmation. GET /auth/google/confirm shows a password form. It reads the gauth_link cookie and doesn't name a user. The user submits via POST /auth/google/confirm with the password and the CSRF token. Each submit needs a link record whose id matches the cookie. If the record is missing, expired, used or cancelled, the user goes to the login page with \"This link request expired, start again.\" The 10 minutes run from the callback and wrong passwords don't extend them. On each submit:\n   a. If locked_until is in the future, delete the record and cookie. The login page says \"Account temporarily locked.\" The password is not checked.\n   b. If the password (bcrypt, checked against the user_id in the record) is wrong, failed_logins goes up by 1. At 5, locked_until is set to now plus 15 minutes and failed_logins resets to 0. If the account is now locked, follow the lock path in (a). Otherwise show the form again with \"Wrong password.\"\n   c. Cancel is POST /auth/google/cancel with the CSRF token. It deletes the record and cookie and shows the login page.\n   d. If the password is right, go to step 10.\n10. Commit. Inside one DB transaction, first check where sub is linked. If it is already linked to this user, that was an earlier commit whose Redis delete failed, so go straight to sign-in with no changes. If sub is linked to another user, or this user has another Google account, delete the record and cookie, show \"refused\" on the login page, and change nothing. Otherwise set failed_logins to 0, set email_verified_at if it is NULL, insert the google_identities row, and commit. If the commit fails, nothing changes. The prompt shows again with \"Could not finish, try again,\" and the link record stays until its TTL. After a successful commit, delete the link record and cookie in Redis. If that delete fails, log it and sign in anyway. The leftover record expires by TTL, and the \"already linked\" check makes it harmless if reused.\n11. Finish. start_session(user_id) deletes the sessions row of any sid the browser already sent, inserts a new row and sets the sid cookie (HttpOnly, Secure, SameSite=Lax). It then redirects to next if that is a relative path on our site, otherwise to /home. The old session is replaced, not kept.\n12. Side behaviours.\n   - Password login on a Google-only account (password_hash NULL) is treated exactly like a wrong password: the same generic message, failed_logins plus 1 and the same lockout.\n   - Unlink is POST /auth/google/unlink with the CSRF token. The caller is identified from the sid's sessions row, and with no valid session the user goes to the login page. One DELETE statement removes the google_identities row, but only if the user has a password. If zero rows are deleted, the message is \"Set a password first. Use Forgot password to get a reset email.\" when there is no password. Otherwise it is \"No Google account is linked.\" Success says \"Google account unlinked.\" Sessions are untouched.\n   - Permanent state is the google_identities table (sub is the primary key, user_id is unique, cascade delete on the user), the nullable users.password_hash and users.email_verified_at. Google's email and tokens are never stored, and users.email is never written by Google sign-in. Temporary state lives in Redis (txn and link records) plus the gauth_txn and gauth_link cookies, all 600 s. The Redis TTL is the only clock for the 10-minute limits.\n   - Redis unavailable at the password prompt shows the error page, and PostgreSQL is unchanged.",
+   "gaps": [
+    "The document does not say how the app finds the user's current sid or session when start_session deletes 'the sid the browser already sent'. In the Google login branch it doesn't say whether that old sid belongs to the same user or to someone else.",
+    "The error page, the login page and the Settings page are named, but the document does not say how the message text (cancelled, refused, etc.) is passed to those pages after a redirect.",
+    "The document says the callback clears gauth_txn on every response, but not how the Settings entry should behave if the user has no gauth_txn cookie because the browser blocked it. Its Path=/auth/google is only implied to cover the callback.",
+    "How the CSRF token is generated, stored and verified for the confirm, cancel and unlink forms is not described. The document itself lists this as an open question.",
+    "On the lockout path in the Google login branch, the document does not say how the password prompt handles a user_id whose account was deleted between the callback and the submit.",
+    "'Refused' messages for login-branch refusals (another Google account; sub linked elsewhere at commit) have no exact wording given, so I can't say what the user actually reads.",
+    "The document does not say what happens to next in the Settings entry after a successful link or a refusal, beyond the user landing on the Settings page. It also doesn't say whether next is validated again at the final redirect or only at start."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,209 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where does the code that does the outbox upsert, inline apply and sweeping actually run? Is it in the application's request path, or separate services?",
+     "about": "Mechanisms 1-3 (Outbox in MySQL, Inline apply, Sweeper)"
+    },
+    {
+     "id": "2",
+     "text": "In a write, what does the 'version' column mean and who increments it? How does a write set it in MySQL, and what is compared against what in the compare-and-delete?",
+     "about": "Outbox in MySQL / Version rule in SQL"
+    },
+    {
+     "id": "3",
+     "text": "When the sweeper reads the current row from the MySQL primary, what if the row was deleted (erase)? What does it copy to Postgres, and how does the 'op' column get used?",
+     "about": "Sweeper"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'applied_version' in the compare-and-delete, and where does it come from?",
+     "about": "Inline apply"
+    },
+    {
+     "id": "5",
+     "text": "How exactly does a write hold FOR SHARE on the control row for the whole transaction, and how does the inline Postgres apply fit with it, given the inline apply happens after the MySQL commit?",
+     "about": "Fences, not flags"
+    },
+    {
+     "id": "6",
+     "text": "In step 9, how do writers behave after the pause: do clients retry the 503 automatically and for how long? What do users see during the pause?",
+     "about": "Step 9. Switch the source of truth to Postgres, pause"
+    },
+    {
+     "id": "7",
+     "text": "In phase B, how does a write get an id and does the inline apply to MySQL exist, or only the reverse sweeper? What happens to dual write flag and forward outbox then?",
+     "about": "Step 10. Phase B soak / Ids"
+    },
+    {
+     "id": "8",
+     "text": "What is 'users_control.mode' (pg_reverse vs pg_only) and when does it get set to pg_reverse? Also what are 'epoch' and 'owner_since' used for by writers?",
+     "about": "State inventory, users_control"
+    },
+    {
+     "id": "9",
+     "text": "What does the erasure job run on, what triggers it, and what happens to a user's data if it fails between steps (a), (b) and (c)?",
+     "about": "Tombstones and erasure"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The write path (fence read, outbox upsert, read-back, inline apply) runs inside the web request in UserRepository on every app instance. The sweeper, backfill, compare runs, erasure retries, and the switch and rollback jobs run in worker processes. app.jobs only wakes a worker early, and workers find their work in the databases, so a lost job delays work but does not lose it. Added as the 'Where the code runs' section."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "In the existing code, create sets version 1 and update does 'version = version + 1' inside the UPDATE, so the database is the only thing that increments it. The write now reads the row back inside its transaction, and the outbox copies that committed version. Compare-and-delete deletes an outbox row only where its version is at most the version this copy wrote, so an older copy cannot remove a newer pending entry. Explained in Terms and in 'A write in phase A'."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The op column is dropped. Erasure deletes the users row and its outbox row in one source transaction, so the sweeper normally never sees a missing row. If it does, it checks for a tombstone in the target. If one exists, it deletes the outbox row. If not, it alerts and keeps the row. Stated in the Erasure section."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "applied_version is the version of the row that the write itself read back inside its own transaction, after the update. It is not from a second read or from the replica. The compare-and-delete removes only outbox rows with version at most applied_version. Stated in step 2 and step 4 of 'A write in phase A'."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The first statement of the MySQL transaction is the FOR SHARE read of users_control. It holds the lock until commit, so it fences the write's MySQL changes, and it also serves as the routing read. The inline apply runs after commit, outside the lock, and that is safe for three reasons: it copies only committed rows, the version rule rejects stale copies, and the outbox row stays until a copy succeeds, so the step 9 drain waits for in-flight copies. Explained in the paragraph after 'A write in phase A'."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The files do not say whether clients retry a 503 automatically or for how long. The brief says clients already retry. The plan assumes they retry for at least the 90 s pause. During the pause, writes return 503 and are retried by clients, and reads continue. Added as the first open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "In phase B a write takes the Postgres fence, gets its id from the Postgres identity sequence (set to MySQL MAX(id) + 10,000,000 at the step 9 commit point), and upserts the reverse outbox in the same Postgres transaction. There is no inline apply to MySQL. Only the reverse sweeper copies to MySQL. The forward outbox, forward sweeper and users.dual_write are no longer used in phase B. The rollback step restarts the forward sweeper and sets dual_write back to 100."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "mode is set to pg_reverse in the same Postgres commit that sets owner='pg' (step 9). It is set to pg_only in phase C (step 11). Writers read owner and mode in the fence read, and they upsert the reverse outbox only when mode is pg_reverse. The epoch and owner_since columns are removed from users_control. Nothing needed them: the row lock already orders the switches, and the switch time is stored as migration_state.pg_owner_since."
+    },
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "The files only say that an erasure job exists and runs about 2,000 times a day. They do not say what triggers it, so the plan records a pending user_erasures row in the source database, and a worker retries pending rows until they are done. The failure handling is decided: step 1 (tombstone in the target, then delete the target copy) is idempotent and leaves the source unchanged if it fails. Step 2 (delete source row, outbox row and set done) is one transaction, so no partial state exists. The tombstone blocks any copy that races the erasure. Open question added for the trigger."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Between the Postgres commit point (owner='pg') and MySQL being set to owner='pg', what do writes do? The MySQL fence still says 'paused', so I assume they get a 503. Is that right, and who runs sub-step 5 if the job dies right after the commit point?",
+     "about": "Step 9, Changes 4 and 5 (Commit point, in Postgres / In MySQL)"
+    },
+    {
+     "id": "11",
+     "text": "In phase B, how does a write know to go to Postgres? Does it always read the MySQL control row first and then the Postgres one? And what does the 'users.write_owner' fallback flag change in that routing when MySQL is unreachable?",
+     "about": "Terms, Fence: 'The same read picks the path'"
+    },
+    {
+     "id": "12",
+     "text": "What does 'dual_write goes from 0 to 100' mean for a single request? Is 100 a percentage of requests that try the inline apply, and how is a request chosen?",
+     "about": "Step 3. Turn on dual write"
+    },
+    {
+     "id": "13",
+     "text": "How does the sweeper pick which outbox rows to process: in what order, how many at a time? Can it have more than one worker, given the lease allows only one worker per task?",
+     "about": "Step 2. Start the forward sweeper"
+    },
+    {
+     "id": "14",
+     "text": "Who actually opens the gate: the backfill job checking automatically, or a person confirming? What does the person check, and what does 'confirms' write to migration_state?",
+     "about": "Step 4. Backfill gate"
+    },
+    {
+     "id": "15",
+     "text": "How does a read find 'mismatch spike' and 'Postgres read errors'? Which metric or job produces them, and who looks at them to move to the next percentage?",
+     "about": "Step 7. Move reads to Postgres in steps"
+    },
+    {
+     "id": "16",
+     "text": "What does 'the MySQL row is finished later' mean? Which process sets MySQL owner='pg' later, and what do writes do until it has?",
+     "about": "Step 9, If it fails: 'the MySQL row is finished later'"
+    },
+    {
+     "id": "17",
+     "text": "When the 200 ms timeout passes, does the Postgres copy keep running in the background, or is it cancelled? What happens if it finishes after the sweeper has already copied the same row?",
+     "about": "A write in phase A, step 4 (inline apply within 200 ms)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "Yes. A write reads the MySQL control row first, so during the gap between the Postgres commit point and MySQL owner='pg' the MySQL row still says paused and the write gets a 503. The switch job runs sub-step 5 and is the resume rule: if the job dies after the commit point, the next run takes the lease, sees Postgres owner='pg' while MySQL is not 'pg', and finishes step 5. The step is one idempotent UPDATE, so repeating it is safe. Stated in step 9 under 'Resume rule'."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Every write reads the MySQL control row first, in phase A and phase B alike, and rolls back that read if MySQL says pg. Routing uses the database rows, not the flag, because flags are cached for up to 30 seconds and instances can disagree. users.write_owner is used only when MySQL cannot be reached: when it is pg, the write goes straight to the Postgres fence; otherwise it gets a 503. This is safe because MySQL cannot take writes while it is unreachable. Defined in Terms under 'Fence and routing' and 'write_owner flag'."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "The flags file says a percentage flag is bucketed by key with flags.enabled_for(name, key), so the same key always gets the same answer. Setting users.dual_write to 100 means every key is included, so every write tries the inline apply. The key is the user id, and for a create it is the new id after the MySQL commit. The sweeper covers any missed copy, so a request that skips or fails the inline apply loses nothing. Step 3 states this, and step 4 waits two minutes so the 30-second flag refresh has finished."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The forward sweeper is one task with one lease, so one worker runs at a time. It works in batches of up to 500 rows, oldest queued_at first (ORDER BY queued_at, user_id), which is why queued_at was added to the outbox. A batch is read from the MySQL primary, copied under the version rule, and each outbox row is deleted only where its version is at most the copied version. If staging shows it cannot keep up with 400 writes per second, the plan can split the work into several tasks by id range, each with its own lease. This is recorded as an open question to measure."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nobody opens the gate. The brief says no manual step is needed to fix missed writes, and the gate's conditions can all be checked from metrics and database rows. The backfill job checks the conditions every 30 seconds and writes migration_state.backfill_gate_at once they have held for two continuous minutes. The person step was removed. How instances report their build version is not in the files, so it is recorded as an open question."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The read path counts Postgres errors and fallbacks (missing row or error), so these are new counters the build must export. A mismatch is not measured on the read path: confirmed mismatches come from the compare run, which samples or covers the ids in step 6. A person looks at those dashboards for 30 minutes at each percentage and sets the next value by hand. The gate is zero new errors and zero confirmed mismatches, which is stricter than a numeric spike threshold because the target is zero. Step 7 states this, and the alerts list includes the new counters."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "The MySQL row is set to owner='pg' by the switch job's resume rule, which is the same job that sets Postgres owner='pg' at the commit point, so the rule is in the file under step 9. Until it runs: if MySQL is reachable, its row still says paused and writes get a 503; if MySQL is unreachable, writes take the phase B path while users.write_owner is pg, because no MySQL write can happen while MySQL is unreachable. Once MySQL is reachable again, the resume rule finishes the update."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The copy is not cancelled. The request stops waiting after 200 ms, and the copy runs to its own end. If it finishes late, nothing is wrong: if the sweeper already copied the same version, an equal version is not replaced, and the outbox delete only removes rows at or below the copied version, so it cannot remove a newer pending entry. If the copy never finishes, the outbox row stays for the sweeper. This removes the need for cancellation logic. Stated in step 4 and in the paragraph after it."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Before anything runs, setup (step 0) creates the schemas and a one-row `users_control` table in each database. MySQL's row has owner=mysql. The control row is the authority on where writes go. Step 1 then deploys the \"Phase 0\" build to every instance. That build makes every write use a fence and an outbox. The inline copy stays off because `users.dual_write` is 0.\n\n2. A user action arrives, for example \"update user 42\". It is handled in the web request by `UserRepository`. It opens a MySQL transaction. Its first statement is the fence read, `SELECT owner, mode FROM users_control FOR SHARE`. That lock is held until commit. It routes by what the database row says, not by a flag.\n   - If owner=mysql, it continues in phase A.\n   - If owner=pg, it rolls back and takes the phase B path.\n   - If owner=paused, it rolls back and returns 503.\n   - If MySQL can't be reached, it uses the `users.write_owner` flag. With the flag at pg it goes straight to the Postgres fence. Otherwise it returns 503.\n\n3. Phase A write. It inserts or updates `users` in MySQL, and the version goes up by 1. It reads the row back in the same transaction. It upserts a row in the MySQL `user_sync_outbox` with (user_id, version). `queued_at` is kept from the first insert. Then it commits. MySQL now holds the truth and a durable note that Postgres may be stale.\n\n4. Inline copy. If `users.dual_write` is on for this user, the request tries to copy the committed row into Postgres and waits at most 200 ms.\n   - The copy follows the version rule. It takes a per-id lock (`pg_advisory_xact_lock` in Postgres) and checks for a tombstone. Then it inserts the row if it's missing, or replaces it only if the existing version is lower.\n   - On success it deletes the outbox row, but only if the outbox version is at most the copied version.\n   - On failure or timeout it leaves the outbox row. The copy is not cancelled at 200 ms. This step never fails the request, and the response goes back to the user.\n\n5. Forward sweeper (a worker process). It holds a lease, a Postgres session advisory lock on a dedicated connection, so only one worker runs it. It is released on crash. Each loop it takes up to 500 outbox rows, oldest `queued_at` first. It reads the current rows from the MySQL primary and copies them under the version rule. Then it deletes each outbox row whose version is at most the copied version. This is the retry path for failed inline copies. With dual write off, it does all the copying. `app.jobs` only wakes workers early. Workers find their work in the databases, so a lost job only delays work.\n\n6. Rollout of dual write. The sweeper starts (step 2) before dual write is turned on (step 3, 0 to 100). Step 3 only happens once outbox depth is near zero. If it goes wrong, set the flag back to 0 and nothing is lost.\n\n7. Backfill gate. The backfill job checks every 30 s. The gate opens only when all of these have held for 2 continuous minutes: every instance runs the Phase 0 build and reports dual_write=100, outbox depth is below 1,000 with the oldest entry under 60 s, and Postgres is healthy. It records `migration_state.backfill_gate_at` in MySQL. If the gate stays closed, an alert fires.\n\n8. Backfill (step 5), per batch. If replica lag is above 5 s, it sleeps 5 s and rechecks. It reads up to 2,000 rows from the MySQL replica with `id > last`. It copies them in one Postgres transaction, with id locks in id order, tombstone checks and the version rule. After commit it sets `migration_state.last_completed_id`. An empty batch means it is done. If the worker dies, the lease is freed and the next worker resumes after the checkpoint. Repeated batches are safe because copies are idempotent. If Postgres is down, it retries with backoff.\n\n9. Comparison (step 6). It compares tables in chunks of 2,000 ids, reading the replica and Postgres. Each candidate difference is re-checked against the MySQL primary and the outbox. A confirmed missing or lower-version row is repaired by inserting an outbox row, and the sweeper does the copy. Other difference classes are only investigated. Ids with a tombstone are ignored. A run with zero confirmed mismatches is clean. It repeats until clean, then runs daily. Records go in `migration_state`.\n\n10. Read cutover (step 7). After a clean run, `users.read_source` goes 1, 10, 50, 100 percent. A read tries Postgres first and falls back to the MySQL replica on an error or a missing row. Each stage needs 30 minutes with no new Postgres read errors and no confirmed mismatch. A person checks the dashboards and sets the next value. At 100 percent on every instance, `reads_pg_since` is recorded. Then there is a soak of at least 3 days (step 8). Any read rollback resets `reads_pg_since` and the soak. One known trade-off is that a read can return an older row while that user's repair is still in the outbox.\n\n11. Erasure, which can happen at any time. A `user_erasures` row with status pending is written in the source database. A worker retries it. Each attempt first writes a tombstone in the target database and deletes any copy there (idempotent). Then, in one source transaction through the fence, it deletes the users row and its outbox row and marks the erasure done. If the source step fails, the transaction rolls back and the next attempt repeats from the target step. A 503 means retry later. The tombstone makes any racing copy fail. A sweeper that finds no source row checks the target for a tombstone. If one exists, it deletes the outbox row. If not, it alerts and keeps the row. In phase B the source and target roles swap.\n\n12. Write cutover (step 9). The job runs only if all of these hold: `reads_pg_since` is at least 3 days old, a clean compare finished in the last 24 h, outbox depth is below 100, there are no pending erasures, and Postgres is healthy. It then does these in order:\n   - a. The forward sweeper pre-drains the outbox.\n   - b. It sets MySQL owner=paused. This waits up to 5 s for in-flight fence holders. New writes get 503.\n   - c. The sweeper drains the outbox again. A delta check covers rows with `updated_at` at or after the last clean run's start, and zero mismatches are required.\n   - d. Commit point in Postgres. It sets the sequence to MySQL MAX(id)+10,000,000, sets the Postgres control row to owner=pg, mode=pg_reverse, and sets the `users.write_owner` flag to pg.\n   - e. It sets MySQL owner=pg, starts the reverse sweeper, stops the forward sweeper, and records `pg_owner_since`.\n   - If it fails before d, or at 80 s, it sets MySQL back to owner=mysql. If the job dies after d, the next run takes the lease, sees Postgres owner=pg and MySQL not pg, and finishes e. The pause is at most 90 s.\n\n13. Phase B write. A write still starts with the MySQL fence read. It sees pg and rolls back. It repeats the same fence read in Postgres, writes `users` in Postgres, and, when mode=pg_reverse, upserts the reverse outbox in the same Postgres transaction. There is no inline copy. The reverse sweeper copies each outbox row to MySQL under the version rule and tombstone check, then deletes it. If MySQL is down, the reverse outbox grows and writes continue. Fallback reads from the MySQL replica may be stale.\n\n14. Rollback is possible until step 11. It sets `read_source` to 0, pre-drains the reverse outbox, and pauses Postgres (owner=paused, exclusive lock). It drains again, runs the delta check against the MySQL primary, and makes sure AUTO_INCREMENT is above MAX(id). The commit point is in MySQL, where it sets owner=mysql and then the flag to mysql. Then it sets Postgres owner=mysql and clears the mode. Then it swaps the sweepers and ensures dual_write is 100. The budget is 90 s. If it aborts before the commit point, Postgres goes back to pg with nothing lost. After the commit point it always finishes.\n\n15. Finish. After at least 14 days of phase B soak, no planned rollback and an empty reverse outbox, step 11 sets Postgres mode=pg_only under an exclusive lock. This does not cause any 503. Reverse outbox writes and the reverse sweeper stop, and MySQL is frozen, so rollback is no longer possible. If the lock wait times out, the system stays in phase B. Step 12 then takes and verifies a final snapshot, revokes the app's MySQL access, and drops the table only after the backup is verified.",
+   "gaps": [
+    "How a write finds out the outcome when MySQL is reachable but the commit result is unknown is not described. The document also does not say what the user gets if the Postgres fence read fails in phase B.",
+    "The document does not say how per-user bucketing of `users.dual_write` gets a stable bucket for a create. It says only 'the new id', but the id does not exist before the insert.",
+    "It does not say what starts an erasure request or who writes its `pending` row. The document lists this as an open question.",
+    "It does not say how each instance reports its build version to the step 4 gate check. The document lists this as an open question.",
+    "It does not say how clients retry a 503, so it does not say whether the 90 s pause is invisible to users. This is an open question in the document.",
+    "It does not say how the 'paused' state gets resumed or how phase B requests behave when Postgres owner=paused during rollback, beyond returning 503.",
+    "It does not say exactly how the switch job and the sweepers are triggered or scheduled. Only 'worker processes' and 'app.jobs wakes early' are stated.",
+    "It does not say how a person or process decides that the pre-step-9 conditions hold, for example who runs the switch job. It also does not say how the 'delta check' compares rows in detail.",
+    "It does not say what the read path does after phase C when Postgres errors. The document lists this as an open question, whether to accept stale fallback reads or fail them.",
+    "It does not say what the outbox-age alert threshold is. It says only 'a few seconds', to be confirmed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

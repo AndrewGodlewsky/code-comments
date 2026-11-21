@@ -1,0 +1,28 @@
+{
+ "haiku-low": {
+  "q1": "captured_cents minus the sum of amount_cents over refunds that are pending or succeeded.",
+  "q2": "It retries the same call with the same idempotency key, up to 3 retries (4 attempts), backing off 1s, 2s, 4s. If all fail, the refund stays pending, flagged unconfirmed, never failed.",
+  "q3": "It is not retried. If an earlier timed-out attempt may have created it, the sweeper resolves it. Otherwise it is set to failed, with the provider's message shown to the admin.",
+  "q4": "A refund moving from pending to succeeded, in the same transaction that records it. Failed refunds queue no email.",
+  "q5": "Sum of succeeded refunds compared with captured_cents: less means Partially refunded, equal means Refunded, zero shows nothing. Computed on read; changes when a refund succeeds.",
+  "q6": "The payment row is locked with SELECT FOR UPDATE, so concurrent admins wait in turn. Each then recomputes the pending and succeeded sum and rejects if it exceeds captured_cents.",
+  "q7": "A UUID v4 generated and saved in refunds.idempotency_key before any provider call. Retries reuse that stored key.",
+  "q8": "Webhook event ids are unique, so duplicates do nothing. Status changes use a conditional update only from pending; terminal states never change. The email outbox has a unique key per refund.",
+  "q9": "It is left pending and flagged unconfirmed, never failed, because the provider may have created it. The sweeper later settles it.",
+  "q10": "Every 30 minutes, the sweeper fetches status by provider id, or resends the create call with the stored key. It applies the result, alerts at 18 hours, and marks keys older than 23 hours for manual review.",
+  "q11": "It shows Refund submitted, awaiting provider confirmation."
+ },
+ "sonnet": {
+  "q1": "refundable_cents = captured_cents minus the sum of amount_cents over refunds that are pending or succeeded. Failed refunds do not count.",
+  "q2": "The server retries the same call with the same idempotency key, up to 3 retries (4 attempts total), with backoff such as 1s, 2s, 4s. Each attempt is audited. Timeout is 10 seconds per call. If all fail, the refund stays pending and is flagged unconfirmed, and is never marked failed. Step 9 (sweeper) resolves it.",
+  "q3": "Do not retry. First check whether an earlier timed-out attempt may already have created the refund; if so, resolve it with the step 9 status check instead of trusting the rejection. Otherwise set status to failed, store the provider's message in failure_message, write the audit entry, and show the message to the admin. The failed refund no longer counts toward the limit.",
+  "q4": "A refund moving from pending to succeeded (via webhook in step 8 or sweeper in step 9). In the same transaction an email_outbox row is inserted, and a worker then sends the email. No email is sent for failed refunds.",
+  "q5": "The sum of amount_cents over succeeded refunds only, compared with captured_cents: 0 shows no label, less than captured shows Partially refunded, equal shows Refunded. Pending and failed are not counted. It is computed on read, so it changes when a refund becomes succeeded (step 10) or when the payment page loads.",
+  "q6": "In one transaction the server takes a row lock (SELECT ... FOR UPDATE) on the payment row, so concurrent admins wait one after another. It then recomputes the sum of pending and succeeded refunds and rejects if sum + amount_cents > captured_cents. Otherwise it inserts a pending refund row. The lock is released on commit, before any provider call.",
+  "q7": "It is a new UUID v4 generated in step 3 and saved in the refunds.idempotency_key column (unique) in the same transaction that creates the pending refund, before any provider call. Retries and the sweeper reuse the stored key.",
+  "q8": "Webhooks are stored in webhook_events with a unique provider_event_id; a duplicate event id returns 200 and does nothing. Status changes use a conditional update (UPDATE refunds SET status = ? WHERE id = ? AND status = 'pending'), and succeeded and failed are terminal, so a late or repeated event changes nothing and is only logged. The status change, audit entry and email_outbox row are in one transaction, and the outbox has a unique key on (refund_id, 'refund_succeeded'), so one email per refund. Events with no matching refund are marked unmatched and reprocessed later by the sweeper.",
+  "q9": "It stays pending, flagged unconfirmed. It is never marked failed because the provider may have actually created the refund. Step 9 (sweeper) later resolves it.",
+  "q10": "The sweeper (step 9), a scheduled job run every 30 minutes. It selects pending refunds with no last_status_check_at that were created over 1 hour ago, or last checked over 6 hours ago. If the refund has a provider_refund_id, it fetches status from the provider (10s timeout). If not, it resends the create call with the stored idempotency key, and within 24 hours the provider returns the original refund. It applies the result via the step 8 conditional-update transition (succeeded, failed, or still pending). On provider error or timeout the refund stays pending and the next run retries. It also reprocesses unmatched webhook events. At 18 hours pending it alerts on-call and keeps checking. It starts no new provider call for a key older than 23 hours and marks the refund for manual review.",
+  "q11": "\"Refund submitted, awaiting provider confirmation\" for a pending refund. The admin sees the provider's message if it failed (4xx), or a retry-later notice if it is unconfirmed."
+ }
+}

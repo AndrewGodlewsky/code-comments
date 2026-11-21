@@ -1,0 +1,368 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The sender gets an ack with the seq. At what point is the ack sent: after the Message Store write and outbox row commit, or after delivery? Who assigns the seq?",
+     "about": "Sender -> Gateway -> Message Service -> Message Store (+ outbox); Sender gets an ack with the seq"
+    },
+    {
+     "id": "2",
+     "text": "What exactly is the outbox, and how is it written alongside the message? Is it a table in the Message Store written in the same transaction?",
+     "about": "Message Store (+ outbox); Outbox for reliability"
+    },
+    {
+     "id": "3",
+     "text": "What does the Outbox Relay do, and how does it know which rows it has already published to the Event Bus? What happens if the relay or bus is down?",
+     "about": "Outbox Relay -> Event Bus"
+    },
+    {
+     "id": "4",
+     "text": "What is the seq scoped to (per conversation, per recipient, global)? Is it the same thing as the partition ordering on the bus?",
+     "about": "Bus partitioned by conversation; Sync on reconnect, ordered by seq"
+    },
+    {
+     "id": "5",
+     "text": "For one message, what does the Fan-out Worker do step by step? In what order does it use Presence Registry, Offline Inbox, Gateway and Push Service for each recipient?",
+     "about": "Fan-out Worker: Offline Inbox, Presence Registry, Gateway, Push Service"
+    },
+    {
+     "id": "6",
+     "text": "What does the 5 s delivery timeout apply to, and what happens when it fires: is the message put in the Offline Inbox, retried, or pushed? How does the worker know the client received it (is there a client ack)?",
+     "about": "5 s delivery timeout"
+    },
+    {
+     "id": "7",
+     "text": "How does presence work: who sends the heartbeats, who writes them to the Presence Registry, and what is the TTL? What happens if presence says online but the user has actually dropped?",
+     "about": "Presence has a TTL; heartbeats every 10 s"
+    },
+    {
+     "id": "8",
+     "text": "When is a message added to the Offline Inbox and when is it removed? What does the reconnect sync do with the inbox versus reading the Message Store?",
+     "about": "Reconnect: Gateway, Offline Inbox, Message Store; Inbox tracks undelivered messages, 30-day expiry"
+    },
+    {
+     "id": "9",
+     "text": "Where do retries happen and who retries (sender client, worker, relay)? How does idempotency on msg_id work, and who generates msg_id?",
+     "about": "Retries idempotent on msg_id; At-least-once; clients dedupe"
+    },
+    {
+     "id": "10",
+     "text": "What happens to a message whose 30-day inbox entry expires: is it lost for that device, or can the client still sync it from the Message Store?",
+     "about": "Inbox tracks undelivered messages, 30-day expiry"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The ack is sent after the Message Store transaction commits. That transaction writes the message row and its outbox row together. The Message Store assigns seq inside the same transaction, per conversation. The ack is not sent after delivery."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The outbox is a table in the Message Store. The message insert and the outbox insert share one transaction, so either both rows exist or neither does."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The relay reads outbox rows that are not yet marked published, in id order. It publishes each one to the bus keyed by conversation id, then marks the row published. The mark is what it uses to know a row is done. If the relay or bus is down, the rows wait and nothing is lost, because the sender's ack already happened and the rows persist. If the relay crashes between publishing and marking, the event is published twice. The worker tolerates that."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "seq is scoped per conversation and assigned by the Message Store. The bus partition key is the conversation id, a routing key that keeps one conversation's events together. The two are related but not the same. seq is the order of record, and clients sort by seq rather than by arrival order."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "For each recipient, in order: (a) write the Offline Inbox row, (b) read the Presence Registry, (c) if online, send through the gateway and wait up to 5 seconds for the client ack, (d) if offline or unacked after 5 seconds, send one push. The Offline Inbox is written first so the message is recorded before any live attempt. The Presence Registry is only read. The gateway performs the live send. The Push Service is used last."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The 5-second timeout applies to a live send to one recipient. It runs from the gateway send to the client's ack for that message. When it fires, the inbox row is already there, so the message is not lost. A push is sent once, and there is no live retry. The client acks each message to its gateway, which deletes the inbox row. The worker checks whether that row is gone to decide whether delivery succeeded."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The client sends a heartbeat every 10 seconds over its WebSocket. The gateway refreshes the user's Presence Registry entry with a 30-second expiry. When heartbeats stop, the entry expires after 30 seconds and the user counts as offline. If presence says online but the user has dropped, the live send gets no ack within 5 seconds. The inbox row stays and a push is sent. The message reaches the user at reconnect."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "A row is added to the Offline Inbox by the fan-out worker for every recipient, before the live attempt. A row is removed when the client acks the message, either live or during the reconnect read. On reconnect, the gateway reads the user's inbox rows to find the undelivered msg_ids and seqs. It then loads the message bodies from the Message Store and sends them in seq order per conversation. The Message Store holds the content. The inbox holds only what is still undelivered."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Retries: the sender's client retries a save with the same msg_id when it gets an error or no ack. The bus redelivers an event if a worker crashes. The relay republishes after a restart if it crashed before marking a row. Live sends and pushes are not retried. The sender's client generates msg_id once per message. The Message Store treats a repeated msg_id from the same sender as the existing message and returns its seq. Inbox writes are keyed by user and msg_id, so repeats do nothing. Whether the existing schema can enforce this is an open question."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "When the 30-day inbox row expires, it is deleted and the message is no longer delivered through the inbox. The message is not deleted from the Message Store. The client can still load it through conversation history if the store keeps it. Whether the store keeps history past 30 days is not known and is listed under open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "Step 4 says the worker loads the conversation's members. Where is membership stored, and does it matter if membership changes between save and fan-out?",
+     "about": "4 Fan-out Worker: loads the conversation's members, minus the sender"
+    },
+    {
+     "id": "12",
+     "text": "The worker waits up to 5 seconds per recipient. Are recipients handled one after another or in parallel? If one after another, how does a single slow recipient affect the others and the bus partition?",
+     "about": "4 Fan-out Worker, once per recipient; c) wait up to 5 s"
+    },
+    {
+     "id": "13",
+     "text": "If the worker crashes and the bus redelivers the event, it repeats fan-out. Does the repeat send the live message and push again to recipients who already acked? Or does it check the inbox row first?",
+     "about": "Worker crashes during fan-out; Writing it again changes nothing"
+    },
+    {
+     "id": "14",
+     "text": "If the inbox row was already deleted by an ack and the worker repeats step 4a, the row is written again. What stops that message being sent again forever or sitting in the inbox, since the client only drops duplicates?",
+     "about": "4a Write Offline Inbox row; Writing it again changes nothing"
+    },
+    {
+     "id": "15",
+     "text": "How does the worker find the recipient's gateway and send through it? Where does it learn which gateway holds that user's connection?",
+     "about": "c) if online: send via Gateway"
+    },
+    {
+     "id": "16",
+     "text": "Does the client's ack carry msg_id and conversation, and which component deletes the inbox row on ack? Is the delete done by the gateway directly in the Offline Inbox table?",
+     "about": "The gateway deletes the inbox row when the ack arrives"
+    },
+    {
+     "id": "17",
+     "text": "The relay publishes in outbox id order and the bus keeps a conversation in one partition. Does a client get live messages in seq order? What if two messages of a conversation are fanned out and the 5 s wait on the first delays or reorders the second?",
+     "about": "3 Outbox Relay; Event Bus (partition = conversation); send in seq order per conversation"
+    },
+    {
+     "id": "18",
+     "text": "On reconnect, what happens to a message that arrives live while the reconnect read is still sending the inbox rows? Can the same message go out twice, and is that expected?",
+     "about": "6 set presence, then read the user's inbox rows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Membership is stored in the Message Store, as a members table per conversation. The worker reads it at fan-out time, not at save time. A member removed before fan-out gets nothing. A member added after the save gets no live message or push and sees it only in history. Reason: one current list is simpler than a snapshot per message. The save-time question is listed under open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Recipients are handled in parallel, each with its own 5-second wait. The worker finishes all recipients of one event before it takes the next event on that partition. Reason: this keeps seq order within a conversation. The cost is that a slow recipient delays later events on the same partition by up to 5 seconds. The step now says this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "A repeat of fan-out does not blindly resend. Step 4a finds the existing row. If it is delivered, the recipient is skipped. If it is not delivered, the live attempt and, if needed, the push run again, so a push can be sent twice after a worker crash. Reason: the ack now marks the row delivered instead of deleting it, so the worker can tell who already has the message. This changes the earlier design, which deleted the row on ack."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The row is not deleted on ack. It is marked delivered and kept until it expires after 30 days. So a repeat of step 4a finds the row and does not create a new undelivered copy. Delivered rows are never pushed or resent by the reconnect read. A repeat after 30 days would create a new row, so the bus retention must be shorter than 30 days. That is listed under open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The Presence Registry entry names the gateway node that holds the user's connection. The heartbeat writes that node id along with the expiry. The worker reads it in step 4b and sends through that node. Reason: one lookup gives both online status and the route. How the worker reaches that node is an implementation detail and is left out of the plan."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The client's ack carries the msg_id. The Offline Inbox row is keyed by user and msg_id, so the gateway can mark it delivered directly in that table without the conversation id. Reason: the gateway already holds the connection and receives the ack, so no other component is needed. The step now says the gateway marks the row, not that it deletes it."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, for live messages of one conversation. Events for one conversation are in one partition and are processed one at a time, so live sends go out in seq order. If the first message waits up to 5 seconds, the second waits behind it, but it is not reordered. The client also sorts by seq, so order does not depend on arrival."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The reconnect read and a live send can both carry the same message, and that is expected. Presence is set first, so a live send for a new message goes to this gateway. Each row is written before the presence check, so a message is either in the read or sent live, and a message can be both. The client drops the duplicate by msg_id. Reason: this avoids a lock between reconnect and fan-out."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "19",
+     "text": "Two senders save to the same conversation at nearly the same time. Can the outbox id order differ from seq order? If so, do live sends still go out in seq order?",
+     "about": "3 Outbox Relay reads unpublished rows in id order; seq assigned by the Message Store"
+    },
+    {
+     "id": "20",
+     "text": "How does the worker find out the row was marked delivered during the 5-second wait: does it poll the inbox row, or is it notified by the gateway?",
+     "about": "c) if online: send via that Gateway; wait up to 5 s"
+    },
+    {
+     "id": "21",
+     "text": "How does the Outbox Relay notice a new outbox row (polling or a trigger), and can more than one relay run at once without publishing out of order?",
+     "about": "3 Outbox Relay: Trigger: an outbox row exists"
+    },
+    {
+     "id": "22",
+     "text": "When does the worker finish an event and take the next one: does the bus event only count as done after all recipients complete (including the 5 s waits and push)? What if one recipient's step throws an error?",
+     "about": "4 Fan-out Worker, one event at a time per partition"
+    },
+    {
+     "id": "23",
+     "text": "What does a push notification contain and how does Push Service know where to send it for a user, given that the user may be offline with no gateway?",
+     "about": "5 Push Service"
+    },
+    {
+     "id": "24",
+     "text": "If the live send via the gateway fails immediately (e.g. the named gateway node is down or has no such connection), does the worker treat that as no ack and wait the full 5 seconds?",
+     "about": "c) if online: send via that Gateway"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Yes. seq is assigned inside each save's transaction, and two transactions can commit in the opposite order to their seq. So outbox id order can differ from seq order within one conversation, and live sends do not follow seq order. I am withdrawing the claim in my round-2 answer A17 that live sends are in seq order. Reason: guaranteeing it would need a lock on every save in a conversation. The brief requires seq order only at reconnect, and the reconnect read already sends in seq order. The client also sorts by seq."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Neither polling nor a database watch. The gateway marks the row delivered and also reports the client's ack back to the worker. The worker waits on that one report with a 5-second timer. Reason: a single signal, with no polling loop. Step 4c now says this."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "The relay polls the outbox for unmarked rows at a short interval. It does not use a database trigger. Several relays may run at once, and then the same row can be published twice. The worker tolerates duplicate events, because delivered recipients are skipped. Cross-relay publish order is not guaranteed, which is consistent with Q19. I added no lock or leader election, because the brief does not require one and duplicates are safe."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The worker confirms an event to the bus only after every recipient has finished steps a to d, including the 5-second wait. It does not wait for the push result. If a recipient hits an unexpected error in a, b or c, that recipient stops and the event is not confirmed. The bus then redelivers it, and recipients already delivered are skipped. A push failure never counts as an error. Step 4 now says this."
+    },
+    {
+     "id": "23",
+     "tag": "unknown",
+     "text": "The push content is decided: it carries only the conversation id and msg_id, not the message text, so the text stays in the Message Store. Reason: no message body reaches the push provider. How Push Service finds the user's device token is not known. The brief does not say where device tokens are stored or who writes them. This is added as an open question."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "No. A send that fails at once is treated as not delivered straight away, and the worker moves to the push. Only a send that gets no reply waits the full 5 seconds. Reason: nothing is in flight to wait for, and fast handling keeps later events on the partition moving. The brief is still met, because no ack can arrive for a send that failed."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "25",
+     "text": "On reconnect, how does the gateway know which messages the client already has, and what happens to an undelivered row for a message whose conversation the user has since left?",
+     "about": "6 Reconnect: read the user's undelivered inbox rows"
+    },
+    {
+     "id": "26",
+     "text": "A message is sent live and acked after 5 seconds. The worker has already pushed. When the worker later repeats fan-out, is that late ack the only thing that stops a second push, or can a second push still happen?",
+     "about": "Client ack arrives after 5 seconds"
+    },
+    {
+     "id": "27",
+     "text": "The worker is told about the ack by the gateway. If the worker crashes or the report is lost but the gateway marked the row delivered, what does the worker do for that recipient on redelivery?",
+     "about": "4c. gateway marks the row delivered and reports the ack to the worker"
+    },
+    {
+     "id": "28",
+     "text": "What does the worker do when presence says the user is online but the gateway named is a different node than the one the user has actually reconnected to?",
+     "about": "b) read Presence Registry (online? which gateway?)"
+    },
+    {
+     "id": "29",
+     "text": "When the client retries a save with the same msg_id after a failure, how does the client know whether to retry, and how long does it wait before giving up?",
+     "about": "1 Save: The client then retries with the same msg_id"
+    }
+   ],
+   "answers": [
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "The gateway does not need to know what the client already has. It sends every undelivered row, and a row is marked delivered only by a client ack. A resend after a lost ack is dropped by the client using msg_id. For a conversation the user has left, existing rows stay until they expire, and the reconnect read now skips any conversation the user is no longer a member of. Reason: someone who left should not receive that conversation's messages on reconnect."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "The late ack is not the only thing that stops a second push, but it is the one that matters. The push already sent is not recalled. The late ack marks the row delivered, so any later fan-out repeat stops at step 4a and sends nothing more. A second push is still possible only if the bus redelivers the event before that mark lands. Push is best effort and clients drop duplicates, so this is accepted. The failure table now says this."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "The gateway writes the delivered mark before it reports the ack. If the report is lost, the row is still marked delivered, so on redelivery step 4a sees it and stops for that recipient: no push and no resend. The client already has the message. If the mark write itself fails, no report is sent, the worker times out at 5 seconds and pushes, and the row stays undelivered until reconnect."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "Reconnect sets presence to the new gateway first, replacing the old entry. A worker that read the old entry sends to the old gateway, which has no connection for that user, so the send fails at once. The worker treats it as not delivered and sends the push. The reconnect read then delivers the row. This case is now in the failure table."
+    },
+    {
+     "id": "29",
+     "tag": "unknown",
+     "text": "The plan says the client retries with the same msg_id after an error, and the brief reuses that msg_id. Neither sets how long the client waits for an ack before it retries, how many times it retries, or when it gives up. I have no basis for those numbers, so they are listed under open questions."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "30",
+     "text": "What does a bus event contain: the message text, or only ids such as conversation, seq, msg_id and sender? How does the worker know who the sender is?",
+     "about": "3 Publish / 4 Fan-out: Trigger: a bus event"
+    },
+    {
+     "id": "31",
+     "text": "What does the worker actually hand to the gateway for a live send, and where does the message text come from? Does the worker load the body from the Message Store, or does it come with the event?",
+     "about": "4c. send the message through that gateway"
+    }
+   ],
+   "answers": [
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "A bus event carries only ids: conversation id, seq, msg_id and sender id. It does not carry the message text. Reason: the text stays in the Message Store, as it does for the push, and the bus holds no message bodies. The sender id is in the event, so the worker knows whom to exclude from the recipients. The Terms entry for Event Bus and step 3 now say this."
+    },
+    {
+     "id": "31",
+     "tag": "decided",
+     "text": "The worker does not get the text from the event. It loads the body once per event from the Message Store, using conversation id, seq and msg_id, and passes that text to each live send in step 4c. Reason: one read per event instead of one per recipient, and the text is stored in one place. If that read fails, the event is not confirmed, the same as any other unexpected error. Step 4, the diagram and the failure table now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: the sender presses send. The sender's client makes a msg_id (once per message, reused on retries) and sends msg_id plus text through its Gateway to the Message Service.\n\n2. Save. The Message Service opens one Message Store transaction. It inserts the message row (the store assigns the per-conversation seq) and an Outbox row, then commits. State lives in the Message Store. If this sender already has a message with that msg_id, nothing new is written and the existing seq is returned. If the write fails, the sender gets an error, nothing is stored, nobody receives anything, and the client retries with the same msg_id.\n\n3. Ack. Only after commit, the sender gets msg_id and seq back through its gateway. The ack does not wait for any recipient. If the ack is lost, the client retries with the same msg_id and gets the same seq. If the gateway or sender crashes after commit, the outbox row still exists, so fan-out still happens.\n\n4. Publish. The Outbox Relay polls for unpublished outbox rows in id order. It publishes each to the Event Bus, keyed by conversation id (so a conversation stays in one partition), with ids only (conversation id, seq, msg_id, sender id) and no text. Then it marks the row published. The row stays in the outbox until that mark. If the relay or bus is down, rows wait: delivery is late, nothing is lost. Several relays may run, so a row can be published twice. Publish order across relays is not guaranteed.\n\n5. Fan-out starts. A Fan-out Worker takes one event from a partition, one at a time per partition. It reads the message text once from the Message Store, reads the conversation's current members from the Message Store, and removes the sender. Membership is read now, not at save time, so a member removed before fan-out gets nothing and a member added after the save gets nothing live. If the text read fails, the event is not confirmed and the bus redelivers it.\n\n6. Per recipient, all recipients in parallel:\n   a. Insert an Offline Inbox row (user, conversation, seq, msg_id) if none exists. An existing row is left alone. If the row is already marked delivered, stop for this recipient. This makes repeats safe.\n   b. Read the Presence Registry. It has one entry per user naming the gateway that holds the connection. Heartbeats every 10 s refresh it with a 30 s expiry, so no heartbeat for 30 s means offline.\n   c. If online, the named gateway sends the text to the client. The client acks. The gateway marks the inbox row delivered, then reports the ack to the worker. The worker waits up to 5 s for that report using a timer. If the send fails at once (gateway down, or no such connection, such as a stale presence entry after the user reconnected elsewhere), the worker does not wait and treats the recipient as not delivered.\n   d. If the user was offline, the send failed, or no report arrived in 5 s, the worker asks the Push Service to send a push, once, and does not wait for the result.\n\n7. Push. The Push Service sends one mobile push carrying only conversation id and msg_id, not the text. It is best effort and never retried. A failed push changes nothing, and the inbox row stays undelivered.\n\n8. Confirm. After every recipient has finished a to d (including any 5 s wait), the worker confirms the event to the bus and takes the next event on that partition. A slow recipient therefore delays later events in that partition by up to 5 s. If a recipient hits an unexpected error in a, b or c (database or registry error), or the worker crashes, the event is not confirmed and the bus redelivers it. Existing inbox rows are found, delivered recipients are skipped, undelivered ones are retried, and a push may go out twice. Clients drop duplicates by msg_id.\n\n9. Reconnect. When a client opens a WebSocket to a gateway, the gateway first sets the user's presence with its own id (replacing any older entry). It then reads the user's undelivered inbox rows, skips conversations the user has left, loads the bodies from the Message Store, and sends them in seq order per conversation. Each client ack marks its row delivered. Because presence is set before the read, and rows are written (4a) before presence is checked (4b), each message is either in the read or sent live, possibly both. Duplicates are dropped by msg_id. If the read is interrupted, undelivered rows stay and are resent at next reconnect.\n\n10. Ordering and retention. Live messages in a conversation may arrive out of seq order, since saves can commit in a different order than their seq, so clients sort by seq. Inbox rows expire after 30 days whether delivered or not.\n\n11. Late ack. If the client's ack arrives after 5 s, the gateway still marks the row delivered. The push already sent is not recalled. Later repeats stop at 6a. A second push is possible only if the event is redelivered before that mark lands. If the mark write fails, no report is sent, the worker times out and pushes, and the row stays undelivered until reconnect.",
+   "gaps": [
+    "The document does not say how a client that stays connected, with heartbeats continuing, but whose ack was late or missing ever receives the message. The row stays undelivered and the document states this may never be resolved without a reconnect.",
+    "It does not say how the Fan-out Worker is told which partition or events to read, how many workers there are, or how the bus decides to redeliver. I could only explain that an unconfirmed event is redelivered.",
+    "It does not say where push device tokens are stored or who writes them, so I cannot explain how the Push Service finds the device in step 7.",
+    "It does not say how long the client waits for an ack before retrying a save, how many retries it makes, or when it gives up, so I cannot explain the retry loop in step 3 beyond 'retries with the same msg_id'.",
+    "It does not say whether the Message Store enforces uniqueness on (sender, msg_id) or on seq within a conversation, so I cannot say how the duplicate-save rule or seq assignment is actually guaranteed.",
+    "It does not say whether the Message Store keeps history beyond 30 days, so I cannot say what an offline client recovers after its inbox rows expire.",
+    "It does not say how the sender's gateway is chosen or how the ack is routed back to the sender's specific connection (it only says 'through its gateway').",
+    "It does not say how the client ack is correlated to a specific inbox row and message, or how the gateway tells the worker the report, in terms of the channel between gateway and worker."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachback-correct"
+}

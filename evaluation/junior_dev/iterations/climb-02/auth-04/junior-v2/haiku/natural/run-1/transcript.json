@@ -1,0 +1,204 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The flowchart says 'Create attempt in Redis' and the notes say state is hashed for the key. Where do state, nonce and the PKCE verifier come from, and who generates them?",
+     "about": "GET /auth/google/start"
+    },
+    {
+     "id": "2",
+     "text": "At the callback, how does the server turn the state in the URL into the Redis key and the cookie comparison? What exactly is compared to what?",
+     "about": "goauth_state cookie equals state?"
+    },
+    {
+     "id": "3",
+     "text": "The diagram says a cookie mismatch leaves the attempt unconsumed, but the table says an unknown or used state also gives the error page. Is the goauth_state cookie cleared on every callback outcome, including the error pages?",
+     "about": "Cleared at callback, or expiry"
+    },
+    {
+     "id": "4",
+     "text": "What does 'start_session' do beyond the three lines in the box? What is 'the next start_session for the same browser' that removes an old session?",
+     "about": "SESSION: start_session U, as for password login"
+    },
+    {
+     "id": "5",
+     "text": "In the settings flow, how does the callback know 'the same user as attempt'? What is compared with what, and where does the current session come from?",
+     "about": "Session valid and same user as attempt?"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'next' value, where does it come from at start, and for the pending link what does 'Redirect to next if relative, else /home' protect against?",
+     "about": "Redirect to next if relative, else /home"
+    },
+    {
+     "id": "7",
+     "text": "In the new-user path, what is the 'Race: re-read once' arrow? What gets re-read, and how does it end if the conflict is still there? The arrow goes back to MATCH, which looks like a loop.",
+     "about": "unique clash on email or sub"
+    },
+    {
+     "id": "8",
+     "text": "What does the password form post to /auth/google/confirm contain, and how does the server find U? Is U taken from the pending record or from the form?",
+     "about": "POST /auth/google/confirm"
+    },
+    {
+     "id": "9",
+     "text": "What is shown to the user at 'Error page' versus 'Redirect to return_to with neutral message'? Where does return_to come from (login page or settings)?",
+     "about": "Google sent an error param?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The server generates state, nonce and the PKCE verifier at start, each as 32 random bytes from a cryptographically secure generator, base64url encoded. State goes to the browser (cookie and Google redirect parameter). Nonce and the S256 challenge of the verifier go to Google; the verifier itself is sent only at the code exchange. All three are stored in the Redis attempt under the sha256 hash of state, so the raw state is not stored server-side. The Start note now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The callback compares the state query parameter, as an exact string match, with the goauth_state cookie value. Only if they are equal does it compute sha256(state) and GETDEL that Redis key. The comparison proves the callback is in the same browser that started the flow. The Callback order note now states this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "No, not on every outcome. The cookie is cleared by any callback whose cookie check passed, including the error pages for unknown, expired or used state, the Google error param, and token failures. On a missing or mismatched cookie the callback changes nothing, including the cookie, so it cannot break a genuine flow in the same browser. The failure table now separates these two cases."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Per existing/auth_flow.md, start_session deletes the sessions row for the sid cookie the browser sent (if any), inserts a new sessions row, sets the sid cookie (HttpOnly, Secure, SameSite=Lax), then redirects to next if it is a relative path on our site, else /home. The 'next start_session' is any later successful sign-in from the same browser, password or Google, which sends the old sid and so deletes that old row. Other browsers' sessions are unaffected. The start_session note now spells this out."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "At start in settings mode, the server reads the sid cookie of the signed-in browser and stores that session id in the attempt. At the callback, the request's sid cookie must equal the stored session id, and the sessions row for it must exist and be unexpired. The linking user is that row's user_id. The current session therefore comes from the callback request's own sid cookie. I dropped the stored user id because the session id already fixes it."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "next is the relative path given in the login page's next query parameter when the user starts sign-in. Start validates it: it must begin with a single slash and must not be protocol-relative, otherwise it becomes /home. It is kept in the attempt and then in the pending link, so the user returns to the same place after the password step. start_session checks it again before redirecting. This blocks an open redirect to another site. The check is a second layer, since the value comes from the URL and is stored server-side."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The 'Race: re-read once' arrow was ambiguous and looped back to MATCH. I removed it. The user insert and the Google link are one transaction. If it hits a unique clash on email or sub, because a parallel request won, it rolls back and shows the error page. A retry takes the normal path and sees the other account. The brief does not require retry logic, so the simplest handling is kept."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The form posts only the password, with no user id. The browser sends the goauth_pending cookie, which carries a random id. The server loads goauth:pending:<id> from Redis and takes U and sub from that record, so U is never taken from the form. The cookie is SameSite=Lax, so cross-site POSTs do not carry it. The Password confirmation note now says this."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The error page is a server-rendered page in our app with fixed neutral text: 'We could not finish signing in with Google. Nothing was changed. Please start again.' with a link to the login page. For a Google error param, the redirect goes to the page where the attempt started: the login page in login mode, or Account Settings in settings mode. That return target is fixed by the stored mode, not by the URL. The message is a fixed code, not free text."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "How long does the server wait for Google during the code exchange before it counts as a timeout? Is there one fixed limit?",
+     "about": "Code exchange with PKCE verifier OK, and ID token valid?"
+    },
+    {
+     "id": "11",
+     "text": "When is the goauth_pending cookie removed from the browser? The state table lists how the Redis record ends, but not the cookie.",
+     "about": "Create pending link in Redis / Set goauth_pending cookie"
+    },
+    {
+     "id": "12",
+     "text": "Why does an existing user with a matching verified Google email have to type their password before the link is made? What does the password step protect against?",
+     "about": "Lowercased email matches a user? / Show password form for U"
+    },
+    {
+     "id": "13",
+     "text": "For a linked Google sign-in or a newly created user, is failed_logins reset or touched? The diagram only shows it reset after the password confirmation.",
+     "about": "start_session, as for password login"
+    },
+    {
+     "id": "14",
+     "text": "In settings mode, what happens if the session expires or the user signs out in another tab while they are at Google? Where do they land, and is the Google account left unlinked?",
+     "about": "SS: sid cookie equals attempt session, and that session is unexpired?"
+    },
+    {
+     "id": "15",
+     "text": "If the callback shows the login-mode path but the browser already has a valid sid for a different user, what happens? Does start_session simply replace that session?",
+     "about": "MODE: Attempt mode?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Neither the brief nor the existing files give a number, so the plan gives none. The rule is one HTTP call to Google with one fixed timeout set in code. A timeout is a failure and shows the error page, the same as a bad token. The attempt was already taken at the callback, so the exchange has no retry. The Callback order note now says this."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The goauth_pending cookie is cleared together with the pending record, whenever the record is deleted: on success, lock, failed re-check, or expired POST. If the record has already gone by TTL, the cookie stays until its own 600 s Max-Age ends. The confirm step then finds no record and shows the error page. A wrong password keeps both the record and the cookie. The state table and the Password confirmation note now say this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The brief requires a password before linking to an existing account. An email match alone does not prove that the existing account belongs to this person. It may have been registered by someone else, or never verified. The password proves that the account's owner agrees to the link. The Password confirmation note now gives this reason."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Neither. A linked Google sign-in does not touch failed_logins, because no password is guessed there, and only its lock check applies. A new user is created with failed_logins at its default of 0. A correct password in the confirmation step resets it to 0, as the existing login rule does. A new Failed logins note says this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The callback checks the sid cookie against the session stored in the attempt, and checks that the session is unexpired. If either check fails, the user is redirected to login with a neutral message and nothing is linked. The Google account stays unlinked, and the user can start again from settings. The Settings session check note now says this."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Yes, start_session replaces it. Per existing/auth_flow.md, start_session deletes the sessions row for the sid cookie the browser sent, then inserts a row for the user who just signed in. The other user's session is gone from this browser, and their other browsers are unaffected. The start_session note now says this explicitly, including for a different user."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start (login page). A visitor clicks \"Sign in with Google\" on the login page. This calls GET /auth/google/start. The server generates state, nonce and a PKCE verifier (32 random bytes each, base64url). It saves an attempt record in Redis under goauth:attempt:<sha256 of state> with a 600 s TTL. The record holds nonce, verifier, mode (login), next and, for settings mode, the session id. The server sets a goauth_state cookie equal to the raw state (HttpOnly, Secure, SameSite=Lax, Path=/auth/google, 600 s). It then redirects the browser to Google with state, nonce, the S256 challenge and scope \"openid email profile\". For login mode, next must be a relative path or it becomes /home. If Redis is down, start fails with the error page.\n2. Start (Account Settings, linking). A signed-in user clicks \"Link Google\". This uses the same start route, but the attempt's mode is settings and it stores the user's session id. Without a valid session, start redirects to login.\n3. Google and back. The user authenticates at Google. Google redirects the browser to GET /auth/google/callback with the state and a code. If the user cancels, Google sends an error param instead.\n4. Callback check 1. The server compares the state query param with the goauth_state cookie. If they differ or the cookie is missing, it shows the error page and changes nothing. The cookie and attempt stay. This stops a link crafted in another browser from working in the victim's browser.\n5. Callback check 2. The callback clears the cookie in its response. It then runs GETDEL on the Redis attempt keyed by sha256(state). If the attempt is unknown, expired or used, it shows the error page.\n6. Callback check 3. If Google sent an error param, the user goes back to the start page with a neutral message. The attempt is already consumed.\n7. Code exchange. The server exchanges the code with Google, sending the PKCE verifier. It validates the ID token: signature, iss, aud, exp and nonce. On a timeout, network error, non-200 or bad token it shows the error page \"start again\". The attempt is already consumed. If it succeeds, the server reads sub, email and email_verified, then discards all Google tokens. Nothing from Google is stored.\n8. Branch on mode. The stored mode decides what happens next.\n9. Settings mode. The sid cookie must equal the session id stored in the attempt, and that sessions row must exist and be unexpired. If not, redirect to login with a neutral message. Otherwise the linking user is that session's user. Then the sub is looked up in google_identities. If it is already linked to this user, redirect to settings with \"already linked\". If it is linked to another user, redirect with \"account used elsewhere\". If it is not linked but this user already has a different Google account, redirect with \"a different Google account is linked\". Otherwise INSERT google_identities (sub, this user). Email and password are not used. Redirect to settings with \"Google linked\". No new session is made.\n10. Login mode, sub already linked. The server finds the user through the link. If that user's locked_until is in the future, it shows \"Account temporarily locked\" and creates no session. Otherwise it goes to start_session (step 16).\n11. Login mode, sub not linked, email not verified. The server refuses and says to sign in with email and password. Nothing is created.\n12. Login mode, verified email with no matching user (email lowercased). In one transaction it INSERTs a users row (lowercased email, password_hash NULL, email_verified_at now) and then a google_identities row. If a unique clash on email or sub happens, the transaction rolls back and the error page says to try again. A retry takes the normal path. On success it goes to start_session.\n13. Login mode, verified email matching an existing user U. If U already has a Google account, the server refuses. Otherwise it needs proof that the visitor owns the account. It creates a pending link in Redis at goauth:pending:<random id> (stores sub, U and next; 600 s TTL from the callback). It sets a goauth_pending cookie holding the id and shows a password form for U.\n14. Password confirmation. The form POSTs only the password to /auth/google/confirm. The server loads the pending link using the cookie. The user and sub come from that record, not from the form. If there is no live pending link, it shows \"link expired, start again\". Then it checks locked_until. If U is locked, it shows \"Account temporarily locked\", skips the password check and deletes the pending link. Otherwise it runs a bcrypt check.\n15. Password result. On a wrong password, failed_logins goes up by 1. At 5, locked_until becomes now + 15 min and failed_logins resets to 0. If U is now locked, the pending link is deleted and the locked message is shown. Otherwise a generic wrong-password message is shown and the form returns. The pending link stays until its original 10 minutes end, because retries do not extend them. On a correct password, a transaction re-checks that U still has no Google account and the sub is still unlinked. If the re-check fails, the server refuses and deletes the pending link. If it passes, failed_logins is set to 0, the google_identities row is inserted, email_verified_at is set to now if it was null, and the pending link is deleted. Then it goes to start_session.\n16. start_session, the same as for password login. The server deletes the sessions row for the sid cookie the browser sent, if any. It INSERTs a new sessions row, sets the sid cookie, and redirects to next if it is a relative path, otherwise /home. A session lasts 14 days and is slid on each request. Sessions in other browsers are unaffected.\n17. Unlink. A signed-in user clicks \"Unlink Google\", which does POST /settings/google/unlink. One DELETE removes the link only if users.password_hash is not NULL. If a row was deleted, the link is gone and sessions are unchanged. If not, the server refuses and says to set a password first through Forgot password.\n18. Related behaviour. If Redis is unavailable, start, callback and confirm all fail closed with the error page. POST /login against a NULL password_hash returns the generic message and counts as a failed login.",
+   "gaps": [
+    "How the server finds the login-mode user and checks locked_until for a linked sub is only implied. The document does not say how the user_id is read from google_identities, but this is minor.",
+    "How the settings-mode callback gets the 'already signed in' check when the user lands on the callback: the document does not say what happens to the sid cookie's session sliding or what 'unexpired' means beyond 14 days slid.",
+    "What the 'next' value does after a successful settings link or the pending-link flow. In the pending flow next is stored in the record. After the password POST the document says start_session redirects to next, but it does not say how the confirm handler passes it on.",
+    "Which page is 'the start page' in the Google error-param case. The document says login goes to the login page and settings to Account Settings, but does not say how the user is told which mode applies after the attempt was consumed.",
+    "What the user sees or can do after a wrong password in the case where the pending link TTL has expired while the form is still open, beyond the 'link expired' error page. The document does not describe how the user restarts."
+   ],
+   "verdict": "wrong",
+   "notes": "Google error param branch (step 6 of the explanation): the junior said the user goes back to 'the start page' and could not say which page applies. The flowchart node E3 and the failure table say 'the start page', while the Notes say the mode fixes the return page (login page or Account Settings). The file does not say that the callback learns the mode from the attempt that GETDEL returns, so the destination is unclear on a main failure case. Fixed by naming the mode's page in the flowchart, the failure table and the callback-order note.; Callback order note (3) and failure table row for the Google error param both said 'start page'. Fixed to say the page for the attempt's mode, so the flowchart, table and notes agree."
+  },
+  {
+   "text": "1. Start. The user clicks \"Sign in with Google\" on the login page, or \"Link Google\" in Account Settings while signed in. Both go to GET /auth/google/start. Settings mode needs a valid session. Without one, start redirects to login. In login mode, `next` must be a relative path on the site. Otherwise it is replaced by `/home`.\n2. The server makes three random values: `state`, `nonce` and a PKCE verifier. Each is 32 bytes, base64url, from a secure random generator. It saves an \"attempt\" in Redis under `goauth:attempt:<sha256 of state>`, with a TTL of 600 s. The attempt holds the nonce, verifier, mode (login or settings), `next` and, for settings mode, the session id. The raw state is not stored on the server. Redis holds this state. If Redis is down, start fails closed with the error page.\n3. The server sets an HttpOnly, Secure, SameSite=Lax `goauth_state` cookie (Path=/auth/google, Max-Age 600 s) equal to `state`. It then redirects the browser to Google with `state`, `nonce`, the S256 challenge of the verifier, and scope `openid email profile`. The verifier itself is not sent until step 9.\n4. The user authenticates at Google. Google redirects the browser to GET /auth/google/callback with `state`, a code, or an error param.\n5. Callback check 1. The `state` query param must equal the `goauth_state` cookie. If it doesn't, or the cookie is missing, the server shows the error page. Nothing changes: the cookie and the attempt are left alone. This stops a link crafted in another browser from working in the victim's browser.\n6. Callback check 2. The server clears the cookie in its response and does GETDEL on the attempt, keyed by sha256 of state. This returns the attempt (mode, next, and the rest) and deletes it, so a replay fails. If the attempt is unknown, expired or used, the user gets the error page and the cookie is cleared.\n7. If Google sent an error param (for example Cancel), the user goes back to the page for the attempt's mode (login page or Account Settings) with a neutral message. The attempt is already consumed and the cookie cleared.\n8. Messages shown to the user are fixed codes shown as neutral text. No free text from the URL is shown.\n9. The server exchanges the code with Google in one HTTP call, sending the PKCE verifier, with a fixed timeout set in code. It then validates the ID token (signature, iss, aud, exp, nonce). A timeout, network error, non-200 response or bad token all show the error page \"could not finish with Google\". Nothing changes and the user must start again. On success the server reads `sub`, `email` and `email_verified`, and discards all Google tokens. No Google token is ever stored.\n10. The flow then depends on the attempt's mode.\n\nSettings mode (linking):\n11. The request's `sid` cookie must equal the session id stored in the attempt, and that sessions row must exist and be unexpired. If not, the user is redirected to login with a neutral message and nothing is linked. The linking user is the user of that sessions row.\n12. If `sub` is already in `google_identities` and linked to this user, the user is redirected to settings with \"already linked\". If it is linked to another user, they are redirected to settings with \"account used elsewhere\". If this user already has a different Google account, they are redirected to settings with \"a different Google account is linked\". Nothing changes in any of these cases.\n13. Otherwise the server INSERTs a `google_identities` row (sub, this user). The email and password are not used. The user is redirected to settings with \"Google linked\". No new session is created.\n\nLogin mode:\n14. If `sub` is in `google_identities`, the linked user is signed in. The one check is `locked_until`. If it is in the future, the user sees \"Account temporarily locked\" and no session is created. Otherwise go to step 20.\n15. If `sub` is unknown and `email_verified` is false, the server refuses and tells the user to sign in with email and password. Nothing is created.\n16. If `sub` is unknown, `email_verified` is true and the lowercased email matches no user, the server creates a new user in one transaction. It INSERTs `users` (lowercased email, password_hash NULL, email_verified_at now) and then INSERTs `google_identities` (sub, new user). On a unique clash on email or sub, the transaction rolls back and the user sees an error page. A retry takes the normal path and sees the other account. Otherwise go to step 20. The new user starts with failed_logins 0.\n17. If the email matches a user U who already has a Google account, the server refuses (\"account linked to a different Google account\") and nothing changes.\n18. If the email matches a user U with no Google account, the server cannot link silently. The account may belong to someone else or may never have been verified, so the owner must prove consent with the password. The server creates a pending link in Redis at `goauth:pending:<random id>` (TTL 600 s from the callback, never extended). It holds sub, user U and `next`. It sets a `goauth_pending` cookie holding the id, with the same attributes as the state cookie, and shows a password form for U. The user has 10 minutes.\n19. The form POSTs only the password to /auth/google/confirm. The server loads the pending record from the cookie and takes the user, sub and `next` from it, so the form cannot change the user. The checks run in this order:\n - If the cookie doesn't point to a live pending link, the user sees \"link expired, start again\" and the pending link is deleted if present.\n - If U's `locked_until` is in the future, the user sees \"Account temporarily locked\". The password isn't checked and the pending link is deleted.\n - Wrong password: failed_logins is incremented. At 5, `locked_until` becomes now plus 15 minutes and failed_logins resets to 0. If U is now locked, the pending link is deleted and the user sees \"Account temporarily locked\". Otherwise they see a generic wrong-password message and the form is shown again. The pending link stays until its 10 minutes end.\n - Correct password: in a transaction, the server re-checks that U still has no Google account and the sub is still unlinked. If either check fails, it refuses and deletes the pending link. If both pass, it sets failed_logins to 0, INSERTs the `google_identities` row, sets email_verified_at to now if it is null, and deletes the pending link. Then go to step 20.\n - The `goauth_pending` cookie is cleared whenever the record is deleted or found missing. The password is never checked against a NULL hash here, because Google-created users always have a link.\n\nSession creation:\n20. Every successful sign-in (linked, new user, or confirmed link) calls `start_session`, as for a password login. It deletes the sessions row for the `sid` cookie the browser sent, if any. It INSERTs a new `sessions` row and sets the `sid` cookie. It redirects to `next` if that is a relative path, otherwise to `/home`. Any old session in this browser is removed, even one for a different user. Sessions in other browsers are unaffected. A session lasts 14 days, slid on each request. It ends on sign-out, password reset, account deletion, or the next start_session in the same browser.\n\nUnlink and related changes:\n21. Unlink: a signed-in user POSTs to /settings/google/unlink. One DELETE removes their google_identities row only if users.password_hash is not NULL. If a row is deleted, the Google account is unlinked and sessions are unchanged. If no row is deleted, the user is told to set a password first, using Forgot password to get a reset email.\n22. Related changes. `users.password_hash` is now nullable. POST /login against a NULL hash returns the generic message and counts as a wrong attempt. Password reset is unchanged. It sets the hash for Google-created users and marks the email verified. Redis being down makes start, callback and confirm fail closed with the error page.",
+   "gaps": [
+    "The document never says what happens to the browser's `goauth_state` cookie or the attempt when the callback arrives with a matching cookie but Redis is unavailable between the cookie check and GETDEL beyond the generic 'error page, none changed'.",
+    "It does not say how the 'neutral message' or the fixed error codes are carried from the callback to the login or settings page (query parameter, flash cookie, or something else), so I cannot say how that hand-off works.",
+    "It does not say what the login-mode locked-user check does to the stored attempt or cookies beyond 'No session'. These are already consumed by then, which I inferred from the callback order."
+   ],
+   "verdict": "wrong",
+   "notes": "Code exchange failure or timeout (step 9): the junior said 'Nothing changes and the user must start again', but the callback has already consumed the attempt (GETDEL) and cleared the cookie. The flowchart said only 'Nothing changes', which hid this. Fixed in the flowchart node E4, the failure table row, and the flow text.; Login, linked sub, locked user (step 14): the junior could not say what happens to the attempt or cookies. The failure table said 'None', which contradicts the callback order, where the attempt is consumed and the cookie cleared before any account check. Fixed in the flowchart node LE and the failure table row.; Redis unavailable (failure table): the row said 'None', but the callback clears the goauth_state cookie in its response before GETDEL, so the cookie is cleared even when Redis fails. Fixed in the failure table row."
+  },
+  {
+   "text": "1. Start. The user clicks \"Sign in with Google\" on the login page, or \"Link Google\" in Account Settings (while signed in). Both call GET /auth/google/start. In settings mode the server requires a valid session, and if there isn't one it redirects to login. In login mode, `next` must be a relative path on the site, or it becomes /home.\n2. The server makes three random 32-byte values: `state`, `nonce` and a PKCE verifier. It saves an attempt in Redis under `goauth:attempt:<sha256 of state>` with a 600 s TTL. The attempt holds the nonce, verifier, mode, next and (for settings) the session id. The raw state is not stored server-side. The browser gets a `goauth_state` cookie equal to state (HttpOnly, Secure, SameSite=Lax, Path=/auth/google, 600 s).\n3. The browser is redirected to Google with state, nonce, the S256 challenge and scope `openid email profile`. The user authenticates at Google. The verifier stays on our side until the code exchange. If Redis is down at start, the user sees the error page.\n4. Google sends the browser to GET /auth/google/callback. First check: the `state` query parameter must equal the `goauth_state` cookie. If it doesn't, or the cookie is missing, the user sees the error page and nothing changes. Cookie and attempt are left alone. This stops a link crafted in another browser from working in the victim's browser.\n5. Second check: the callback clears the cookie and takes the attempt from Redis with GETDEL, using the hash of the state. This also gives the mode and `next`. If the attempt is unknown, expired or already used, the user sees the error page. This is how replays fail.\n6. If Google sent an error param (for example Cancel), the user is sent back to the login page or Account Settings, depending on the mode, with a neutral message. The attempt is already consumed and the cookie cleared.\n7. Otherwise the server does one HTTP code exchange with the PKCE verifier, with a fixed timeout, and validates the ID token (signature, iss, aud, exp, nonce). A timeout, network failure, non-200 or bad token gives the error page \"could not finish with Google\". The attempt is consumed and the user starts again. On success it reads `sub`, `email` and `email_verified`, and discards all Google tokens.\n8. Branch on mode. Settings mode (linking):\n   a. The `sid` cookie must equal the session id stored in the attempt, and that sessions row must exist and be unexpired. If not, the user is redirected to login with a neutral message and nothing changes. The linking user is that session's user.\n   b. If `sub` is already in google_identities, the user is redirected to settings with \"already linked\" (same user) or \"account used elsewhere\" (another user), and nothing changes.\n   c. If the sub is unlinked but this user already has a different Google account, the user is redirected to settings with a refusal.\n   d. Otherwise the server INSERTs google_identities(sub, this user) and redirects to settings with \"Google linked\". No new session is created, and email and password are not used.\n9. Login mode, `sub` already linked: if the linked user's `locked_until` is in the future, the user sees \"Account temporarily locked\" and no session is made. Otherwise go to step 14 (start_session). `failed_logins` is not touched.\n10. Login mode, `sub` not linked, `email_verified` false: refuse, with the message to sign in using email and password. Nothing is created.\n11. Login mode, `sub` not linked, email verified, lowercased email matches no user: in one transaction, INSERT a user (lowercased email, password_hash NULL, email_verified_at now), then INSERT the google_identities row. A unique clash on email or sub (a parallel request won) rolls back and shows \"try again\". A retry takes the normal path and sees the other account. On success go to step 14.\n12. Login mode, email matches an existing user U who already has a different Google account: refuse and change nothing.\n13. Login mode, email matches U, who has no Google account: the account might belong to someone else, so the password must prove the owner agrees. The server creates a pending link in Redis (`goauth:pending:<random id>`, holding sub, U and next, 600 s TTL from the callback, never extended) and sets a `goauth_pending` cookie. It shows a password form for U. The user POSTs only the password to /auth/google/confirm.\n    a. The pending cookie must point to a live pending link. If it doesn't, the user sees \"link expired, start again\" and the pending link is deleted if present. The user and sub come from the Redis record, not the form.\n    b. If U's `locked_until` is in the future, the user sees \"temporarily locked\", the password is not checked, and the pending link is deleted.\n    c. The bcrypt check runs. If it is wrong, `failed_logins` goes up by 1. At 5, `locked_until` is set to now plus 15 minutes and `failed_logins` resets to 0. If U is now locked, the pending link is deleted and \"temporarily locked\" is shown. If not, a generic wrong-password message is shown, the form returns, and the pending link stays until its 10 minutes end.\n    d. If the password is right, a transaction re-checks that U still has no Google account and the sub is still unlinked. If not, the user is refused and the pending link deleted. If yes, `failed_logins` is set to 0, the google_identities row is INSERTed, `email_verified_at` is set to now if it was null, and the pending link is deleted. Then go to step 14.\n14. start_session, the same as password login. It deletes the sessions row for the `sid` cookie the browser sent (if any), INSERTs a new sessions row, sets the `sid` cookie, and redirects to `next` if it is a relative path, otherwise /home. An old session in this browser is removed even if it was for a different user. Other browsers are unaffected. Sessions last 14 days, slid on each request.\n15. Unlink (separate flow): a signed-in user POSTs /settings/google/unlink. One DELETE removes the link only if users.password_hash is not NULL. If a row is deleted, it is unlinked and sessions are unchanged. If not, the user is refused and told to set a password first via \"Forgot password\".\n16. Side effects on existing behaviour. POST /login with a NULL password_hash returns the generic message and counts as a failed attempt. Password reset is unchanged. Redis being unavailable makes start, callback and confirm fail closed with the error page.",
+   "gaps": [
+    "The document does not say what the 'neutral message' or error page contains, or how the 'fixed codes' are passed to the pages. This does not stop the main flow.",
+    "The document does not say how the ID token signature is verified, meaning where Google's keys come from. It only lists the checks.",
+    "In login mode, the document does not say what happens if the user arrives at the callback already holding a valid `sid` for a signed-in session. start_session replaces it, but whether anything else happens is not stated."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,16 @@
+## Review of feat-02 (rewrite-v7, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short summary of how the system works today, then what this design changes, as the skill asks for a change to an existing system.
+- Moved the terms before the diagram and defined each name a newcomer would not know: API key, customer ID and plan, Key Service, API Gateway, backend service, Redis, Lua script, fixed window, counter key, Redis TIME, Retry-After, fail open and the metric.
+- Kept the Mermaid sequence diagram as the main flow. Changed only two labels: the denied reply now says 'seconds until next minute', and the allowed reply no longer says 'retry info', which was vague. The rest of the diagram is unchanged.
+- Corrected Retry-After. The first version used seconds until the counter key expires. That is wrong for a fixed window: the key is set to expire 60 seconds after it is first written, so it can end at a different time from the minute boundary where the budget really resets. Retry-After is now the seconds until the next minute boundary, taken from Redis TIME, rounded up, minimum 1. The diagram label was changed to match.
+- Replaced the separate notes on authentication, fail open and limits with one place each. The 401 path is stated in the steps and in the rules. Fail-open behaviour is stated in the steps, the failure table and the notes, and the notes explain the one trade-off. The Enterprise open item appears in the notes and in Open questions, as the skill asks for a visible open item.
+- Added a five-step list, each step saying what starts it, what it does, what keeps its data and where a failure goes, and a failure table. Each step can be read on its own.
+- Kept all eight fixed requirements as a numbered rules list, with the 100 per minute Standard limit, the 50 ms timeout, the 60 second expiry, the 5 minute key cache, the two X-RateLimit headers, the metric name, the no-separate-INCR rule, the twice-the-limit boundary trade-off, the sliding-window upgrade path and the out-of-scope list.
+- Added open question 3 about what happens when the Key Service does not answer and the key is not cached. The first version and the brief do not decide this. It is recorded as an open question, not as a decision. The user should decide it before implementation.
+
+### Holes
+- None.

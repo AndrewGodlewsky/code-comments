@@ -1,0 +1,28 @@
+## Review of auth-02 (junior-v6, author haiku, seeded-implicit)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Rewrote the whole plan for a newcomer, in order: summary, terms, runtime behaviour, rollout steps, failure table, open questions.
+- Added a runtime section that explains start, ready, serve and refresh, so the reader knows how the app reads keys.
+- Changed /healthz so it returns 200 only after the keys load, instead of as soon as the server listens, because the brief requires keys before ready.
+- Moved step 6 (remove api_key entries and the CI check) into the same release as the client switch, so no image built from this change carries keys and runs code that reads the file.
+- Added a check that each new key works at the provider before it is written to the store, because a bad value would replace the good one at the next refresh.
+- Added the confirmation that all 4 pods show the new version id before any old key is revoked.
+- Split rollback into before-revoke (allowed) and after-revoke (roll back only to a store-reading release), because a pre-migration image uses keys that will be revoked.
+- Defined APP_ENV, the secret name prefixes, the version id and the service identity in the terms.
+- Added the 30-day log retention and that logs show version ids only.
+- Moved the unknowns (store product, provider key issuance, APP_ENV in prod, retry count meaning) into open questions, and kept the rotation-schedule question open with no cadence chosen.
+- Cut repeated statements of the same rules. The no-keys-in-logs and no-keys-on-disk rules appear once, in the runtime section, instead of in several places. The version-id and log rules appear once in the terms and the table note.
+- Cut the wording about the old client-copy behavior from the rollout steps. The reason it changes is stated once, in runtime step 3.
+- Merged the release notes of steps 3 to 7 into one 'same release' statement per step. Each step still stands alone and says what it changes.
+- Added a Terms section with one-line definitions for the store, KMS, secret names, version ids, service identity, security on-call, provider, last good value, readiness, maxUnavailable, revoke, rollback and local run.
+- Added Starts, What it changes, State and If it fails for each runtime and rollout step, as the brief requires.
+- Added the reason for the /healthz change (the rollout waits for keys) and for the step 6 release timing (no image without keys runs code that reads the file).
+- Added a failure table row for a missing prod secret at start, and one for a pod that does not show the new version (step 9d).
+- Added the pieces of the current setup the first version left out: config is read once at process start, the image is built per merge to main, the rollout has 4 pods, base URLs and timeouts stay in config, and logs go to the central service for 30 days.
+- No change to what the plan does. The open questions are unchanged. The retry count is still stated as an assumption and is still an open question. No rotation cadence was chosen.
+
+### Holes
+- Q1: What is "the store"? Which product is it, and how does app/secrets.py authenticate to it? (author: The brief does not name the secret store product. The app reads as the service identity orders-api-prod, but the authentication mechanism is not in the files. Logged as an open question.)
+- Q5: How does the app know which environment's secrets to read? Where is APP_ENV set in prod, and what does the name prefix map to? (author: The mapping is decided: APP_ENV=prod reads orders-api/prod/*, and APP_ENV=dev reads orders-api/dev/*. Where APP_ENV is set in prod is not in the files I have. Logged as an open question.)

@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What happens to a request that arrives with an unknown API key, and does it affect any rate-limit counter?",
+  "key": "The gateway returns 401 after the key lookup. The rate-limit store is never called, so no budget is used.",
+  "why": "Readers need to know that authentication comes before counting, so bad traffic cannot drain a customer's budget."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "A customer sends traffic using three different API keys. How much can they send in total?",
+  "key": "One budget for the customer, shared across all three keys and counted by customer ID (100/min total on Standard).",
+  "why": "The unit of limiting (customer, not key) decides what the counter is keyed on."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What does a client get back when it is over its limit, and does the backend service ever see that request?",
+  "key": "429 Too Many Requests with a Retry-After header. The request is not forwarded, so the backend never sees it.",
+  "why": "This is the main rejection path and it defines what the backend is protected from."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "Does a request rejected with 429 use up any of the customer's budget?",
+  "key": "No. The counter is not incremented when a request is rejected.",
+  "why": "This decides whether a client that keeps retrying can lock itself out for longer."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "A request passes the limit check and the backend then returns 500. Does it count against the customer's budget?",
+  "key": "Yes. It still counts against the budget.",
+  "why": "It shows that a backend failure does not give budget back, which matters for clients that retry after errors."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "What happens to a request when the counter store errors or doesn't reply within 50 ms?",
+  "key": "It fails open: the request is forwarded to the backend anyway and a ratelimit_store_unavailable metric is emitted.",
+  "why": "Readers need the failure behaviour of the new dependency to judge the availability risk."
+ },
+ {
+  "id": "q7",
+  "kind": "brief",
+  "question": "What per-minute limits apply to Standard and to Enterprise customers?",
+  "key": "Standard is 100 requests/minute. Enterprise has not been decided by Product yet (open question).",
+  "why": "This tests whether the artifact shows the undecided point as open instead of inventing a value."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "Where does each customer's request count live so that all gateway instances see the same number, and what removes old counts?",
+  "key": "In one shared Redis used by all 6 gateway instances, with one key per customer per minute (rl:{customerId}:{minute}). Each key gets a 120 s TTL when it is created, and Redis deletes it when that runs out.",
+  "why": "Ownership and lifetime of the shared state are the core of the design."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "When does a customer's used budget go back to zero, or how does it otherwise recover?",
+  "key": "Fixed one-minute windows aligned to the UTC clock minute, using Redis's clock. At the start of each minute a new key is used, so the count starts again at 0.",
+  "why": "The window behaviour decides what traffic patterns are allowed and when throttled clients recover."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "How does the design stop two gateway instances from both admitting a customer's last allowed request at the same moment?",
+  "key": "The check and the increment happen in one atomic Redis Lua script (check_and_incr). Redis runs scripts one at a time, so only one call gets the last slot.",
+  "why": "Without an atomic check-and-increment, a shared counter across instances can still overshoot the limit."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "How is the Retry-After value on a 429 worked out?",
+  "key": "The seconds left until the current one-minute window ends (as returned by the script), rounded up, minimum 1.",
+  "why": "Clients rely on this value to back off correctly, and it depends on the window design."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "When the counter store is unavailable and a request is let through, does the gateway retry the store, and what rate-limit information does the client get?",
+  "key": "No retry: one attempt with a 50 ms timeout. The response carries no X-RateLimit headers because the count is unknown.",
+  "why": "The fail-open path needs a defined client-visible behaviour and a bounded latency cost."
+ }
+]

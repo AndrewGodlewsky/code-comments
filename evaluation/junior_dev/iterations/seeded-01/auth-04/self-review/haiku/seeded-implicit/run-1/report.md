@@ -1,0 +1,31 @@
+## Review of auth-04 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short opening that says what Google is used for and defines state, nonce, PKCE verifier, sub, ID token and start_session, since the reader has not seen the project.
+- Rewrote the flowchart so it covers both entry points (login page and settings), every callback outcome, the password-confirmation loop with lockout, and the settings unlink. The draft skipped refusals, the failed code exchange, and the wrong-password and lock paths, and it sent matched accounts straight to start_session.
+- Added a table of where each new piece of state lives (Redis attempt, Redis pending link, user_identities, Google-only user, session), its lifetime, and what removes it.
+- Replaced the vague line 'Errors show a message and change nothing' with a failure table that says what the user sees and what changes for each failure.
+- Added rules for one-use state, the 10-minute limits, identity by sub, the settings session check, the confirm loop, success via start_session, unlink, and the NULL password_hash handling in POST /login, which the draft did not mention.
+- Kept the original title, the Mermaid flowchart with notes, and the section on the new pieces of state.
+- Added a plain-language background section that explains start page, redirect, callback, authorization code, and session for a reader new to the app.
+- Added plain definitions of PKCE challenge and the purpose of each check (state, nonce, PKCE), and defined user_identities.
+- Added the missing settings check to the diagram: after a Google sign-back, the callback now confirms the browser is still signed in as the user who started, and shows the error page if not. The brief requires this, but the draft diagram did not show it.
+- Added a 'Schema changes' section: users.password_hash must become nullable (schema.sql has NOT NULL), and the user_identities table is now defined with its columns and unique keys.
+- Stated that the settings start endpoint requires a signed-in session.
+- Explained that 'back to start page' means the login page or Account Settings, depending on the entry point.
+- Explained that the state check runs before the Google error check, so an error callback with a bad state gets the error page.
+- Named the one-step read-and-delete as Redis GETDEL.
+- Replaced 'confirm page with the existing wrong-password message' with the generic message used by password login, since the existing docs do not give a separate wrong-password text.
+- Added a rule and a decision note on whether a lock blocks a Google sign-in for an already-linked account. The brief does not say, so the note asks for confirmation rather than deciding it.
+- Rewrote the rules and notes in shorter, plainer sentences. Kept all rules, states, failures and the diagram structure.
+- Added plain-language definitions for terms a new reader may not know: Redis TTL, HttpOnly cookie, lock, and cascade delete. Explained what Redis GETDEL does in the state table.
+- Added the saved next path to the pending link (the table row, the diagram node and the notes). The attempt is deleted at callback, so the next path must travel with the pending link for the confirm step to redirect correctly.
+- Stated that the 10-minute pending-link limit is fixed at callback time and is not extended by retries, in the diagram notes.
+- Clarified the success rule: start_session deletes any existing sid session row, then creates a new one.
+- Marked the lockout-and-Google-sign-in question explicitly as an open decision.
+- Reworded the background, the notes and the rules into shorter sentences. Kept the section order, the Mermaid flowchart, the state table, the schema changes and the failure table unchanged apart from the pending-link additions above.
+
+### Holes
+- None.

@@ -1,0 +1,229 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does the Scheduler actually do at 02:00, and what does it hand to Extract?",
+     "about": "Scheduler --> Extract"
+    },
+    {
+     "id": "2",
+     "text": "How does Extract decide which rows to pull? Where does it read the last position from, and who updates etl_watermark and when?",
+     "about": "Incremental on updated_at / etl_watermark"
+    },
+    {
+     "id": "3",
+     "text": "What does the 2h lookback mean in practice? Does the watermark move back 2 hours each run, and what happens to rows pulled twice?",
+     "about": "2h lookback for late rows"
+    },
+    {
+     "id": "4",
+     "text": "What is stg_orders: is it emptied each run, and what does Merge do with it to produce fact_orders?",
+     "about": "stg_orders --> Merge --> fact_orders"
+    },
+    {
+     "id": "5",
+     "text": "What does 'latest version wins' compare on, and what happens if two staged rows share an order_id?",
+     "about": "Merge on order_id, latest version wins"
+    },
+    {
+     "id": "6",
+     "text": "How does a deleted order in the app replica reach the warehouse, given an incremental extract on updated_at?",
+     "about": "Soft deletes become is_deleted"
+    },
+    {
+     "id": "7",
+     "text": "What is retried (whole job or a step), how many times and how often, who is paged, and is the watermark left unchanged on failure?",
+     "about": "Retries on failure, then pages"
+    },
+    {
+     "id": "8",
+     "text": "What is etl_runs used for, and what writes to it and reads it?",
+     "about": "etl_runs"
+    },
+    {
+     "id": "9",
+     "text": "What does the 06:00 check test for, and what happens when it fails? How does it relate to Alerts?",
+     "about": "06:00 check / Alerts"
+    },
+    {
+     "id": "10",
+     "text": "What does Sunday reconciliation compare, and what does it do when it finds differences over the last 30 days?",
+     "about": "Sunday reconciliation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "At 02:00 UTC the scheduler starts the job, writes an etl_runs row with status running, and starts the Extract step. It hands over nothing else; Extract finds its own starting point from etl_watermark. Chosen so the mark lives in one place."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Extract reads the high-water mark from etl_watermark in the warehouse and queries the replica for rows with updated_at later than mark minus 2 hours. Only Merge updates etl_watermark, inside the same transaction that loads fact_orders, so the mark moves only when the load succeeded (a brief requirement)."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The stored mark does not move back. The query just subtracts 2 hours from it each run, so rows near the boundary are pulled again. This covers bulk-import transactions open up to 90 minutes, where updated_at is stamped before commit. Rows pulled twice are harmless: Merge keeps one row per order_id and only overwrites when the staged updated_at is greater."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "stg_orders is emptied at the start of every attempt and then holds only that attempt's extracted rows. Merge reduces it to the highest-updated_at row per order_id and upserts into fact_orders in one transaction. Emptying each attempt means a retry never sees leftovers."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It compares updated_at. Among staged rows with the same order_id, the highest updated_at is kept. Against the stored row, the staged one overwrites only if its updated_at is greater; equal or older changes nothing. Exact ties are identical in stored content, so either may be kept."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "A delete in the app sets deleted_at, which is a write, so updated_at changes and the incremental extract picks it up like any other update (this is stated in the brief). Merge sets is_deleted = (deleted_at is not null) and the row stays in fact_orders."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The whole job is retried from Extract, not a single step. Up to two more attempts, 15 minutes apart, so 3 attempts total. After the third failure, on-call is paged. The mark is unchanged on failure because only the Merge transaction advances it and that rolls back. The paging tool is not decided; listed as open."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "etl_runs is a warehouse log with one row per attempt (night, attempt, kind, start/end, status, error). The job writes it: running at start, success or failed at the end. The 06:00 check reads it to see whether tonight's load committed. It is bookkeeping only and does not drive the extract."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "At 06:00 UTC the check reads etl_runs for tonight's run. If there is no committed success, it posts a staleness alert to #data-alerts. Alerts is that channel (plus the on-call page, which is separate and triggered by the third failed attempt). Dashboards refresh at 06:00 regardless and see either the whole night or none of it because Merge is one transaction."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "After Sunday night's load commits, for each order-creation day in the last 30 days it compares row count and a checksum of order_id + updated_at between replica and warehouse. Days that differ are reloaded: all of that day's rows are read from the replica into staging and merged with the normal merge. It does not touch the high-water mark. Failure handling (alert, no retry until next Sunday) is my decision, not in the brief."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "What actually starts the Sunday reconciliation? Is it triggered by the nightly Merge committing, or by a separate schedule that waits?",
+     "about": "Sunday reconciliation, starts after that night's load"
+    },
+    {
+     "id": "12",
+     "text": "Reconciliation also uses stg_orders. Can it ever run while a nightly attempt is using stg_orders, and if not, how is that prevented?",
+     "about": "recon reload mismatched days via staging"
+    },
+    {
+     "id": "13",
+     "text": "If an attempt is still running or waiting to retry at 06:00, what happens to it? Does it keep going and commit later, and how does the 06:00 check pick which etl_runs row is tonight's?",
+     "about": "06:00 UTC check reads tonight's status"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The Sunday nightly run's successful Merge commit starts the reconciliation; there is no separate schedule. Chosen because the brief says it runs after that night's load, and this makes the order automatic. If the load never commits, reconciliation does not run that week."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It cannot overlap a nightly attempt in practice: it starts only after a nightly success, and retries stop once an attempt succeeds. To remove the question entirely, reconciliation now has its own staging table stg_recon. Its writes to fact_orders use the same upsert that only overwrites when updated_at is greater, so a rare overlap with the next night's run would still be safe. No lock is added."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Nothing happens to it at 06:00. The check only reads etl_runs and alerts. A running or waiting attempt keeps going and may commit later; dashboards then show the night at their next refresh. Tonight's rows are identified by the night value, the UTC date of the 02:00 start, which all attempts of a run share. The check alerts if no row for that night has status success."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "Who notices a failure and starts the 15-minute-later retry, and does each retry write its own new etl_runs row with status running?",
+     "about": "Retry and paging / Start (Scheduler, 02:00 UTC)"
+    },
+    {
+     "id": "15",
+     "text": "If the job process dies partway through an attempt (crash, killed) and never logs failed, how is that detected? Does a retry still happen, and what status does that etl_runs row keep?",
+     "about": "Retry and paging / etl_runs"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The scheduler notices every failure and starts every retry: the job reports failure (or the scheduler sees it die), the scheduler waits 15 minutes and starts a new attempt. Yes, each retry gets its own new etl_runs row with status running, so there is one row per attempt. Chosen so one component owns retry timing and the attempt count, and the job itself stays simple."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The scheduler watches the process. If it exits non-zero, or runs past a time limit and is killed, the scheduler writes status failed on that attempt's etl_runs row itself, since the job could not. A retry then happens exactly as for any failed attempt. A crash leaves no partial data because Merge is one transaction. The row would otherwise stay running, which is why the scheduler marks it. The actual time limit value is not decided and is listed under open questions."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "16",
+     "text": "When Merge commits on a Sunday, what actually launches the reconciliation: the job process itself or the scheduler? And does the scheduler write its running/failed rows and apply a time limit to it?",
+     "about": "Sunday reconciliation / Merge --> recon"
+    },
+    {
+     "id": "17",
+     "text": "Reconciliation also writes etl_runs rows. Does the 06:00 check look only at kind nightly, or at any row with status success for tonight's night value?",
+     "about": "06:00 UTC check / etl_runs"
+    },
+    {
+     "id": "18",
+     "text": "Reconciliation fails and posts to #data-alerts. Who posts it, the job or the scheduler, and does it mark its etl_runs row failed the same way a nightly attempt does?",
+     "about": "What happens when things fail / Reconciliation fails"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The scheduler launches it, after it sees the Sunday nightly attempt succeed. Chosen so one component starts every job process. The scheduler writes the reconciliation's running row, applies the same time limit as for a nightly attempt, and marks the row failed if the process dies or hangs. Unlike nightly attempts, it does not retry. The job marks its own row success on finish. The time limit value is undecided (open question), and it may need to be longer for reconciliation."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The 06:00 check looks only at rows of kind nightly. A reconciliation success must not hide a missing nightly load, and reconciliation only runs after a nightly success anyway. Step 5 now says this."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The scheduler posts the alert to #data-alerts. The row is marked failed the same way as a nightly attempt: by the job if it caught the error and rolled back, otherwise by the scheduler after a non-zero exit or timeout. It differs from nightly only in that there is no retry and no on-call page."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start (02:00 UTC). The scheduler starts the job process and itself writes a new etl_runs row (kind nightly, status running, night = UTC date of the 02:00 start, attempt number). It passes the job nothing else. If the process fails to start, the scheduler marks that row failed and counts it as a failed attempt (see step 6).\n\n2. Extract (starts when the scheduler starts an attempt). The job reads the high-water mark from etl_watermark in the warehouse. It queries the app's read replica for rows where updated_at > mark - 2 hours, and remembers the highest updated_at it saw. It empties stg_orders (so a retry never sees leftovers), then loads the rows into stg_orders. The mark is not touched. The 2-hour overlap is deliberate: bulk imports can hold a transaction open for up to 90 minutes and updated_at is stamped at write time, so a row can become visible late. Boundary rows are re-pulled every night and the duplicates are handled in Merge. On the very first run there is no mark, so everything is loaded. If the replica or warehouse is unreachable, or the query errors, the attempt fails (step 6). Staging may be half full, but the next attempt empties it.\n\n3. Merge (starts when Extract finishes). One warehouse transaction does three things. (a) It keeps only the highest-updated_at row per order_id from staging; exact ties are interchangeable. (b) It upserts into fact_orders by order_id: insert if new, overwrite only if the staged updated_at is greater than the stored one. So older or identical re-extracted rows change nothing. It sets is_deleted = (deleted_at is not null). A soft delete arrives as an ordinary update because it also changes updated_at. (c) It sets the high-water mark to the highest updated_at extracted (unchanged if nothing was extracted) and marks the etl_runs row success. Only Merge moves the mark. If anything fails, the transaction rolls back, so fact_orders and the mark stay as they were, and re-running a night is harmless. Dashboards never see a half-loaded night.\n\n4. The state involved. The warehouse holds all bookkeeping: etl_watermark (the mark), etl_runs (the attempt log), stg_orders, stg_recon, and fact_orders (one row per order_id, latest version, deleted orders kept and flagged). The app database is only read, via the replica.\n\n5. Success path. After Merge commits, the attempt is a success, the mark has moved, and fact_orders has the night's changes. Retries stop. On Sundays this success is what triggers reconciliation (step 9).\n\n6. Failure and retry. The scheduler owns retries and the attempt count. An attempt can fail in two ways. In the first, the job catches the error, rolls back, and marks its own etl_runs row failed with the error text. In the second, the process dies without logging (crash, kill, hang); the scheduler sees a non-zero exit or sees the process run past the time limit, kills it, and itself writes failed on that row. In both cases the scheduler waits 15 minutes and starts a new attempt from Extract, with a new running row. The whole job is rerun, not one step. There are at most 3 attempts per run, all sharing the same night value. Staging is emptied again and the mark is unchanged, so a retry starts clean. A crash cannot leave a half-committed load because Merge is one transaction. After the third failed attempt the scheduler pages on-call, with no more retries that night. The next night starts from the old mark and catches up, because it re-reads everything since then.\n\n7. 06:00 UTC check and dashboards. Dashboards refresh from fact_orders at 06:00 whether or not the job has finished. They see the whole night or none of it. A separate check reads etl_runs for tonight's night value, looking only at kind nightly rows. If none has status success, it posts a staleness alert to #data-alerts. It only reports and stops nothing: a running or waiting attempt carries on, and if it commits later the dashboards pick it up at their next refresh. This is independent of paging, which follows the third failed attempt rather than the clock.\n\n8. (Failure table summary.) Extract and Merge failures leave the mark and fact_orders untouched. Crash, kill, hang or failure to start is handled by the scheduler marking the row failed. Not committed by 06:00 gives a staleness alert, and dashboards show the previous complete night.\n\n9. Sunday reconciliation. This is not on its own schedule. On Sundays, when the scheduler sees that night's nightly attempt succeed, it starts the reconciliation process. It writes an etl_runs row with kind reconciliation and status running, watches the process, and applies the same time limit. For each order-creation day in the last 30 days, the job compares row count and a checksum of order_id + updated_at between the replica and the warehouse. Any day that does not match is reloaded: all of that day's rows are read from the replica into stg_recon and merged into fact_orders with the same merge logic, in one transaction. The high-water mark is not changed. The job marks the row success when it finishes. This repairs rows that became visible later than the 2-hour lookback covers, for example when the replica lagged. It is safe because it uses its own staging table and the same only-overwrite-if-newer upsert. If it fails, the transaction rolls back, the scheduler marks the row failed (or the job does, if it caught the error), and the scheduler posts to #data-alerts. It is not retried and does not page on-call. The next Sunday covers the same days. If Sunday's nightly load never commits, reconciliation does not run that week. Reconciliation rows are ignored by the 06:00 check, so they cannot hide a missing nightly load.",
+   "gaps": [
+    "The document does not say how Extract learns the attempt number or night value, or how a retry is told to use the same night. The scheduler passes nothing else, yet the scheduler writes the row and the job later marks that same row success. How the job finds its own etl_runs row is not stated.",
+    "How the Sunday comparison of replica and warehouse is done, including how the checksum is computed on each side and which database performs it, is not stated.",
+    "The per-attempt time limit after which the scheduler kills a hung process is not decided (listed as an open question), so I cannot say when a hang counts as failed.",
+    "How on-call is paged (the tool) is not decided.",
+    "What happens when the Sunday reconciliation's comparison finds all days matching is not stated. Presumably nothing is reloaded and the row is marked success, but the document does not say this.",
+    "It is not stated how the first run, which loads all history, fits the nightly flow. The rollout says it loads all history and then the schedule is turned on, but it does not say whether it runs as an ordinary attempt or as a manual run."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

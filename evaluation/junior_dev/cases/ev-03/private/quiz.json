@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "At what point is the sender acknowledged, and what does the acknowledgement tell them?",
+  "key": "Only after the message has been committed to the Message Store. The ack carries the message id and its per-conversation sequence number.",
+  "why": "It marks where the synchronous send path ends and what the sender can rely on."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "If the Message Store write fails, what does the sender see, does anyone receive the message, and what must the client's retry carry so that no second copy is created?",
+  "key": "The sender gets an error and nobody receives the message. The client retries with the same client-generated message id, and the system must dedupe on that id so no second copy is created.",
+  "why": "A reader needs the failure behaviour of the send path and the idempotency rule."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "When does a connected user stop counting as online if their client goes silent?",
+  "key": "30 seconds after the last heartbeat. Clients send a heartbeat every 10 seconds.",
+  "why": "The online/offline decision drives which delivery path a recipient gets."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "What happens to a live-delivered message when the recipient's client does not acknowledge it within 5 seconds?",
+  "key": "That recipient is treated as offline for the message: it is kept in offline storage until the recipient reconnects, and a push notification is sent.",
+  "why": "It shows how the live path falls back to the offline path."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What happens when a push notification fails to send?",
+  "key": "Nothing more happens. The push is not retried, and the stored record for that recipient is unaffected, so they still get the message on reconnect.",
+  "why": "It separates best-effort notification from guaranteed delivery."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "In what order does a reconnecting client receive the messages it missed, and how are messages it receives twice handled?",
+  "key": "In ascending sequence number within each conversation. The client drops duplicates by message id.",
+  "why": "Ordering and duplicate handling define what the client sees after an outage."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "What guarantees that an acknowledged message still gets fanned out if the component that stored it crashes immediately after the write?",
+  "key": "An outbox row is written in the same transaction as the message. An Outbox Relay polls those rows, publishes message.created to the Event Bus, and deletes each row only after the bus confirms. A crash at any point only delays the publish, or duplicates it.",
+  "why": "Without this, a reader cannot tell how 'acked means eventually delivered' holds."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "Where is the record of which users are online (and on which gateway node) kept, and what removes a user's entry when their connection dies without a clean disconnect?",
+  "key": "In the Presence Registry, an in-memory key-value store that maps user_id to a gateway node with a 30 s TTL. Each heartbeat resets the TTL. If heartbeats stop, the key expires; a clean disconnect deletes it directly.",
+  "why": "Presence state decides routing, and stale entries are a classic source of lost or misrouted messages."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "How does a message get from the fan-out step onto an online recipient's open connection, and what confirms that it arrived?",
+  "key": "The Fan-out Worker looks up the recipient's gateway node in the Presence Registry and sends the message to that node's delivery queue. The node writes it to the recipient's WebSocket and waits up to 5 s for the client's ack of that msg_id.",
+  "why": "This is the live delivery route across processes, and readers need to know who owns the ack wait."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "Where is the record of messages a recipient has not yet received kept, when is it written, and what removes an entry?",
+  "key": "In the Offline Inbox. Before any delivery attempt, the Fan-out Worker writes a pending entry (user_id, conv_id, seq, msg_id; no body) for every recipient. The entry is deleted when the client acks that msg_id, live or after reconnect, or it expires after 30 days.",
+  "why": "This is the state that makes offline delivery and crash recovery work."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "When a recipient reconnects, what does the system read to work out and send what they missed?",
+  "key": "The gateway node they connect to registers their presence, reads the user's pending entries from the Offline Inbox, fetches the message bodies by msg_id from the Message Store, and sends them per conversation in seq order. It deletes each entry as the client acks it.",
+  "why": "The reconnect flow is the other half of offline storage, so readers need to know which stores it reads."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "What happens if the fan-out process crashes after handling only some of a message's recipients?",
+  "key": "The worker acks the bus event only after every recipient is handled, so the unacked event is redelivered and another worker repeats the whole recipient list. Inbox writes are idempotent on (user_id, msg_id), and clients drop duplicate msg_ids.",
+  "why": "It shows how partial fan-out is recovered without losing anyone."
+ }
+]

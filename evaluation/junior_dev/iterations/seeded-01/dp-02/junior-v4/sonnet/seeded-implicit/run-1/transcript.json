@@ -1,0 +1,174 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw log\" the collector writes to? Is it a queue/stream or a file, and who owns it?",
+     "about": "2. Collector - writes them to the raw log"
+    },
+    {
+     "id": "2",
+     "text": "The archiver and the live processor both read from the raw log, right? Are they independent consumers, and what does the archiver read exactly?",
+     "about": "3. Archiver / 4. Live processor"
+    },
+    {
+     "id": "3",
+     "text": "What is the \"KV store\" used for dedup? How long are event_ids kept, and what happens if a duplicate arrives after they expire?",
+     "about": "4. Live processor - dedups on event_id using the KV store"
+    },
+    {
+     "id": "4",
+     "text": "What does the collector reply to the SDK on success vs. when some events in a batch are malformed? Does the SDK retry the whole batch?",
+     "about": "1. SDKs - retry with backoff / 2. Collector validates"
+    },
+    {
+     "id": "5",
+     "text": "What happens to the reject bucket contents? Does anyone look at them or reprocess them?",
+     "about": "2. Collector - Malformed events go to a reject bucket"
+    },
+    {
+     "id": "6",
+     "text": "What does \"consumer lag\" refer to, and what alerts fire and who acts on them when lag grows?",
+     "about": "6. Monitoring and alerts on consumer lag"
+    },
+    {
+     "id": "7",
+     "text": "What triggers the replay job, and what does it do about live events still arriving for that day while it swaps the staging table in? Does it dedup and enrich again?",
+     "about": "5. Replay job - rebuilds a day from the archive into a staging table and swaps it"
+    },
+    {
+     "id": "8",
+     "text": "Which timestamp decides the day partition of events_clean: client timestamp or received_at?",
+     "about": "4. Live processor - loads events_clean (partitioned by day)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The raw log is the existing replicated append-only log (Kafka-style, 14-day retention) from the brief. The collector is its only writer. Which team owns the log platform is not stated in the brief; I added that to Open questions. The file now defines the term."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. The archiver and the live processor are independent consumers of the raw log, each with its own committed offset. The archiver reads every accepted event, duplicates included, and writes it unchanged to hourly files grouped by received_at hour, because the brief requires keeping everything as received for 90 days."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The key-value store holds one entry per event_id, claimed with set-if-absent, so the first copy wins. The TTL is 8 days. Retries can arrive up to 7 days after the first copy, so an expired claim cannot be followed by a duplicate. The 8-day value is my choice, with one day of margin. Replay does not use this store, so it never changes live dedup state."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "On success the collector returns 202 only after the raw log has confirmed the write, and the response lists any rejected events. Malformed events are rejected one at a time and the rest of the batch is accepted. The SDK retries the whole batch with the same event_ids only on a timeout, 429 or 5xx. It never retries rejected events. Duplicates from retries are dropped by dedup. This matches the brief."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Rejected events are listed in the response and copied to a reject bucket for debugging. They are not reprocessed, since clients never retry them and they are not accepted events, so the 90-day retention does not apply. I set a 14-day retention. That value is my proposal, not a requirement, and it is listed in Open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Consumer lag is how far a consumer's committed position trails the newest raw log entry. I proposed alerting on-call when the live processor lags more than 3 minutes, which protects the 5-minute goal, and when the archiver lags more than 1 hour, which protects the 14-day log window. Both thresholds are my proposals. Who is on-call is not known, and I listed it in Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An operator starts replay by hand for one closed day. Live events do not conflict because the day is over, and received_at is server time, so the live processor no longer writes to that partition. Replay reads the archive, not the log, and uses its own temporary dedup state. It does dedup and enrich again. For dedup it also reads the previous 7 days of archive, so a late copy of an event first seen on an earlier day is dropped. It swaps in the day partition atomically. I added all of this to the file."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "received_at decides the partition, never the client timestamp. The brief states this. The file now says so in the Terms and in step 4."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "After a crash, the processor re-reads the event from its last committed offset, but the claim already exists. Does it drop the event as a duplicate? If so, is that event missing from events_clean until someone runs a replay?",
+     "about": "4. Live processor - After a crash, an event claimed but not loaded is repaired when that day is replayed"
+    },
+    {
+     "id": "10",
+     "text": "Why does a day only count as closed after 02:00 UTC the next day, and not at midnight? What could still be arriving in those 2 hours?",
+     "about": "Terms - Closed day: a UTC day that is over and past 02:00 UTC the next day"
+    },
+    {
+     "id": "11",
+     "text": "What does the row count get checked against? What happens, and who decides, if the count looks wrong?",
+     "about": "Replay - 5. It checks the staging row count, then atomically replaces that day's partition"
+    },
+    {
+     "id": "12",
+     "text": "The archive is grouped by received_at hour. Does the replay wait for the archiver to finish writing that day's last hour? What if the archiver is lagging when the job starts?",
+     "about": "Replay - 2. It reads the archive files for that day"
+    },
+    {
+     "id": "13",
+     "text": "If an event's first copy arrived on an earlier day and the replay drops its later copy, does the earlier day's partition still hold that first copy? What if that earlier day was loaded with different enrichment code?",
+     "about": "Replay - 3. It deduplicates on event_id with its own temporary state"
+    },
+    {
+     "id": "14",
+     "text": "What do geo-IP and user agent enrichment use as input and where do they look things up? What happens to an event if enrichment fails or is slow?",
+     "about": "4. Live processor - It enriches the event (geo-IP, user agent)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes, as written it was a real bug: the restarted processor would drop the event as a duplicate and it would be missing until replay, up to about a day. Fixed: the claim now stores the log offset. A claim with the same offset means the same event is being read again, so it is processed again. A claim with a different offset is a real duplicate. Offsets commit only after the load. Cost: an event loaded just before a crash can appear twice until replay removes it. I chose a duplicate over a loss."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The 02:00 cut-off comes from the brief and the brief gives no reason. Likely it leaves time for the live processor and archiver to finish the day, but I do not know that. The file now says the brief fixes it. Replay also now checks the archiver has caught up, so it does not rely on the 2 hours alone."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "It is checked against the number of events kept after dedup in step 3. If the counts differ, the job fails, the old partition stays and the operator investigates and reruns. Simplest check that catches lost or extra rows. Added to the file."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The job now refuses to start until the archiver has committed past the end of the day, so a lagging archiver delays the replay instead of producing a partial rebuild. Added to step 1 of Replay."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. The earlier day's partition still holds the first copy, because the live processor wrote it there. If that day used older enrichment code, it stays that way until the operator replays that day too. A replay only changes its own day. Added a short paragraph to Replay."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "The brief does not say what the lookups use as input or where the databases live. I assume geo-IP needs the client IP and user agent needs the user-agent string, but that is not confirmed, so I put it in Open questions. On failure or slowness I decided the simplest handling: the processor does not commit its offset and retries the batch, and lag alerts fire. The same-offset rule from Q9 makes the retry safe."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one click event, from the SDK to a replay of its day.\n\n1. A user clicks on the website or app. The SDK (web, iOS or Android) adds the click as an event. The event has `event_id` (a UUID the client makes), `device_id` and a client timestamp. The SDK sends it to the collector over HTTPS in a batch of up to 100 events. The SDK holds the state here: on mobile it buffers events that have not been acknowledged, for up to 7 days.\n\n2. The collector receives the batch and checks each event. It rejects an event that has no `event_id`, has no `device_id`, or is over 32 KB. Rejected events are listed in the response and copied to a reject bucket, which is kept for 14 days for debugging. The rest of the batch is still accepted. The SDK never retries rejected events, and nobody reprocesses the reject bucket.\n\n3. For each valid event the collector adds `received_at`, which is the server time. This value decides the UTC-day partition of `events_clean` and which replay covers the event. The client timestamp is never used for that.\n\n4. The collector writes the valid events to the raw log. This is an append-only replicated log with 14-day retention, and the collector is its only writer. Each stored event gets a log offset.\n\n5. The collector returns 202 only after the raw log confirms the write.\n   - If the log write fails, the collector returns 5xx.\n   - The SDK also retries on a timeout or a 429. It resends the whole batch with the same `event_id`s, using exponential backoff from 1 s up to 5 minutes.\n   - A retry can therefore put a second copy of an event in the log, at a different offset. Copies can arrive up to 7 days late.\n\n6. Two independent consumers now read the raw log. Each keeps its own committed offset.\n\n7. The archiver reads every event, duplicates included, and writes it unchanged into hourly archive files in object storage. The files are grouped by `received_at` hour and expire after 90 days. If it crashes, it resumes from its last committed offset. If it falls too far behind, events leave the 14-day log before they are archived.\n\n8. The live processor reads the raw log in small batches. For each event it tries to claim `event_id` in the dedup key-value store with set-if-absent, storing the event's log offset.\n   - If the claim succeeds, this is the first copy.\n   - If the claim exists with a different offset, this is a later copy and it is dropped.\n   - If the claim exists with the same offset, this is the same event read again after a crash, so it is processed again.\n   - Claims expire after 8 days. The document says a duplicate cannot arrive after that, because retries stop at 7 days.\n\n9. The live processor enriches the event with geo-IP and user-agent data. It appends the event to the partition of its `received_at` day in the warehouse table `events_clean`. This should happen within 5 minutes.\n\n10. After the whole batch is loaded, the live processor commits its log offset. If enrichment fails, it does not commit and it retries the batch. If it crashes, it restarts from the last committed offset and reprocesses the batch. An event loaded just before the crash can then appear twice in the live day. The document accepts this, and the next replay of that day removes the extra row.\n\n11. Monitoring watches each consumer's lag, meaning how far its committed position is behind the newest log entry. Live processor lag above 3 minutes alerts on-call. Archiver lag above 1 hour also alerts on-call.\n\n12. A replay is started by hand by an operator for one UTC day, usually after an enrichment bug fix. The job first checks that the day is closed (over and past 02:00 UTC the next day) and that the archiver has committed past the end of that day. If either check fails, the job refuses to run.\n\n13. The replay reads that day's archive files, not the raw log, so live ingestion is not affected. It also reads the archive for the 7 days before, to find earlier copies. It deduplicates on `event_id` with its own temporary state, not the live key-value store. It keeps an event only if no copy with a smaller `received_at` exists.\n\n14. The replay enriches the kept events with the current code and writes them to a staging table. It compares the staging row count with the number of events kept in step 13.\n   - If the counts match, it atomically replaces that day's partition of `events_clean`. Dashboards see either the old day or the new day, never a half-built one.\n   - If they differ, or any step fails, the old partition stays and the operator investigates and reruns.\n\n15. The replay and the live processor never write the same partition, because a closed day has ended in server time. A replay changes only its own day. If a later copy is dropped because its first copy is in an earlier day, that earlier partition is not refreshed. The operator has to replay that day too.",
+   "gaps": [
+    "The document does not say how the archiver's 'committed past the end of that day' is checked by the replay job. It does not say where the committed offset is stored or how an offset is mapped to a `received_at` day boundary.",
+    "It does not say how the live processor behaves if the key-value store (dedup state) itself is unavailable or the set-if-absent call fails.",
+    "It does not say what happens to a batch when the raw log write succeeds but the 202 response is lost. The document implies the SDK retries and creates a duplicate, but does not say so explicitly.",
+    "It does not say what the live processor does with a late copy that falls on a different `received_at` day than its first copy, beyond dropping it. It also does not say what happens in the live path if the first copy's claim was made but the load then failed before commit and a different-offset copy is read in the meantime.",
+    "It does not say what the operator is told when a replay's row counts differ, or what information the job gives to help investigate."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

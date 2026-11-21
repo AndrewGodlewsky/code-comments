@@ -1,0 +1,28 @@
+{
+ "haiku-low": {
+  "q1": "Pages of up to 500 products, ordered by id, using keyset cursor after_id. Pages are fetched strictly one at a time, never in parallel. About 800 pages.",
+  "q2": "In sync_state.download_cursor (last id of last saved page), written in the same SQLite transaction as the upserted page rows into products_staging.",
+  "q3": "The watermark is taken before page 1. After the last page, the client catches up via GET /changes since the watermark, applying upserts, deletes and the change_seq check to staging.",
+  "q4": "If since is below purge_horizon, the server returns 410 resync_required. During catch-up staging is discarded and a full download restarts; during incremental sync a resync starts.",
+  "q5": "It is built in products_staging while the old live products table stays visible. One transaction drops products, renames staging to products, and sets live_position to the download watermark.",
+  "q6": "App launch or return to foreground, when a live catalogue exists and no download is running. At most once per 15 minutes, counting failed runs, on any network.",
+  "q7": "It retries the identical request with the same parameters, up to 5 attempts total, waiting 2, 4, 8 and 16 seconds. After the 5th failure the job stops until its next trigger.",
+  "q8": "An in-flight page may finish and save, but no new request or retry starts on cellular. The job stops with download_status in_progress and resumes from download_cursor on Wi-Fi.",
+  "q9": "It applies the incoming row only if its change_seq is at least the change_seq it already holds; otherwise the stored row is kept.",
+  "q10": "It starts from sync_state.live_position. That position advances to next_since in the same transaction that applies each /changes response.",
+  "q11": "It reads products rows with change_seq greater than since, ordered by change_seq, using a new change_seq index. Deletes appear as {id, change_seq, deleted: true} entries."
+ },
+ "sonnet": {
+  "q1": "Pages of up to 500 products, fetched in product id order using keyset pagination (after_id, no offset; server query LIMIT 501 to detect has_more). Pages are always fetched one at a time, sequentially, not in parallel.",
+  "q2": "On the client in sync_state.download_cursor (id of last product in last saved page), in catalogue.db. Each page's upsert into products_staging and the cursor update (plus pages_saved += 1) happen in a single SQLite transaction, so cursor and rows stay consistent. Resume continues from the cursor.",
+  "q3": "Before the first page the client records a watermark via GET /position (highest committed change_seq). After the last page it catches up by calling GET /changes?since=watermark and applies the changes to staging (also mid-download if paused over 3 days). change_seq is assigned at commit and visible in order, so everything after the watermark is returned. Upserts apply only if incoming change_seq >= stored, so replays are harmless; deletes remove rows.",
+  "q4": "If since < purge_horizon the server returns 410 Gone with {error: resync_required}. The client does not retry it; it starts a resync (full download, step 15) while the old catalogue stays in use. If the 410 comes during download catch-up, staging is discarded and the download restarts from step 8.",
+  "q5": "It is built in a separate products_staging table (leftover dropped, created empty, no search indexes until the end, indexes built after catch-up) while the old live table stays in use. It becomes the one read when, in a single SQLite transaction, products is dropped, staging is renamed to products, live_position is set to the watermark and download state is cleared (step 13).",
+  "q6": "The coordinator starts it on app launch or return to foreground, when a live catalogue exists, no download is in progress, and at least 15 minutes have passed since last_incremental_started_at (a failed run counts too). Any network type is allowed.",
+  "q7": "It retries the same request with same parameters, at most 5 attempts in total, waiting 2 s, 4 s, 8 s, 16 s between. After the 5th failure the job stops and waits for its next trigger; committed data is kept. (4xx/410 are not retried; during a full download it checks Wi-Fi before each retry and pauses if not on Wi-Fi.)",
+  "q8": "A request already in flight may finish and its page is saved. No new request or retry starts on cellular, and the job stops with download_status still in_progress. If the in-flight request breaks, that page is not saved and is refetched. It resumes from download_cursor on a later trigger once on Wi-Fi.",
+  "q9": "It upserts the row only if the incoming change_seq is at least the change_seq it already holds.",
+  "q10": "It starts from sync_state.live_position by calling GET /changes?since={live_position}. live_position moves forward to next_since in the same transaction that applies each response to products (and is set to the download watermark at the swap after a full download).",
+  "q11": "The server queries the product table by change_seq (WHERE change_seq > :since ORDER BY change_seq LIMIT 1001), using a new index on change_seq, after checking purge_horizon in catalogue_sync_meta. Deletes appear as tombstone entries {id, change_seq, deleted: true}; each product appears once in its current state."
+ }
+}

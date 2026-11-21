@@ -1,0 +1,35 @@
+## Review of ev-01 (junior, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the document to add a summary of how checkout works today and why events replace it, plus a Terms section defining broker, event, consumer group, outbox, relay, processed_events, reservation, idempotency key and DLQ (Q1, Q4, Q3, Q5, Q7, Q8).
+- Replaced the happy-path-only diagram with one covering the happy path, stock-unavailable and card-declined cancellations, with notes showing where state is written in each transaction (Q3, Q6).
+- Decided consumer dedupe: processed_events keyed by eventId, written in the same transaction as the state change and outbox row (Q8).
+- Decided the payment path: idempotency key is the order ID, a decline publishes PaymentDeclined, and a timeout or 5xx throws and is retried with the same key (Q5).
+- Decided how a decline releases stock: Inventory consumes PaymentDeclined and deletes the reservation; Order consumes the same event and cancels (Q6).
+- Decided how Order learns the outcome (it consumes PaymentCaptured, PaymentDeclined and StockUnavailable) and that OrderConfirmed or OrderCancelled triggers the email.
+- Added a numbered Steps section and a Failures table stating the brief's relay, retry (1 s, 10 s, 60 s, DLQ after the fourth attempt, on-call paged) and best-effort email rules (Q2, Q7).
+- Added Open questions for the missing order-status lookup and the DLQ handling, instead of inventing them (Q2, Q7).
+- Step 1: the request carries items, quantities and customer email, and OrderPlaced carries items and quantities (Q9).
+- Event term: events may carry a payload.
+- Step 3: the retry writes the same result, why the processed_events check matters, and no refunds exist (Q11, Q12, Q13).
+- Step 4: says it is the same event Order handles, each group has its own record, and Inventory publishes nothing (Q10).
+- Step 5 and 6: OrderConfirmed and OrderCancelled carry the customer's email, which Notification uses; a crash after sending means a second email, which is accepted (Q15).
+- Relay term: if two instances publish the same row, it is a duplicate dropped by eventId (Q16).
+- Failures table: later events for the same order are still handled (Q14).
+- Open questions: added the stuck-PENDING-after-charge case and the missing refund step (Q13, Q14).
+- Rewrote the intro as one short paragraph: how checkout works today, the new flow end to end, and why it is shaped this way. Dropped the duplicate retelling of steps.
+- Reordered into summary, terms, diagram, steps, failures, open questions, with the duplicate-handling rule placed once right after the diagram.
+- Narrowed the intro claim: each service that publishes writes state and event in one transaction, since Notification does not.
+- Merged the repeated 'records the eventId in its own processed_events' statements into one note after the diagram, and removed the repeated processed_events check from steps 2 and 3.
+- Moved the email-in-payload decision into step 5 (where it is written) and removed it from step 6.
+- Folded the two-relay-instances answer, with the no-lock reason, into the Relay term.
+- Split step 3 into the main action plus three short bullets: retry result, why processed_events is still needed, and charge only on StockReserved.
+- Cut the redundant mention that step 4 'is the same event' explanation from two places into one clause plus the post-diagram note; added the eventId to the decline note in the diagram.
+- Removed the definitions of everyday terms and the Notification-has-no-outbox ambiguity; Terms now define only broker, event, consumer group, outbox, relay, processed_events, reservation, idempotency key and DLQ.
+- Added cancellation email to the stock and decline rows of the Failures table, so every path is covered.
+- Kept all first-version and brief facts: 500 ms, oldest first, ack-then-mark, at-least-once, one keyed topic, eventId/orderId/type, 1 s/10 s/60 s retries, fourth attempt to DLQ, page on-call, final statuses, only Order changes status, provider rules, best-effort email, and the open questions.
+
+### Holes
+- Q2: What does the 202 mean to the customer, and how do they later find out the order's outcome besides the email? (author: 202 means the order was saved as PENDING and accepted, not confirmed. The brief specifies only the email as the way to learn the outcome; no status endpoint is defined. Added to Open questions rather than inventing one.)

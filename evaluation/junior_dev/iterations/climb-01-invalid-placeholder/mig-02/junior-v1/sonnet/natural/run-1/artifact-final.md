@@ -1,0 +1,1 @@
+Unchanged: the document as given above (Billing engine rollout: state machine). The teach-back matched the intended main flow and its main failure cases. The remaining gaps are details the plan leaves open on purpose or does not need to decide yet.

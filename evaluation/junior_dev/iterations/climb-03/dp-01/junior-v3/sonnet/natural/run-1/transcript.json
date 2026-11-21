@@ -1,0 +1,219 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What actually runs the extract, stage, validate and commit steps (a script, a worker, something inside the scheduler)? How does it talk to both the replica and the warehouse?",
+     "about": "Start attempt for run_date = tonight"
+    },
+    {
+     "id": "2",
+     "text": "If an attempt hangs or crashes without recording 'failed', run_log stays 'running'. What starts the next attempt then, and does the stale 'running' row or its lock block it?",
+     "about": "run_log: attempt = n, status = running / Retry timer: +15 min"
+    },
+    {
+     "id": "3",
+     "text": "The doc says run_log has one row per (job, run_date), but also that the job takes a lock row in run_log. How do these fit together, and how does reconciliation use the same lock?",
+     "about": "Single writer"
+    },
+    {
+     "id": "4",
+     "text": "How does attempt n get decided when a retry starts: does the job read the failed row's attempt and add 1, and is the same row updated each time?",
+     "about": "etl.run_log"
+    },
+    {
+     "id": "5",
+     "text": "What is 'tonight' for run_date: the UTC date at 02:00, and does a retry after midnight UTC keep the same run_date?",
+     "about": "Start attempt for run_date = tonight"
+    },
+    {
+     "id": "6",
+     "text": "What exactly is 'dashboards see it at next refresh'? Who triggers the dashboard refresh and when, and how does it relate to the 06:00 check?",
+     "about": "Night committed / Dashboards refresh on fresh data"
+    },
+    {
+     "id": "7",
+     "text": "When the 06:00 check finds the night not committed but retries are still running, what happens when the load later commits? Is there a follow-up message, and does the alert repeat?",
+     "about": "Post staleness alert to #data-alerts"
+    },
+    {
+     "id": "8",
+     "text": "Why is the watermark taken as max(updated_at) of the batch minus 2h, and what happens on the first backfill when the watermark is the epoch and the batch is huge?",
+     "about": "Read etl.watermark: HWM, cutoff = HWM minus 2h"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A runner script launched by the scheduler does extract, stage, validate and commit. It connects read-only to the replica and read-write to the warehouse. I added this to the intro, the terms and the flowchart. The scheduler holds only schedules and timers."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The scheduler gives the runner a timeout and kills it on expiry. A non-zero exit or a timeout counts as a failed attempt, so the scheduler arms the +15 min retry timer anyway. The stale 'running' row does not block anything. The next attempt overwrites it. I chose this over a lease or takeover rule because the brief does not require one. The timeout value itself is not chosen, so I listed it under open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "They did not fit together, so I removed the lock row. Reconciliation starts only after the nightly load commits, which the scheduler enforces. The >= guard in the MERGE makes an accidental overlap (for example a manual reconciliation) safe anyway. run_log is now strictly one row per (job, run_date)."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. The runner reads the existing row for the run_date, sets attempt = previous + 1 and status = running on that same row, and inserts it with attempt 1 if there is none. A failed attempt sets status to failed on the same row. The retry decision (n < 3) uses that attempt number. I wrote this under Data movement step 1."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "run_date is the UTC date of the 02:00 firing. The scheduler passes it to the runner and the retry timer reuses it, so a retry after midnight UTC keeps the same run_date. I added this to the terms and the flowchart."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The dashboard tool refreshes itself at 06:00 UTC on its own schedule. This pipeline does not trigger it. It only controls what analytics.orders holds at that moment. The 06:00 check is a separate scheduler job that reads run_log and only alerts, and it does not affect the refresh. I added a Dashboards bullet and removed the misleading flowchart wording about dashboards refreshing."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "One alert is posted at 06:00 and nothing repeats. The retries continue. If the load commits later, there is no follow-up message, and dashboards show the new data at their next refresh. This is the simplest handling the brief allows, since it asks only for an alert if the load has not committed by 06:00. I stated it in Failure and retry."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The question misreads the doc. new_hwm is stored as max(updated_at) of the batch with no subtraction. The 2h lookback is subtracted only when the next night reads the watermark to compute the cutoff. I made this explicit in Validate. On the first backfill the watermark is the epoch, so the whole table is read. Keyset paging bounds runner memory, and the staged history is merged in one transaction. Whether the warehouse can handle that in one transaction is [unknown], so I added it under open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The scheduler only holds schedules and timers, so how does it learn that the Sunday load has committed? Does the runner tell it, does it read run_log, or something else?",
+     "about": "Sunday: fires when that night's load commits"
+    },
+    {
+     "id": "10",
+     "text": "What runs reconciliation: the same runner script or a different one? Does it write its own run_log row (job name, run_date, attempt) so its 3-attempt retry and 'already done' check work like the nightly?",
+     "about": "Reconciliation (R1 to R6)"
+    },
+    {
+     "id": "11",
+     "text": "When a reconciliation attempt fails and retries, does it start over for all bad days, or only the days not yet fixed? Is stg.orders_reconcile emptied at the start of each day or attempt?",
+     "about": "Failure: same retry policy, 3 attempts, 15 min apart"
+    },
+    {
+     "id": "12",
+     "text": "Which run_log row does the check look at for 'tonight' at 06:00: the row with run_date equal to today's UTC date? What does it conclude if no row exists at all, for instance if the 02:00 firing never happened?",
+     "about": "06:00 UTC daily check, run_log: tonight committed?"
+    },
+    {
+     "id": "13",
+     "text": "If validation fails (for example the staged count differs from rows read), what exactly happens: is it treated as an error going to 'Attempt failed' and retried the same way? Where does the failure reason get recorded?",
+     "about": "Validate and dedupe in staging"
+    },
+    {
+     "id": "14",
+     "text": "After the third failed attempt, who pages on-call, the scheduler or the runner? Does anything happen to that night's data afterwards, or does the next night's load simply cover it through the 2-hour lookback?",
+     "about": "Page on-call"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The scheduler does not poll or get told by the runner. It chains jobs on exit code: when the Sunday nightly job exits 0, it launches the reconcile job. Chosen as the simplest option, needing no extra signalling. The assumption that the scheduler can chain on exit code is listed under Assumptions."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Same runner script, started in reconcile mode. It writes its own run_log row (job = orders_reconcile, same run_date), so the attempt counter, the already-committed exit and the retry timer work like the nightly. Added to Terms, run_log table, flowchart (new node) and Reconciliation details."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "A retry starts over with the comparison, so days fixed earlier now match and are skipped. Only still-bad days are reloaded. stg.orders_reconcile is truncated at the start of each day's reload. Simplest option, no per-day progress tracking."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, the check reads the orders_nightly row with run_date = today's UTC date. A missing row (for example the 02:00 firing never happened) is treated as not committed and triggers the staleness alert. Stated in What starts each step and in the flowchart."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. A validation failure is an ordinary error: it goes to Attempt failed and is retried the same way. The reason is stored in a new run_log.error column. Added to the run_log table, the Validate step and the flowchart."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The scheduler pages, since it sees the exit codes and the runner may have crashed. Nothing special happens to the data: the watermark did not move, so the next night's cutoff still covers the missed rows (or on-call re-runs the night manually). Added to Failure and retry and the flowchart."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "The scheduler sees only exit codes, yet the flowchart says it pages after the third attempt and the runner decides 'n less than 3'. Who counts the attempts: the scheduler by its own count, or the runner by reading run_log.attempt? Which one is the source of truth if they disagree?",
+     "about": "Attempt failed / n less than 3? / Scheduler pages on-call"
+    },
+    {
+     "id": "16",
+     "text": "In reconcile mode, when the recheck shows a day still differs and an alert goes to #data-alerts, what does the runner do with its orders_reconcile run_log row and its exit code? Is it committed (exit 0) or failed (retried)?",
+     "about": "Recheck day matches? / Alert #data-alerts: day still differs"
+    },
+    {
+     "id": "17",
+     "text": "If the nightly job's third attempt on a Sunday fails and on-call later fixes it and re-runs it by hand, does that manual run start the reconcile job as well? Or is reconcile started by hand too?",
+     "about": "Sunday: starts reconcile job when the nightly job exits 0"
+    },
+    {
+     "id": "18",
+     "text": "When the nightly job is retried after the 06:00 alert and the 3 attempts used up, how does a manual re-run by on-call get past the 3-attempts limit and the run_log row for that run_date? Is it a new run_date or the same row with attempt reset?",
+     "about": "Pages on-call / run_log: one row per (job, run_date)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The scheduler counts attempts from exit codes and timeouts, and it decides retry and paging, because it is the only party that always sees a crash or hang. run_log.attempt is now only a diagnostic record written by the runner. If they disagree, the scheduler's count wins. The flowchart decision node 'n less than 3' was wrong (it implied the runner decides) and now reads 'Scheduler: third failed attempt?'. Terms, Paging and the run_log table were updated to match."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The run_log row is set to committed and the runner exits 0. An immediate retry would hit the same mismatch, so retrying is pointless. The alert to #data-alerts is the signal, and the next Sunday's reconciliation retries that day. Simplest handling the brief allows. Stated under Verification and in the flowchart (alert node now flows to the committed end)."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Manual re-runs go through the scheduler as the same job with the same run_date, so if the Sunday nightly re-run exits 0 the scheduler chains reconcile as usual. If on-call cannot re-run it through the scheduler, they start reconcile by hand. Added a Manual re-run bullet and updated the Reconciliation bullet. This relies on the scheduler chaining on manual runs, which I added to Assumptions."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "It is the same run_date and the same run_log row. The manual invocation is a new scheduler invocation with a fresh count of 3 attempts. The runner finds the row 'failed', sets it to running, and attempt keeps increasing as a diagnostic number (not a limit). No new run_date and no reset. Added to the Manual re-run bullet. Choosing this over a new run_date keeps the idempotency check and the 06:00 staleness check pointing at one row."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. The scheduler fires at 02:00 UTC and starts the runner in `nightly` mode. It passes a `run_date`, the UTC date of that firing. The scheduler holds schedules, timers, job chaining, retry counting and paging. The runner holds the logic. It connects read-only to the app's read replica and read-write to the warehouse. All state is in the warehouse and nothing is written to the app database.\n\n2. Attempt start. The runner reads `etl.run_log` for (`orders_nightly`, `run_date`).\n   - If the row says `committed`, the runner exits 0 and nothing else happens. This also covers a commit whose acknowledgement was lost.\n   - Otherwise it inserts the row on the first attempt, or updates the existing row. It sets `attempt = previous + 1` and `status = running`. That `attempt` value is only diagnostic. The scheduler keeps its own count from exit codes, and its count wins if they disagree.\n\n3. Read the watermark. The runner reads the single `etl.watermark` row for `pipeline = 'orders'`. This is the HWM, the largest `updated_at` loaded so far. It is seeded to the epoch for the first backfill. The runner computes the cutoff as HWM minus 2 hours. The 2 hours is the 90-minute bulk-transaction length plus a 30-minute margin.\n\n4. Extract. The runner opens one repeatable-read, read-only snapshot on the replica. It selects rows from `orders` where `updated_at > cutoff`, in keyset pages ordered by (`updated_at`, `order_id`). The snapshot makes the batch consistent, and paging bounds the runner's memory. The pages move from the replica into the runner.\n\n5. Stage. The runner truncates `stg.orders_nightly` in the warehouse and appends each page to it. Dashboards never read this table, so a half-filled staging table is harmless. Because it is truncated at the start of every attempt, a retry starts clean.\n\n6. Validate and dedupe, in staging.\n   - The staged row count must equal the number of rows read. A mismatch is an error like any other failure.\n   - If an `order_id` appears twice, the row with the greatest `updated_at` is kept.\n   - `new_hwm` is the max `updated_at` of the batch, not the wall clock. The 2-hour lookback is never subtracted when storing it. It is only applied the next night when the watermark is read.\n\n7. Commit, in one warehouse transaction.\n   - The MERGE puts `stg.orders_nightly` into `analytics.orders`, matching on `order_id`. A matched row is updated only if `s.updated_at >= t.updated_at`. An unmatched row is inserted.\n   - `is_deleted` is derived on every merge from `deleted_at IS NOT NULL`. Rows are never removed. Deletes bump `updated_at` and flow through the same path.\n   - The watermark is set to `GREATEST(current, new_hwm)`. This is skipped if the batch was empty.\n   - The `run_log` row is set to `committed` with `committed_at`.\n   - Then COMMIT. The three changes are all-or-nothing, so dashboards see either the old complete state or the new complete state.\n   - The runner then exits 0. The nightly overlap means the same orders are re-extracted every night. That is harmless because equal versions overwrite with identical data, and the `>=` guard stops a stale version replacing a newer one.\n\n8. Failure. Any error in extract, stage, validate or merge fails the attempt. A crash or hang also fails it: the scheduler gives the runner a timeout and kills it when it expires.\n   - A merge error rolls back, so the watermark and target are unchanged.\n   - The runner writes `status = failed` and the reason into `run_log.error` when it can. After a crash the row may still say `running`. The next attempt just overwrites it.\n   - The scheduler counts a non-zero exit or a timeout as a failed attempt. It arms the retry timer for 15 minutes later, with the same `run_date`. The retry starts again from step 2 and rebuilds staging.\n   - After the third failed attempt the scheduler pages on-call. Nothing else is done to that night's data. The watermark did not move, so the next night's lookback covers the missed rows. Dashboards keep showing the last committed data. On-call may instead re-run the night manually through the scheduler. That is a new invocation with the same `run_date`, a fresh count of 3 attempts, and the same `run_log` row going from `failed` back to `running`.\n\n9. Staleness check. A separate scheduler job runs at 06:00 UTC and does not depend on the load job. It looks at the `orders_nightly` row whose `run_date` is today's UTC date. If the row is missing or not `committed`, it posts one alert to #data-alerts. The alert is never repeated, and nothing follows it when the load commits later. If the row is committed, nothing happens. The dashboard tool refreshes itself at 06:00 on its own schedule, and this pipeline does not trigger it.\n\n10. Sunday reconcile chaining. When the nightly job exits 0 on a Sunday, the scheduler launches the same runner in `reconcile` mode with the same `run_date`. If the Sunday load fails all three attempts, reconcile is skipped. It then waits until on-call's manual re-run succeeds, or until on-call starts it by hand. On other days the run is done.\n\n11. Reconcile start. The reconcile runner uses its own `run_log` row (`orders_reconcile`, `run_date`) and exits if that row is already committed. It uses the same retry and paging policy.\n\n12. Compare. For each order-creation day (UTC `created_at` date) in the last 30 days, it computes a count and an order-independent checksum on both the replica and the warehouse's `analytics.orders`. The checksum is a sum, modulo 2^64, of a hash of `order_id || '|' || updated_at`, with `updated_at` as UTC microseconds. Deleted rows are included on both sides.\n\n13. If no day differs, `run_log` is set to `committed` and the runner exits 0.\n\n14. Repair. For each differing day, the runner truncates `stg.orders_reconcile` and copies all replica rows with `created_at` on that day. It then runs the same MERGE with the `>=` guard in its own transaction per day. The watermark is not touched. One bad day does not block the others.\n\n15. Verify. The day is rechecked after the reload.\n   - If it matches, all is well.\n   - If it still differs, the runner alerts #data-alerts and still marks `orders_reconcile` committed and exits 0. The next Sunday retries that day.\n\n16. Reconcile failure. If an error occurs, `run_log` is set to `failed` and the exit is non-zero. The scheduler retries up to 3 attempts, 15 minutes apart, then pages on-call. A retried attempt starts over with the comparison. Days already fixed now match and are skipped.\n\n17. Late rows. Late-arriving rows beyond the 2-hour lookback, such as from replica lag, are caught by the Sunday reconcile and not by the nightly job.",
+   "gaps": [
+    "The runner timeout value is not chosen, so I cannot say how long a hung attempt runs before the scheduler kills it. The document lists this as an open question.",
+    "The first backfill merges the whole history in one transaction. Whether the warehouse can do that is an open question, and the document defines no chunking if it cannot.",
+    "What happens to the scheduler's retry count when a Sunday nightly is retried is unclear. It is not stated whether the reconcile job starts only after the successful attempt, or whether a failed reconcile run is its own invocation with its own 3 attempts. The text says the reconcile job gets the same retry and paging policy but does not say how that count relates to the nightly one."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

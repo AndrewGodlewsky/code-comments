@@ -1,0 +1,28 @@
+{
+ "haiku-low": {
+  "q1": "Captured amount minus the sum of pending and succeeded refunds. Failed refunds are excluded. The displayed figure is only a hint.",
+  "q2": "It retries with the same idempotency key, up to 3 retries (4 attempts), with backoff. Each failed attempt is audited. If all fail, the refund stays pending for the sweeper.",
+  "q3": "No retry. The refund is set to failed, the provider's message is stored and shown to the admin, audit entries are written, and no customer email is sent.",
+  "q4": "A refund changing to succeeded, which enqueues send_refund_email. The email is sent once, guarded by a conditional update on customer_emailed_at.",
+  "q5": "Only the sum of succeeded refunds decides it: Refunded when it equals captured, Partially refunded when above 0 and below captured. It changes only when a refund succeeds.",
+  "q6": "The payment row is locked with SELECT FOR UPDATE in the same transaction that sums refunds. The second admin waits, then is rejected if the limit would be exceeded.",
+  "q7": "It is generated once as a UUID when the refunds row is created, stored on that row, never changed, and read from the row on every retry.",
+  "q8": "Webhook events are deduplicated by unique provider_event_id and processed_at. Final statuses never change, conflicts are only audited, and the email claim is a conditional update, so each happens once.",
+  "q9": "It stays pending with no provider id, because the outcome is unknown. The sweeper resubmits or checks the provider, and only marks failed after confirming no refund exists.",
+  "q10": "The sweeper runs every 15 minutes and checks pending refunds not checked in 12 hours. Succeeded or failed applies the final status; still pending changes nothing; unreachable is retried next run with alerts.",
+  "q11": "The admin sees the refund as pending, with its id, amount and reason. The page polls every few seconds until a final status arrives."
+ },
+ "sonnet": {
+  "q1": "Captured amount minus the sum of amount_cents of the payment's refunds with status pending or succeeded (failed ones don't count). The page shows this as a hint; step 3 enforces it.",
+  "q2": "The worker retries with the same idempotency key, up to 3 retries (4 attempts total) with backoff (e.g. 1s, 3s, 9s). Each failed attempt gets a provider_call_retry audit entry and the refund stays pending. If all fail, the refund stays pending with no provider id and the sweeper takes over.",
+  "q3": "No retry. In one transaction the refund is set to failed, the provider's message is stored in failure_message, and audit entries (provider_rejected, pending -> failed) are written. The amount stops counting toward the limit, the admin sees the provider's message, and no customer email is sent.",
+  "q4": "The refund reaching succeeded: step 9 commits the change to succeeded (via webhook or sweeper status check) and enqueues send_refund_email, which sends the email once. Never for pending or failed.",
+  "q5": "The sum of amount_cents of succeeded refunds: equal to the captured amount means Refunded; above 0 and below it means Partially refunded; 0 leaves the status unchanged. Pending refunds never affect it. It is recomputed and updated in step 9 when a refund becomes succeeded.",
+  "q6": "In one DB transaction it locks the payment row with SELECT ... FOR UPDATE, so the admins take turns. It then sums pending and succeeded refunds and aborts if sum + requested > captured. The second admin waits for the first to commit, sees the new sum, and is rejected if over the limit, with the current remaining amount shown.",
+  "q7": "It is a UUID generated once when the refunds row is created (step 3), unique and never changed. It is stored in the refunds.idempotency_key column, and the worker always reads it from the row and never regenerates it.",
+  "q8": "Signature is verified first. The event id is inserted into webhook_events (unique); if it already exists with processed_at set, return 200 and do nothing. Step 9 locks the refund row and, if the status is already final, does nothing (only audits a conflict if the new status differs and raises an alert). Otherwise it sets the status, updates the order, and enqueues the email, all in one transaction. The email is claimed with a conditional UPDATE of customer_emailed_at WHERE it is NULL and sent only if one row was updated.",
+  "q9": "It stays pending, with no provider id. The provider may have accepted an earlier request, so marking it failed could be wrong. The sweeper then takes over: under 24 hours old it may resubmit with the same key; over 24 hours it first asks the provider whether a refund exists. If one exists it records the id and status; if none exists it marks the refund failed with \"provider unreachable\".",
+  "q10": "The sweeper checks them. It runs every 15 minutes and picks pending refunds whose last check (or creation) is over 12 hours old, plus pending refunds with no provider id older than 2 minutes. It calls the provider's get-refund API (by provider id or idempotency key, 10s timeout, step 6 retry rules), sets last_provider_check_at and writes a status_checked audit entry. If the provider answers succeeded or failed, it runs step 9 with actor sweeper. If still pending, it leaves the status alone. If the provider is unreachable, last_provider_check_at is left unchanged so the next run retries, and it alerts if any refund is over 20 hours with no successful check. If the provider doesn't know the refund after 24 hours, it handles it as in step 6.",
+  "q11": "The HTTP request returns 202 with the refund id and status pending. The page then shows the refund as pending and polls every few seconds while it is pending on screen. The order status is unchanged."
+ }
+}

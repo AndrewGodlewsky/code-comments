@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "When the caller's transaction commits its pending row in the monolith notifications table. The caller's transaction decides whether it exists.",
+  "q2": "After 30 seconds without an ack, the broker redelivers it, possibly to another consumer.",
+  "q3": "5 attempts, waiting 1, 2, 4 and 8 minutes before attempts 2 to 5. Then status becomes failed and on-call is paged.",
+  "q4": "One type at a time: shipping_update, then order_confirmed, then password_reset, each by setting its flag to service. Before password_reset, order_confirmed needs 3 full days with p99 enqueue-to-MailRelay under 60 seconds.",
+  "q5": "The notification id is passed as the MailRelay idempotency_key, taken from the row's primary key. MailRelay drops a repeat accepted within 24 hours and still returns success.",
+  "q6": "A relay publishes pending service-type rows to the broker as notifications.requested. The monolith marks the row handed_off after the broker confirms and commits; the result event later sets its final status.",
+  "q7": "The notifications.route.<type> flag, read by the relay and old worker at each poll; the old worker skips service-flagged types. Changes reach instances within 10 seconds, and only new pending rows are affected.",
+  "q8": "The service inserts with ON CONFLICT (id) DO NOTHING, so a known id is ignored and the message acked. The MailRelay idempotency_key also drops repeat sends.",
+  "q9": "It acks only after the insert transaction commits, and sending happens later. A crash before ack causes redelivery, which is a no-op insert; a crash mid-send re-sends later with the same key.",
+  "q10": "In the service database, svc_notifications attempts and next_attempt_at columns. The service's sender polls for due rows and acts on them.",
+  "q11": "Those rows stay handed_off and the service keeps running to finish them. Flipping the flag only affects new rows. If the service is dead, an operator may manually reset rows to pending.",
+  "q12": "Each message carries schema_version, id, type, user_id, email, payload, created_at, attempts and next_attempt_at. Email content is rendered by the service's own templates, not the monolith."
+ },
+ "sonnet": {
+  "q1": "When the caller inserts a `pending` row into the monolith `notifications` table inside its own transaction (the row is the outbox). The caller's transaction commit decides whether it exists; if the tx rolls back, no row.",
+  "q2": "Not acked within 30 s, it is redelivered, possibly to another consumer (at-least-once broker).",
+  "q3": "5 attempts total, with waits of 1/2/4/8 minutes before attempts 2 to 5; then the notification is marked `failed` and on-call is paged.",
+  "q4": "Order: `shipping_update` (~40,000/day), then `order_confirmed` (~12,000/day), then `password_reset` (~1,500/day). Each step needs at least 3 full days on the service with zero handed_off rows older than 30 min, zero duplicate reports and no unexplained pages. Before password_reset: order_confirmed must have had at least 3 full days on the service with p99 enqueue-to-MailRelay under 60 s (including daily peak); otherwise find the cause and re-measure over a fresh 3 days.",
+  "q5": "The notification id (row.id), passed as `idempotency_key`, by both the old worker and the service. If MailRelay already accepted that key in the last 24 hours, it drops the new send and returns success.",
+  "q6": "The caller inserts a `pending` row; the monolith relay (for types whose flag is `service`) publishes `notifications.requested` to the broker, the service consumer stores it. The monolith's part is done when the broker confirms publication and the relay sets status `handed_off` (with handed_off_at) and commits; the row later becomes `sent`/`failed` via the result event.",
+  "q7": "The per-type flag `notifications.route.<type>` (`monolith` default or `service`), read via `flags.get`; it is decided when the new `pending` row is picked up (relay reads flag every 1 s; old worker skips `service` types). Once `handed_off`, the row status owns it, not the flag.",
+  "q8": "The service dedupes on notification id (primary key, INSERT ... ON CONFLICT DO NOTHING, so a redelivery is a no-op and acked), and the MailRelay idempotency_key (the id) makes MailRelay drop a repeat send.",
+  "q9": "It acks only after the insert transaction commits (store first, ack after); sending happens afterward, separately, by the sender. If it crashes before commit/ack, the broker redelivers and the insert is done again; if after commit, the row is stored and the redelivery is a no-op, and the sender still sends it. A crash mid-send re-sends with the same key, which MailRelay drops.",
+  "q10": "In the service database `svc_notifications` table (attempts, next_attempt_at, status), seeded once from the message. The service's sender acts on it (due rows, FOR UPDATE SKIP LOCKED), with the pager and result publisher also acting on terminal rows.",
+  "q11": "Rows already `handed_off` stay with the service, which keeps running and finishes them and publishes results (service and result consumer must stay deployed). Only new rows go to the old worker (within 10 s). If the service is dead, the reconciler alert fires and an operator may manually reset those rows to `pending` (safe for 24 hours due to the MailRelay key).",
+  "q12": "The `notifications.requested` message: schema_version, id, type, user_id, email, payload, created_at, attempts, next_attempt_at. The email content is rendered in the service by its own templates (sender renders the template before sending); golden tests compare to the old templates.render."
+ }
+}

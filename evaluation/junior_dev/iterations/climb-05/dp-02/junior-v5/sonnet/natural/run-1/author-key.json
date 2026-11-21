@@ -1,0 +1,26 @@
+{
+ "q5": {
+  "answer": "Live dedup state is held in the existing KV store. Per event it records key event_id with value (partition, offset) of the record that won, set via atomic set-if-absent. The per-key TTL of 8 days (7-day retry window plus margin) removes old entries; nothing else deletes them.",
+  "decided": true
+ },
+ "q6": {
+  "answer": "I never decided this. The plan only covers a consumer crash and a slow or failed warehouse load, not an unreachable KV. The natural behavior is that the dedup consumer cannot classify records, so it stalls without committing offsets and lag builds. The collector and raw archive are unaffected because they do not use the KV, so clients still get 202 and nothing is lost. The 3-minute lag alert would fire and the log's 14-day retention gives room to catch up. I did not write this out as an explicit failure-table row or choose whether to fail open.",
+  "decided": false
+ },
+ "q7": {
+  "answer": "Losing is avoided because offsets are committed only after the warehouse load succeeds, so a crash causes the batch to be re-read. Double-counting is avoided two ways: the own-offset check lets the re-read record still count as the winner rather than a duplicate of itself, and the warehouse load is idempotent, keyed by (partition, offset range, day), so a part already recorded is skipped. The idempotent load mechanism (manifest or merge on event_id) is still an assumption to confirm.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Replay reads only the raw archive in object storage: day D plus a D-8 through D-1 scan to build the seen-ID set. It never touches the KV, the log or live writers. Rebuilt events are written to a staging table or partition, not events_clean, and only after validation does the warehouse's atomic day-partition replace swap them in.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Replay builds a seen-ID set by scanning raw for D-8 through D-1, standing in for the KV state. For day D it keeps, per event_id, the copy with the lowest (partition, offset), and drops it if its event_id is in the seen-ID set because an earlier day's copy won. So an event first received on an earlier day is dropped from D, matching what live did.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The warehouse is left unchanged. Replay writes only to staging, and the atomic replace of the day partition happens last, so a failure before publish leaves events_clean as the old complete day. On a failed validation the job stops, marks the ledger entry failed with the failed checks, releases the lock and shows the failure in the tool's output. The operator fixes the cause and reruns, which is safe because the job is a pure function of raw. How the operator is paged beyond the tool's output is not chosen. A failure inside the atomic swap itself I did not separately address, relying on the warehouse's atomicity.",
+  "decided": true
+ }
+}

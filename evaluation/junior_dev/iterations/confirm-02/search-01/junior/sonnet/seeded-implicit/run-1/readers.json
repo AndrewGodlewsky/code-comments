@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The indexer sends a delete for that product's document, so it leaves search results. Only rows with status active may appear in search.",
+  "q2": "The index rejects the older write with a version-conflict error, since its commit_lsn is lower. This is counted as stale, not as an error, so the newer data stays.",
+  "q3": "It retries the same batch with backoff starting at 1 s, doubling, capped at 60 s. There is no retry limit and it never skips, so that partition waits for recovery.",
+  "q4": "The change goes to the DLQ topic catalog.products.dlq with the error, an alert is raised, and processing continues. The product stays stale until a later change succeeds or the DLQ message is replayed.",
+  "q5": "Ops drop search_slot at 50 GB to protect the primary (an alert fires at 20 GB). After that only a full rebuild recovers search, by creating v4 and swapping the alias.",
+  "q6": "The operator starts a rebuild by hand, and the reindex job moves alias products to v4 atomically. First v4 must be under 5 s behind Kafka and its count within 0.5% of active Postgres rows.",
+  "q7": "In two places: the replication slot records how far Debezium has read the WAL, and each consumer group's Kafka offsets record how far it has written. Offsets advance only after the index acknowledges the batch.",
+  "q8": "NOT STATED. The document says offsets are committed only after the index acknowledges a batch, but does not describe restart behavior after a partial write.",
+  "q9": "Changes after the snapshot reach Kafka via the slot. indexer-v4 starts 5 minutes before snapshot start, per partition by timestamp, and applies events newer than the snapshot LSN; older ones count as stale.",
+  "q10": "Bulk-copied documents carry the snapshot LSN as their version.",
+  "q11": "indexer-v3 keeps writing v3 on its own offsets, so rollback is moving the alias back to v3 with no lost changes. It ends after 48 hours: stop the v3 writer and delete v3.",
+  "q12": "Search is unaffected: the alias still points at v3 and v4 is never queried half-built. If the copy fails, drop v4 and restart. If catch-up fails, keep v4 and restart indexer-v4 to resume from its offsets."
+ },
+ "sonnet": {
+  "q1": "The indexer deletes the document (status not active means delete), so it leaves the index.",
+  "q2": "The older write has a lower commit_lsn version than the stored one, so the index returns a version-conflict error for it. The indexer counts it as stale and treats it as not an error. The newer data stays.",
+  "q3": "It retries the same batch with backoff of 1 s, doubling each time, capped at 60 s. There is no retry limit and it never skips ahead, so that partition waits until the index recovers. Offsets are not committed meanwhile.",
+  "q4": "It is sent to the DLQ (catalog.products.dlq) with the error, an alert is raised, and processing continues. The product stays stale until a later change for it succeeds or someone replays the DLQ message.",
+  "q5": "At 50 GB ops drop the slot to protect the primary. After that, a full rebuild is the only way back. For the rebuild, first recreate search_slot and restart Debezium, then take the snapshot. Changes made while there was no slot are covered only by the snapshot. How Debezium recreates a dropped slot is NOT STATED.",
+  "q6": "The reindex job moves the alias products to v4 in one atomic step. Before that, v4 must be less than 5 s behind Kafka and its document count within 0.5% of the active row count in Postgres.",
+  "q7": "In Kafka consumer-group offsets, one set per group (indexer-v3, indexer-v4). They are committed only after the index has acknowledged the writes they cover (after each batch is acked).",
+  "q8": "NOT STATED directly. The document only says offsets are committed after the index acks the batch, so the offsets for that batch were not committed. The document does not explicitly say what happens on restart.",
+  "q9": "A second indexer (group indexer-v4, own offsets) starts after the backfill finishes. It reads catalog.products from the offsets for 5 minutes before the snapshot start time (per partition, by timestamp) and writes to v4 with the same rules. Events older than the snapshot LSN lose the version check (stale). Newer ones apply.",
+  "q10": "The snapshot LSN.",
+  "q11": "v3 stays current because indexer-v3 keeps writing it, separately from indexer-v4. So rollback means moving the alias back to v3, and no changes are lost. After 48 h the v3 writer is stopped and v3 is deleted, which ends the rollback option.",
+  "q12": "Search is unaffected. The alias still points at v3, which the live indexer keeps current, and the search API never sees v4 half-built. If the copy fails, drop v4 and start again. If the catch-up (indexer-v4) fails or stalls, keep v4 and restart it, and it resumes from its own offsets. Drop v4 and start over only if the events it needs have aged out of Kafka's 7 days."
+ }
+}

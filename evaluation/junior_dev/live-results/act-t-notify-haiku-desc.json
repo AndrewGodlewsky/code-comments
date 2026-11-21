@@ -1,0 +1,79 @@
+{
+ "label": "act-t-notify-haiku-desc",
+ "model": "haiku",
+ "hooks": false,
+ "wall_s": 44.0,
+ "cost_usd": 0.011841899999999999,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-_r7qyv2q\\project\\docs\\design\\notifications.md",
+  "artifact_hash": "7df96b00c7f5b20e97bc8bea84b15444425e52ace4b863b411668c61d8b821e6",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The design is in `docs/design/notifications.md`. I did not change any code.\n\n**The junior-dev review did not really run.** The `ask` step reported no questions, and the `teachback` step printed \"(activation run: the junior is stubbed)\". So no fresh reader has checked the file. I did not record a `correct` verdict, because that would claim a check that never happened.\n\n**The design in brief:**\n- **Trigger:** a new `ship_order(order_id, carrier, tracking_number)` sets the order to `shipped` and writes a pending entry to a new `data/outbox.json`. The entry's key is `order-shipped:<id>`, so each order gets at most one email.\n- **Email:** a new `src/email.py` follows the same never-raises pattern as `payments.py`, with a stub provider to start.\n- **Sending:** a new `src/notifications.py` sends pending entries, retries with backoff, and marks an entry `dead` after 5 attempts. It runs both after a ship and from a scheduled `python -m src.notifications`.\n- **Failure:** if the email fails, the shipment stands and the send is retried.\n\n**Gaps the doc surfaces about the current code:**\n- There is no shipping concept, no email code, and no email address on orders.\n- The README promises `POST /orders` and an email receipt, but `src/app.py` has no HTTP layer and sends no email.\n- `orders.json` is written non-atomically.\n\n**Open questions in the doc:** who calls ship and whether it needs auth, which email provider and domain setup to use, where the customer email comes from, partial shipments, and what to do with orders placed before this change.\n\n**One fix I made:** the doc said `ship_order` never calls the email provider, then said it might trigger a send. I changed the wording so it does not call the provider directly and may call `send_outbox` after writing both files.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/design/notifications.md": "# Design: shipping notification email\n\nStatus: proposed\nScope: send one email to the customer when their order ships.\nOut of scope: marketing email, delivery-status updates after shipment, SMS, customer accounts.\n\n## 1. Current state\n\nWhat the code does today (`src/app.py`, `src/payments.py`, `data/orders.json`):\n\n- `place_order(customer, items, card_token)` checks stock, charges, decrements stock, and appends\n  an order to `data/orders.json`. An order is `{id, customer, items, payment}`.\n- There is **no shipping concept**. Orders have no status field, nothing marks an order as shipped,\n  and no code path runs after `place_order` returns.\n- There is **no email code**. `README.md` says customers receive an email receipt when an order is\n  placed; nothing in `src/` sends one. The receipt is not part of this design, but the same\n  mechanism could carry it later.\n- The README describes `POST /orders`, but `src/app.py` has no HTTP layer. It only defines\n  functions. This design assumes a ship action will be called the same way `place_order` is, and\n  it does not depend on how HTTP is added.\n- `customer` is a free-form value. Orders carry **no email address**, so a shipping email has no\n  recipient today.\n\n## 2. Requirements\n\n1. When an order is marked shipped, the customer gets one email with the order id, the items,\n   the carrier, and the tracking number.\n2. Marking an order shipped must succeed even if the email provider is down. The shipment is the\n   source of truth; the email is a side effect that can be retried.\n3. Each order produces at most one shipping email, even if the ship action is called twice or a\n   send is retried.\n4. Failed sends are retried automatically and visible when they keep failing.\n5. The email provider is replaceable, following the same pattern as `payments.py`: one function,\n   never raises, returns a result dict.\n6. No card data, tokens, or full email bodies in logs.\n\n## 3. Proposed design\n\n### 3.1 Data changes\n\nAdd to each order record:\n\n| field | type | notes |\n|---|---|---|\n| `email` | string | Customer's address, captured in `place_order`. Required for new orders. |\n| `status` | `\"placed\"` \\| `\"shipped\"` | Set to `\"placed\"` at creation. Existing records without the field are treated as `\"placed\"`. |\n| `carrier` | string \\| null | Set when shipped. |\n| `tracking_number` | string \\| null | Set when shipped. |\n| `shipped_at` | ISO 8601 string \\| null | Set when shipped. |\n\nAdd a second file, `data/outbox.json`, for pending notifications. It is a list of entries:\n\n```json\n{\n  \"key\": \"order-shipped:12\",\n  \"kind\": \"order_shipped\",\n  \"order_id\": 12,\n  \"to\": \"customer@example.com\",\n  \"created_at\": \"2026-11-13T10:00:00Z\",\n  \"attempts\": 0,\n  \"next_attempt_at\": \"2026-11-13T10:00:00Z\",\n  \"status\": \"pending\",\n  \"last_error\": null,\n  \"sent_id\": null\n}\n```\n\n- `key` is the idempotency key. It is unique in the outbox, so writing the same notification twice\n  is a no-op.\n- `status` is `pending`, `sent`, or `dead` (gave up after `MAX_ATTEMPTS`).\n\n### 3.2 Components\n\n```\nship_order()  ──writes──>  orders.json (status=shipped)\n              ──writes──>  outbox.json  (pending entry, same write batch)\n\nsend_outbox() ──reads──>   outbox.json (pending, due)\n              ──calls──>   email.send()\n              ──writes──>  outbox.json (sent / attempts++ / dead)\n```\n\n1. **`ship_order(order_id, carrier, tracking_number)`** in `src/app.py`.\n   - Loads the order. Rejects if it does not exist, or if `status` is already `\"shipped\"`.\n   - Sets the shipping fields and `status = \"shipped\"`.\n   - Appends the outbox entry with `key = f\"order-shipped:{order_id}\"`.\n   - Does not call the email provider itself. It may call `send_outbox` after both writes (see item 4). It returns `{\"status\": \"shipped\", \"order\": ...}`.\n   - Both files are written before returning. See 3.4 for ordering and atomicity.\n\n2. **`src/email.py`**: `send(to, subject, text, html, idempotency_key) -> {\"ok\": bool, \"id\": str | None, \"error\": str | None}`.\n   - Same contract as `charge()`: never raises, returns a result dict.\n   - The provider implementation is chosen by config. Start with a stub that logs the call and\n     returns `{\"ok\": True, \"id\": \"msg_...\"}`, like `charge()` does today.\n   - The idempotency key is passed to the provider when it supports one. Otherwise the outbox\n     key is the guard.\n\n3. **`src/notifications.py`**: `render_order_shipped(order) -> (subject, text, html)` and\n   `send_outbox(now=None, limit=50) -> summary`.\n   - `send_outbox` picks entries with `status == \"pending\"` and `next_attempt_at <= now`.\n   - For each one, it loads the order, renders the template, and calls `email.send`.\n   - On success: `status = \"sent\"`, `sent_id` set.\n   - On failure: `attempts += 1`, `last_error` set, `next_attempt_at = now + backoff(attempts)`.\n     If `attempts >= MAX_ATTEMPTS` (start with 5), `status = \"dead\"`.\n   - Backoff: 1 min, 5 min, 30 min, 2 h, then give up.\n\n4. **Trigger for `send_outbox`.** Choose one for the first version:\n   - (a) A CLI entry point, `python -m src.notifications`, run by cron or a scheduler every minute.\n   - (b) Called at the end of `ship_order`, best effort. This sends immediately, but a failure is\n     still caught and left to the retry.\n   - Recommendation: **(a) and (b) together.** (b) gives the usual case a fast send. (a) guarantees\n     retries happen even when nothing else calls the sender. Because of the idempotency key, the\n     two can overlap safely.\n\n### 3.3 Email content\n\n- Subject: `Your order #<id> has shipped`\n- Body: order id, item lines (name and quantity, no prices needed), carrier, tracking number.\n  Include the tracking link only if the carrier has a known URL template.\n- Plain text is required. HTML is optional for version one.\n- Do not include the card token, the payment id, or any internal stock data.\n- Sender address and reply-to are configuration, not hard-coded.\n\n### 3.4 Consistency and failure handling\n\n- **Ship succeeds, email fails:** the order stays `shipped`, the outbox entry stays `pending`, and\n  the retry sends it later. The customer may receive the email late, but no shipment is lost or\n  repeated.\n- **Crash between writing the order and writing the outbox:** must not lose the notification.\n  Write both in one step: build the new state of both files, write the outbox first, then the\n  order. A crash after the outbox write and before the order write leaves a notification for an\n  order still marked `placed`. `send_outbox` checks `status == \"shipped\"` before sending and marks\n  the entry `dead` with reason `order not shipped` if not. This is the safer of the two failure\n  modes.\n- **Double ship call:** the second call is rejected by the status check. The outbox key blocks a\n  second entry even if the check were bypassed.\n- **Concurrent runs of `send_outbox`:** two senders could pick the same entry. Use a lock file\n  (`data/outbox.lock`, created with exclusive mode) for the first version. This is acceptable\n  for a single-process, file-backed service.\n- **Atomic writes:** `orders.json` and `outbox.json` are currently written with\n  `Path.write_text`, which can leave a truncated file on crash. Write to a temp file in the same\n  directory and `os.replace` it into place. This applies to the existing `place_order` write too.\n- **Dead entries:** shown by a listing command (`python -m src.notifications --dead`). Re-queue a\n  dead entry by setting `status = \"pending\"` and `attempts = 0`. No automatic re-queue.\n\n### 3.5 Privacy and logging\n\n- Log the order id, outbox key, and provider message id. Do not log the email body or the full\n  address. Mask the address (`c***@example.com`) if it must appear in a log line.\n- The `email` field is personal data. It is kept only as long as the order record.\n\n## 4. Changes by file\n\n| file | change |\n|---|---|\n| `src/app.py` | Add `email` to `place_order` and the order record. Add `ship_order`. Add an atomic write helper. |\n| `src/email.py` | New. Provider interface plus a stub implementation. |\n| `src/notifications.py` | New. Template, outbox sender, backoff, CLI entry point. |\n| `data/outbox.json` | New. Created as `[]` on first write. |\n| `README.md` | Document the ship action, the sender command, and the email config. Fix the claim about `POST /orders` once HTTP exists, or remove it. |\n| `tests/` | New. Cover: ship sets fields and queues one entry; double ship rejected; send success marks sent; send failure backs off; after max attempts marks dead; send skips unshipped orders; a second `send_outbox` run does not resend. Use a fake provider. |\n\nNo change to `src/payments.py`.\n\n## 5. Testing\n\n- Unit tests for `ship_order` against a temporary copy of `orders.json` (point the `ORDERS` path\n  at a temp file in the test).\n- Unit tests for `send_outbox` with a fake `email.send` that can be told to fail N times.\n- Time is passed in (`now=`), so backoff tests do not sleep.\n- A manual check: run `python -m src.notifications` with the stub provider and confirm the\n  log line for the order.\n\n## 6. Open questions\n\n1. **Who calls ship?** A warehouse script, an admin endpoint, or a manual step? This decides\n   whether `ship_order` needs authentication. It is not in scope for this doc.\n2. **Email provider.** Which one, and who owns the sending domain's SPF/DKIM records?\n3. **Customer email source.** `place_order` currently takes a `customer` value with no email. Does\n   the caller pass an email, or is there a customer record to look it up from?\n4. **Partial shipments.** One order, several parcels, several tracking numbers? This design\n   assumes one shipment per order. Supporting more needs a `shipments` list and one email per\n   shipment.\n5. **Orders placed before this change** have no `email`. Should `send_outbox` skip them, mark them\n   dead, or be backfilled by hand?\n6. **Receipt email.** The README promises one at placement. If it is built later, it should reuse\n   `email.send` and the outbox, with its own key prefix (`order-placed:`).\n7. **Locale and currency.** No prices appear in the shipping email, so this is probably not needed.\n   Confirm.\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "PowerShell",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Edit"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-notify",
+ "kind": "trigger",
+ "prompt": "Design how we would send an email when an order ships. Put the design in docs/design/notifications.md. Do not change any code."
+}

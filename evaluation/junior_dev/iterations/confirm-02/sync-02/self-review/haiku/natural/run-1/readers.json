@@ -1,0 +1,28 @@
+{
+ "haiku-low": {
+  "q1": "Split into pages of up to 500 products, ordered by id ascending, fetched one at a time; no parallel fetching (single runner).",
+  "q2": "Stored in sync_state as last_id, pages_done and catchup_seq; each page's rows and cursor commit in one transaction.",
+  "q3": "Anchor is read before page one; catch-up replays the change feed from anchor_seq until empty, covering edits, new products and deletes.",
+  "q4": "The server returns 410 RESYNC_REQUIRED, which is not retried and starts a resync; during a download, staging is discarded and restarted with new anchor.",
+  "q5": "Staging table is cleared and refilled while the active table is served; a single transaction swaps the pointer to it after catch-up completes.",
+  "q6": "Launch, foreground, and Wi-Fi network change trigger it when idle and the last run started over 15 minutes ago (at most once per 15 min).",
+  "q7": "Retries same request after 2, 4, 8, 16 s; five attempts total, then stops, keeps state and waits for next trigger.",
+  "q8": "Status becomes paused_wifi, cursors are kept, and it resumes at the next Wi-Fi trigger; an in-flight request finishes and saves its page first.",
+  "q9": "It applies the record only if its incoming change_seq is greater than the stored value for that product; otherwise it is ignored.",
+  "q10": "It starts from the saved incremental_cursor, sent as since, and moves forward to next_since with each committed batch.",
+  "q11": "Products stored in Postgres, ordered by change_seq, showing each product's latest state once per response; deletes are deleted true with no body."
+ },
+ "sonnet": {
+  "q1": "Products are fetched in keyset-paginated pages of up to 500, ordered by id ascending (after_id cursor), into the staging table. No parallelism: a single runner holds a lock and requests/batches run one at a time. Then catch-up changes are applied in batches of 1000.",
+  "q2": "In the local sync_state table (key/value) in catalogue.sqlite: last_id, pages_done, anchor_seq, catchup_seq, status. Each page's product upserts are written in the same transaction as the cursor (atomic pairing), so either both are saved or neither.",
+  "q3": "An anchor (change_seq) is read once before the first page. After all pages are saved, step 7 catches up by fetching /changes since the anchor (catchup_seq) in batches and applying them to staging, until has_more is false. Since change_seq becomes visible in order with no gaps, no change falls between pages and feed. Deletes are covered via tombstones in the feed.",
+  "q4": "The changes endpoint returns HTTP 410 RESYNC_REQUIRED (for any since below the purge horizon). It is not retried; the client starts a resync (full re-download into staging) or, in step 7/11, discards staging and restarts at step 4 with a new anchor.",
+  "q5": "Resync sets resync_pending, clears the inactive table, sets it as staging, and runs a full download (anchor, pages, catch-up) into it while reps keep browsing the active table. It becomes the one read at the swap (step 8): one transaction sets active_gen = staging_gen (plus incremental_cursor = catchup_seq, staging_gen null, status idle, clears resync_pending), after catch-up completes.",
+  "q6": "Triggers are app launch, return to foreground (and network change to Wi-Fi for the dispatcher). Incremental sync runs only if status is idle, an active generation exists, and last_run_started_at is more than 15 minutes ago (written at run start; failed runs count). Never during a full download.",
+  "q7": "Retry the same request (same after_id or since) up to five attempts total, waiting 2 s, 4 s, 8 s, 16 s between attempts. For a full download, check Wi-Fi before each retry and pause instead of retrying on cellular, without using an attempt. After the fifth failure, stop, keep all saved state, and wait for the next trigger, which starts a new five-attempt budget. Nothing is rolled back.",
+  "q8": "If a request is in flight, it finishes and its page is saved; then the Wi-Fi gate before the next request/batch sets status paused_wifi and stops, keeping cursors (last_id, pages_done, catchup_seq). If the in-flight request fails, the retry checks Wi-Fi and pauses instead of retrying. It resumes when Wi-Fi returns, app launches or foregrounds with Wi-Fi (step 6/11).",
+  "q9": "Idempotent apply: write the product only if its incoming change_seq is greater than the stored change_seq for that product. A delete removes the row only under the same rule; if the row is already absent, the delete does nothing.",
+  "q10": "It starts from incremental_cursor (GET /changes?since=<incremental_cursor>&limit=1000). The cursor is set to catchup_seq at the swap, and moves forward to next_since in the same transaction as each applied batch.",
+  "q11": "NOT STATED what the server reads internally to build the feed beyond that it is ordered by change_seq (indexed) and returns each product's latest state, once per product per response, from the Postgres rows stamped with change_seq. Deletes are tombstones (soft delete, deleted = true, row kept, purged after 7 days), shown in the feed as entries with deleted: true and no body."
+ }
+}

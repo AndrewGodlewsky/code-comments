@@ -1,0 +1,19 @@
+## Review of ms-01 (rewrite-v7, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the summary as two or three sentences: what the flow is, how it runs start to finish, and why it is shaped that way (stock held before payment, the stock race decided in Inventory, only Payment talks to the provider).
+- Added a Terms section defining each name a newcomer would not know (service, orchestrator, event, broker, webhook, idempotency key, hold, on_hand/held, claim, sweeper, transaction, unique constraint, conditional update, outbox, at-least-once, terminal state, backoff, ops), plus a one-line note on what Mermaid is and how to read the lanes and colours.
+- Kept the Mermaid flowchart unchanged, so the diagram form, all branches, and the failure branches requested in the brief are intact.
+- Moved the per-service storage list ahead of the steps and kept it as one line per service, with the rule about available stock (on_hand minus held) defined once in the Terms.
+- Merged the 'Rules that make the flow safe' list into the steps where each mechanism applies: stock before payment (step 3), one winner for the stock (6b), idempotent charges and refunds (4 and 6c), duplicate webhooks (5), at-least-once events (6b), refunds never dropped (7), and cart changes only on confirmation (step 1 and the failure table). Each rule is now stated once.
+- Rewrote the steps so each one says what starts it, what it does, which store keeps its data, and what happens when it goes wrong, as the skill's layout requires.
+- Added the PAYMENT_PENDING status to step 4. Decision 2 already names it, but neither the diagram nor the first steps set it.
+- Stated that the decline release frees the held stock in step 6a. The first version said RELEASED but not the held decrement; this is an inference from how the held counter works, not a new mechanism. Flagged here for confirmation.
+- Added a failure-table row for any other failure before confirmation (cart unchanged, customer can try again), taken from the brief's general rule.
+- Cut repetition: the 'Failure cases' table and the step text no longer restate the same facts in different words, and the separate 'Rules' section was removed.
+- Kept every stated number and requirement: 10-minute hold, 30-minute webhook delay, the order id as idempotency key, duplicate-webhook handling, the full-refund and no-partial-orders rule, refunds never dropped, cart unchanged on failure, and all six open decisions in the final section.
+
+### Holes
+- None.

@@ -1,0 +1,177 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the `version` column, who increments it, and when? Is it already on the existing MySQL users table, or added by this migration?",
+     "about": "Design decisions: the version rule (`WHERE users.version < EXCLUDED.version`)"
+    },
+    {
+     "id": "2",
+     "text": "In one update request, what is the exact order of events: MySQL transaction, fence check, outbox insert, commit, Postgres apply? What does the inline apply send to Postgres, and what does the drainer do later with the same outbox row?",
+     "about": "Step 3: Update, the inline snapshot"
+    },
+    {
+     "id": "3",
+     "text": "While dual write is below 100%, what happens to a user outside the bucket when they update? Nothing goes to the outbox, so how does Postgres get that change?",
+     "about": "Step 3: Ramp dual writes to 100%, buckets by `user_id` via `enabled_for`"
+    },
+    {
+     "id": "4",
+     "text": "What is `app.flags`, and how do instances get flag changes? What is the \"orchestrator\" that step 4 compares the instance count against?",
+     "about": "Step 2: flags in `app.flags`, and the 30-second refresh"
+    },
+    {
+     "id": "5",
+     "text": "What does \"an email unique conflict that waits for another id's change\" mean in practice? Which two rows conflict, and what event resolves it?",
+     "about": "Step 2: Drainer behaviour, persistent failure such as an email unique conflict"
+    },
+    {
+     "id": "6",
+     "text": "During the up-to-30 s window, some instances are on `pg_primary` and others on `mysql_primary`. What does each kind do with a write, and why can't an instance on the new mode write to Postgres before step 5 opens the Postgres fence?",
+     "about": "Step 9: Switch writes to Postgres, item 6 (Set `users_write_mode=pg_primary`)"
+    },
+    {
+     "id": "7",
+     "text": "A row is skipped and its id put into the MySQL outbox. But the drainer reads from the MySQL primary and applies it to Postgres. What happens if the same email conflict happens again there? Does the backfill continue regardless?",
+     "about": "Step 5: Backfill, `SELECT * FROM users WHERE id > :last ... LIMIT 2000` on the replica"
+    },
+    {
+     "id": "8",
+     "text": "What exactly does the compare worker do when a chunk's checksums differ? Walk through the row-by-row check, the 60 s re-read from the primary, and how a mismatch gets repaired.",
+     "about": "Step 6: Full comparison, compare worker"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "version is already a column on the MySQL users table (users_table.md: INT, starts at 1, +1 on every update). UserRepository.update bumps it on each successful update (version = version + 1, with an optimistic-lock check). The migration adds no column; Postgres gets the same one. Added to a new Terms section."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Order: open MySQL tx, take shared lock on the fence (503 if closed), do the write, read the full new row as the snapshot (updates), insert the outbox row with the user id, commit, then apply the snapshot to Postgres with the version rule and tombstone check, then delete the outbox row on success. The drainer later handles the same outbox row only if the inline apply failed or was skipped; it ignores the snapshot and copies the then-current row from the MySQL primary, so it is idempotent. Now written as a numbered sequence in step 3."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A user outside the bucket writes to MySQL only, with no outbox row, so Postgres does not get that change during the ramp. That is accepted: Postgres may be incomplete until the backfill, which starts only after the step 4 gate at 100%, copies every current MySQL row. Buckets are stable per user_id, so a user who is in does not drop out. A user erased while outside the bucket is simply gone from MySQL, so backfill never copies them. Added to step 3."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "app.flags is the existing flag store (flags_and_jobs.md): each instance caches all flags and refreshes every 30 s, and exports app_flag_value{flag=...}. The orchestrator is the deploy platform that knows how many instances are running; this is my assumption, since the brief does not name a system. Added to Terms and to Open questions."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Example: user A (id 5) changes email from x to y in MySQL, and user B (id 9) then registers with x. If B's copy reaches Postgres before A's, Postgres still has x on id 5, so inserting B violates the unique email index. It resolves when A's change is copied to Postgres; the drainer retries every 5 minutes with an alert until then. Added to the drainer description in step 2."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Instance still on mysql_primary: its MySQL write finds the MySQL fence closed and returns 503. Instance on pg_primary: writes to Postgres. The flag is set only after the Postgres fence is opened in step 5, so a new-mode instance always finds it open. Even if the flag were set early, every Postgres write takes the shared lock on the Postgres fence and returns 503 while closed, so it cannot write early. Clarified in step 9 item 6."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, backfill continues regardless: it skips the row, queues the id in the MySQL outbox and moves on. If the drainer hits the same email conflict, it retries every 5 minutes with an alert, until the other user's row is copied, which the backfill reaches later in its run. If it never resolves, the compare worker in step 6 counts it as a mismatch and the clean-pass gate stays unmet, so it blocks progress and is visible. Added to step 5."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "When a chunk checksum differs: compare row by row and list the differing ids; wait 60 s; re-read those rows from the MySQL primary and compare again with Postgres. If equal now, it was in flight or replica lag and is not counted. If still different, count it as a mismatch and insert its id into the MySQL outbox; the drainer repairs it from the primary with the version rule (or deletes and tombstones if the row is gone). Spelled out as numbered steps in step 6."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The Postgres fence is closed (pg_write_open=false) from step 1 until step 9 item 5. But the inline apply, the drainer, backfill and compare repairs all write to Postgres during that time. Do those copies skip the Postgres fence, or do they take it? If they skip it, which Postgres writes are fenced?",
+     "about": "Step 9, item 6: every Postgres write takes the shared lock on the Postgres fence"
+    },
+    {
+     "id": "10",
+     "text": "Where does the Postgres fence live? Is it the migration_state row, or a separate table like MySQL's users_write_fence? What is the epoch used for, and who reads it?",
+     "about": "Step 1: migration_state.pg_write_open and pg_fence_epoch"
+    },
+    {
+     "id": "11",
+     "text": "After the MySQL fence closes, what process drains the outbox, and how does it know it is done? Can new outbox rows still appear (for example from the compare worker) while it drains?",
+     "about": "Step 9, item 2: Drain the outbox to zero"
+    },
+    {
+     "id": "12",
+     "text": "Who increments version on a Postgres update after the switch, and how does the optimistic-lock check work there? When the change is mirrored to MySQL, how does a created row get its id in MySQL, given MySQL no longer assigns ids?",
+     "about": "Step 9, item 6: after the switch, a write on pg_primary"
+    },
+    {
+     "id": "13",
+     "text": "During the pause, what does a client or caller actually experience on a write: does the app retry the 503 itself, or does the caller have to? And what do reads do during the pause?",
+     "about": "Step 9: Pause budget and the 503s"
+    },
+    {
+     "id": "14",
+     "text": "The inline apply happens after commit, and the drainer may also pick up the same outbox row at the same time. Is there a problem if both copy the same user at once, and what stops the drainer from racing the inline path on a fresh write?",
+     "about": "Step 3: Order of one write, step 7 (apply to Postgres) and step 8 (delete the outbox row)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Copies that keep the other database in sync (inline apply, drainer, backfill, compare repairs) skip the fence. Only user-originated writes are fenced: MySQL user writes by the MySQL fence, and pg_primary user writes by the Postgres fence. The copies are safe without it because of the version rule and the tombstone. The earlier wording 'every Postgres write' was too broad, so it now says 'user write'. The Terms and Design decisions state the scope."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The Postgres fence is the pg_write_open column of the single migration_state row. The epoch had no reader in this plan, so I removed pg_fence_epoch and the MySQL fence epoch. Open or closed is enough, and at most one fence is open at a time."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The permanent drainer drains the outbox. The switch script polls the row count until it is 0. With the MySQL fence closed no user write can add rows, and the script now pauses the compare worker at t0, which was the only other source of new rows. The drainer's reads from the MySQL primary are not blocked by the fence. Written into step 9 items 1 and 2."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "After the switch the repository increments version on Postgres, using the same optimistic lock as the existing MySQL code (UPDATE ... SET version = version + 1 WHERE id AND version = expected; no match raises StaleWrite). The mirror to MySQL inserts the created row with its explicit Postgres id and version. MySQL allows explicit values in an AUTO_INCREMENT column, and on rollback the counter is set above the sequence value. Now in step 9 item 6."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "The app does not retry. During the pause, a write gets a retryable 503 and the client retries, which the brief says our clients already do. Reads keep working during the pause, from Postgres or through the MySQL fallback, because the fence applies to writes only. Added to step 9."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No problem. Both paths take the per-id advisory lock, so they run one after the other, and the version rule makes the second copy a no-op. The delete case is idempotent through the tombstone. The drainer may pick up a fresh row, and that only costs a duplicate no-op copy, so I added no delay or lease. Added to step 3."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Preparation (step 1). An operator runs additive DDL through the normal migration tooling. Postgres gets `users` (same columns, `id BIGINT PRIMARY KEY` with no default, unique email), `users_tombstone(id)`, `migration_state` and `users_mirror_outbox`. MySQL gets `users_sync_outbox` and `users_write_fence` (one row, open). The existing MySQL `users` table is not touched. `migration_state` is one row (`backfill_last_id`, `backfill_done`, `compare_cursor`, `compare_last_clean_pass_at`, `pg_write_open=false`). That row is also the Postgres fence. If this fails, fix it and re-run, because the DDL is idempotent. Before step 9, someone must confirm Postgres has a synchronous standby and tested backups.\n\n2. Deploy dormant code (step 2). A normal deploy ships the new `UserRepository` code with four flags that default to off: `users_dual_write`=0, `users_write_mode`=`mysql_primary`, `users_read_pg`=0 and `users_backfill`=false. The flags live in `app.flags`. Each instance caches them and refreshes every 30 s. The new code adds these things:\n   - A fence check in every MySQL write transaction.\n   - An outbox insert in the same transaction as the write, when dual write applies.\n   - A Postgres apply after commit, with a 250 ms timeout. It is wrapped in try/except so it can never fail the request.\n   - A 10 s circuit breaker.\n   - A read fallback to the MySQL replica.\n   The drainer, backfill and compare run as separate worker processes, deployed idle.\n   The drainer polls the outbox with `FOR UPDATE SKIP LOCKED` and groups rows by `user_id`, keeping the max `seq`. It reads the current row from the MySQL primary. If the row exists, it applies the version rule. If not, it deletes the Postgres row and writes the tombstone, in one transaction. Then it deletes outbox rows with `seq` up to that max. It retries forever with backoff capped at 30 s. A persistent failure, usually an email unique conflict, is retried every 5 minutes with `attempts` incremented and an alert. Alerts fire on oldest outbox age: warn at 2 minutes, page at 10 minutes.\n   Rollback is a deploy rollback. With flags off, behaviour matches today apart from a shared lock on the one-row fence table. A new instance shows it runs the new code by exporting `app_flag_value{flag=\"users_write_mode\"}`.\n\n3. Ramp dual writes (step 3). Once every instance exports that metric, `users_dual_write` goes to 1%, then 10%, then 100%. Each stage holds at least 15 minutes with a clean check. Buckets are by `user_id` via `enabled_for`. A write for a user in the bucket goes like this:\n   1. Open the MySQL transaction.\n   2. Take the shared lock on the MySQL fence, and return 503 if the fence is closed.\n   3. Do the write.\n   4. For an update, read the full new row in the same transaction.\n   5. Insert an outbox row holding the `user_id`.\n   6. Commit.\n   7. Apply to Postgres with the version rule and tombstone check, under the per-id advisory lock.\n   8. If that succeeds, delete the outbox row.\n   If step 7 fails or is skipped, the row stays. The drainer later copies the then-current MySQL row, so the snapshot is not needed. If the drainer and the inline apply overlap, the advisory lock serialises them and the version rule makes the second copy a no-op.\n   Creates: MySQL assigns the id, and the row is copied to Postgres with that id. Deletes: the outbox row is written in the MySQL transaction, and the Postgres deletion and tombstone follow. Users outside the bucket write to MySQL only, with no outbox row.\n   Failures: a Postgres error never reaches the user. The breaker lets the drainer carry the copies. A bug is handled by setting the flag to 0, and remaining outbox rows are still drained. A crash after commit is covered by the outbox.\n\n4. Gate (step 4). A script checks three things for 2 consecutive minutes. The number of instances reporting `users_dual_write=100` must equal the orchestrator's running count. No deploy may be in progress. The oldest outbox row must be under 1 minute old. The script records the result. On failure, wait or restart the lagging instance, and do not go on.\n\n5. Backfill (step 5). An operator sets `users_backfill=true`. One worker takes a Postgres advisory lock for its whole run. In a loop it does the following:\n   1. Check `mysql_replica_lag_seconds`, and if it is above 5, sleep 10 s and re-check.\n   2. Read 2000 rows with `id > last` from the replica.\n   3. In one Postgres transaction, take advisory locks on the ids in ascending order, apply the rows with the version rule and tombstone check, and set `backfill_last_id` in the same transaction.\n   A row that fails, for example on an email conflict, is skipped and its id goes into the MySQL outbox for the drainer. A short batch (fewer than 2000 rows) means the end, and the worker sets `backfill_done`. After a crash it resumes from `backfill_last_id`. A Postgres error rolls back the batch, which is retried with backoff. Setting `users_backfill=false` stops it after the current batch.\n\n6. Verify (step 6). Once `backfill_done` is set and the outbox is under 1 minute old, the compare worker walks ids in chunks of 10,000. It compares a checksum of `(id, email, name, plan, version)` from the replica against Postgres. For a differing chunk it does the following:\n   1. List the differing ids row by row.\n   2. Wait 60 s.\n   3. Re-read those rows from the MySQL primary and compare again.\n   4. If they are now equal, ignore the difference.\n   5. If they still differ, count a mismatch and insert the id into the MySQL outbox for the drainer.\n   `compare_last_clean_pass_at` is set only when a full pass finishes with 0 counted mismatches. A pass that found mismatches does not count, so another pass runs. The worker resumes from `compare_cursor` after a crash. Mismatches that keep returning mean a dual-write bug, so stop and investigate. The worker keeps running about daily until step 12, except while paused during the switches.\n\n7. Reads move (step 7). With a clean pass recorded, `users_read_pg` goes to 1%, 10%, 50%, then 100%, with at least 30 minutes per stage. Buckets are by `user_id`. A Postgres error, timeout or miss falls back to the MySQL replica for that request. Set the flag to 0 on any problem, and instances revert within 30 s. Any drop below 100 restarts the soak clock.\n\n8. Soak (step 8). Record T0 when all instances report 100. Wait at least 3 days with reads at 100% throughout, a clean compare pass under 24 hours old, and outbox age under 1 minute. Otherwise extend the soak.\n\n9. Switch writes (step 9). An operator is present and the standby and backups are confirmed. The script `switch_to_pg` runs these steps.\n   1. At t0 it closes the MySQL fence with an UPDATE. That waits for in-flight writes (lock wait timeout 10 s), then all MySQL user writes on every instance get a retryable 503. It also pauses the compare worker.\n   2. It polls until the outbox is empty, with the drainer doing the work.\n   3. It spot-checks 10,000 random ids against Postgres.\n   4. It sets `users_id_seq` to `GREATEST(MySQL AUTO_INCREMENT, max pg id) + 100000`.\n   5. It opens the Postgres fence (`pg_write_open=true`).\n   6. It sets `users_write_mode=pg_primary`. Instances pick it up within 30 s. A stale instance still trying MySQL gets 503. A `pg_primary` instance writes to Postgres.\n   7. It waits until all instances report `pg_primary`, restarting any that do not refresh, and resumes the compare worker.\n   A `pg_primary` write behaves as follows:\n   - Create: the id comes from `nextval`.\n   - Update: `UPDATE ... SET version=version+1 WHERE id=? AND version=?`, and `StaleWrite` is raised if no row matches.\n   - Delete: done in Postgres, with a tombstone.\n   - Every operation also writes a `users_mirror_outbox` row in the same Postgres transaction.\n   - The change is then applied to MySQL inline (250 ms, errors ignored) with the version rule. The mirror drainer repairs misses.\n   Clients see a retryable 503 during the pause and retry themselves. Reads continue. If the script fails before step 5, it reopens the MySQL fence. After step 5, use the rollback. If the script crashes, the fences are the state, at most one is open, and an operator reruns from the recorded step. If Postgres is down from then on, writes get 503.\n\n10. Rollback window (step 10). Record T1 when step 9 completes. For 14 days, writes go to Postgres and are mirrored to MySQL, the mirror drainer runs, and compare checks both directions. To roll back, `switch_to_mysql` does the following:\n    1. Close the Postgres fence and pause compare.\n    2. Drain `users_mirror_outbox`.\n    3. Set MySQL `AUTO_INCREMENT` to the sequence last value + 100000.\n    4. Open the MySQL fence.\n    5. Set `users_write_mode=mysql_primary`.\n    Dual writes then run MySQL to Postgres again. If rollback fails before its step 4, reopen the Postgres fence. It cannot complete during a Postgres outage.\n\n11. Final cut-over (step 11). Preconditions: at least 14 days since T1, the mirror outbox empty, a clean compare pass under 24 hours old, no rollback in the last 14 days, and explicit team approval. Set `users_write_mode=pg_only`. Instances stop writing the mirror outbox and stop applying to MySQL. Read fallback to the replica is turned off. Once all instances report `pg_only` and the mirror outbox is zero, stop the mirror drainer and the compare worker. No pause is needed. It is reversible only before the mirror drainer stops, by setting the flag back to `pg_primary`. After that, rollback needs a rebuild.\n\n12. Decommission (step 12). After a clean week, deploy a cleanup release that removes the MySQL branches, fences, outbox code and migration flags. Then drop `core.users`, `users_sync_outbox` and `users_write_fence` from MySQL. Then drop `users_mirror_outbox` and the migration rows from Postgres, keeping `users_tombstone`. Keep no extra copy of `core.users` beyond normal backup retention. A deploy fault is rolled back with the normal deploy tooling, and the table drop is irreversible.",
+   "gaps": [
+    "Step 4 needs the orchestrator's running instance count, and the document says which system supplies it is unspecified (it lists this itself as an open question).",
+    "Step 3 does not say how the 'clean check' held for 15 minutes at each stage is defined or measured, so I cannot say what passes it.",
+    "Step 9, sub-step 2 says the compare worker is the only other source of outbox rows, but it does not say what 'pause the compare worker' means mechanically, or how the script tells the drainer and workers apart from user traffic.",
+    "Step 9 does not say what the spot-check in sub-step 3 compares or what happens if a mismatch is found (it lists only the deadline and drain failures as abort causes).",
+    "Step 3 and the 'Inline apply' bullet do not say how the inline Postgres apply and the drainer decide which tombstone/delete path applies to an update that races with a delete beyond the advisory lock, or how the drainer's copy is ordered against user writes after the mirror direction reverses. The mirror drainer is described only as working 'as in step 2'.",
+    "Step 10 rollback does not say what happens to writes during the Postgres-to-MySQL pause on instances still on `pg_primary`. It does not say how the Postgres fence closing is distinguished from the MySQL fence on stale instances in `mysql_primary` mode after rollback.",
+    "Step 6 and step 10 say compare 'checks both directions', but the document does not say how the post-switch comparison reads from MySQL versus the replica, or which side is repaired.",
+    "The document does not say how users learn about or how the app surfaces the 503 beyond saying clients retry. It does not say how a client knows which instance or database to retry against."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

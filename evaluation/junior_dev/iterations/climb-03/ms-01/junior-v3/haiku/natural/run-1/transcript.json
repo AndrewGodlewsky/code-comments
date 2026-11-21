@@ -1,0 +1,111 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Who makes the HTTP call to Cart for the snapshot, and what does the customer's screen show while ReserveStock and RequestCharge are in progress?",
+     "about": "Customer presses Place order -> Read lines and prices from the cart"
+    },
+    {
+     "id": "2",
+     "text": "How does the customer actually pay? Where are card details entered, and what does Payment send to the provider to start the charge?",
+     "about": "State PAYMENT_PENDING -> HTTP: RequestCharge -> Store charge PENDING"
+    },
+    {
+     "id": "3",
+     "text": "What does the customer see during that wait, and does the 10-minute hold keep running while they wait?",
+     "about": "Provider decides, outcome arrives by webhook (usually seconds, up to 30 min)"
+    },
+    {
+     "id": "4",
+     "text": "After Order enters RESERVATION_EXPIRED, what are the possible next transitions? What happens if PaymentDeclined then arrives, and does Order still call ReleaseReservation on an already EXPIRED hold?",
+     "about": "State RESERVATION_EXPIRED / Sweeper, about every minute"
+    },
+    {
+     "id": "5",
+     "text": "How does an event in the outbox actually reach the broker and then the consumer? What is the broker here?",
+     "about": "Each service writes its state change and its outgoing event in one database transaction (transactional outbox)"
+    },
+    {
+     "id": "6",
+     "text": "DoneLate is not defined in the diagram. What exactly ends the flow there, and does Order wait for RefundSucceeded before it considers the order finished?",
+     "about": "OrderLate -> OrderEmail -> DoneLate, and RefundFull"
+    },
+    {
+     "id": "7",
+     "text": "What triggers Reconciliation and how often? How does its result enter the same path as a webhook, given it has no provider event id to store?",
+     "about": "Reconciliation: poll provider for charges PENDING over 35 min"
+    },
+    {
+     "id": "8",
+     "text": "When Order asks Inventory for the reservation status after a timeout, what does it do with each answer (ACTIVE, none, EXPIRED)?",
+     "about": "Call result unknown (timeout)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Order makes the call. The customer's browser sends Place order to Order, and Order calls Cart over HTTP for the snapshot (step 1). Those calls and the ReserveStock call are quick and synchronous, so the page shows Placing order until Order answers with either the short items or Waiting for payment. The brief sets no screen design, so exact wording is left to the UI."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The brief does not say how card details are entered, either on a provider-hosted page or through a token from the browser. The document only says that Payment's reply carries whatever the customer needs to pay. This is listed under Open questions. Known: Payment sends the order total and the order id as the idempotency key, and it stores the provider's charge reference."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The 10-minute hold keeps running, because its clock starts at ReserveStock and does not depend on payment. The customer sees a payment-waiting screen. If the hold lapses first, Inventory's sweeper emits ReservationExpired, and Order tells the customer the hold lapsed while payment is still awaited. The brief does not define the screen itself."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "From RESERVATION_EXPIRED there are two possible next events. PaymentSucceeded leads to ClaimReservation, which returns EXPIRED, then cancel, email and full refund. PaymentDeclined leads to PAYMENT_DECLINED and ReleaseReservation. Order still sends ReleaseReservation on an EXPIRED hold, and Inventory answers OK and changes nothing, because the sweeper already returned the stock. The flowchart now shows this path from the open-state check, and the failure table states the no-op rule."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "Mechanism: the state change and its outbox row are written in one transaction. A relay in that service reads unsent outbox rows, publishes them to the broker, and marks them sent. The consumer records each message id in its inbox table in the same transaction as its own change, and skips ids it has already seen. The brief does not name the broker product, so that is left as an open question."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "DoneLate is now defined in the flowchart. It ends the cancelled path: the order is CANCELLED_OUT_OF_STOCK, the email is sent, and Payment keeps the refund row until REFUNDED. Order does not wait for RefundSucceeded, because its state is final once cancelled and Payment owns the refund retries. This is listed under decisions to confirm."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A scheduled job in Payment runs every 5 minutes (a proposal). It selects charges that have been PENDING for more than 35 minutes and asks the provider for their status. It uses the provider charge reference stored at step 4, not a webhook event id. It applies the outcome with the same conditional update as a webhook: only if the charge is still PENDING. A late webhook then finds the charge already decided and changes nothing."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Status is asked only after a timeout on ReserveStock or ClaimReservation. After ReserveStock: ACTIVE means continue to RequestCharge, while none or EXPIRED means checkout fails with no payment requested, the cart is kept, and the customer is told to try again. After ClaimReservation: CLAIMED means confirm, ACTIVE means retry the claim, and EXPIRED means the late path with cancel and refund. Charge timeouts need no status query, because Payment returns the same charge for the same order id."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer presses Place order. This starts the checkout, and Order runs it. The doc does not say how the press reaches Order.\n2. Order asks Cart for a snapshot over HTTP. Cart returns its lines and prices and does not change the cart. Cart holds the cart state in its own DB.\n3. Order creates an order in state PLACED in its own DB and copies the snapshot lines and prices into it.\n4. Order sends Inventory an HTTP ReserveStock request for all lines. The idempotency key is the order id, so a repeat has no further effect.\n5. Inventory checks that every line has enough free stock.\n   - If any line is short, it writes nothing and replies SHORT with the short items. Order sets REJECTED_OUT_OF_STOCK and the customer sees the short items. Nothing is reserved or charged, and the cart is kept.\n   - If all lines have stock, Inventory makes one transaction. It creates a reservation (the hold) in state ACTIVE with expires_at = now + 10 min, and lowers free stock. It replies RESERVED with the hold id.\n6. Order stores the hold id, sets state RESERVED and then PAYMENT_PENDING, and sends Payment an HTTP RequestCharge. The key is the order id. Stock is held before any money is requested.\n7. Payment stores a charge as PENDING in its own DB and sends a provider charge. The key is the order id. Payment is the only service that calls the provider.\n8. The provider decides. It reports by webhook, usually in seconds and up to 30 min later. Meanwhile the order waits in PAYMENT_PENDING.\n9. The webhook reaches Payment. Payment verifies the signature. In one transaction it inserts the event id and updates the charge. If the event id is already stored, it returns 200 and changes nothing. A second route is reconciliation. Every 5 min Payment polls the provider for charges that are PENDING and older than 35 min. The poll result goes into the same outcome decision.\n10. If the outcome is Declined, the charge becomes DECLINED and Payment publishes PaymentDeclined. Order sets PAYMENT_DECLINED and, if the hold is still open, calls ReleaseReservation over HTTP. Inventory sets the hold RELEASED and puts the stock back on sale. This ends with payment declined, stock back on sale, and the cart kept.\n11. While waiting, a sweeper in Inventory runs every minute. It turns any ACTIVE reservation past expires_at into EXPIRED and puts the stock back on sale. It publishes ReservationExpired. Order sets RESERVATION_EXPIRED, tells the customer the hold lapsed, and still waits for payment.\n12. If the outcome is Succeeded, the charge becomes SUCCEEDED and Payment publishes PaymentSucceeded. Events go through the outbox. Each service writes the event into its own DB in the same transaction as the state change, and a relay publishes it to the broker. Consumers use an inbox of handled message ids to skip repeats.\n13. Order receives PaymentSucceeded and checks its state. If it is not PAYMENT_PENDING or RESERVATION_EXPIRED (it is already CONFIRMED or CANCELLED), it is a duplicate and nothing happens. Otherwise Order calls ClaimReservation over HTTP, with the order id as key.\n14. Inventory checks whether the hold is ACTIVE and expires_at is in the future.\n   - If yes, the hold becomes CLAIMED, meaning the stock is sold to this order. It replies CLAIMED. Order sets CONFIRMED and publishes OrderConfirmed. Cart receives it and removes the ordered lines, and does nothing if that is already done. This ends with the order CONFIRMED and the lines removed from the cart.\n   - If no, the hold lapsed. Inventory replies EXPIRED and changes nothing. Order sets CANCELLED_OUT_OF_STOCK and emails the customer that the order was cancelled as out of stock, with a full refund. Order also sends Payment an HTTP RefundFull, key = order id, and does not wait for the refund result.\n15. Payment stores a refund as PENDING and sends a provider refund for the full amount, with the order id as key. If it succeeds, the refund becomes REFUNDED and RefundSucceeded is published. If it fails, the refund is marked FAILED and the row is kept. Payment retries with backoff and alerts on-call after N tries.",
+   "gaps": [
+    "How the Place order press reaches Order and what Order returns to the customer. The document does not say whether the call is synchronous, or how the customer later sees PAYMENT_PENDING, CONFIRMED or the other results.",
+    "What Order does when Cart, Inventory or Payment is unreachable or times out, or when a reply to ReserveStock or RequestCharge is lost. Retries are not described, although idempotency keys are mentioned.",
+    "What Order does when the provider charge request is rejected immediately or the provider does not answer. Only the webhook and reconciliation paths are covered, and a charge that stays PENDING past 35 min is handled only by the poll.",
+    "How PaymentDeclined is handled when the hold has already lapsed, or what 'if still open' means. It is not stated how Order checks that, or what ReleaseReservation does on an EXPIRED or CLAIMED hold.",
+    "What Order does with RESERVATION_EXPIRED when payment never arrives, or whether the order ever times out, since payment is 'still awaited'.",
+    "What happens if the signature check on the webhook fails. Only 'verify signature' is shown, with no failure branch.",
+    "What the refund retry does if the provider charge never really succeeded. Refund and RefundSucceeded handling in Order is not described: no consumer of RefundSucceeded is shown and the customer is not told when the refund lands.",
+    "How the relay and broker deliver events, including retry and ordering of events, and what happens if a consumer fails before the inbox entry is written.",
+    "Whether a new PLACED order is blocked while an earlier one for the same cart is in progress, and what the order id uniqueness means for repeated Place order presses. The cart is not changed at snapshot time, so another order could be placed from it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

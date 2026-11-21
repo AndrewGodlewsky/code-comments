@@ -1,0 +1,209 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the scheduler and what is the job it starts? Which process runs the extract, staging load and merge, and where does it run?",
+     "about": "Scheduler: 02:00 UTC daily"
+    },
+    {
+     "id": "2",
+     "text": "What happens if an attempt crashes or hangs without marking its run_log row failed? Does the stale running row block the retry, and who clears it?",
+     "about": "Take run lock, insert run_log row"
+    },
+    {
+     "id": "3",
+     "text": "Why is the window 2 hours before the HWM, and what does that cover? What does reading the same rows twice cost, given the merge?",
+     "about": "Read hwm from pipeline_state, window_lo = hwm - 2h"
+    },
+    {
+     "id": "4",
+     "text": "The window has no upper bound. What counts as the snapshot's upper edge, and how do rows that change after the snapshot get picked up?",
+     "about": "Extract in one read-only snapshot"
+    },
+    {
+     "id": "5",
+     "text": "Does the run_log row's succeeded status and the HWM update commit with the data? And does the failed status get written after the rollback, in its own transaction?",
+     "about": "Merge and commit (one warehouse transaction)"
+    },
+    {
+     "id": "6",
+     "text": "How does the watchdog decide a run belongs to today's run_date, if a retry finishes after midnight UTC or the job is still running at 06:00?",
+     "about": "Staleness check"
+    },
+    {
+     "id": "7",
+     "text": "What process starts reconciliation after the nightly commit? Does it get its own run_log row with kind reconcile, with its own three attempts and lock?",
+     "about": "Sunday reconciliation (starts after Sunday's nightly load succeeds)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The scheduler is an external job orchestrator (product not chosen). It starts one worker process that runs extract, staging load and merge, reading the replica and writing the warehouse. It also runs retries, paging and the 06:00 watchdog. Added a 'Who runs what' paragraph. The product and host are left as an open question."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Simplest handling: the scheduler allows one running instance per kind and kills an attempt past a fixed timeout, which counts as a failure. Each new attempt first marks any leftover running row of its kind as failed, so a stale row never blocks the retry. I dropped the separate lock mechanism. The timeout value is unknown and listed as open."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Bulk-import rows can become visible up to 90 minutes after their updated_at, so the window reaches back 2 hours past the HWM to catch them. Re-reading costs only extra rows in staging. The merge is keyed on order_id and guarded by updated_at, so the final rows are the same. Added this to the Extract section."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The snapshot's start time is the upper edge. Rows that change after it are not in this run. The HWM is the max updated_at actually loaded, and the next night's 2-hour lookback re-reads from before it, so they are picked up then. Added to Extract."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes: the MERGE, the HWM update and the succeeded status are in one transaction and commit together. The failed status is written in a separate small transaction after the rollback, because the rollback would otherwise undo it. Stated in the doc and in the flowchart node."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "run_date is the UTC date of the 02:00 scheduled start, set on attempt 1 and kept by retries even after midnight. The watchdog looks for a succeeded nightly row with today's run_date. If the job is still running at 06:00 there is no succeeded row, so it alerts. Added to the run_log table and the Dashboards section."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The scheduler starts reconciliation as a separate job when Sunday's nightly run commits. It has its own run_log rows with kind reconcile, its own three attempts, and the one-running-instance-per-kind rule applies to it too. Stated in the Sunday section and the trigger table."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "8",
+     "text": "Does each attempt get its own new run_id, or do retries reuse the first attempt's run_id? If new, what clears staging rows left by a failed earlier attempt?",
+     "about": "etl.orders_stg (keyed by run_id)"
+    },
+    {
+     "id": "9",
+     "text": "How does a retry (attempt 2 or 3) know the run_date and attempt number to write into its run_log row? Does the scheduler pass them in, or does the job work them out from run_log?",
+     "about": "Start attempt N: mark stale running rows failed"
+    },
+    {
+     "id": "10",
+     "text": "If the scheduler kills the worker in the middle of the merge transaction, what happens to that open warehouse transaction? Who writes the failed status in that case, given the worker is dead?",
+     "about": "Scheduler kills an attempt that runs past a fixed timeout"
+    },
+    {
+     "id": "11",
+     "text": "Does the scheduler decide it is Sunday from the run_date of the nightly run or from the clock time of the commit? What happens if Sunday's nightly commits on a retry after midnight, on Monday UTC?",
+     "about": "Sunday reconciliation (scheduler starts it after the nightly commit)"
+    },
+    {
+     "id": "12",
+     "text": "What does the worker do when the replica is reachable but lagging far behind? Does it detect that, or does it just load whatever the replica has and let the HWM follow?",
+     "about": "Extract in one read-only snapshot"
+    },
+    {
+     "id": "13",
+     "text": "After the page, who restarts anything? Does the next 02:00 run just happen as normal, and does a human need to do anything for the failed night, such as clear the failed status?",
+     "about": "Page on-call. hwm stays put"
+    }
+   ],
+   "answers": [
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Every attempt gets a new run_id. The earlier wording (delete rows for its own run_id) could not clear a failed attempt's rows, so that was wrong. Now the start step deletes staging rows of all earlier run_ids, which are all failed or succeeded by then."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The scheduler passes kind, run_date and attempt number to each attempt. The job does not derive them from run_log. Simplest, since the scheduler already counts attempts."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The warehouse rolls back an open transaction when the worker's connection drops, so nothing partial is visible and the HWM is untouched. Nobody writes failed then. The next attempt's start step marks the leftover running row failed. If it was the third attempt, the scheduler still pages, and the watchdog still alerts because there is no succeeded row. Assumes the warehouse engine rolls back on disconnect, which is standard but not checked against a specific product."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "It uses the nightly run's run_date, not the commit clock time. A Sunday run_date that commits on a retry after midnight Monday still triggers reconciliation. Added to the Sunday section, trigger table and flowchart."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "No lag detection. It loads what the replica has and the HWM follows the max updated_at loaded. The 2-hour lookback covers small lag and the Sunday reconciliation covers larger lag, as the brief specifies. Added one line to Extract and the Notes."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "No human action is required. The next 02:00 run starts normally with a wider window because the HWM did not move. Failed or stale running rows are cleaned by the next attempt's start step. That week's reconciliation is skipped if it was Sunday and runs the next Sunday. Added to Failure and retry."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "Nightly and reconcile share etl.orders_stg. If a reconcile attempt starts while a nightly attempt is still running, would its start step delete the nightly's staging rows? Can the two ever run at the same time?",
+     "about": "Start of every attempt: Delete staging rows of every earlier run_id"
+    },
+    {
+     "id": "15",
+     "text": "A full backfill loads every order in one run and one transaction. What happens if it exceeds the scheduler's fixed timeout? Each retry would use the same epoch window, so how does the first run ever succeed?",
+     "about": "On the very first run there is no HWM. Treat it as the epoch, which is a full backfill"
+    },
+    {
+     "id": "16",
+     "text": "For a reconcile attempt, what do run_date, window_lo, window_hi and rows_extracted hold in its run_log row? Does a reconcile attempt run the same three start-of-attempt steps as the nightly?",
+     "about": "Sunday reconciliation: own run_log rows, own three attempts"
+    },
+    {
+     "id": "17",
+     "text": "Reconcile compares the replica to dw.orders while the nightly may have changed the replica since. Does reconcile use a snapshot like the nightly does, and what if rows changed on the replica between the compare and the reload?",
+     "about": "Sunday reconciliation: Reload each one by extracting all replica rows with that created_at date into staging"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Simplest rule: the scheduler runs only one attempt at a time across both kinds, and queues the other. So a reconcile start step can never delete a running nightly's staging, and any leftover running row is dead. Changed 'per kind' to 'across both kinds' and widened start step 1. Cost: a long reconcile can delay a nightly, bounded by the timeout."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The first backfill is a one-off run started by hand with the scheduler timeout raised, so it can finish in one transaction. Normal nights are small. I did not add chunked backfill, which the brief does not require. The table size is unknown, so it is listed as an open question."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "A reconcile attempt runs the same three start steps. Its run_log row uses the triggering nightly's run_date, leaves window_lo and window_hi empty, and sets rows_extracted to the rows reloaded. Added to the Sunday section."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes. Reconcile compares and reloads inside one repeatable-read snapshot of the replica, so both see the same data. Rows that change after the snapshot are not in this reconcile and are picked up by the next nightly lookback or the next Sunday. The guarded merge never overwrites newer warehouse rows. Added to the Sunday section."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one normal night, then the failure, retry and Sunday cases.\n\n1. **Trigger.** The scheduler starts the nightly job at 02:00 UTC. The scheduler is an external orchestrator. It starts one worker process and passes it `kind=nightly`, `run_date` (the UTC date of the 02:00 start) and `attempt=1`. It runs only one attempt at a time across `nightly` and `reconcile`. It also kills any attempt that runs past a fixed timeout, and that counts as a failure.\n\n2. **Start of attempt (warehouse `etl` schema holds all state).** The worker does three things. (a) It marks any leftover `running` row in `etl.run_log` as `failed`, because only one attempt runs at a time, so such a row is dead. (b) It deletes `etl.orders_stg` rows of every earlier `run_id`. (c) It inserts a new `run_log` row with a new `run_id` and `status=running`. State at this point: `run_log` holds the audit trail, and staging is empty.\n\n3. **Work out the window.** The worker reads `hwm_updated_at` from `etl.pipeline_state`. This is the high-water mark, the highest `updated_at` already loaded. It sets `window_lo = hwm - 2 hours`. The 2 hours are there because a bulk-import row can become visible up to 90 minutes after its `updated_at`. The first-ever run has no HWM and treats it as the epoch, so it does a full backfill. That run is started by hand with a raised timeout.\n\n4. **Extract.** The worker opens one repeatable-read, read-only snapshot of the app Postgres read replica. It runs `WHERE updated_at > window_lo`. There is no upper bound except that the snapshot's start time is the effective edge. Later changes wait for the next night. Soft deletes arrive through the same query, because they set `deleted_at` and bump `updated_at`. The worker does not check how far the replica lags. It loads whatever the replica has.\n\n5. **Stage.** The worker bulk-loads the extracted rows into `etl.orders_stg`, tagged with its `run_id`. Dashboards never see staging.\n\n6. **Dedupe.** Inside the warehouse transaction, staging is reduced to one row per `order_id`. The winner is the highest `updated_at`. Ties go to the later `deleted_at`, then to the highest staging row id.\n\n7. **Merge.** In the same transaction, `MERGE INTO dw.orders` keyed on `order_id`. If the order matches and `stg.updated_at >= tgt.updated_at`, it updates all columns. If there is no match, it inserts. The guard stops an older re-read row from overwriting a newer one. `is_deleted` is set to `(deleted_at IS NOT NULL)`.\n\n8. **Advance HWM and mark success, then commit.** Still in the same transaction, the worker sets `hwm_updated_at = GREATEST(hwm, MAX(updated_at) of the batch)`. An empty batch leaves it unchanged. It sets the `run_log` row to `succeeded`, then runs COMMIT. The data, the HWM and the status become visible together or not at all. The HWM follows the data actually loaded, not the wall clock.\n\n9. **Failure.** A failure in the replica read, the staging load, the merge or a timeout fails the attempt. A failure before the commit rolls the transaction back, so `dw.orders` and the HWM are unchanged. The worker then writes `failed` to `run_log` in a separate small transaction. If the worker is killed or crashes, the warehouse rolls back the open transaction when the connection drops. Nobody writes `failed` at that moment. The next attempt's start step (step 2) marks the leftover row `failed`.\n\n10. **Retry.** The scheduler re-runs the whole job 15 minutes after a failure, up to two more times, for three attempts in total. Each retry keeps the same `run_date`, gets a new `run_id`, and re-reads the HWM, so it uses the same window. Re-runs are harmless because the merge is keyed and guarded, and the HWM only moves in the same commit as the data. If the third attempt fails, the scheduler pages on-call and the job stops. The HWM stays put, so the next night's window widens to cover the gap. No human action is needed to recover.\n\n11. **06:00 watchdog and dashboards.** At 06:00 UTC the scheduler runs a watchdog. It checks `run_log` for a succeeded nightly run whose `run_date` is today (UTC). If there is none, including when the job is still running, it posts a staleness alert to #data-alerts. It does not stop the job. Dashboards also refresh at 06:00 and read only `dw.orders`. They see either the previous night's data or the new night's data, never a partial night. If a retry commits later, they pick it up at the next refresh.\n\n12. **Sunday reconciliation.** When a nightly run whose `run_date` is a Sunday commits, the scheduler starts a `reconcile` job. It does this on `run_date`, so a post-midnight retry still triggers it. It has its own `run_log` rows, its own three attempts, and the same start steps, 15-minute retry and paging. Its row uses the nightly's `run_date`, leaves the window columns empty, and sets `rows_extracted` to the rows reloaded. The steps are as follows.\n    - In one replica snapshot, it computes `COUNT(*)` and a checksum over `order_id` + `updated_at` for each `created_at` day in the last 30 days. It does this on both the replica and `dw.orders`, and deleted orders are included on both sides.\n    - For each day that mismatches, it extracts all replica rows for that day from the same snapshot into staging.\n    - It applies the same guarded merge in one transaction. It does not touch the HWM.\n    - If Sunday's nightly exhausted its retries, no reconciliation runs that week. If the replica is still behind, a day may mismatch again the next Sunday, but the guard prevents data loss.\n    - If it is still waiting when Monday's 02:00 nightly is due, the scheduler runs whichever was due first and queues the other.",
+   "gaps": [
+    "How the scheduler learns that a nightly run committed or failed, so that it can trigger the reconcile job or the retry, is not stated. It may read `run_log`, or the worker may report back; the document does not say.",
+    "The document does not say how the reconcile job's mismatch list passes from the compare phase to the reload phase, nor what a reconcile attempt does when the compare finds no mismatch. The flowchart says 'nothing to repair', but the document does not say how that is recorded in `run_log`, for example the status or a `rows_extracted` of 0.",
+    "How the repeatable-read snapshot's 'start time' limits the upper edge of the extract is not specified. The worker's query has no explicit upper bound, and `window_hi` is a `run_log` column that the document never says how to fill for a nightly run."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

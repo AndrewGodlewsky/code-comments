@@ -1,0 +1,31 @@
+## Review of dp-02 (junior-v7, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Step 5: archive object names now include log partition and offset, so a restart rewrites the same object and no copy is counted twice.
+- Step 5: defined the manifest contents, the seal point at 02:00 UTC on D+1, and who seals the manifest and when.
+- Step 6: added that duplicates are identified by event_id alone, and that the stage waits and retries when the KV store is down or slow instead of skipping.
+- Step 6.3: decision records are named by (partition, offset), hold a defined set of fields, and are written before enrichment.
+- Step 6.4: a failed enrichment lookup no longer drops the winner; the row is written with empty enrichment columns for replay to fill.
+- Step 6.5: the group B offset now commits only after the warehouse write is confirmed, so a crash replays the copy.
+- Step 9: defined quarantine as a separate table, added the completeness check of winner count against the partition row count, and added cleanup of quarantined rows after the swap.
+- Rules: added that decision records are kept 90 days, because replay needs them within the archive window.
+- Failure modes merged into one table; added rows for the collector append failure, KV outage, enrichment failure, and dedup falling more than 8 days behind the KV TTL.
+- Open questions: added which received_at decides the day when copies differ (question 7) and the unset replay approval threshold (question 8).
+- Restructured into summary, terms, live steps, replay steps, rules, failure table, verification, and open questions, and removed repeated statements.
+- Added a three-sentence summary at the top: what the pipeline is, how the live path and replay flow, and why every copy and decision is kept (so a day can be rebuilt without changing which copy won).
+- Added a Terms section defining each name a newcomer would not know, in one line: KV store, TTL, consumer group, offset, log partition versus warehouse day partition, manifest, seal point, sealed manifest, decision record, MERGE, lifecycle rule, geo-IP lookup, UA parsing, quarantine, staging and atomic swap.
+- Moved the assumptions (NTP clock sync, 30 s request deadline, writers keeping up within hours) into their own short section before the steps.
+- Merged the step-level failure cases into the step they belong to (collector append failure, KV store down, both dedup crash points, enrichment lookup failure, warehouse failure, archive falling behind, replay completeness check, winner after close). Kept only cross-cutting failures in one table.
+- Corrected the late-copy failure row to match the live-path rule: a copy from a later day wins only if no earlier copy exists in log order. The previous wording said it was always archived and recorded as a duplicate.
+- Split the dedup stage into lettered sub-steps (set KV key, decide, write decision record, enrich and send winners, commit offset after warehouse write) so each reads as one action.
+- Merged the 'collector does not deduplicate' point into the append step, and the 202 rule into the acknowledge step, so each fact is stated once. The rules section now lists only invariants not already stated in a step.
+- Removed internal codes (I1 to I6, Q1 to Q8, A-references) and used plain sentences so no step sends the reader elsewhere to look something up.
+- Merged the decision-missing check into the replay completeness step and the replay-fails-before-swap rule into the failure and re-run section.
+- Kept every requirement, limit, number and setting from the brief and the first version, including the 32 KB limit, 100-event batch, 1 s to 5 min backoff, 7-day buffer, 90-day retention, 14-day log retention, 8-day TTL, 02:00 UTC close, 5-minute and p95/p99 targets and 4-minute alert, and the MERGE or keyed-batch-ID option.
+- Separated how the system runs (Parts A and B and the rules) from how it is built and rolled out (the verification section), and kept the open questions last.
+- Kept the bot-traffic choice open, with no plan change. No design decision was altered; the rewrite only clarifies, reorders and removes repetition.
+
+### Holes
+- None.

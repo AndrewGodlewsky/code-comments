@@ -1,0 +1,35 @@
+## Review of ms-01 (junior-v5, author sonnet, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Step 1: stated that a failed or timed-out Cart call or an empty cart creates no order and tells the customer to try again, and added a failure table row.
+- Step 2 and How to read: said the order id is created in step 2.
+- Step 4 and charge-retry row: said the charge call only acknowledges and the outcome comes by webhook, and that the order stays AWAITING_PAYMENT during retries.
+- Release box: made explicit it also does nothing for EXPIRED reservations.
+- P12 timer: made it a per-minute job and stated that a pending or failed status query is retried next run.
+- Decision 1: defined exactly how a claim on a lapsed reservation checks and takes stock.
+- Decision 5: added that every end state closes the checkout and a retry gets a new order id and snapshot.
+- Added the email outbox handling under the services table and a failure table row for unexpected events.
+- Added a note under Order statuses that AWAITING_PAYMENT always resolves.
+- Added an Open questions section at the end.
+- Step 2 and reading notes: reply to the customer at once with order id and status; page polls Order status (Q10).
+- P1: outright provider rejection treated as declined, with a new arrow to the declined box; retries running out leaves PENDING for the timer (Q13).
+- Failure table: added rows for Inventory slow or down, Payment slow or down, and outright charge rejection.
+- Reading notes: outbox sender retries and the broker keeps events for a consumer that is down (Q12, Q13).
+- Order statuses: PAYMENT_DECLINED also covers an outright rejection.
+- Added decision 7 on customer feedback, and two Open questions on refund result reporting and a PENDING_STOCK timeout.
+- Merged the 'How to read this' bullets into a short opening paragraph plus a Terms list; added one-line definitions for service, event, outbox, inbox, snapshot, order id, hold, claim, idempotency key and webhook (junior asked about mailer, claim, lapsed hold, accepted).
+- Replaced the separate Failure branches table and Design decisions list with numbered step notes after the diagram (each with trigger, action, data owner and failure) and one slimmer failure table; decisions on hold vs delay, claim/expiry race, no partial orders, stuck payments, double press, and polling are now stated inside the steps where they apply.
+- Cut duplicated explanations (hold-versus-payment-delay, no-partial-orders and customer-feedback decisions restated the steps), and dropped the cart-edits-during-checkout decision text in favour of the snapshot term plus an open question.
+- Moved the mailer assumption into a short note after the steps; moved the cart-emptying concern into open questions only (removed duplicate listing).
+- Added to step 1 that no order id exists yet, to step 2 the double-press/new-order-id rule and the polling reply, to step 3 that the expiry timer does not notify Order, and to step 6 why AWAITING_PAYMENT always ends.
+- Kept the Mermaid diagram and its colour key unchanged in meaning; the diagram and open questions are otherwise preserved.
+- Webhook handling: bad signature now replies 401 and does nothing; a valid signature with no matching payment replies 200, logs and alerts a person (P2, step 5, two failure rows).
+- Charge step: a unique order id now doubles as the inbox for ChargeRequested; the event is acknowledged only after the provider call answers, so a crash or a duplicate delivery re-calls the provider with the same key and charges once (P1, step 4, two failure rows, Inbox and Event terms).
+- Webhook outcome events now go through Payment's outbox in the same transaction as the inbox insert and status change, so PaymentSucceeded and PaymentDeclined are published reliably (P2, P6, P7, step 5, Outbox term).
+- Refund row also keyed by unique order id so a repeated RefundRequested finds the same refund (P8, step 9, Inbox term, Payment stores).
+
+### Holes
+- Q3: What is the 'existing mailer' and how does Order call it? Does it join the outbox transaction, or what happens if the email fails to send after the status changes? (author: I do not know the existing mailer's interface or whether it supports idempotent sends. Decided handling: Order writes the email as an outbox entry in the same transaction as the status change, and a sender delivers it afterwards with retries. A failed email never changes the order status. Mailer interface added to Open questions.)
+- Q11: The charge call only acknowledges and the outcome comes by webhook. For the refund, 'Provider accepted the refund?' decides REFUNDED right away. Does the refund also come back by webhook, or is the refund call's answer the final result? What does 'accepted' mean here? (author: I do not know whether the provider reports refund results by webhook or whether the refund call's answer is final. Working assumption: 'accepted' means the provider's response says the refund was created, and Payment marks REFUNDED then. A refund that fails at the provider is handled by the retry path. Added to Open questions.)

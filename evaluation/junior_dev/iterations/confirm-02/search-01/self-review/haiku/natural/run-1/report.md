@@ -1,0 +1,35 @@
+## Review of search-01 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a glossary of the terms the plan uses (CDC, WAL, replication slot, commit_lsn, alias, Kafka topic, partition, consumer group, offset, DLQ, tombstone, repeatable-read snapshot, external versioning).
+- Added a short guide explaining the three parts of the diagram (A live sync, B WAL guard, C rebuild).
+- Rewrote the decisions and assumptions in plain sentences, and kept the reason behind each one.
+- Spelled out the HTTP codes (400, 404, 409, 429) in the diagram labels and the failure table, and explained what each one means.
+- Reworded diagram labels to plain language, and expanded some abbreviations (for example, S, N and the Debezium connector). Every node, edge and lane is kept.
+- Rewrote the failure table in plain language, keeping every row, and explained what a rebalance is.
+- Kept the intent, the format, the known limit and all technical content unchanged.
+- Added a Background section that states the four problems with the cron job before the plan begins.
+- Expanded the glossary to cover terms the original assumed: index, mapping, Debezium, bulk write, backoff, refresh, rebalance, reconcile, canary rows, and the HTTP status codes used (400, 404, 409, 429, 5xx).
+- Defined the commit_lsn hex format (two 32-bit halves) and explained that the version is a single integer.
+- Explained what the diagram shapes mean (cylinder for stored state, slanted box for topics, diamond for decisions).
+- Shortened and plainly worded diagram labels and removed jargon such as 'resend only failed documents' ambiguity; retry labels now give the exact backoff sequence (1 s, 2 s, 4 s, capped at 60 s).
+- Clarified the Kafka offset commit rule and that the DLQ write must succeed before the offset moves.
+- Clarified the rebuild gate and the reconcile step, and that the v3 group keeps consuming during the 48-hour window.
+- Added assumption 4 about the 64-bit version range, which the original did not check.
+- Clarified the latency measurement (canary rows, refresh interval, p95 alert) and the explanation of the 'at least' version rule.
+- Kept the intent, the three-part structure, the assumptions, and the failure table; no technical decision was changed.
+- Added a plain-language opening that explains what the index, the alias and the cron job's gaps are, before the plan starts.
+- Reorganised the terms list into three groups (data and streams, search index, failures and checks), and added definitions for Primary, Refresh, external versioning and tombstone, which were missing or implicit.
+- Added a worked example for the commit_lsn conversion: 0/16B3748 becomes 23,803,720.
+- Rewrote the version decision as a plain rule (applied if incoming version is at least the stored version) with the outcomes for equal, higher and lower versions spelled out.
+- Stated the Kafka offset rule in plainer words: commit the highest offset where every earlier offset is acknowledged, and a gap holds the commit back.
+- Rewrote assumption 2 to explain the mechanism: the snapshot and the recorded offsets are taken at slightly different moments, so a transaction committing near S can be skipped on replay.
+- Clarified that after the alias switch the v4 group keeps products_v4 current, while the v3 group runs for 48 hours to make rollback possible.
+- Added an open question that the original left unstated: whether the v4 group keeps running after a rollback.
+- Shortened diagram labels and kept all nodes, edges, states, and shapes the same. Quoted every label so the Mermaid parses cleanly.
+- Kept every number and threshold unchanged (500 docs or 100 ms, 1 s to 60 s backoff, 5000 rows/s, 20 GB, 50 GB, 5 s lag, 0.5 percent, 48 h).
+
+### Holes
+- None.

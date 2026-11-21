@@ -1,0 +1,79 @@
+{
+ "label": "act-t-rate-limit-haiku-hooks",
+ "model": "haiku",
+ "hooks": true,
+ "wall_s": 37.5,
+ "cost_usd": 0.01087673,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-1v1xbdb_\\project\\docs\\plans\\rate-limit.md",
+  "artifact_hash": "ffcdbcbe5e3b29b55d28a05a2d67badb001402f1ce038a144eece4c00facd7d5",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The plan is saved at `docs/plans/rate-limit.md`. I didn't change any code. The junior-dev review did not complete, so the plan has not been independently checked.\n\n**The plan in brief**\n- **Algorithm:** a token bucket per customer, with a burst of 5 and a refill of 5 per minute. Both values are guesses to be tuned, and they're configurable through environment variables.\n- **Placement:** the check goes at the top of `place_order`, so a limited request never reaches stock checks, the payment provider, or the orders file.\n- **State:** a new `src/ratelimit.py` with a lock, an injectable clock for tests, and eviction of idle buckets. It is per process and resets on restart.\n- **Tests and rollout:** listed as numbered steps, including tests that confirm a limited request never calls `charge`.\n\n**Things you should look at**\n- **There is no HTTP server in the repo.** The README describes `POST /orders` and `python -m src.app`, but `src/app.py` has neither. The plan asks where the server lives before any implementation starts.\n- **`customer` is an unauthenticated string.** A client can get around a per-customer limit by sending a new name each time. The plan lists this as open question 1 and needs a decision on the identifier.\n- **Existing stock race.** The stock check and decrement are not atomic, so concurrent orders can oversell. The new lock doesn't fix this. It's listed as a separate issue.\n- **Charge-before-write.** If writing the order fails after a successful charge, the customer is charged with no record and no refund path. Also listed as a separate issue.\n\n**Junior-dev review: incomplete**\n- The first `ask` round returned no questions.\n- The `teachback` step printed \"(activation run: the junior is stubbed)\", so no fresh reader explained the plan. I did not record a `correct` or `wrong` verdict, and I did not generate a report.\n- Running the review again with a working junior should be the next step. The session state is in `.junior-dev/rate-limit-fa8328bd` under the project.\n- I also fixed one mislabeled heading (\"Reserved name\" is now \"Unvalidated customer name\").\n\n**Open questions for you**\n1. What is the trusted customer identifier: the authenticated user, the card token, or accept the gap for now?\n2. Where does the HTTP server live?\n3. Should rejected attempts count toward the limit? The plan recommends yes, to protect the payment provider.\n4. Are 5 burst and 5 per minute the right numbers for this shop?",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/rate-limit.md": "# Plan: per-customer rate limiting for order placement\n\nStatus: proposed. No code has been changed yet.\n\n## 1. Current state\n\n- `src/app.py:17` `place_order(customer, items, card_token)` is the only order path.\n  It checks stock (`STOCK`, in memory), calls `charge()` in `src/payments.py`, decrements\n  stock, and appends to `data/orders.json`.\n- Nothing limits how often one customer can call it. Every call, including rejected\n  ones, reaches the payment provider when stock passes.\n- **There is no HTTP layer in the repo.** `README.md` says customers use `POST /orders`\n  and that the app runs with `python -m src.app`, but `src/app.py` has no server, route,\n  or `__main__` block. The rate limit therefore has to go in the function that exists\n  today, and the HTTP mapping (429 status) has to wait until the route exists. Confirm\n  whether the server code lives elsewhere before building on this.\n- **`customer` is a plain string from the caller.** Nothing authenticates it. A\n  per-customer limit is only as strong as the identifier it is keyed on. See open\n  question 1.\n- There are no tests in the repo.\n\n## 2. Goals\n\n1. Stop one customer from placing orders faster than a set rate.\n2. Keep the payment provider from being hit by a flood of attempts.\n3. Keep the change small and local: no new service, no database.\n4. Make the limits configurable without a code change.\n\nNon-goals: limiting by IP, global (all-customer) throttling, fixing the authentication\ngap, and the stock race described in section 7.\n\n## 3. Design\n\n### 3.1 Algorithm\n\nToken bucket per customer:\n\n- `capacity` = burst size (max orders allowed at once).\n- `refill_per_sec` = sustained rate.\n- Each bucket holds `tokens` and `last_refill` (monotonic time).\n- On each attempt: refill by `elapsed * refill_per_sec` (capped at `capacity`), then\n  take one token if available. If none is available, reject and compute\n  `retry_after = (1 - tokens) / refill_per_sec`, rounded up.\n\nStarting defaults, to be tuned: `capacity = 5`, `refill = 5 per minute`. These are guesses,\nnot measured numbers.\n\n### 3.2 Where the check goes\n\nAt the top of `place_order`, before the stock loop, so a limited request never reads\nstock, never calls `charge()`, and never writes to disk:\n\n```python\ndef place_order(customer, items, card_token):\n    wait = limiter.acquire(customer)  # 0 if allowed, else seconds to wait\n    if wait > 0:\n        return {\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": wait}\n    ...\n```\n\nInvalid input (unknown item, missing token) is decided after the check, so a bad request\nstill uses a token. That keeps the code simple. Revisit if it causes complaints.\n\n### 3.3 Where the state lives\n\nA new module `src/ratelimit.py`:\n\n- `class RateLimiter(capacity, refill_per_sec, clock=time.monotonic)`\n- `acquire(key) -> float` returns 0 if allowed, otherwise the wait in seconds.\n- Holds `dict[str, Bucket]` guarded by `threading.Lock`.\n- Injectable `clock` so tests do not sleep.\n- Evicts buckets that have been full and idle for longer than the time it takes to\n  refill, so memory does not grow without limit.\n\nA module-level instance `limiter` in `src/app.py` is configured from environment\nvariables, with the defaults above:\n\n- `SHOPFRONT_ORDER_BURST` (default 5)\n- `SHOPFRONT_ORDER_PER_MINUTE` (default 5)\n\n### 3.4 Response shape\n\nRejected responses keep the existing shape and add a field:\n`{\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": <seconds>}`.\nWhen an HTTP route exists, map this to `429` with a `Retry-After` header.\n\n## 4. Scope limits of the in-memory design\n\n- The state is per process. With one process (the current README setup), this is exact.\n  With several workers, each gets its own bucket, so the effective limit is multiplied by\n  the worker count. If the service runs multi-process, a shared store (for example Redis\n  with an atomic script) is needed. That is a separate, larger change.\n- State resets on restart. Acceptable for a rate limit. Note it in the README.\n\n## 5. Steps\n\n1. Confirm where the HTTP server lives (open question 2). Stop here if it is not in this\n   repo.\n2. Add `src/ratelimit.py` with the token bucket and a lock.\n3. Add tests under `tests/test_ratelimit.py` using a fake clock:\n   - burst is allowed, then the next call is limited with the correct `retry_after`;\n   - tokens refill over time;\n   - separate customers do not affect each other;\n   - idle buckets are evicted;\n   - concurrent `acquire` calls from threads never grant more than `capacity` in one\n     instant.\n4. Wire the limiter into `place_order` at the top of the function, reading the\n   environment variables in `src/app.py`.\n5. Add tests for `place_order`:\n   - a limited request does not call `charge` (monkeypatch it and count calls);\n   - a limited request does not change `STOCK` or `data/orders.json`;\n   - normal orders still succeed.\n6. Update `README.md` with the two environment variables and the restart behaviour.\n7. Run the test suite and `python -m src.app` (or whatever the server entry becomes).\n\nStep 2 onward should not start until open questions 1 and 2 are answered.\n\n## 6. Open questions\n\n1. **Identity.** What is the trusted customer identifier? The current `customer` string is\n   caller-controlled, so a client can dodge the limit by sending a new name each time.\n   Options: (a) key on the authenticated user once auth exists; (b) key on the card token,\n   which is harder to rotate but still changeable; (c) accept the gap for now and say so\n   in the README.\n2. **Where is the HTTP server?** The README describes `POST /orders`, but the repo has no\n   route. Is it in another repo or not built yet?\n3. **What counts as an attempt?** Recommended: every call counts, including rejected ones\n   (out of stock, failed payment), because the goal is to protect the payment provider.\n   The alternative is to count only placed orders, which lets a client probe stock freely.\n4. **Actual limits.** Is 5 burst and 5 per minute right for this shop? Confirm before\n   shipping.\n\n## 7. Related issues found while reading (not in scope)\n\n- **Race on stock.** The check at lines 18–20 and the decrement at lines 24–25 are not\n  atomic. Two concurrent orders can both pass the check and oversell. The new lock in\n  `ratelimit.py` does not fix this. Worth a separate fix.\n- **Charge before write.** If `json` writing fails after `charge()` succeeds, the customer\n  is charged with no order record and stock is already decremented. There is no refund\n  path.\n- **Order ids** are `len(orders) + 1`, which breaks if an order is ever removed.\n- **Unvalidated customer name.** The `customer` argument is not validated, so it can be any string,\n  including very long ones. The limiter's memory is keyed on it, so capping the length\n  would be a sensible follow-up.\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash",
+  "Edit"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-rate-limit",
+ "kind": "trigger",
+ "prompt": "Plan how to add per-customer rate limiting to placing orders. Save it to docs/plans/rate-limit.md. Do not change any code."
+}

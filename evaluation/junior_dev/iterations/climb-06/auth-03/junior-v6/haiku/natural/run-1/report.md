@@ -1,0 +1,38 @@
+## Review of auth-03 (junior-v6, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Section 1, step 2: stated that the rate-limit count includes every token row in the last 60 minutes, whatever its state, because each row is one email.
+- Section 1 notes: fixed a contradiction. The raw token was said to never be written to a table, but it sits in the email_jobs payload. It now says the token lives only in the reset job payload and never in password_reset_tokens.
+- Section 1 notes: limited padding to the /request endpoint, and placed the wait after COMMIT so the lock is not held during it.
+- Section 1: removed a stray partial diagram stub that duplicated the full diagram below it.
+- Section 2: added the missing opening steps. The reset page loads, its script reads and clears the fragment, calls /check, and chooses the form or the expired page from the answer.
+- Section 2 notes: explained that the live read on /complete is a fast exit and that the conditional UPDATE is the guard.
+- Section 2 notes: explained that a session is one row per device, and that deleting by user_id logs out every device as the brief requires.
+- Section 3 notes: wrote out the single live test (used_at IS NULL, superseded_at IS NULL, expires_at > now()) that the check, submit and worker all share.
+- Section 4 worker: the worker now hashes the raw token and looks up the row by token_hash before applying the live test. Added the crash-after-250-OK duplicate-send case. Added a separate changed-password job path with no token and no live check.
+- Section 4 notes: a superseded link shows the same expired page, with no reason given. A user's new request counts against the limit, while worker retries do not.
+- Data section: a changed-password job carries only the user id.
+- Open questions: added question 6 on how a claimed job is released after a worker crash, which the brief does not specify.
+- Request flow step 3: the reset job now lists its fields (user id, recipient address, raw token), so the worker knows where to send and what to send. (Q9)
+- Request flow notes: added that the worker builds the reset link from the raw token and the app base URL, and reads the address from the job. (Q9)
+- Failure paths, SUBMIT: the 500 row now says what the page shows and that the form stays open for a retry while the link is live. (Q10)
+- Data: the purge line now names a scheduled delete of rows older than 24 hours, and says that email_jobs is not touched and that the worker removes dropped jobs. (Q11)
+- Data, email_jobs: the reset job line now lists the user id, recipient address and raw token. (Q9)
+- Open question 6: added that a never-run job keeps its raw token in email_jobs. (Q11)
+- Open question 7 added: which existing scheduler runs the 24-hour purge, and how often. (Q11)
+- Summary: rewritten in plain words. The existing system is described first, as the rule requires. Corrected two claims from the first version: it said the change adds one email template and that nothing changes in the mail worker's retry rules. The design sends two emails (the reset link and the password-changed notice), and the worker gains one live check before sending a reset email.
+- Added a Terms section defining token, token hash, link and fragment, live link, supersede, burn, job, worker, transaction, row lock, rate window, normalised email, breached-password list and generic message.
+- Request flow: step 2 now states the count covers every token row in any state, so the limit counts emails. Steps are numbered with what starts each one, what it does, and what keeps its data. Notes explain why the design is shaped this way (one transaction, the Postgres queue assumption, padding only on /request).
+- Merged the link-click steps and the submit steps into one flow. Submit is split into lettered sub-steps (read, password check, burn, reset, finish). The two checks are explained as a quick exit plus the real guard. The first version's separate failure tree was folded into the combined diagram and the failure table.
+- Worker: merged the first version's worker failure tree and the changed-password job into one numbered list. Kept the skip of superseded and expired jobs, the retries that do not count, and the duplicate send after a crash.
+- Token lifecycle: kept the state diagram and the rule that only ISSUED is live. Removed repetition about the live test, which is now stated once in the Terms.
+- Failure table: replaces the failure tree. Every failure from the first version is kept, with what the user sees. Added the /request database-error case as a row, pointing to a new open question.
+- Data: kept every field, the index, the 24-hour retention, and the rule that no raw token, IP or user agent is stored in the token table. Added a note that the raw token sits in email_jobs until it is sent or dropped, which conflicts with the brief's rule that the raw token is never stored. Open question 2 covers it.
+- Added a separate Build and rollout section, so that how the system runs is kept apart from how it is built and rolled out.
+- Open questions: kept questions 1 to 7 with their content. Added question 8, on what the user sees when /request fails before COMMIT. The brief and the first version both leave this open, and it is the newcomer's next question.
+- Cut only repetition. The same facts (the 3-per-hour rule, the padding, the single-use link) now appear once, at the step where they apply. Nothing stated in the brief or in the first version was removed. The 128-character maximum stays as a stated value, and open question 4 still asks for a decision on it.
+
+### Holes
+- Q5: What happens if the worker crashes or times out after the provider returns 250 OK but before it deletes the job row? Does the user get a second email, and does the claim ever get released? (author: If the worker crashes after the provider returns 250 OK but before it deletes the job row, the same reset email, with the same link, can be sent a second time. The second copy is harmless because it is the same single-use token. Whether a claim is released after a crash, and when, is not in the brief. It depends on how the existing queue behaves, which I have not verified. Added the crash case to section 4 and open question 6.)

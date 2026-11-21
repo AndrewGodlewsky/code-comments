@@ -1,0 +1,315 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The Modes section says shadow-to-both and both-to-new_only are gated, yet 'the gates report eligibility; they do not move the mode'. What exactly does the person see when a gate is met, and what actually changes billing_mode when they approve?",
+     "about": "Gates and moves"
+    },
+    {
+     "id": "2",
+     "text": "What runs the automatic rollback? Something must watch the new engine's charge failure rate over 10-minute windows. Which component measures it, and which component executes the rollback steps and sets billing_mode?",
+     "about": "both --> RollbackFromBoth (auto if new-engine charge failures exceed 2 percent)"
+    },
+    {
+     "id": "3",
+     "text": "In the double-charge guard, where is the claimed key stored and how is the claim made atomic? Is it the ledger, the provider's idempotency key, or something else?",
+     "about": "Double-charge guard"
+    },
+    {
+     "id": "4",
+     "text": "In 'both', the new engine charges, and the old engine computes invoices into the shadow store. Which engine's invoice amount is actually charged, and what does the 'nightly job' compare in this mode?",
+     "about": "both"
+    },
+    {
+     "id": "5",
+     "text": "Rollback step 1 stops new-engine charge runs. How is that stopped when billing_mode is only set to old_only at step 5? Does the mode stay as 'both' during steps 1-4, and what do workers do in the meantime?",
+     "about": "RollbackFromBoth / Rollback steps"
+    },
+    {
+     "id": "6",
+     "text": "In RollbackFromNewOnly, what are 'skipped usage events'? Why did the old engine skip them, and what does replaying them produce (invoices in the shadow store)?",
+     "about": "NewOnlyReplaySkippedEvents"
+    },
+    {
+     "id": "7",
+     "text": "The doc says the old engine in new_only stops computing and its 'last shadow-store state is the base for any rollback'. How does step 4 charge from 'invoices already current' if the old engine stopped computing in new_only?",
+     "about": "new_only / From new_only"
+    },
+    {
+     "id": "8",
+     "text": "What happens if a rollback step fails or gets stuck, such as the provider being unreachable during 'check provider by idempotency key'? Who is alerted and does the state stay in the Rollback substate?",
+     "about": "RollbackFromBoth / BothResolveUnknownCharges"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The rollout record shows whether each gate is met, with its counts. The brief does not name a screen for this, so the surface is open. To move forward, a person sets billing_mode to the next mode in order, and only then does the mode change. The controller refuses any value that is not the next mode, and refuses a move whose gate is not met. Reason: the brief says moves go one step at a time, a person always makes them, and a bad write must not skip a gate. The gate is a check, not a switch."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The rollout controller measures it. Workers report every new-engine charge outcome to the controller. It counts failures over each 10-minute window. Above 2 percent, it starts the rollback and sets billing_mode to old_only. Reason: the brief has a rollout controller still to be written, and workers only read the flag. Holes: there is no minimum sample size (open question 1), and if the controller is down nothing triggers a rollback (open question 2). In new_only the flip waits for catch-up, so new charges continue during the replay (open question 3)."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The brief does not specify this. The claim is a row in the billing ledger's database, keyed by customer and billing period, with a unique constraint on that key. The insert is atomic: the first engine to insert wins, and the other gets a duplicate-key error and skips. The provider idempotency key uses the same customer-and-period key, as a second guard. Reason: the ledger is the system of record both engines already write to, and a unique constraint is an atomic claim. The provider key alone is not enough, because the provider only sees the charge after the engine has already decided to make it."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Checked against the brief. In both, the new engine's invoice is the one charged, because the new engine charges and writes the ledger. The nightly job compares the new engine's invoices against the old engine's invoices in the shadow store, per customer. The brief does not name the exact tables the job reads, so the plan does not give them."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "This changed the plan. The first version kept billing_mode at both through steps 1 to 4, so the new engine kept charging during the rollback. Now billing_mode is set to old_only first. Workers read the mode before each charge, so new-engine charges stop. Charges already sent finish or time out. While the rollback runs, the old engine charges only periods that have no charge claim, so it cannot charge over a period the new engine claimed. Reason: billing_mode is the only switch the brief gives. Catch-up, which applies only from new_only, runs before this flip, for the reason in Q7."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Skipped events are usage events that arrived while the rollout was in new_only, when the old engine stops computing. The old engine never computed them, so their invoices are missing from the shadow store. Replaying them means the old engine computes invoices for those events into the shadow store, without charging. Reason: the shadow store is where the old engine's invoices live, and the replay must not charge, because the new engine is still in charge until the flip."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Checked, and the first version was wrong. After new_only the old engine's last shadow state is not current, so step 4 could not charge from it. The fix: catch-up (the replay) runs before the flip, which brings the shadow store current. Only then does the old engine charge. The new_only path now says so. Checked against the brief, which requires the replay before a rollback from new_only, and against the 35-day log limit."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The rollback stays open in the rollout record until its last step. It is not closed and the gates are not reset. billing_mode stays where the last completed step left it: old_only once the flip has happened, or new_only if the replay failed before it. On-call is alerted. Periods with an unknown charge are held: neither engine charges them, and nobody retries them blind. A hold delays a charge but does not drop it. The brief gives no time limit for a hold, so that is open question 4. If the replay misses its deadline, the rollback is failed, the mode stays new_only, decommissioning is blocked, and on-call is alerted."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What makes a period 'due', and what actually runs the old engine's charging after the flip? Is it its normal scheduled run, or a special pass the rollback starts?",
+     "about": "Rollback / From both, step 5 (old engine charges every period that is due)"
+    },
+    {
+     "id": "10",
+     "text": "How does a person start a manual rollback, and who then runs steps 1 to 6? Is it the rollout controller, a person following the steps, or a script?",
+     "about": "Rollback (a person can start it by hand)"
+    },
+    {
+     "id": "11",
+     "text": "Usage events keep arriving while the replay runs. How does the replay know it has caught up, and what covers events that arrive between the end of the replay and the flip to old_only?",
+     "about": "From new_only, catch-up is a replay"
+    },
+    {
+     "id": "12",
+     "text": "What does 'mark the period as paid' change, and where? Does it update the ledger row or the charge claim? How does the old engine's later run then know to skip it?",
+     "about": "Rollback step 3 and 4 (mark the period as paid)"
+    },
+    {
+     "id": "13",
+     "text": "What are the steps an engine takes for one charge, in order? How do the claim insert, the call to the provider and the ledger charge record fit together, and what state is the claim in at each point?",
+     "about": "Double-charge guard: charge claim"
+    },
+    {
+     "id": "14",
+     "text": "If the provider shows no charge and the claim is released, what stops the new engine, whose charge runs may still be in flight, from claiming that period again before the old engine does?",
+     "about": "Unknown charge / Rollback step 3 (release the claim)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "A period is due when the existing billing schedule marks it to be charged and it has no claim in state claimed or charged. The brief does not define due, so it is open question 7. After the flip, the old engine's normal charge run charges due periods; no special pass runs. Reason: billing_mode is the only switch, and the normal run reads it before each charge, so the same run that charges in old_only charges after rollback."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "On-call asks the rollout controller to start a rollback, and the controller runs steps 1 to 6, the same as for an automatic rollback. Reason: the controller already owns automatic rollback, so manual and automatic share one path; the provider key check is scripted work. The brief says on-call starts it but not who executes it, so this executor is a design choice. Controller failure is open question 2."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The replay runs in passes, each computing the events that arrived after the last one computed. It is caught up when a pass finds no new events. Events arriving after that are computed and charged by the old engine's normal run after the flip to old_only, because old_only computes every event it reads. Reason: this needs no separate handoff step, and the claim check stops any double charge in the overlap. The stale-invoice concern is open question 3."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Marking paid updates the ledger's claim row to state charged and writes the charge to the ledger with the provider's result. The claim row is kept, not deleted. The old engine's later run skips any period whose claim is claimed or charged, so it skips the period with no extra flag. Reason: the claim is the one row both engines already check, so reusing it avoids a second paid marker."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "In order: read billing_mode; insert the claim as claimed (a duplicate-key error means skip); send the charge to the provider with the key; on success set the claim to charged and write the ledger; on timeout or crash leave the claim as claimed, which makes it an unknown charge that is held. The claim is released only by rollback step 3, after the provider shows no charge. Reason: the claim is inserted before the provider call, so the provider is never called for a period without a claim."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Two guards. First, rollback drains in-flight new-engine charges before the provider key check, so no new-engine charge can still be running when the claim is released. Second, the released row stays in the table: a late new-engine insert gets a duplicate-key error and skips, and after the flip the new engine does not charge at all. Only the old engine can take over a released row, with a conditional update that succeeds only if the state is released. Reason: the existing unique constraint does the work, so no new mechanism is needed."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "Rollback step 2 sets billing_mode to old_only, and step 3 then waits for in-flight new-engine charges. During that drain, the old engine's normal run is already allowed to charge. How does it avoid charging a period whose new-engine charge is still in flight?",
+     "about": "Rollback / From both, step 2 (Set billing_mode to old_only) and step 3 (Drain)"
+    },
+    {
+     "id": "16",
+     "text": "How does the controller know that no new-engine charge is in flight? Does each worker report when it starts and finishes a charge, or does the controller infer it some other way?",
+     "about": "Drain: wait until no new-engine charge is between its mode check and its outcome"
+    },
+    {
+     "id": "17",
+     "text": "In shadow, the old engine charges and the new engine only writes to the shadow store. What does the nightly job do with an old-engine invoice that has already been charged? Where does the old engine's invoice live in shadow, and where does it live from both on?",
+     "about": "shadow / Shadow store"
+    },
+    {
+     "id": "18",
+     "text": "The 35-day clock starts when the rollout enters new_only, and rollback from new_only is allowed until day 35. How does that fit with the usage event log keeping only 35 days of events, given that the replay must finish before the oldest skipped event expires? What is the practical deadline for a manual rollback near day 34?",
+     "about": "new_only --> Decommissioned and Replay Deadline"
+    },
+    {
+     "id": "19",
+     "text": "In step 5 the old engine charges due periods using invoices in the shadow store. In both, the new engine's invoice was the one charged. If the old engine's invoice for a period differs from the new engine's, which amount does the customer end up paying after rollback, and what about periods already marked paid?",
+     "about": "Rollback step 5 (Old engine charges due periods) and Invoice mismatch"
+    },
+    {
+     "id": "20",
+     "text": "How does a person set billing_mode, and how does the controller refuse a bad value? Is the controller sitting in front of the config service, or does it watch the flag afterwards and revert it? Also, how does the controller set billing_mode to old_only in rollback if a person normally sets it?",
+     "about": "Moving forward / Rollout controller / Config service"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "During the drain, the old engine's normal run may charge, but only a period with no claim or with a released claim. It skips any period whose claim is claimed or charged, so a period with an in-flight new-engine claim is skipped. If both engines race on a period, the first claim insert wins and the other gets a duplicate-key error and skips. This was checked against the plan's double-charge guard and rollback step 5. No code exists yet to test it. Rollback step 2 now says this."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Each worker reports to the controller when a new-engine charge passes its mode check (start) and when its outcome is known (end). The controller treats a start with no end as in flight, and the drain waits for those. The claim table cannot show this alone, because a crashed charge also stays claimed. This reuses the outcome reports decided in Round 1 (A2). The transport, storage and timeout for these reports are not specified and are open question 5."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "In shadow, the old engine charges and writes the ledger, so the nightly job reads the old invoice from the ledger and the new invoice from the shadow store. From both on, the new engine's charged invoice is in the ledger and the old engine's invoice is in the shadow store, so the job reads each from there. The job only reports. It does not change any charge. The reason is that the brief has the old engine write the ledger and the new engine never write it. The brief does not name the tables, so this is a choice."
+    },
+    {
+     "id": "18",
+     "tag": "unknown",
+     "text": "The oldest skipped event arrived about when the rollout entered new_only, so it leaves the 35-day log about day 35. The replay must finish before then, so a rollback started near day 34 has about a day for the replay. How long a replay takes is not known, so the practical last start day is not known. The plan does not set a safe start day. This is open question 7."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "For a period the new engine already charged, the customer keeps the amount that was charged. Step 4 marks it paid, and the old engine does not charge it again. For a due period that nobody charged, the old engine charges its shadow-store invoice, so the old amount applies. The brief does not say whether a difference on a paid period is corrected by refund or credit. That is open question 8. The reason is that the rules forbid a second charge on a paid period, and step 5 says due periods use the shadow store."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "A person submits the next mode through the rollout controller. The controller checks that the value is the next mode and that the gate is met, and only then writes billing_mode to the config service. A bad value or an unmet gate is refused and the flag is not written. In rollback, the controller writes old_only itself as part of the steps. This changes the earlier text that said the controller does not change the mode. Whether the config service also blocks direct writes is open question 6. The controller can refuse a bad value only if it sits in front of the write."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "21",
+     "text": "In 'shadow', the old engine is the one charging. What does the new engine do about the claim table there? Does it insert claims, or only write to the shadow store?",
+     "about": "shadow / Each charge"
+    },
+    {
+     "id": "22",
+     "text": "Rollback step 5 says the old engine takes over a 'released' claim. Who changes a released row back to claimed, and what state is the row in after the old engine charges it (claimed, then charged)?",
+     "about": "Rollback step 5 (Old engine charges due periods)"
+    },
+    {
+     "id": "23",
+     "text": "A period is 'held' while its claim is claimed with an unknown charge. If the provider check shows a charge, step 3 sets it to charged. What if the check happens when no rollback is running, such as an unknown charge in plain 'both' or 'old_only'? Who settles it then?",
+     "about": "Unknown charge / Held period"
+    },
+    {
+     "id": "24",
+     "text": "When the automatic rollback fires from 'both', the old engine has been computing invoices into the shadow store. How does a person or the controller know the old engine's shadow invoices are current before step 5 charges from them? Is 'Catch-up' in step 1 a real check or just 'usually empty'?",
+     "about": "RollbackFromBoth / BothCatchUp"
+    },
+    {
+     "id": "25",
+     "text": "Day 35 in new_only: what exactly happens when the old engine is 'retired'? Who does it, and what is removed or stopped?",
+     "about": "new_only --> Decommissioned"
+    },
+    {
+     "id": "26",
+     "text": "The drain waits for a new-engine charge with a start report and no outcome report. If the new engine's worker crashed after the start report, how long does the drain wait before treating it as unknown, and who decides?",
+     "about": "Drain / Drain waits on a stuck new-engine charge"
+    }
+   ],
+   "answers": [
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "In shadow the new engine never charges, so it stops at the mode check in step 1 of each charge and inserts no claim. It writes only its invoices to the shadow store. Checked against the Each charge rules and the shadow description. A line saying so was added to the shadow notes."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The old engine itself does it. Its conditional update changes a released row to claimed, then it charges, and on success sets the claim to charged. The claim states follow the same steps as every other charge. The first version left the state after takeover unstated, so rollback step 5 now says it."
+    },
+    {
+     "id": "23",
+     "tag": "unknown",
+     "text": "The plan has no settle path for an unknown charge outside a rollback, and the brief does not give one. The period stays held until a provider check settles it, but nothing names who runs that check in plain both or old_only. The gap is noted under each-charge step 5 and open question 4."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The first version had no real check, only usually empty. Catch-up from both now runs passes until a pass finds no new events, the same check the replay uses, so there is one rule for both paths. Reason: a single check is simpler and the replay already defines it. Changed in rollback from both, step 1."
+    },
+    {
+     "id": "25",
+     "tag": "unknown",
+     "text": "The brief does not say what retiring the old engine involves, such as which jobs stop or what code or data is removed. The plan only says it can no longer return to old_only. This is added as open question 12, and step 4 now says the brief does not cover it."
+    },
+    {
+     "id": "26",
+     "tag": "unknown",
+     "text": "The brief sets no time limit for a drain that waits on a charge with a start report and no outcome report, and it does not say who would decide one. The plan has no answer. It is added to open question 5, next to the missing outcome-report question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one customer-period charge through the rollout, ending with a rollback from `both`.\n\n1. A person asks the rollout controller for the next mode. The rollout starts in `old_only`, and the one flag `billing_mode` in the config service selects the mode. The modes run in the order `old_only`, `shadow`, `both`, `new_only`. For `shadow` there is no gate. The controller records the request and writes `billing_mode`. If the config write fails, the mode stays unchanged and the move is not recorded as done. The flag lives in the config service, and the controller is the one that writes it.\n\n2. In `old_only`, the old engine does all the work. It reads usage events from the usage event log, computes invoices, writes them to the billing ledger and charges through the payment provider. The new engine is off.\n\n3. In `shadow`, the old engine still charges as before. The new engine reads the same events and writes its invoices to the shadow store. It never charges and never writes the ledger. Each worker reads `billing_mode` before a charge decision, and the new engine stops at that check, so it writes no claim. A nightly job compares the old invoice (read from the ledger) with the new one (read from the shadow store) per customer, in integer cents. A difference of more than 1 cent, or an invoice that exists in only one engine, is a mismatch. The job only reports and never changes a charge. The controller records each day's counts.\n\n4. To move to `both`, a person requests `both`. The controller checks the gate: 7 consecutive days each under 0.1 percent mismatch rate, and at least 5,000 invoices compared in total over those days. A bad day resets the streak. A day with no complete comparison does not count. If the gate isn't met, or the value isn't the next mode, the request is refused and the flag is unchanged. If it passes, the controller writes `billing_mode` = `both`.\n\n5. In `both`, the new engine charges and writes the ledger. The old engine stops charging but keeps computing every invoice into the shadow store. The nightly comparison now reads the new invoice from the ledger and the old one from the shadow store.\n\n6. One charge, step by step.\n   - **Read the mode.** The worker reads `billing_mode` from the config service. An engine whose mode doesn't allow charging stops here. The new engine also reports its charge start to the controller.\n   - **Insert the claim.** The engine inserts a row in the ledger's database keyed by the charge key (customer plus billing period), with state `claimed`. The key has a unique constraint, so only one insert succeeds. A duplicate-key error means skip the charge, so only one engine charges.\n   - **Send the charge.** The engine sends it to the payment provider with the charge key as the idempotency key, so the provider won't charge twice for the same key.\n   - **On success.** The claim is set to `charged` and the charge is written to the ledger. The new engine reports its outcome to the controller.\n   - **On timeout or crash.** The claim stays `claimed`. This is an unknown charge, and the period is held. Neither engine charges it until a provider check settles it.\n   - **Config service unreachable for workers.** Workers keep the last mode they applied and alert. They never fall back to a default.\n   - **Mode flips mid-run.** If the new engine read `both` before a flip but inserts its claim after it, the claim still decides. The engine that inserts first charges, and the other skips.\n\n7. To move to `new_only`, a person requests it. The gate needs 14 days in `both` with no unresolved mismatches, and Finance sign-off recorded. An unresolved mismatch blocks the move but starts no rollback. In `new_only`, the new engine does everything and the old engine stops computing. Usage events keep arriving in the log, and the 35-day clock starts. The events the old engine doesn't compute are the skipped events.\n\n8. At day 35 in `new_only`, if no rollback has started, the old engine is retired (Decommissioned) and there is no way back.\n\n9. A rollback can start in three ways.\n   - On-call asks the controller, from `shadow`, `both`, or `new_only` up to day 35.\n   - The controller starts one itself from `both` or `new_only` if the new engine's charge failure rate is above 2 percent over any 10-minute window.\n   - New-engine errors in `shadow` never start one.\n   - The controller records the rollback in the rollout record and runs the same steps however it started. Every rollback ends in `old_only`.\n\n10. Rollback from `shadow`. The new engine has charged nothing. The controller sets `billing_mode` to `old_only` and resets the gates.\n\n11. Rollback from `both`, which has six steps.\n    - **Catch-up.** Run catch-up passes until a pass finds no new events. This usually finds nothing, because the old engine has stayed current.\n    - **Set the flag.** Set `billing_mode` to `old_only`. New-engine runs stop at their next mode check, and charges already sent finish or time out. The old engine may now charge, but it skips any period whose claim is `claimed` or `charged`.\n    - **Drain, then settle.** Wait until no new-engine charge is between its start report and its outcome report. Then, for each unknown charge, check the provider by charge key without retrying blind. If the provider shows a charge, set the claim to `charged` and write the charge to the ledger. If it shows none, set the claim to `released`.\n    - **Mark paid.** Periods the ledger shows as charged by the new engine are paid. Their claims are already `charged`, so the old engine skips them. No separate marker is written.\n    - **Old engine charges due periods.** The old engine's normal run charges each due period with no charge, using invoices in the shadow store. For a `released` claim it takes over with a conditional update that only succeeds if the state is still `released`, and sets it to `claimed`. If there is no claim, it inserts one. Then it charges as in step 6 and sets the claim to `charged`.\n    - **Close.** Record the close and reset the gates.\n\n12. Rollback from `new_only`. First run the replay, where the old engine recomputes the skipped events into the shadow store without charging, in passes, until a pass finds no new events. The new engine keeps charging during the replay. Then do steps 2 to 6 from the `both` rollback. If the replay can't finish before the oldest skipped event leaves the 35-day log, the rollback fails. `billing_mode` stays `new_only`, decommissioning is blocked and on-call is alerted.\n\n13. Other failures.\n    - If the provider is unreachable during the key check, the period stays held, there is no retry, the rollback stays open and on-call is alerted.\n    - If the comparison job or shadow store fails, that day doesn't count toward the streak, and there is no rollback but an alert.\n    - If the controller is down, no automatic or manual rollback can start.",
+   "gaps": [
+    "How the charge start and outcome reports reach the controller and where they are stored is not stated, yet the drain and the 10-minute failure rate depend on them.",
+    "How long the drain waits on a charge with a start report and no outcome report before treating it as unknown, and who sets that limit, is not stated.",
+    "Who runs the provider check for an unknown charge outside a rollback (in `both`, or in `old_only`) is not stated, so a held period there has no named resolver.",
+    "How a worker or the controller learns that a flag write by the controller succeeded or that workers pick up the new mode is not described beyond workers reading before each charge. Whether the config service can be written bypassing the controller is also an open question.",
+    "What triggers the old engine's normal charge run, and how it identifies which periods are due, is not described. 'Due' is only an assumption (the existing billing schedule).",
+    "What catch-up passes and replay mechanically read as 'events not yet computed' (for example a checkpoint, and where it is stored) is not stated.",
+    "What 'retiring' the old engine at day 35 involves is not stated.",
+    "How the nightly comparison decides a day has a 'complete comparison', and how it gets into the rollout record, is not specified.",
+    "Where the failure-rate measurement gets its charge failure data, and the minimum sample size for the 2 percent trigger, are not given.",
+    "Whether a customer is refunded or credited when the new engine's charge differs from the old engine's invoice is not stated.",
+    "How an 'unresolved mismatch' in `both` gets resolved, and who marks it resolved, is not stated.",
+    "How and by whom Finance sign-off is recorded is not stated."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

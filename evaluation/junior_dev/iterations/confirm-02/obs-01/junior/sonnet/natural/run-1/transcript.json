@@ -1,0 +1,175 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The scheduler fires every 60s and sends tick T to both evaluators. What is the 'Scheduler' here, and what happens to a tick if an evaluator is down or late when it fires?",
+     "about": "Scheduler (every 60s) / Detection"
+    },
+    {
+     "id": "2",
+     "text": "How is 'breaching 3 consecutive' counted? Is it read from the last 3 evaluation rows, or from a breach_count? What happens if a tick is missing (store failure) in between?",
+     "about": "Streaks, opening an incident"
+    },
+    {
+     "id": "3",
+     "text": "The incident insert uses ON CONFLICT DO NOTHING. If it does nothing, are the escalation steps still written? How does that fit with the evaluation insert already making only one evaluator the winner?",
+     "about": "INSERT incident ON CONFLICT DO NOTHING / INSERT escalation_step"
+    },
+    {
+     "id": "4",
+     "text": "Step L1 is due at opened_at, so is the first page sent within about 5 seconds of the incident opening? And which 'person' does each level (primary, secondary, manager) map to?",
+     "about": "Escalation, each level runs the same way"
+    },
+    {
+     "id": "5",
+     "text": "The step is marked done before the send happens. Who then sends the page and retries it if the worker crashes or both channels fail? Is it the same loop or a separate process, and what is the lease?",
+     "about": "INSERT notification (page, person), step = done / Worker crashes mid-send"
+    },
+    {
+     "id": "6",
+     "text": "What does an acknowledgement stop, and what does it not stop? After an ack, does the incident stay open until 10 healthy evaluations, and are anyone else told?",
+     "about": "4. Acknowledgement"
+    },
+    {
+     "id": "7",
+     "text": "How does the webhook find which incident an ack belongs to, and what does 'signed' protect against?",
+     "about": "Ack webhook (notification id, signed)"
+    },
+    {
+     "id": "8",
+     "text": "The resolved notice goes to each person paged. How do the resolved notice rows get sent and retried, and how is the unique key (incident, level, kind) used for them since they are not tied to a level?",
+     "about": "Resolution / notification outbox"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "There is no separate scheduler. Each evaluator runs its own once-a-minute timer and computes tick T from the wall clock (the minute rounded down), so both name the same tick. If one is down or late, the other handles the tick; a tick nobody handled is backfilled in order (up to 15 minutes back). I chose this to avoid a single scheduler that could itself fail."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "It is read from the last 3 evaluation rows (ticks T-2, T-1, T). breach_count is only a tally of breaches recorded on an open incident, for audit. A missing tick row breaks the run, so the count restarts after the gap, unless backfill fills it in first. Only healthy_streak is stored. The diagram's old 'reset breach streak' wording was wrong and is fixed."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "If the incident insert does nothing, the escalation steps are not written. Steps are written only when the insert created a row. The evaluation insert makes one evaluator the winner for a tick; the partial unique index is a second guard for other cases, such as a backfill or a later tick trying to open a second incident while one is open."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. L1 is due at opened_at and workers poll every 5 seconds, so the first page goes out within about 5 seconds. Level 1 is the primary, level 2 the secondary and level 3 the engineering manager. Both points are now in the file."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The worker that creates the notification row sends it right away, holding a 60-second lease written on the row. A send loop in every worker also claims rows that are pending, failed and due for retry, or whose lease has expired, with FOR UPDATE SKIP LOCKED. It is the same worker process but a separate loop from step claiming. The 60 seconds is my choice, not from the brief."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "An ack cancels the pending escalation steps. It does not resolve the incident. The incident stays open until 10 healthy minutes, and breaches are still counted on it. Nobody else is told at ack time. Everyone paged gets the resolved notice when it resolves."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The webhook carries the notification id. The handler finds the notification row, and from it the incident and person. 'Signed' means the provider signs the request with a shared secret and the handler rejects bad signatures, so a forged ack cannot silence escalation. This assumes the provider echoes our id and signs requests; I could not verify that, so it is listed under open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Resolved notice rows are sent and retried by the same send loop as pages, with the same lease and retry rules. Each resolved row copies the level of the page it follows, so the unique key (incident, level, kind) works: one resolved notice per page sent."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The diagram says due T and the text says opened_at. Is opened_at the tick T or the real time of the insert? If a backfilled tick opens an incident, are its due times in the past, so all three levels fire at once?",
+     "about": "Escalation steps L1 due T, L2 due T+5m, L3 due T+10m"
+    },
+    {
+     "id": "10",
+     "text": "What happens when the retry cap is reached? Does the row stay failed forever, and does anyone get told that a person was never reached?",
+     "about": "Push and SMS both fail / send loop retries with backoff up to a cap"
+    },
+    {
+     "id": "11",
+     "text": "If a tick is missing while an incident is open, does healthy_streak keep its value, reset, or wait for the backfill? What does the incident do if the metrics store is down for a long time?",
+     "about": "5. Resolution, healthy_streak reaches 10"
+    },
+    {
+     "id": "12",
+     "text": "When an ack arrives after a prior ack or after resolution, where is it recorded for audit? Which table or column holds it, given incident has only one acked_by and acked_at?",
+     "about": "Ack and escalation race / acknowledgement records"
+    },
+    {
+     "id": "13",
+     "text": "What is cached, and where? If the schedule is down and no cached holder exists for that role, what does the worker do with the step?",
+     "about": "On-call schedule service is down / last known holder, cached with each tick"
+    },
+    {
+     "id": "14",
+     "text": "When there is no incident open and an evaluation is healthy or in the 1% to 2% band, is anything stored besides the evaluation row? How does that evaluation affect the run of 3 breaching ticks?",
+     "about": "Evaluation: breaching = rate above 2% and requests at least 500"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "opened_at is the database clock time of the incident insert, not the tick T. The diagram wrongly said due T; it now says opened_at, opened_at+5m, opened_at+10m. So an incident opened by a backfilled tick still gets due times in the future and the levels never fire at once."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "At the retry cap (5 attempts, my choice) the row stays failed for good and is visible in audit data. Nobody is told separately. Escalation has already moved on by its fixed schedule, which covers an unreached person. If level 3 fails, nobody is left; I listed that as a known gap in open questions because the brief gives no extra channel."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "A missing tick resets healthy_streak to 0 when the next evaluation is written, because 10 consecutive healthy minutes cannot be confirmed across a gap. Backfill in order fills gaps first when it can (up to 15 minutes). If the metrics store is down for long, the incident stays open and escalation carries on, since it does not use metrics; auto-resolve waits until evaluations resume."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "I added an ack_log table: one row per ack webhook, with notification, person, received_at and applied or ignored. incident.acked_by and acked_at hold only the first applied ack. The failure table and diagram now name it."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "I replaced the vague 'cached with each tick' with an oncall_cache table (service, role, person, fetched_at), written on every successful schedule lookup. If the schedule is down and no cache entry exists, the step stays pending and is retried every poll; the other levels still fire on their own fixed times and an ack or resolution cancels it. Late level 1 paging after level 2 is accepted."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing is stored besides the evaluation row when no incident is open and the evaluation is healthy or in the 1% to 2% band. That row has breaching false, and since the 3-in-a-row check reads the last 3 evaluation rows, it breaks the run. If an incident is open, healthy_streak is updated as described. I added this branch to the diagram and a sentence to the text."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Tick start. Each of the two evaluator instances has its own once-a-minute timer. There is no scheduler service. A \"tick\" is the wall-clock minute rounded down, so both instances name the same tick T without talking to each other. If one instance is down or late, the other handles the tick.\n\n2. Measuring. Each evaluator asks the metrics store for requests and 5xx counts over the trailing 5 minutes ending at T. Rate is 5xx divided by requests. Breaching means the rate is above 2% and there are at least 500 requests. Healthy means the rate is below 1%, even with zero requests. Anything else, such as a rate between 1% and 2% or a rate above 2% on fewer than 500 requests, is neither. If the metrics query fails, no evaluation row is written for that tick. The gap counts as neither breaching nor healthy, and later ticks backfill it in order, up to 15 minutes back.\n\n3. Picking the winner. Each evaluator opens a transaction and runs INSERT evaluation (service, rule, T) ON CONFLICT DO NOTHING. The evaluation table is unique on (service, rule, tick). The first insert wins. The other instance's insert waits for the winner to commit, gets a conflict, rolls back and skips the tick. The winner does everything else for this tick inside the same transaction. Nothing important is held in memory, and no leader exists.\n\n4. Streaks and the incident decision. The winner reads the last 3 evaluation rows (T-2, T-1, T) and any unresolved incident for (service, rule). \"3 consecutive\" comes from those rows, not from a counter. A missing tick row or a non-breaching row breaks the run. The cases are:\n   - Not breaching and no unresolved incident: only the evaluation row is stored.\n   - Not breaching with the rate between 1% and 2% and an incident open: healthy_streak is reset.\n   - Breaching but fewer than 3 consecutive and no incident: the evaluation is recorded and no incident is opened.\n   - Breaching, 3 consecutive and no unresolved incident: the incident is inserted with opened_at set to the database clock, ON CONFLICT DO NOTHING. A partial unique index allows only one open incident per (service, rule). Only if the incident row was actually created, the same transaction inserts three escalation_step rows. L1 is due at opened_at, L2 at opened_at+5m and L3 at opened_at+10m. The transaction then commits.\n   - Breaching with an incident already unresolved: breach_count is incremented and healthy_streak set to 0. No step or page is created.\n\n5. Escalation polling. A worker loop runs in both instances every 5 seconds. It claims one due, pending escalation_step using FOR UPDATE SKIP LOCKED, so exactly one worker handles each step. The first page therefore goes out within about 5 seconds of the incident opening. The worker begins a transaction and locks the incident row.\n\n6. Cancel check. If the incident is already acknowledged or resolved, the worker sets the step to cancelled and commits. No page is sent.\n\n7. Who to page. Otherwise the worker asks the on-call schedule service who holds the role for level N right now (1 primary, 2 secondary, 3 manager). The lookup happens at page time, not at incident open, so a 09:00 handover mid-incident pages the new holder. A successful answer is also saved in oncall_cache. If the schedule service is down, the worker retries a few times and then uses the cached person. If there is no cache entry, the step stays pending and is retried on every poll. Later levels still fire on their own fixed times, and an ack or resolution cancels the step.\n\n8. Creating the notification. The worker inserts a notification outbox row (kind page, level, person). The row is leased to this worker for 60 seconds, and its id is the provider's idempotency key. The step is marked done and the transaction commits before anything is sent. A slow or failed send therefore cannot delay the next level, because due times are absolute and fixed.\n\n9. Sending. The worker sends a push through the paging provider with the notification id as the key. If the push fails it sends an SMS right away with the same key. It then records the state and channel used on the notification row. If both fail, the row is marked failed.\n\n10. Retries. A separate send loop runs in every worker. It claims, with SKIP LOCKED, any notification that is pending, or failed and due for retry, or whose 60-second lease has expired. It takes a new 60-second lease and sends again. Retries back off and stop after 5 attempts. A row at the cap stays failed, visible only in audit data. If a worker crashes mid-send, the lease expires and another worker retries with the same key. A duplicate page is possible if the provider ignores keys, and the design accepts that.\n\n11. Next levels. With no acknowledgement, L2 becomes due at opened_at+5m and L3 at opened_at+10m, and each runs steps 5 to 10. L3 is the last level. Nothing is re-paged after it, and the incident stays open until it resolves.\n\n12. Acknowledgement. The provider delivers the page to the responder as a push or SMS. The responder taps Acknowledge, and the provider calls our webhook with the notification id, signed with a shared secret. The handler verifies the signature and rejects unsigned or wrongly signed requests. It then opens a transaction, finds the incident through the notification id and locks the incident row.\n   - If the incident is open and not yet acknowledged, the handler sets acked_by and acked_at, cancels all pending steps, inserts an ack_log row marked applied and commits. The incident stays open.\n   - If the incident is already acknowledged or resolved, the handler inserts an ack_log row marked ignored and changes nothing else.\n   - The handler returns 200 OK. The provider retries until it gets one, and the handler is idempotent.\n   - If the ack and an escalation race, both lock the incident row. If the ack commits first, the escalation sees acked_at and cancels. If the escalation commits first, the page goes out, which is the one tolerated duplicate. The ack still cancels everything after it.\n\n13. Resolution. On later ticks the winning evaluator inserts its evaluation row and updates the incident's healthy_streak. The streak goes up by 1 if the rate is below 1%. It resets to 0 if the rate is 1% or higher, or if a tick was missing before this one. When healthy_streak reaches 10, the same transaction sets status to resolved and cancels pending steps. It also inserts a \"resolved\" notification for each person already paged, copying the level of that person's page row, and then commits. If nobody was paged, no notices are created. The send loop then sends each resolved notice, push first and SMS if the push fails. The notices go to the people recorded on the page rows, not to whoever is on call now. If the incident resolves before any ack, escalation stops there.\n\n14. After resolution. A later breach finds no unresolved incident. After 3 consecutive breaching evaluations it opens a new incident, and the cycle starts again.\n\n15. Failure notes outside the main flow. If one evaluator is down, the other carries on unchanged. If the metrics store stays down, an open incident stays open and escalation continues, because escalation does not use metrics. Auto-resolution waits until evaluations resume. If the ack webhook is down, the provider retries and escalation may page the next level in the meantime. If level 3 never reaches anyone, nothing else alerts a human. The document lists this as a known gap.",
+   "gaps": [
+    "The document does not say how the scheduler or timer is kept aligned with the wall clock. Each instance has its own timer, and nothing says how a late or skewed timer picks its tick.",
+    "It does not say how the 'backfill' of missing ticks is triggered or discovered. Which component does it, when, and how it finds which ticks are missing is not described. The 15-minute limit is the only detail given.",
+    "It does not say how the person recorded on a notification is mapped to a push or SMS destination. Nothing says where the provider gets the device or phone number, or whether the schedule service returns it.",
+    "It does not say how the ack handler matches the tapping responder to the person, or how acked_by is set, beyond 'from the notification row'.",
+    "It does not say what 'retry a few times' means for the schedule service, including the count and delay. These values would be needed to know how long a level can be delayed.",
+    "It does not say what the retry backoff intervals are. Only the 5-attempt cap is given."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

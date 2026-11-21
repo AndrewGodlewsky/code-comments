@@ -1,0 +1,167 @@
+# Plan: move `users` from MySQL 8 to Postgres 16 with no downtime
+
+## Summary
+
+Today, every read and write of `users` goes through `UserRepository` and hits MySQL (reads use the replica). We will add Postgres behind the same class. First we mirror writes into Postgres, then copy old rows, then move reads, then move the source of truth, and finally retire MySQL. A durable outbox repairs anything the mirror misses. A one-row "authority" table in each database makes the source-of-truth switch safe even when instances disagree about flags.
+
+## Terms
+
+- **Source of truth**: the database whose commit decides whether a write succeeded.
+- **Mirror**: the other database. It receives a copy after each write.
+- **Write mode** (flag `users.write_mode`): `mysql` (MySQL only), `dual` (MySQL is the source, Postgres the mirror), `dual_pg` (Postgres is the source, MySQL the mirror), `pg` (Postgres only).
+- **Read percentage** (flag `users.read_pg_pct`): the share of reads, bucketed by user id, that go to Postgres.
+- **Outbox**: the table `users_sync_outbox(seq, user_id, enqueued_at)` in the source database. A row means "this user still needs copying to the mirror". It is written in the same transaction as the write.
+- **Drainer**: the `sync-drainer` process. It reads outbox rows (`FOR UPDATE SKIP LOCKED`, so several can run) and copies each user to the mirror. In `dual_pg` mode the same job runs from Postgres to MySQL and is called the reverse drainer.
+- **Tombstone**: a row in `users_erased(id)` for an erased user. Tombstones are never removed and ids are never reused.
+- **Authority row**: the one-row table `users_authority(holder)` in each database. It says which database may be written.
+- **Apply rule**: the only way a row is copied into a database. It is skipped if the id has a tombstone. Otherwise it inserts the full row, or replaces the existing row only when the stored `version` is lower than the incoming one (`ON CONFLICT (id) DO UPDATE ... WHERE users.version < EXCLUDED.version`). Equal versions are never replaced. Dual write, backfill, repair, reverse sync and the comparison pass all use it.
+
+## How the system runs
+
+### Writes (create, update, delete)
+
+1. **Start**: any write request.
+2. **Fence**: the transaction begins by reading the authority row with `FOR SHARE`. If `holder` is not the database this instance's mode expects to write, the transaction aborts and the caller gets a retryable 503 with `Retry-After`. Reads are never fenced.
+3. **Commit**: in one source transaction, the write runs and an outbox row is inserted. Create and update re-select the committed row so the mirror gets the full row.
+4. **Mirror inline**: after commit, one attempt applies the row to the mirror (300 ms timeout). On success it deletes its outbox row. On failure it ignores the error and the outbox row stays. After a mirror failure, a circuit breaker skips inline attempts for 10 s.
+5. **Repair**: the drainer reads the current row from the source primary (never a replica) and applies it to the mirror. If the row is gone, it applies a delete. It retries forever with backoff and deletes the outbox row only on success.
+6. **Alerts**: page if the oldest outbox row is older than 60 s, or if the outbox keeps growing.
+
+Why not the job queue: it needs Redis, `enqueue` can raise, and dead-lettered jobs are never processed. It cannot promise automatic repair.
+
+A Postgres failure never fails a request. It only grows the outbox.
+
+### Deletes (erasure job only)
+
+1. Best effort, write the tombstone to the mirror first. Ignore a failure.
+2. In one source transaction, delete the row and insert an outbox row.
+3. Delete the row in the mirror in the same transaction that writes its tombstone. Inline apply and the drainer both do this.
+
+Backfill re-reads each batch from the primary and skips ids that are missing or have a pending outbox row. An erased row could only come back if both mirror steps failed and a backfill batch landed in between. The drainer closes that gap within seconds, and the outbox alert covers it.
+
+### Reads
+
+Reads go to the MySQL replica until `users.read_pg_pct` is raised. A Postgres read has a 200 ms timeout. On an error or a miss it falls back to the MySQL replica, so reads never fail.
+
+### Switching the source of truth
+
+Flags can differ between instances for up to 30 s, so the authority row decides. The switch runs `UPDATE users_authority SET holder = ...`. That takes an exclusive lock, so it waits for in-flight writes and blocks new ones. Once it commits, no instance can write the old source, whatever its cached flag says. Blocked writers get the 503 above.
+
+### Where state lives
+
+- Backfill cursor, comparison results and switch timestamps: Postgres table `migration_state`. The cursor moves in the same Postgres transaction as the batch it covers.
+- Repair state: the outbox in the source database.
+- Who may write: the authority rows.
+
+### New ids after the switch
+
+Postgres `users.id` is `BIGINT GENERATED BY DEFAULT AS IDENTITY`. Copies carry explicit ids. During each switch pause, with writes fenced and the outbox drained, run `setval(seq, GREATEST(MySQL AUTO_INCREMENT, max(pg id)) + 1000)`. On rollback MySQL accepts explicit ids and InnoDB moves its AUTO_INCREMENT past them.
+
+## Rollout steps
+
+Do them in order. A step starts only when the previous one is done.
+
+- [ ] **0. Rehearse in staging**
+  - **Starts when**: before any production change.
+  - **What it does**: run the whole plan on a staging copy, including a rollback. Measure the switch pause and the rollback pause. Both must be well under 90 s.
+  - **State**: none.
+  - **If it fails**: fix the plan or code. Do not proceed.
+
+- [ ] **1. Create the schema (additive only)**
+  - **Starts when**: a reviewed migration is run by hand.
+  - **What it does**: in Postgres, create `users` (same columns, unique `email`, identity id), `users_erased`, `users_sync_outbox`, `users_authority` (holder `mysql`) and `migration_state`. In MySQL, create `users_sync_outbox`, `users_authority` (holder `mysql`) and `users_erased`. The MySQL `users` table is untouched.
+  - **State**: the new tables.
+  - **If it fails**: every statement uses `IF NOT EXISTS`. Fix and re-run. Nothing reads these tables yet.
+
+- [ ] **2. Deploy the new repository and `sync-drainer` with `users.write_mode=mysql`**
+  - **Starts when**: a normal rolling deploy.
+  - **What it does**: the repository gets the authority check and all four modes. In `mysql` mode it behaves as today, plus the authority read. The drainer runs but is idle.
+  - **Done when**: no old-build instance runs, and every instance exports `app_flag_value{flag="users.write_mode"}`.
+  - **State**: none new.
+  - **If it fails**: roll back the deploy. Behavior is unchanged.
+
+- [ ] **3. Turn on dual writes: set `users.write_mode=dual`**
+  - **Starts when**: step 2 is done and the inline Postgres success rate is proven in staging.
+  - **What it does**: every write now follows the write path above.
+  - **State**: the MySQL outbox.
+  - **If it fails**: a Postgres failure only grows the outbox. Before the backfill starts, setting the flag back to `mysql` is safe, because the backfill will cover everything. After the backfill starts, never go back to `mysql`, or Postgres will drift. Fix forward.
+
+- [ ] **4. Confirm every instance is dual-writing and record a baseline**
+  - **Starts when**: at least 60 s after step 3, plus 2 minutes for requests already in flight.
+  - **What it does**: check that the number of instances reporting `dual` equals the number running, that the dual-write success rate is at least 99%, and that the oldest outbox row is under 60 s. Then save the primary's `gtid_executed` (or binlog file and position) in `migration_state.backfill_baseline`.
+  - **State**: `migration_state`.
+  - **If it fails**: wait and re-check. Restart or remove a stuck instance. Do not start the backfill until every instance is confirmed.
+
+- [ ] **5. Backfill**
+  - **Starts when**: step 4 is done, the replica has applied the saved baseline (`WAIT_FOR_EXECUTED_GTID_SET`), and `mysql_replica_lag_seconds` is at most 5. The baseline wait matters because otherwise the backfill could read a row older than one written before dual writes began.
+  - **What it does**: one process runs at a time, guarded by a Postgres advisory lock. Before each batch it pauses while `mysql_replica_lag_seconds` is above 5 or missing. A batch reads at most 2,000 rows from the replica with `id > cursor ORDER BY id`. It re-checks them on the primary and skips missing ids and ids with pending outbox rows. It applies them in one Postgres transaction and moves `migration_state.backfill_cursor` to the batch's last id in that same transaction. If a batch hits an email-uniqueness conflict, it applies that batch row by row, sends the conflicting ids to the outbox, and still advances the cursor.
+  - **State**: the cursor in Postgres.
+  - **If it fails**: after a crash or a Postgres error, restart. It resumes from the stored cursor and redoes any half-done batch, which is harmless. It is finished when a batch comes back empty (about 19,000 batches).
+
+- [ ] **6. Full comparison pass**
+  - **Starts when**: the backfill is finished and the outbox is empty.
+  - **What it does**: compare by id range, using per-chunk checksums over `(id, email, name, plan, version, updated_at)` from the replica (same lag rule) and from Postgres. Diff the rows of any chunk that differs. Re-check each differing row against the primary after the outbox has drained. Only a persistent difference counts. Missing rows, extra rows (in Postgres but not MySQL), differing rows, and ids in `users_erased` that still exist in MySQL all count. Send each mismatched id to the outbox. A Postgres row with a higher version than MySQL is a bug: alert and do not auto-fix.
+  - **Done when**: a whole pass finds zero persistent mismatches. Record the result with start and end times in `migration_state`.
+  - **State**: `migration_state`.
+  - **If it fails**: repair, then run a whole new pass. A pass with mismatches does not count.
+
+- [ ] **7. Ramp reads to Postgres**
+  - **Starts when**: a zero-mismatch pass finished within the last 24 h.
+  - **What it does**: set `users.read_pg_pct` to 1, 10, 50, then 100, holding each level for at least an hour. Advance only if the fallback rate is under 0.1%, latency is acceptable, the oldest outbox row is under 30 s, and the nightly comparison pass shows no new mismatches.
+  - **State**: the flag.
+  - **If it fails**: lower the percentage. It takes effect within the 30 s flag refresh. Pause the ramp on any mismatch.
+
+- [ ] **8. Soak at 100% reads for at least 3 days**
+  - **Starts when**: every instance reports `users.read_pg_pct=100`. Store the time in `migration_state`.
+  - **What it does**: check that nightly comparison passes stay clean and that fallbacks, outbox age and replica load stay healthy.
+  - **State**: `migration_state`.
+  - **If it fails**: if the percentage drops below 100, the clock resets. Fix the cause and restart the 3 days.
+
+- [ ] **9. Pre-switch checklist**
+  - **Starts when**: at least 3 days of step 8 have passed.
+  - **What it does**: confirm a new full comparison pass has zero mismatches, the outbox is empty, the reverse drainer is deployed and idle, the rollback has been rehearsed, and the switch is scheduled for a low-traffic window.
+  - **State**: none.
+  - **If it fails**: fix and repeat. Do not switch.
+
+- [ ] **10. Switch the source of truth to Postgres (writes pause for at most 90 s)**
+  - **Starts when**: an operator runs the scripted switch after step 9.
+  - **What it does**, with times measured from T0:
+    1. **Fence MySQL (T0).** Set the MySQL `holder` to `switching`, with a 5 s lock timeout. When it commits, writers get 503. If it times out, nothing changed. Retry later.
+    2. **Drain.** Run the drainers hard until the MySQL outbox is empty (cap 20 s). Writes are blocked, so this ends. If the cap passes, set the holder back to `mysql`, which ends the pause. Investigate and try again.
+    3. **Prepare Postgres.** Run the `setval` above. Set the Postgres `holder` to `pg`, then the MySQL `holder` to `pg`.
+    4. **Flip the flag** to `users.write_mode=dual_pg`.
+    5. **Wait for instances.** Each instance resumes writes when it refreshes the flag (within 30 s) and gets the 503 until then. Confirm with `app_flag_value`.
+    6. **Remove stragglers.** At T0+60 s, take any instance not yet reporting `dual_pg` out of the load balancer.
+  - **Expected pause**: about 40 to 55 s, always under 90 s.
+  - **Afterwards**: writes commit to Postgres first, with a Postgres outbox row. The MySQL mirror is applied inline and then by the reverse drainer. Reads stay on Postgres. Erasures delete in Postgres and write a tombstone there. The reverse drainer deletes in MySQL and writes a tombstone to MySQL `users_erased`.
+  - **State**: `migration_state.switched_at` (starts the 14-day clock), the authority rows, the Postgres outbox.
+  - **If it fails**: before step 4, set the MySQL holder back to `mysql`. After step 4, use the rollback in step 11.
+
+- [ ] **11. Soak for at least 14 days with MySQL as a mirror**
+  - **Starts when**: step 10 is complete.
+  - **What it does**: the reverse drainer keeps MySQL current from the Postgres outbox. Nightly comparison passes run, with the same alerts.
+  - **Rollback (also a pause of at most 90 s)**:
+    1. Set the Postgres `holder` to `switching`.
+    2. Drain the Postgres outbox into MySQL until it is empty.
+    3. Set the MySQL `holder` to `mysql`.
+    4. Flip the flag to `dual`.
+    5. Wait until every instance reports `dual`.
+  - **Why no write is lost**: every Postgres write has a durable outbox row, and the fence waits for the outbox to empty before MySQL takes over.
+  - **State**: the Postgres outbox, the authority rows, `migration_state`.
+  - **If it fails**: if MySQL is unreachable at rollback time, set the Postgres holder back to `pg` and carry on with Postgres. After a rollback, Postgres keeps being mirrored through the normal `dual` path. A later second switch repeats steps 9 and 10, including the `setval`.
+
+- [ ] **12. Switch to Postgres-only writes**
+  - **Starts when**: at least 14 days after `switched_at` and the last comparison pass is clean. The command refuses to run earlier.
+  - **What it does**: check the Postgres outbox is empty. Set `users.write_mode=pg`, which stops mirroring to MySQL (no write pause is needed). When every instance reports `pg`, stop the reverse drainer. Revoke the app user's write grants on MySQL `users`, so a straggler fails loudly. Take a final MySQL dump and store it under the erasure retention rules.
+  - **State**: the flag, `migration_state`, the dump.
+  - **If it fails**: setting the flag back to `dual_pg` before the grants are revoked is safe. After that, lossless rollback is gone by design.
+
+- [ ] **13. Retire MySQL `users`**
+  - **Starts when**: after step 12 plus a quiet period (suggested 7 days).
+  - **What it does**: rename the table to `users_retired`, so an unexpected reader fails and the change can be undone, then later `DROP` it. Remove the MySQL replica reads, MySQL code paths, the `dual`, `dual_pg` and `mysql` modes, the MySQL authority, outbox and `users_erased` tables, and the two flags. Point `no-raw-users-sql` at Postgres. Keep the Postgres tombstones permanently. Drop the Postgres outbox and authority tables.
+  - **State**: none.
+  - **If it fails**: until the `DROP`, rename `users_retired` back. After the `DROP`, restore from the step 12 dump.
+
+## Open questions
+
+- None recorded. The 40 to 55 s expected pause and the 7-day quiet period in step 13 are estimates to confirm in the step 0 rehearsal.

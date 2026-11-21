@@ -1,0 +1,18 @@
+## Review of ev-03 (rewrite, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a 2-3 sentence summary at the top stating how the main flow goes and why the outbox exists; the original had no summary.
+- Added a Terms section defining gateway node, Message Store, client_msg_id, outbox row, relay, fan-out queue, worker, Presence Store, backlog flag, Offline Inbox, drain and at-least-once, each in one line.
+- Added a short Rules section collecting the cross-cutting fixed requirements (one device per user, 200 members, sender excluded, 30 s offline, no fan-out on the request path, push best effort, out of scope) so they appear once instead of scattered.
+- Kept the diagram and numbered FLOW unchanged in form, with only small wording clarifications (e.g. 'look up presence'); the flow is not retold elsewhere.
+- Added one line explaining the backlog flag's version check (version bumped by each inbox write, clear only if unchanged since last read), since the diagram mentioned it without explaining it.
+- Merged the Failures bullets into one table and tightened wording; removed repeated statements about idempotency and dedup where they were restated.
+- Merged the repeated unique-key and no-second-copy statements in the two write-failure rows without dropping either case.
+- Moved 'Push: never retried / never affects storage' into the Rules section and kept the table row short.
+- Added an Open questions section at the end listing the per-user backlog flag, the 5 s partition hold, and the same-transaction outbox assumption; these were previously only caveats in the notes.
+- No build or rollout content existed in the original, so no separate section was added. All numbers (10 s, 30 s, 5 s, 200, 30 days) and requirements were checked against the first version and kept.
+
+### Holes
+- None.

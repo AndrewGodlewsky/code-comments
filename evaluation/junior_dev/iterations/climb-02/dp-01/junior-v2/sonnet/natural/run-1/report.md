@@ -1,0 +1,34 @@
+## Review of dp-01 (junior-v2, author sonnet, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Added a 'Who runs what' paragraph defining the scheduler, the worker process, one running instance per kind, and an attempt timeout counted as failure.
+- Replaced the run lock (unique running row) with a simpler start-of-attempt step: mark leftover running rows failed, then insert the new row. Updated the flowchart node.
+- Defined run_date as the UTC date of the 02:00 scheduled start, kept across retries, and tied the watchdog check to it.
+- Explained the 2-hour lookback, why re-reads are harmless, and that the snapshot start is the upper edge, with later changes caught by the next night.
+- Stated that succeeded status commits with the data and HWM, and that failed is written in a separate transaction after rollback (also in the flowchart).
+- Clarified that reconciliation is a separate scheduler-started job with its own run_log rows and three attempts; updated the trigger table and subgraph title.
+- Added an Open questions section for the scheduler product, worker host and timeout value.
+- Every attempt gets a new run_id, and the start step now clears staging rows of earlier run_ids, replacing the ineffective delete-own-run_id rule (fixes a real flaw).
+- Scheduler passes kind, run_date and attempt number to each attempt.
+- Stated that a killed worker's transaction rolls back on disconnect and the next attempt marks the leftover running row failed.
+- Reconciliation trigger keyed to the nightly run's run_date being a Sunday, not the commit time; updated flowchart decision and trigger table.
+- Added that the worker does no replica-lag detection.
+- Added that no human action is needed after a page and that a skipped reconciliation waits until the next Sunday.
+- Updated flowchart nodes for start step and failure marking to match.
+- Scheduler now runs one attempt at a time across both kinds (not per kind), answering the shared staging question; start step 1 no longer says 'of the same kind'.
+- Added that a waiting reconcile and a due nightly are queued, whichever was due first runs first.
+- First run backfill is a one-off manual run with the timeout raised; added the table size as an open question.
+- Specified reconcile run_log fields (triggering run_date, empty window, rows_extracted = rows reloaded) and that it runs the same start steps.
+- Reconcile compare and reload use one repeatable-read replica snapshot; later changes are left to the next nightly; noted in the flowchart subgraph title.
+- Merged the separate rollback/kill explanation from the merge section into the Failure and retry section, so failure handling is in one place.
+- Merged the 'why re-runs are harmless' paragraph into the end of the merge section instead of a separate heading.
+- Cut the scheduler wording about two overlapping runs into one sentence (earlier-due runs first), removing the duplicate Monday-02:00 rule from the reconciliation section.
+- Condensed the failure bullets (removed repeated 'HWM stays where it was' and 'stale running rows cleaned' statements) and the watchdog bullets.
+- Cut parenthetical explanations repeated elsewhere (e.g. arbitrary but deterministic tie-break, 'Written freely', 'all are failed or succeeded by now', 'Collect the days that mismatch').
+- Merged the reconciliation snapshot, compare and reload bullets into fewer bullets; kept the no-HWM, retries-exhausted and still-behind caveats.
+- Tightened the Notes section; flowchart, trigger table and open questions kept unchanged.
+
+### Holes
+- None.

@@ -1,0 +1,21 @@
+## Review of auth-04 (rewrite-v7, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Cut nothing from the brief or the first version. Every requirement, limit (10-minute round trip, 10-minute confirm window, 5 failures, 15-minute lock), rule and named piece is kept.
+- Added a Terms section defining OIDC, PKCE, state, nonce, ID token, sub, Redis and TTL, user_identities, start_session, pending link and callback, which the first version never defined.
+- Rewrote the flowchart to cover both entry points, every callback outcome (Google error, unknown/expired/used state, failed exchange, ID-token check, settings refusals, login branches), and the password-confirmation loop with lockout and the pending link being thrown away.
+- Added the rule the first version missed: a user with an existing Google account cannot link a second one, from either entry point.
+- Added the settings-side refusal when a sub is already linked to anyone, which the first version did not state.
+- Added a decision that a failed code exchange or ID-token check shows an error and changes nothing, since the attempt is already deleted. Also made the callback's fetch-and-delete the single-use mechanism.
+- Split the 10-minute limit into the round trip (Redis attempt TTL) and the password confirmation window (pending link TTL).
+- Added a where-state-lives table listing each new piece of state, its lifetime and what removes it, including the pending-link cookie and user_identities uniqueness rules.
+- Added a failures table with user-visible message and changes for each failure, replacing scattered failure notes.
+- Merged the first version's notes into the steps, which now add only what the diagram cannot show. Settings unlink is a step, since the diagram does not cover it.
+- Added the password_hash nullable change and the Google-only user state to the state table.
+- Added open questions for gaps the brief leaves open: password login for Google-only users, confirming a passwordless match, session loss between start and callback, Redis outage, and email verification after confirmation.
+- Kept lockout as the existing rules: confirm uses the same locked check and counting as POST /login, with no new lockout mechanism.
+
+### Holes
+- None.

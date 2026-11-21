@@ -1,0 +1,31 @@
+## Review of feat-02 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Rewrote the document as a Mermaid sequenceDiagram with alt branches for the 401, fail-open, 429 and allowed paths. The old diagram showed none of these branches.
+- Added a Terms section that defines key, customer, plan, counter, window, check_and_incr and fail open in one line each.
+- Turned the one-line notes into numbered steps placed after the diagram, each saying what it does and where its data is kept.
+- Stated the key format, the fixed window, the 120-second TTL and the Retry-After rule once each, in the steps.
+- Added a failure table so the 401, fail-open, 429 and backend-failure handling sit in one place.
+- Merged the 'Limits' and 'Bad key' notes into steps 1 and 2, and removed the duplicate statements.
+- Moved the Enterprise limit, the Key Service failure handling and the metric owner into Open questions, so none is silently decided.
+- Rewrote the summary to say how the current system works, then what this design adds. Shortened it to two short paragraphs.
+- Restructured the steps so each one has the same four parts: what starts it, what it does, what keeps its data, and what happens when it fails.
+- Step 1: added that each instance keeps its own cache keyed by the key string, that unknown keys are not cached, and that revoked keys or plan changes can take up to 5 minutes to apply (Q10, Q11, Q12).
+- Step 3: stated that the minute comes from each instance's own NTP-synced clock, why the TTL is 120 seconds, and that a timed-out call may or may not have raised the count (Q13, Q14, Q15).
+- Step 4: replaced the vague 'seconds left in this minute (at least 1)' with the formula 60 minus the current second, and explained how it relates to the fixed window (Q17).
+- Failure table: added rows for key revocation delay and Redis restart or data loss (Q10, Q16). Made the Redis-timeout row say that the count may or may not rise.
+- Notes: moved the rule about which responses carry X-RateLimit headers into one place, instead of repeating it in step 5, the table and the diagram notes. Added the per-customer shared-budget rule and the per-instance cache rate.
+- Open questions: added the Redis deployment topology and failover, which the brief does not settle (Q16).
+- Kept the Mermaid sequence diagram unchanged, because the main flow itself did not change.
+- Merged the separate 'Pick the limit' step into the check-and-count step, since picking the limit is one line with no failure of its own. The document now has four steps instead of five.
+- Moved the notes to sit directly after the diagram, as the layout rule asks, and cut the notes that repeated other sections: the 5-minute per-instance cache and once-per-key call rate (already in step 1) and the headers rule (now in the failure table).
+- Made the failure table the single place for failure results. The 429 row now says it carries no X-RateLimit-* headers, which was previously only in the notes.
+- Shortened the wording of the steps and the terms. Each step keeps the same four parts: starts, does, keeps data, when it fails.
+- Removed the Enterprise-limit failure sentence from the step, since it duplicates the Enterprise open question. Kept the open question as the only place it appears.
+- Kept the Mermaid diagram, the intent, the fixed requirements, and all four open questions unchanged in meaning.
+
+### Holes
+- Q8: What happens when KeyService fails or is slow (not a bad key)? Is Redis still called when the key is bad? (author: Redis is not called when the key is bad. The 401 returns before the check, so this is decided by step 1. What the gateway does when the Key Service fails or is slow is not in the brief, so it is unknown and listed in Open questions.)
+- Q16: Where does Redis run: one node or a cluster? What happens to counters if Redis restarts or loses data? (author: The brief does not say where Redis runs or whether it is one node or a cluster, so this is unknown and is listed in Open questions. If Redis restarts or loses data, the counters start again at zero, and a customer can get up to one extra window of budget. This is accepted for v1 and is in the failure table.)

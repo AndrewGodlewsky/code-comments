@@ -1,0 +1,86 @@
+## Review of pay-02 (junior, author haiku, seeded-implicit)
+
+Rounds: 6. Ended: cap.
+
+### What changed
+- Added a summary that says how refunds work today (provider dashboard, no refund table) and why the flow is shaped as it is.
+- Added a terms section defining captured amount, refundable amount, refund record, idempotency key, webhook, reconciliation job and audit entry.
+- Replaced the twelve one-line items with nine numbered steps in execution order, each stating its trigger, data, where it is stored and what happens on failure.
+- Step 2 now holds the permission check (403 with no change), the validation rules and the audit of requests (Q2).
+- Step 3 now locks the payment row in one transaction for the refundable-amount check and the insert, and defines the refund record fields and the pending start status (Q3, Q4).
+- Step 3 now defines the idempotency key as a random UUID created and stored with the record, and reused on every retry (Q5).
+- Step 4 now sets the outcome for timeouts and 5xx after all retries to pending, not failed, with step 7 resolving it (Q6, Q7).
+- Step 6 now covers signature failure, lookup by provider refund id, duplicate and out-of-order events, and the error response for an unknown id (Q8).
+- Step 7 now defines the hourly run, its two checks (status lookup, or re-sending create-refund with the same key) and its failure behaviour (Q9).
+- Added step 8 for the once-only customer email, with a flag and a retry through reconciliation.
+- Added step 9 for order status, computed from succeeded refunds only and saved in the same transaction as the refund status.
+- Moved audit logging into a rules list covering every request and every refund status change, with who, what and when.
+- Added an open-questions section for what the brief does not settle: the permission name, 24-hour alerting, provider lookup behaviour, double clicks, page wait time and a possible double email.
+- The file is longer than the first version because the brief's requirements had to be kept; each fact appears once.
+- Step 2: a 403 or validation error now changes nothing except the audit entry. The first version said it changed nothing, which contradicted the audit rule.
+- Step 3: the row lock is named, and the audit entry is written in the same transaction. The first version did not say this.
+- Step 4: added what happens when the admin closes the tab, the server crashes, or the id save fails after acceptance (Q10, Q12).
+- Step 5: now covers a 4xx from the first call, a retry or a reconciliation re-send (Q11). It passes the status to step 9, which saves it.
+- Step 6: the order is now step 9 (save status and order status), then step 8 (email) (Q16). The first version said the step runs steps 8 and 9 without an order.
+- Step 7: 4xx handling added (Q11). The 24-hour limit for re-sending is measured from record creation, and older records without an id are not re-sent (Q13). The reply's status is applied by the step 6 rules.
+- Step 8: the email is sent only after the step 9 commit (Q16).
+- Step 9: the payment row lock is added, so it cannot race a new request (Q14). It states that step 3 does not trigger it and that a failed refund usually leaves the order status unchanged (Q15).
+- Terms: added provider refund id, create-refund call, 4xx/5xx, row lock and order status. The refund record fields are listed in one place.
+- Open questions: added the conflict with the 24-hour direct check for records with no id, and the assumption that the reply carries a final status (Q12, Q13).
+- Summary rewritten to say how the system works today before the new flow, in three sentences.
+- Step 1: states that a pending refund leaves the order status unchanged and that the page refreshes only on reload (Q23).
+- Step 4: states that only the accepted answer and the provider refund id are used from the reply (Q17).
+- Steps 5, 6 and 7: they now only decide the new status and pass it to step 9. Step 9 is the only writer of refund status and its audit entry (Q19).
+- Step 6: the endpoint returns an error status when step 9 fails, so the provider re-sends the event (Q20).
+- Step 7: the status lookup is defined as returning the refund's current status; the 24-hour no-id audit entry is written once, not every run; the email retry finds succeeded refunds with the flag unset (Q18, Q21, Q22).
+- Step 8: the flag is stated as being on the refund record, and the reconciliation retry is linked to the flag check (Q21).
+- Step 9: the status change is applied only if the record is still pending, and a conflict is audited; the trigger list is tied to steps 5, 6 and 7 (Q19).
+- Rules: merged the audit rule so every audit entry is written in the same transaction as its change, removing the duplicate provider-driven wording.
+- Open questions: merged the lookup and reply assumptions into one bullet, and added the customer email address source (Q17, Q18, Q21).
+- Summary cut to three sentences and placed before the terms.
+- Step 1: the page now also shows each refund's status.
+- Step 3: states that the row lock is the same one steps 4 and 9 use.
+- Step 4: the provider id save runs under the payment row lock (Q24); the page shows a pending refund with a note when retries run out, not an error (Q27); the 'accepted' and 'retries used up' cases are merged.
+- Step 5: a failed refund is never retried, and a new submission creates a new record and key (Q26); the admin audit line is kept.
+- Step 6: the 'after step 9 runs step 8' sentence is removed because step 8 states its own trigger, and the first-result conflict rule is kept.
+- Step 7: explains that the job cannot tell a re-sent original from a new refund and relies on the key rule (Q25); the 24-hour reasoning is kept in one place; a 4xx re-send reruns step 5 (Q29).
+- Step 8: the trigger is stated once, as a committed change from step 9.
+- Step 9: failure path names step 7 as the retry route for rejected refunds (Q29).
+- Rules: a single rule says every refund record write takes the payment row lock (Q24), and the audit rule is stated once.
+- Open questions: added the provider's webhook retry period (Q28) and the unconfirmed reply and lookup behaviour, including a repeated 4xx (Q17, Q18, Q29).
+- Step 1: the page hides the refund form when the refundable amount is 0 and shows a note explaining why.
+- Step 3: states that the transaction commits before the provider call.
+- Step 4: the provider call runs outside the payment row lock, and only the id save takes the lock.
+- Step 4: the page's answer is read from the saved record after step 4 ends, not from the raw provider reply.
+- Step 7: the job calls step 9 directly, not the webhook endpoint, and says how it races with a webhook.
+- Step 7: a record with a provider id that stays pending is checked hourly, with no limit and no audit entry.
+- Step 8: the email runs right after the step 9 commit, and the webhook returns 2xx even if the email fails.
+- Step 9: a repeat of the same final status is not audited; only a conflicting final status is audited. This fixes a conflict with step 6, which says duplicates change nothing.
+- Step 9: states that it is the only step that changes a refund's status after step 3 writes it as pending.
+- Rules: the provider call does not hold the payment row lock.
+- Open questions: added whether a person should be told about a record with a provider id that stays pending for days.
+- Changed: step 4 now says what the server returns to the page (the saved record's status, and the saved message on a rejection), that the browser makes no second call, and what the page shows when step 9 has not yet saved a rejection (Q36, Q37).
+- Changed: step 9 On failure now says a rejected call that is not yet saved as failed stays pending and is re-sent by step 7 while under 24 hours old (Q37).
+- Changed: step 6 now says the new status comes from the event name, and the open questions list that the webhook's fields are unknown (Q38).
+- Changed: step 7 now says the email pass runs after the status checks in the same hourly run, as a separate pass (Q39).
+- Changed: step 8 now says a missing customer address counts as a failed send, with the flag unset and a retry on the next hourly run. The open questions note that retries have no limit (Q40).
+- Changed: step 2 audit now says the entry records the caller's id as who, that a 403 is audited the same way, and that a successful request makes two entries (Q41). An open question now covers requests with no signed-in user.
+- Summary cut to three sentences. It now says how refunds work today (in the provider's dashboard, so the database never learns of them), then the main flow and why it is shaped that way.
+- Terms: added one-line definitions for provider, refund permission, signature, payment row lock and audit entry, which a newcomer would not know. Expanded the refund record field list in one place. Kept the existing definitions.
+- Steps: each step now has a plain name, its trigger, the data it touches, and what happens on failure. Step numbers are kept, but each one is also named so the reader does not need to look elsewhere.
+- Merged repetition: the admin page display rules appear only in step 4 (step 1 keeps only the order status and the no-form rule). The 24-hour-from-creation reason appears once, in step 7. The webhook 2xx rule appears once, in step 6. The email rule and flag appear once, in step 8. The email pass appears once, in step 7.
+- Lock and audit rules were repeated in several steps. They now sit in one place (the rules section), with step-specific mentions kept only where the lock is taken.
+- Failures are stated at each step, as the skill allows, instead of a separate table. This avoids saying the same failure twice.
+- Kept every requirement and limit from the brief and the first version: captured-only refunds, refund permission, cents, partial refunds, the pending-plus-succeeded cap, failed refunds not counting, the same-moment concurrency rule, the reason list and note, server-only provider calls, the 24-hour idempotency key, the 10-second timeout, 3 retries, 4xx handling, signed webhooks with duplicates and out-of-order events, the 24-hour direct-check rule, email once per refund after success, the order status from succeeded refunds only, and audit for every request and status change. Kept all 12 open questions.
+- Added, to follow the audit rule (not stated in the first version): a step 3 rejection for an amount over the refundable amount is audited with its reason. Please check this against the intent.
+- Added, from the audit rule and the decided answers: step 9 names the audit actor. It is 'system' for webhooks and the job, and the admin for a rejection at request time.
+- Clarified the step 4 page behaviour: the page reads the saved record, not the provider's reply, and shows pending with the provider-not-confirmed note when the outcome is still unknown.
+- No new mechanism was added. No lock, lease, retry queue or takeover rule was introduced beyond what the first version and the decided answers already had.
+
+### Holes
+- Q17: In step 4, when the provider accepts, what exactly does the first answer contain? Does it already carry a status like succeeded, or only the provider refund id? (author: The brief only says an immediate response means "accepted". It does not say what else the reply contains. The plan uses only the accepted answer and the provider refund id from it, and does not rely on a status in that reply. If the reply does show a final status, step 7 applies it. This is listed as an open question.)
+- Q18: In step 7, what exactly is the provider status lookup, and what does it return for a pending refund that has become final? How does the job turn that into step 6 rules? (author: The brief does not name a status lookup or say what it returns. The plan assumes it returns the refund's current status (pending, succeeded or failed). If it is still pending, nothing changes. If it is final, the job applies it with the step 6 rules. The provider behaviour itself is not confirmed, so it stays in the open questions.)
+- Q21: In step 8, the email flag is checked how? Which record does the reconciliation job look at to retry emails, and does it need the customer's address from somewhere (payment, order)? (author: Decided part: the reconciliation job finds the refunds to retry by selecting succeeded refunds whose "email sent" flag is unset, and runs step 8 for each. The flag is on the refund record. Unknown part: the customer's email address. The brief does not say where it comes from, and the stored payment fields it names do not include an address. This is an open question.)
+- Q22: How does a pending refund with no provider id and 24 hours old get noticed by a person? Where does the audit entry appear, and is it written every hourly run? (author: The audit entry is written once, when a pending refund with no provider id first reaches 24 hours old, not on every hourly run. Reason: repeated entries would fill the audit log with the same fact. How a person is actually alerted is not decided by the brief, so it stays an open question. Step 7 now says the audit is written once.)
+- Q28: Step 6 says a webhook for an unknown provider refund id returns an error so it is sent again. How long does the provider keep re-sending, and if it gives up, what then ties the record to its result? (author: The brief does not say how long the provider keeps re-sending a webhook. The plan does not depend on it: records with an id are checked every hour by step 7, and records with no id are re-sent by step 7, so a lost webhook does not leave a record stuck. The provider's retry period is listed as an open question.)
+- Q38: For a webhook, what does the event contain, and which field is the 'provider refund id' that the server matches on? Is the new status taken from the event name? (author: The brief names the two event types but not the webhook's fields, so the field that holds the provider refund id is not known. The plan takes the new status from the event name: refund.succeeded gives succeeded, and refund.failed gives failed. This is listed in the open questions.)

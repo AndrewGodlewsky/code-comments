@@ -1,0 +1,17 @@
+## Review of search-01 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Summary cut to a short plain-language intro: what the system is, how the main flow goes, and why it is shaped that way. Today's cron behaviour moved into the summary, stated once, in two sentences.
+- Added a Terms section defining every name a newcomer to this stack would not know: WAL, LSN, commit_lsn, replication slot, publication, Debezium, topic, partition, offset, consumer group, snapshot, DLQ, alias, document version, and the event shape.
+- Kept the Mermaid flowchart with its original logic, and kept all node and edge meanings. The summary and terms come just before it, and the notes just after it, as the skill layout asks.
+- Rewrote the steps as numbered lists for the live path, the rebuild, the cutover and the 48-hour standby. Each step names its trigger, what it does, where its data is kept and what happens when it fails. The separate failure table was merged into these steps so each fact appears once.
+- Merged the separate Notes 1 to 9 into one Why it is safe section, with each rule stated once. Kept every rule: version conversion, delete tombstone check, op r treated as c, snapshot consistency, replay start at snapshot start minus 10 minutes, and rebuild isolation.
+- Moved build-time work into its own Rollout section: stop cron, create products_write before starting, verify the tombstone, add ts_ms, point the connector at the catalog, confirm op r, run the first rebuild, and set refresh and batching. This separates how it runs from how it is built.
+- Kept every stated number and setting: 40M rows, 300 writes/s, 12 partitions, 7-day retention, 3 shared brokers, 95% within 5 s, backoff 1 s doubling to 60 s, 20 GB and 50 GB WAL thresholds, 5000 rows/s, batches of 1000, 0.5% count tolerance, 48 h standby, 10 min replay offset, 200 ms or 500 docs batching, and 1 s refresh.
+- Added a note that 40 million total rows at 5000 rows/s is about 2.2 hours, so the 2.5 hour figure needs the active count. Also added that the reconcile timeout has no value yet. Both are stated as open questions, not invented answers.
+- Left out the CREATE PUBLICATION SQL, the Postgres version details beyond the name, and the exact rebuild-job record fields. These are not needed to follow the main flow. The job record is still named in the rebuild section, and `last_id`, `S` and the replay start are kept.
+
+### Holes
+- None.

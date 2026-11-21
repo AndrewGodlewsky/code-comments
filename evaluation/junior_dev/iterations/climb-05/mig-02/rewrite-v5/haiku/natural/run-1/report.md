@@ -1,0 +1,20 @@
+## Review of mig-02 (rewrite-v5, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- No junior questions or answers were included in the task, so the rewrite is based on the document and the brief only.
+- Added a summary paragraph at the top: what the rollout is, the main flow from start to finish, and why it is shaped that way.
+- Added a terms section defining each term in one plain line, including compare-and-set, idempotency key, sliding window, freeze, in-flight charge and day 35.
+- Kept the Mermaid diagram's states and transitions unchanged, placed after the summary and terms, with the notes after it.
+- Added a 'How the rollout moves forward' section with numbered steps: request, gate check, compare-and-set, worker action. The brief's rule that a person always makes forward moves is stated there.
+- Replaced the three rollback sections with numbered steps in the order they run, and removed the 'same as both, plus step 3a' cross-reference. The new_only steps now stand alone.
+- Stated the rollback rules in one place: never charge an invoice twice, never drop a charge that is due, and each step can be repeated safely.
+- Merged the 'what happens when something fails' list and the failure notes into one table, with one row per failure.
+- Marked the three proposals (rollout record location, invoice-ID charge key, double-charge protection) as proposals rather than settled design.
+- Interpreted the 35-day clock as starting when the rollout enters new_only, and stated this as an assumption in the Summary terms and Open question 4. The brief says '35 days in new_only' but does not name a start point.
+- Kept all five open questions unchanged. Replaced the cross-references to them with 'see Open questions'.
+- Cut repeated text: the failure notes that restated the rollback steps, and duplicate statements of the gates.
+
+### Holes
+- None.

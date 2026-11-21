@@ -1,0 +1,34 @@
+## Review of mig-01 (junior-v4, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachbacks.
+
+### What changed
+- Added a two to three sentence summary at the top saying how the system works today and how the migration goes (Q1).
+- Added a Terms section defining write_mode values, read_from_pg, the version rule, pending, tombstones, sweeper, backfill progress and comparer (Q2, Q3, Q4, Q7).
+- Rewrote each step with the same four parts: what starts it, what it does, where state lives, and what happens on failure (Q4 to Q8).
+- Specified that repair uses a pending table written in the same transaction as the user write, with a sweeper in each instance, instead of the Redis job queue, so repair is automatic and Redis outages do not matter (Q3, Q4).
+- Spelled out the backfill loop: replica lag gate at 5 seconds, 2,000-row batches, progress saved in the same Postgres transaction as each batch (Q5).
+- Defined the comparer's clean condition and what it does when it finds differences (Q6).
+- Spelled out the switch as freeze, drain pending, set the id sequence, then set pg_primary, with a 75 second abort back to dual so the pause stays within 90 seconds, and gave the sequence value and why (Q8).
+- Split rollback and the final pg_only step so that rollback is clearly possible only until pg_only (steps 8 and 9).
+- Terms: added `version` (set by UserRepository, 1 on create, +1 per update).
+- Terms: defined pending rows as user_id plus a mark counter; the sweeper deletes only where the mark is unchanged.
+- Terms: stated that several sweepers on one id are harmless.
+- Terms: spelled out what pg_primary and pg_only mean.
+- Step 1: also create a pending table in Postgres.
+- Step 3: said the request waits for the Postgres copy, with a short timeout, and the response is the same either way.
+- Step 4: backfill skips ids in the MySQL pending table; explained how erased users stay out.
+- Step 7: named the operator reading AUTO_INCREMENT from the MySQL primary and why it is only valid while frozen; clarified which pending table each side uses.
+- Steps 8 and 9: refer to the Postgres pending table; replaced the incorrect pg_mirror failure text with plain retry guidance.
+- Open questions: added the small erasure/backfill window that remains.
+- Reordered into the skill layout: summary, terms, a write-path section, numbered steps, open questions.
+- Moved the dual-write and pg_primary write and erasure description, which was duplicated in steps 3 and 7, into one 'How a write works' section, so runtime behavior is separated from rollout steps and the two copies are merged.
+- Turned the write_mode value list into a bullet list and split the flag-delay rule into its own term.
+- Merged the sweeper's per-mode pending table description into one sentence (source of truth's table, both when frozen).
+- Added State and consistent fields to every step (steps 2, 5, 8, 9 previously lacked some).
+- Cut the repeated frozen-first explanations and the redundant 'sweeper never needs to know the earlier mode' remark.
+- Removed step-number references from terms (e.g. 'see Sweeper', 'steps 7 and 8', 'used from step 7' for pending) and rewrote the step 6 fallback as 'previous value or 0'.
+- Kept all requirements, mechanisms and open questions; no behavior changed.
+
+### Holes
+- None.

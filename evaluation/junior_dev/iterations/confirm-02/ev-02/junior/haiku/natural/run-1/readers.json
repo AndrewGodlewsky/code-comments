@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "A message arriving on the domain-events topic starts intake. The existing outbox-relay publishes each new outbox row to that topic every 1 s.",
+  "q2": "Intake reads active matching subscriptions and inserts one pending delivery per match, with ON CONFLICT DO NOTHING on the unique (event_id, subscription_id) pair, so a duplicate message creates nothing new.",
+  "q3": "It covers a timestamp t, a dot, and the stored raw body, HMAC-SHA256 with the decrypted secret. It is computed again on every attempt at send time.",
+  "q4": "2xx: delivered. 410: dead as gone, with disable intent and other pending rows dead. Other 3xx/4xx: dead as http_4xx, no redirects. 408, 429, 5xx, timeouts, connection errors: retried until attempt 8, then dead as exhausted.",
+  "q5": "At most 8 attempts. The third attempt is made 2 minutes after the second fails, per the backoff table.",
+  "q6": "In the service DB deliveries table: status, attempt, next_attempt_at, lease_token, lease_until, last_status and last_error columns.",
+  "q7": "It waits as a pending row in Postgres with next_attempt_at set. Every worker polls every 1 s for due rows, so Postgres, not the queue, drives the timing.",
+  "q8": "The 60 s lease expires, and the row becomes due again with its attempt already counted. On attempt 8 the sweep marks it dead as lost_on_final_attempt. The receiver may get a duplicate with the same X-Webhook-Id.",
+  "q9": "Dead rows stay in the service DB deliveries table, kept 14 days after dead_at. Replay sets the row to pending with attempt 0 and next_attempt_at now, keeping the same id, only if the subscription is active.",
+  "q10": "The X-Webhook-Id header, which is the delivery id. It stays the same on every attempt and every replay, so receivers can dedupe.",
+  "q11": "Waiting rows stay pending until due, then die as subscription_disabled with no request sent. After a 410, the waiting rows are marked dead immediately in the same transaction.",
+  "q12": "Yes. Events have no ordering and deliveries are independent, so a later event can arrive before an earlier one."
+ },
+ "sonnet": {
+  "q1": "A message arriving on the `domain-events` queue. It is produced by the existing `outbox-relay`, which publishes unpublished rows from the core DB `outbox` table (written by the core app in the same transaction as the business change).",
+  "q2": "At intake the worker reads the core DB for active subscriptions with the same account_id whose event_types contain the event_type or `*`. It inserts one pending delivery per match. Both inserts (events and deliveries) use ON CONFLICT DO NOTHING, and deliveries are unique on (event_id, subscription_id), so a redelivered message creates nothing new.",
+  "q3": "The signature is HMAC-SHA256 over `t`, a dot, and the stored raw body (header `t=<t>,v1=<hex>`). It is computed again on every attempt, at send time, with a fresh t (receivers reject a t older than 5 minutes).",
+  "q4": "2xx: delivered. 410: dead with `gone`. In the same transaction it writes a disable intent, marks the subscription's other pending rows dead (`subscription_disabled`) and clears their leases. Other 3xx/4xx: dead with `http_4xx`, with no redirects followed. 408, 429, 5xx, timeout and connection error: retried on backoff if attempt is below 8, otherwise dead with `exhausted`.",
+  "q5": "At most 8 attempts. After attempt 2 fails, the wait is 2 minutes before attempt 3.",
+  "q6": "In the `deliveries` row in the service DB (Postgres): `status`, `attempt`, `next_attempt_at`, `last_status` and `last_error` (plus lease fields, dead_reason and so on).",
+  "q7": "It waits in the service DB as a `pending` row with `next_attempt_at = now + wait`. Every worker polls every 1 s and claims rows that are due, which triggers the attempt. The queue is not used for retries.",
+  "q8": "The 60 s lease ends and the row becomes due again with no extra backoff. It is claimed and sent again with the same `X-Webhook-Id`, so the receiver may get a duplicate. The attempt was already counted when claimed. If that was attempt 8, the sweep marks it dead with `lost_on_final_attempt`, and it stays visible and replayable.",
+  "q9": "They are rows in the service DB `deliveries` table with status `dead`, kept 14 days after dead_at. Support lists them per subscription through the Admin API. Replay is refused unless the subscription is active. Otherwise it sets status to pending, attempt to 0 and next_attempt_at to now, clears the dead fields and keeps the same id.",
+  "q10": "The `X-Webhook-Id` header, which is the delivery id. It does not change between retries or after a replay.",
+  "q11": "Each attempt re-reads the subscription status. Waiting rows stay `pending` until they come due, then die with `subscription_disabled` and no request is sent. If the disable was caused by a 410, the subscription's other pending rows are dead-lettered immediately in the same transaction.",
+  "q12": "Yes. Events have no ordering guarantee, and deliveries are independent."
+ }
+}

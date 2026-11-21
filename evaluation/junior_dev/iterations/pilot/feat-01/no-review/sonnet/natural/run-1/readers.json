@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Unfiltered row_count from the replica decides: 10,000 or fewer streams CSV directly; more starts a background job, then an emailed link.",
+  "q2": "The second request gets the existing active export with 200; nothing new is enqueued, even with different filters.",
+  "q3": "The signed link lasts 24 hours from when the email is sent. The bucket deletes the file 7 days after creation.",
+  "q4": "Three attempts total. Then status becomes failed with a safe error, the page shows failed, and a best-effort failure email is sent.",
+  "q5": "The read replica only. The primary holds just report_exports bookkeeping, never report data.",
+  "q6": "In the primary's report_exports row. The page polls /exports/latest every 5 s while queued or running, and loads it on page open.",
+  "q7": "It streams: 5,000-row replica pages become CSV in an ~8 MB buffer, uploaded as multipart parts and cleared. The whole report is never held in memory.",
+  "q8": "On exception, parts are aborted; if the worker is killed, the bucket discards them after 24 hours. No partial file is visible. The next attempt starts from the beginning.",
+  "q9": "Normalised filters and cols are stored in the report_exports row at click time. The job reads them from that row; the payload carries only export_id.",
+  "q10": "A partial unique index on (user_id, report_id) WHERE status is queued or running. A second insert hits it and returns the existing export.",
+  "q11": "The file must be fully written (complete_multipart done, object_key set). On rerun, if object_key is set it skips the rebuild; if done or failed it returns without sending anything.",
+  "q12": "Before the first byte: 500 and an error shown. After streaming starts: the connection is aborted so the download visibly fails; the user can click again."
+ },
+ "sonnet": {
+  "q1": "By reports.row_count (unfiltered, read from the replica): <=10,000 is inline, >10,000 is a background job. Inline: the HTTP response itself is the streamed CSV (200, text/csv, attachment) which the page turns into a browser download. Job: 202 with {export_id, status:\"queued\"} immediately, then later an email with a signed download link (24h).",
+  "q2": "The insert hits the partial unique index (user, report, status queued/running). The API selects the existing active export and returns it with 200, enqueues nothing, even if the filters differ; the page shows that export. If it has a null job_id and is older than 60 s, it is re-enqueued and the new job_id stored.",
+  "q3": "The emailed signed URL works 24 hours (86400 s) from when the email is sent. The bucket deletes the file 7 days after creation.",
+  "q4": "Up to 3 attempts in total (waits of 60 s then 300 s). After the third fails, on_final_failure sets status='failed' with a short user-safe error and finished_at; the page shows failed (user can retry), and a best-effort report_export_failed email is sent (not raised if it fails).",
+  "q5": "The read replica only (rows, and reports.row_count as a conservative assumption). Report data is never read from the primary. The report_exports bookkeeping table is on the primary.",
+  "q6": "In the report_exports row (status column) in the primary database. The page calls GET /api/reports/{report_id}/exports/latest on page load (and after the 202/200 reply), which returns the current user's most recent export {export_id, status, finished_at, error}; while queued/running it polls every 5 s and stops on done/failed. Reopening later just does the load fetch.",
+  "q7": "It streams via multipart upload: reads about 5,000-row pages from the replica, encodes CSV into one buffer, and each time the buffer reaches about 8 MB calls upload_part, keeps the etag and empties the buffer. Memory is one page plus one ~8 MB buffer plus etags; ~900 MB is ~113 parts (under 10,000 max). Then complete_multipart. A 25-minute deadline guard aborts before the 30-minute kill.",
+  "q8": "On an exception, abort_multipart is called (errors ignored) and it re-raises; if the worker dies, orphan parts are discarded by the bucket's 24-hour incomplete-multipart rule. No half-written file is downloadable because the object appears only at complete_multipart. The queue keeps no progress, so the next attempt restarts from the beginning (rebuilding with the same key, overwriting). Exception: if object_key is already set (file finished, only email failed), it skips to step 8 and does not rebuild.",
+  "q9": "In the report_exports row (filters and cols columns, normalised, captured at click time) on the primary database. The job payload carries only the export_id; the job loads the row by that id and reads everything else from it.",
+  "q10": "The database: a partial unique index on report_exports UNIQUE (user_id, report_id) WHERE status IN ('queued','running'). One insert wins; the other hits the index and gets the existing export returned.",
+  "q11": "The file must be completely written: complete_multipart succeeded, and object_key was set on the row (and a signed URL created). If the queue runs it again when status is done or failed, the handler returns at once (nothing sent twice). If object_key is already set but not done, it skips the rebuild and goes straight to publish/email, then marks done (a second email is possible if it died after emailing but before done).",
+  "q12": "Before the first byte: a clean 500 and the page shows an error. After streaming begins: the status can't change, so the connection is aborted so the download visibly fails, and the page shows an error; the user can click again. No report_exports row or stored data exists for the small path."
+ }
+}

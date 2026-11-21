@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "How does the system choose between returning the CSV directly and building it in the background, and what does the user receive on each path?",
+  "key": "By reports.row_count, the unfiltered total. At 10,000 rows or fewer, the CSV is returned directly in the response to the click and nothing is stored. Above 10,000, the click returns at once and a background job stores the file in the exports bucket and emails the user a download link.",
+  "why": "The size-based split into two paths is the backbone of the whole design."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "What happens if a user asks for a large export of a report while their previous large export of that same report is still queued or running?",
+  "key": "No second export or job is started. The existing queued or running export (its id and status) is returned, and the page shows it.",
+  "why": "It defines how repeated clicks behave and why at most one job per user and report exists."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "How long does the emailed download link work, and what removes the stored file, and when?",
+  "key": "The link works for 24 hours. The exports bucket's existing lifecycle rule deletes the file 7 days after it was created. There is no cleanup job.",
+  "why": "A reader has to know the lifetime of the link and the file, and who owns cleanup."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "How many times is a large export attempted, and what does the user see and receive once the last attempt has failed?",
+  "key": "Up to 3 attempts in total. After the third fails, the export is marked failed, the page shows it as failed, and the user is emailed that the export failed.",
+  "why": "This is the end state of the failure path, the part users actually see."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "Which database do the export paths read report rows from?",
+  "key": "Only the read replica, on both the small and the large path. Report rows are never read from the primary.",
+  "why": "It tells the reader where the heavy read load lands."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "Where is the status of a large export stored, and how does the reports page learn that it has changed, including when the user reopens the page later?",
+  "key": "In a report_exports row in the primary database (status queued/running/succeeded/failed, plus filters, columns and object key). On load, the page fetches the user's latest export for that report. While it is queued or running, the page polls its status endpoint every 5 seconds and stops at succeeded or failed.",
+  "why": "Without knowing where state lives and how it reaches the page, the status requirement cannot be understood."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "How does the background job export a report of about 2 million rows on a worker with 512 MB of memory?",
+  "key": "It reads the replica in keyset batches of 5,000 rows ordered by row_id and encodes each batch as CSV into a buffer. Each time the buffer reaches 8 MB, it is uploaded as the next multipart part. Memory holds only one batch and one buffer, which comes to about 115 parts for 900 MB.",
+  "why": "This streaming mechanism is what lets very large reports work at all."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "If a job attempt fails, or its worker dies partway through writing the file, what happens to the data already written, and where does the next attempt start?",
+  "key": "The partial multipart upload is never completed, so nothing becomes visible. It is aborted on an exception, or the bucket discards it after 24 h if the worker died or timed out. The next attempt starts a new upload to the same key from the first row.",
+  "why": "It explains how retries work and why a half-written file can never be downloaded."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Where are the filters and column order captured at the moment of the click kept, and how do they reach the background job?",
+  "key": "In the filters and columns fields of the report_exports row, written when the API creates it from the request. The queue payload carries only the export id; the job reads the filters and columns from that row.",
+  "why": "It shows what data travels from the request to the job, and where it is held in between."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "What enforces the one-active-large-export rule when two requests for the same user and report arrive at the same moment?",
+  "key": "A partial unique index on report_exports(user_id, report_id) covering status queued or running. The second insert fails, and the API returns the existing export instead of queuing a job.",
+  "why": "A rule that only says 'check first' would be racy. The reader needs the mechanism that actually holds."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "What must have happened before the download-link email is sent, and what does the job do if the queue runs it again after the file is finished or after the export is complete?",
+  "key": "The multipart upload must be completed and its key saved on the export row. The job then emails a 24-hour signed link, and only after that marks the row succeeded. A repeat run that finds the row succeeded (or failed) does nothing. One that finds it still running with the key saved skips writing the file and only sends the email.",
+  "why": "It covers the order of the final steps and how at-least-once delivery is handled safely."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "What happens if a small (direct) export fails partway through?",
+  "key": "Nothing is stored and nothing retries automatically. The API returns 503 if the replica fails before any bytes are sent, or drops the connection if it fails mid-stream. The page saves no file and shows an export-failed message; the user can click again.",
+  "why": "The direct path has a different failure model from the job path, and the reader must know both."
+ }
+]

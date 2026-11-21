@@ -1,0 +1,32 @@
+## Review of obs-01 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Replaced the bare component list with a short glossary of the terms used (evaluation, breach, clear, incident, ack, rota), so a reader outside the project can follow the diagram.
+- Expanded the sequence diagram from 16 terse arrows to cover all six required flows: detection, incident opening, duplicate suppression, escalation, acknowledgement and resolution. Each step names what is stored or sent, and the alt/opt blocks show the success and failure branches.
+- Added the 500-request minimum, the 1% clear threshold and the 10-minute clear streak, which the original notes described only loosely.
+- Showed the escalation timer and the 'already acked or resolved' check explicitly, and that the rota is looked up at each page because it changes at 09:00.
+- Moved the explanation of state into a 'Where state lives' section that describes the Postgres tables (incidents, evaluations, page_log) and their unique keys, and explains why the timer queue is not the record.
+- Explained how the two evaluators coordinate through Postgres keys rather than with each other, and how the page_log unique key prevents double pages.
+- Added a 'How failures are handled' section covering push failure, SMS fallback, both channels failing, schedule service outage, Postgres outage and one evaluator down. The original notes did not cover these.
+- Added a 'Rule details to confirm' section listing choices the brief left open, including how low-traffic windows affect streaks, and noted the Postgres-outage gap.
+- Fixed the diagram's omissions: the original had no clear-path breach reset, no ack-to-timer cancellation, and no resolved notice to each paged person.
+- Added a plain-language summary paragraph ('How it works in brief') before the terms, so a reader gets the whole flow first.
+- Defined 'Neither', 'Streak', and 'Ack' explicitly, and expanded 'Rota' to say why it is looked up at each page.
+- Named each component in one line (for example, what the timer queue and paging provider do), since the reader does not know the stack.
+- Expanded the state section so each Postgres table and the partial unique index say what they hold and why, including why the first write to an evaluation row wins.
+- Rewrote the failure section in full sentences, with the same behaviour.
+- Flagged a contradiction in the original: a low-traffic window 'does not advance either streak', yet 'any evaluation that is not a breach resets the breach streak'. Added this as a question to confirm, without choosing an answer.
+- Diagram: kept the same steps and messages. Removed nothing functional. Changed a few labels for clarity (for example, 'ignore if already stored' is now 'ignored if already stored'), and removed no semicolons so the Mermaid text parses cleanly.
+- Added plain definitions for 'middle band' (1% to 2% with enough traffic) and 'low traffic', and made 'neither' the umbrella term. The old text left the 1% to 2% band undefined.
+- Defined 'level' and 'ack' in the terms list, and explained what 'claim' means for page_log, so the unique key is understandable without the database background.
+- Split the components into a short list with one plain sentence each.
+- Explained the partial unique index in plain words and listed the incidents table's rota snapshot column, which the failure section relies on but the old table description omitted.
+- Explained the timer sweep and the page_log guard in plain terms, including why a level cannot be sent twice.
+- Rewrote the rule-detail questions to state the consequence of each option. The middle-band question now states that 1% to 2% resets both streaks. The low-traffic question now states that the streak pauses rather than resets.
+- Added a rule-detail question about a crash between claiming a level and sending its page, which the old document did not flag.
+- Left the Mermaid diagram unchanged. Its structure and labels already match the design. The diagram was not edited, so its syntax was not re-checked.
+
+### Holes
+- None.

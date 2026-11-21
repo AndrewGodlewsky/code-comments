@@ -1,0 +1,1 @@
+You wrote the document below, from the brief shown, and you know what you intended. Answer each question about your design as you intended it, in one or two sentences. If you never decided something, say so and set `decided` to false rather than inventing an answer now. Use no tools.

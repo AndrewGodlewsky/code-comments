@@ -1,0 +1,269 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw log\" the collector writes to? Is it a queue/stream or a file store, and who reads from it?",
+     "about": "Collector writes them to the raw log"
+    },
+    {
+     "id": "2",
+     "text": "How do the Archiver and the Live processor each get events from the raw log? Do they read independently, and what do they do if they fall behind?",
+     "about": "Archiver / Live processor"
+    },
+    {
+     "id": "3",
+     "text": "What does the collector reply to the SDK, and when? Is the reply sent after the write to the raw log succeeds, and what does the SDK do on a rejected or partial batch?",
+     "about": "SDKs retry with backoff / Collector validates events"
+    },
+    {
+     "id": "4",
+     "text": "What counts as malformed, and does one bad event reject the whole batch of 100 or only that event? Who looks at the reject bucket?",
+     "about": "Malformed events go to a reject bucket"
+    },
+    {
+     "id": "5",
+     "text": "How does dedup on event_id work in the KV store? How long are IDs kept, and what happens if the KV store is down or the processor crashes after loading but before recording the ID?",
+     "about": "Live processor dedups on event_id using the KV store"
+    },
+    {
+     "id": "6",
+     "text": "How does the live processor load into events_clean: append, upsert or something else? Which table do the live processor and the replay job each write to at the same time for the day being replayed?",
+     "about": "loads events_clean (partitioned by day)"
+    },
+    {
+     "id": "7",
+     "text": "How does the replay job decide which day to rebuild and who starts it? Does it re-run dedup and enrichment, and which day does an event belong to: client timestamp or received_at?",
+     "about": "Replay job rebuilds a day from the archive"
+    },
+    {
+     "id": "8",
+     "text": "What does the swap do for events still arriving for that day, and what happens if the replay fails partway? Also, replay needs the archive, but the archive is deleted after 90 days. Does that limit how far back a replay can go?",
+     "about": "swaps it into events_clean / 90-day lifecycle"
+    },
+    {
+     "id": "9",
+     "text": "What does the alert on consumer lag fire on, and who responds? Which consumers does it cover?",
+     "about": "Monitoring and alerts on consumer lag"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The raw log is the existing replicated append-only log (Kafka-style, 14-day retention) named in the brief. The collector writes to it. The archiver and the live processor read from it. Added to the terms and step 2."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "They are two independent readers, each with its own saved position, so one cannot slow the other. If one falls behind it catches up from where it stopped. The 14-day log retention gives room, and the lag alert fires long before that."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The brief says the collector returns 202 only once the batch is durably stored, so the reply comes after the log write is confirmed. If the write fails it returns 5xx and the SDK retries the same batch. A partial batch gets 202 with the rejected events listed, and clients never retry rejected events."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Malformed means missing event_id or device_id, or over 32 KB. Only that event is rejected and the rest of the batch is accepted, as the brief states."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Set-if-absent on the key event_id. If the key exists the event is a later copy and is dropped. TTL is 8 days because retries can come up to 7 days after the first copy, with a day of margin. If the KV store is down the processor pauses and loads nothing. If it crashes after loading and before recording, it reprocesses the micro-batch and may append some rows twice in the open day. I accepted that over losing events, and replay removes them. Whether to run replay automatically is an open question."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The live processor appends to the day partition of events_clean for the day of received_at. The replay job writes only to a separate staging table, then swaps it into the partition. A closed day gets no live writes, so the two never write the same partition at once."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An operator starts it by hand with a UTC day. It re-runs dedup and enrichment, since enrichment fixes are the reason for replay. The day is the day of received_at, per the brief. Because a retry can land on a later day than its first copy, replay also reads the previous 7 days of archive and drops any event with an earlier copy. This keeps the first-copy-wins rule without touching live KV state."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Only closed days can be replayed. A day closes at 02:00 UTC the next day, and received_at is server time, so no new events arrive for that day. The swap therefore has no live events to race with. If replay fails before the swap, events_clean is unchanged and the operator reruns it. The 90-day archive does limit replay. Replay needs the 7 prior days for dedup, so it refuses days older than 83 days."
+    },
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "The alerts cover live processor lag over 3 minutes (page), archiver lag over 1 hour (warn), collector 5xx rate and replay failure. The thresholds are my choice. The brief does not say who responds, so that is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Dedup says it sets the key event_id in the KV store only if absent, but Load says it records the IDs after the load. Is the key written at the dedup check or after the load? How do these two fit together?",
+     "about": "Live processor: Dedup / Load (records the event_ids in the KV store after the load)"
+    },
+    {
+     "id": "11",
+     "text": "If the same event_id appears twice inside one micro-batch, before anything is recorded in the KV store, how is the second copy dropped?",
+     "about": "Live processor: Dedup"
+    },
+    {
+     "id": "12",
+     "text": "What is the log order in the archive? Do archive part files keep the log position of each event, or how does replay know which of two copies with the same received_at came first?",
+     "about": "Replay: Dedup (using log order to break ties)"
+    },
+    {
+     "id": "13",
+     "text": "After a crash, the restarted processor reprocesses a micro-batch. Does the KV check drop those events, or load them again? Why do duplicate rows appear in that case?",
+     "about": "Live processor: If it crashes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The doc was inconsistent. Fixed: the dedup check only reads the KV store (plus an in-batch seen set). The keys are written once, after the load. This way a crash can cause duplicate rows but never lost events."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The processor keeps a set of event_ids seen so far in the current micro-batch. A second copy in the same batch is found in that set and dropped. The first in log order wins."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The archiver now stores each event's log partition and offset beside the event, as separate fields that leave the event unchanged. Replay breaks a received_at tie by smaller partition, then smaller offset. Offsets are not comparable across partitions, so in a rare exact tie live may have kept the other copy. They are the same event, so I accept that."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "The KV check does not drop them. The IDs are written only after the load, so after a crash before that write the KV store does not have them. The reprocessed events pass the check and are loaded again, which makes duplicate rows in the open day. Replay removes them."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "Replay reads the archive for day D from 02:00 UTC on D+1, but the archiver may be up to an hour or more behind before it warns. What makes sure all of day D's events are already in the archive when the operator starts replay?",
+     "about": "Replay rebuilds one closed day / Archiver stores everything"
+    },
+    {
+     "id": "15",
+     "text": "How does the archiver decide an hourly part file is finished, and can replay read a file that is still being written?",
+     "about": "Archiver stores everything: hourly part files"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing in the old plan guaranteed this, so it was a real hole. Added an hour-complete marker that the archiver writes only after its position in every log partition has passed the end of that hour. Replay now refuses unless every hour of day D and the 7 days before it has its marker. If the archiver is behind, the operator waits and reruns. A missing marker also shows up in the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Each part file is uploaded whole, and object storage shows an object only when the upload is complete, so a half-written file is never visible. An hour is finished when the archiver's position in every log partition has passed the end of the hour; it then uploads the last files and writes the hour-complete marker. Replay reads an hour only if its marker exists. Clock skew between collector servers could break the ordering assumption; how large it can be is unknown, so it is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "16",
+     "text": "Replay refuses unless the archiver's hour markers exist. What checks that the live processor has finished loading day D before the swap? If it is lagging past 02:00 UTC on D+1, what happens to its late rows for D?",
+     "about": "Closed day / Replay: Load and swap"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Nothing checked this, so it was a real hole: the 2-hour wait after closing was only a hope. Fixed: replay now also refuses unless the live processor's saved position in every log partition has passed the end of day D (replay only reads that saved position, it does not change the processor). If the processor is lagging, the operator waits and reruns, so no late live rows for D arrive after the swap. Late rows would otherwise be appended to the swapped-in partition as duplicates. The live lag alert (3 minutes, page) makes this refusal rare. Like the archiver check, it assumes received_at is roughly ordered within a log partition; the skew is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "17",
+     "text": "How does the archiver (or replay's live-position check) tell that a position in a log partition has 'passed the end of an hour' or day? Does it wait to read an event with a later received_at? What happens if a partition gets no new events after that hour?",
+     "about": "Archiver stores everything / Hour-complete marker / Replay: refuses if live processor's saved position has not passed the end of D"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Defined \"passed time T\" in the terms. A reader has passed T in a partition when it has read an event there with received_at at or after T, or when it has read to the end of the partition and the wall clock is at least 10 minutes past T. The first rule assumes received_at is roughly ordered within a partition. The second handles a quiet partition that gets no later event, which would otherwise block the hour-complete marker and replay forever. I chose 10 minutes as a grace period for the delay between stamping and the log write. It is a guess, not derived from data, and the skew open question now says so. The live processor saves its per-partition passed time with its position, and replay reads only that saved value."
+    }
+   ]
+  },
+  {
+   "round": 6,
+   "questions": [
+    {
+     "id": "18",
+     "text": "What happens if the append to events_clean fails or is slow during a micro-batch? Is the log position left where it was, and are any rows from that batch possibly already in the table?",
+     "about": "Live processor: Load"
+    },
+    {
+     "id": "19",
+     "text": "Is the live processor one process reading all log partitions in each micro-batch, or several instances that each take some partitions? If several, how is a duplicate event_id found when its two copies are in different partitions?",
+     "about": "Live processor: Dedup"
+    },
+    {
+     "id": "20",
+     "text": "How does the collector choose the log partition for an event? Can two copies of the same event_id land in different partitions?",
+     "about": "Collector validates and stores / Raw log"
+    },
+    {
+     "id": "21",
+     "text": "If the KV store write of the event_ids fails after a successful load, but the processor does not crash, what does it do with its log position?",
+     "about": "Live processor: Load"
+    },
+    {
+     "id": "22",
+     "text": "What does the operator see when replay refuses? Does the job say which check failed and which hour or partition is missing?",
+     "about": "Replay rebuilds one closed day"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "If the append fails or times out, the processor writes no IDs, keeps its log position and retries the micro-batch. If it cannot tell whether the append landed, rows may already be in the table and the retry can load them twice, the same as after a crash. Replay removes those duplicates. Whether a warehouse append can partly succeed is unknown, so it is added to the open questions."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Several instances may run, each owning some log partitions with its own saved position. This exposed a real hole: copies of one event_id in different partitions could both pass the check. Fixed by partitioning the log by hash of event_id (see Q20), so all copies are in one partition, read by one instance in order. Dedup never compares across instances."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Previously unspecified. Now the collector chooses the log partition by hashing event_id. Retries carry the same event_id, so every copy lands in the same partition. I chose this because it makes live dedup correct with the simplest rule. A side effect is that the replay tie-break becomes smaller offset only, and the earlier 'rare tie across partitions' caveat is gone."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "It retries the KV write a few times. If it still fails, it stops without moving its log position, the same as when the KV store is down. On restart the micro-batch is reprocessed and may load some rows twice in the open day, which replay removes. The retry count is not decided and not needed yet."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Yes. The refusal message names the failed check and lists each missing hour marker, or each log partition whose live passed time is earlier than the end of D. I chose this so the operator knows what to wait for. The exact message format is left out."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [],
+ "rounds": 6,
+ "end_reason": "cap"
+}

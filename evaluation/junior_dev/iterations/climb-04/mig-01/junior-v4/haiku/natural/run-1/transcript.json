@@ -1,0 +1,205 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When a user updates their profile, who increments `version`, and where? Is it the app on every write, or a database trigger?",
+     "about": "Dual write never raises"
+    },
+    {
+     "id": "2",
+     "text": "Is the copy to Postgres done inside the user's request, before the response is sent? If so, does every write wait up to 250 ms on it?",
+     "about": "Dual write never raises"
+    },
+    {
+     "id": "3",
+     "text": "What is the \"erasure copy\" and the \"erasure\" it mentions? Is it the same thing as the delete in the Deletes section, or a separate process, and what does it do in Postgres?",
+     "about": "One copy rule everywhere"
+    },
+    {
+     "id": "4",
+     "text": "When a user is deleted while dual write is on, how does the row leave Postgres? Does the request delete it there directly, or only the step 5 sweeper reading the tombstone?",
+     "about": "Deletes"
+    },
+    {
+     "id": "5",
+     "text": "What process actually runs the backfill and the full comparison? Is it code inside every app instance, a separate worker, or a script an operator starts? And who decides that the step 4 gate is green?",
+     "about": "6. Backfill, then the full comparison"
+    },
+    {
+     "id": "6",
+     "text": "What is `app_flag_value{flag=...}`, and how does an operator or the automation read it across all instances? What are `pg-core`, `core`, and the \"replica\"?",
+     "about": "Flags"
+    },
+    {
+     "id": "7",
+     "text": "Who runs the drain in step 11 while writes are fenced? An operator command, or automation? How does it know the drain is finished and the hashes match?",
+     "about": "11. Drain (20 s budget)"
+    },
+    {
+     "id": "8",
+     "text": "After the flip, when a write goes to Postgres first and then the MySQL shadow, what stops the reverse sweeper (step 14) from conflicting with that shadow write for the same row?",
+     "about": "12. Flip the source to Postgres (T1)"
+    },
+    {
+     "id": "9",
+     "text": "After the flip to Postgres as source, do reads at 100% come from the Postgres primary or a Postgres replica? And what does a user see if they write and immediately read?",
+     "about": "Reads never fail / 7. Ramp reads to Postgres"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The app does it. `UserRepository.update` runs `version = version + 1` in the same SQL UPDATE, and `create` sets it to 1. The existing files show no database trigger. The document now says so in the Version bullet."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. The copy runs in the request after the MySQL commit and before the response, with a 250 ms timeout. A slow Postgres adds up to 250 ms to a write, and a failure is counted and never raised. I chose this so Postgres is current for a read right after a write, and the sweeper covers what it misses. The cost is added latency at about 400 writes/s when Postgres is slow. The old text said to read the row back inside the same MySQL transaction after the commit, which cannot work. It now reads the values inside the transaction before commit and copies them after."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "There is no separate erasure copy in the brief or the existing files. The phrase was an error. The erasure job calls `UserRepository.delete`, which deletes the MySQL row and writes the tombstone in one transaction. In Postgres the user is removed by the tombstone apply, which runs under the same copy lock (see Deletes and step 5, part 1). The phrase is removed."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The request now applies the tombstone to Postgres right after the MySQL delete commits, under the copy lock and with the same 250 ms timeout. The sweeper's tombstone step is the fallback if that fails. I chose this because the first draft only let the sweeper remove the row, which left an erased user readable in Postgres for up to the repair lag. Tombstones are kept forever, so a deleted id is never copied back."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It is code inside the app instances, not a separate worker or an operator script. One instance holds the backfill advisory lock and runs backfill and the comparison in its own loop, separate from the sweeper so a slow backfill cannot delay repair. The backfill leader decides that the step 4 gate is green. The gate reads the heartbeat rows in Postgres: every instance shows dual_write on and the new build, for 60 s. No operator action is needed to start step 6."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "`app_flag_value{flag=...}` is the per-instance metric described in flags_and_jobs.md, which each instance exports so an operator can read it in the metrics system. `pg-core` is the Postgres 16 cluster, provisioned and empty. `core` is the MySQL database that holds `users`. The replica is `mysql-core-replica`, the MySQL read replica that reporting jobs also use. The plan no longer uses the metric for gates. Each instance writes a heartbeat row to Postgres `instance_status`, and gates read those rows (see the Coordination bullet)."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An operator starts the switch, as step 9 already says. The switch command runs the drain itself, so no one runs it by hand. The drain is finished when its one forward sweep leaves no pending rows and the window hashes match on both sides. If the 20 s budget runs out or the hashes do not match, the command runs step 13."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Timing does not stop the conflict. The version rule does. The shadow write and the reverse sweeper both apply the same write: update by id where `version < incoming`, and insert if no row changed. A single change carries the same version on both sides, so the second writer changes nothing and cannot overwrite a newer row with an older one. Email collisions go to `migration_pending`. I did not add a lock, because the version rule makes the two writes idempotent."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Reads at 100% go to the Postgres primary. A user who writes and then reads sees the write, because the copy completes before the response. The one exception is a failed copy, where the old row stays visible until repair. The existing files do not say whether `pg-core` has a read replica, so the plan does not use one. Both the replica question and the failed-copy window are listed as open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "What does `users.mysql_shadow=true` do before the switch, while `users.source` is still `mysql`? What is being shadowed and where?",
+     "about": "Flags / 3. Deploy the dual-write build with every flag off"
+    },
+    {
+     "id": "11",
+     "text": "After the flip, who increments `version` for an update, and what does \"Updates and deletes check `version` in Postgres\" mean? Is it a compare against a version the caller sent, or just the +1 in the UPDATE?",
+     "about": "12. Flip the source to Postgres (T1)"
+    },
+    {
+     "id": "12",
+     "text": "After the flip, how does a user delete work? Where is the tombstone first written, and how does the delete reach MySQL?",
+     "about": "12. Flip the source to Postgres (T1) / Deletes"
+    },
+    {
+     "id": "13",
+     "text": "After step 12, does the forward sweeper (step 5) stop? The Leaders bullet says the sweeper loop runs steps 5 and 14. How does the loop know which direction to run?",
+     "about": "Leaders / 14. Run the reverse sweeper"
+    },
+    {
+     "id": "14",
+     "text": "Reads can go to Postgres while writes still go to MySQL first. For a user bucketed to Postgres, what exactly is read, and how is `users.pg_read_percent` applied per request (what is `enabled_for` given)?",
+     "about": "7. Ramp reads to Postgres"
+    },
+    {
+     "id": "15",
+     "text": "Who counts `in_flight`? Does it include the post-commit copy to Postgres and the tombstone apply, or only the MySQL write? And what does a client do on receiving the 503?",
+     "about": "10. Fence writes (T0)"
+    },
+    {
+     "id": "16",
+     "text": "Backfill reads by id from the replica while live writes are happening. How do rows changed or created after the cursor passed them, but before dual write was on, get to Postgres? Is the sweeper's start time of flip minus 10 minutes enough on its own?",
+     "about": "6. Backfill, then the full comparison"
+    },
+    {
+     "id": "17",
+     "text": "If the flip to `postgres` is set but a problem is found right after, what is the path? Step 13 says abort only works before step 12 completes, so is step 15 the only way back, and does it need the full fence cycle?",
+     "about": "13. Abort / 12. Flip the source to Postgres (T1)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "Nothing reads `users.mysql_shadow` before step 12. Its only use is the MySQL shadow write after the switch. The first draft wrongly listed it in step 3. It is removed there and defined in step 12, where step 17 turns it off."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The caller sends the version it read. The +1 happens in the one Postgres UPDATE that checks `version = expected`, as the MySQL UPDATE does today. Zero rows means StaleWrite. There is no trigger. The vague 'check version' wording is replaced by this rule in step 12. I chose the caller's read version because it keeps optimistic locking as it is today."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The tombstone is first written in Postgres. In one Postgres transaction under the copy lock, the row is deleted and the tombstone is inserted. Then the request shadows the delete and tombstone to MySQL. If that shadow fails, the reverse sweeper (step 14) applies the Postgres tombstone to MySQL."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, the forward sweeper stops. Which sweeper runs is set by `migration_state.sot`. `mysql` runs the forward sweeper, and `postgres` (with mysql_shadow on) runs the reverse sweeper. The switch command sets it in steps 12 and 15. Each direction keeps its own cursors, so the two never share state."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Bucketing is `enabled_for(\"users.pg_read_percent\", user_id)`, keyed on user id. A bucketed user reads the Postgres primary row, and everyone else reads the MySQL replica. A Postgres error falls back to the replica in the same request. After step 12, reads always go to Postgres. The flags file does not confirm that buckets nest as the percentage rises. That is listed as an open question."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "in_flight includes the Postgres copy and the tombstone apply, because both run inside the request. The client gets a 503 with Retry-After and retries, as the brief says existing clients do. I also fixed a race: an instance that sees fenced refuses new writes, waits for its own in-flight count to reach 0, and then reports at once, rather than waiting for the next 5 s heartbeat."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "No. The sweeper's start time alone is not enough, and the plan does not rely on it alone. The sweeper covers changes from 10 minutes before dual write. Older rows are covered by backfill, which starts at least 60 s after dual write is on, so it reads their current values. A change made after backfill passes a row is also after dual write is on, so the request copy or the sweeper covers it. A coverage paragraph is added to the 'How the system runs' section."
+    },
+    {
+     "id": "17",
+     "tag": "checked",
+     "text": "Yes. After step 12, the only way back is step 15. It needs the full fence cycle because MySQL must receive every Postgres-only write before writes return to MySQL, or writes would be lost. Step 15 also depends on its precondition, reverse lag under 60 s with no pending rows. If the reverse sweeper is broken, rollback is blocked, and that is noted in step 14. Reads stay on Postgres after step 12, and step 15 spells out its pause and abort points."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one user's row through the whole migration. The document lists its steps in a different order from the order of events, so I walk it in time order.\n\n1. **Schemas (step 1).** The normal deploy runs the migration. It creates the Postgres tables (`users`, a unique index on `lower(email)`, `users_tombstones`, `migration_state`, `migration_pending`, `instance_status`, `users_id_seq`). It also creates MySQL `user_tombstones` and an index on `users (updated_at, id)`. Before this, someone checks the MySQL collation of `users.email` so Postgres can match its case and trailing-space rules. Every statement is `IF NOT EXISTS`, so a failed run can be repeated. A failed MySQL index build is aborted and retried. No request is affected.\n\n2. **Staging rehearsal (step 2).** In staging, step 1 is done first. Then steps 10 to 13 and 15 are run with the real 30 s flag refresh, and the 503 window is measured. The target is 80 s or less and the hard limit is 90 s. The measurements are kept in the runbook. If the rehearsal fails, the drain budget and abort thresholds in the runbook are adjusted. Production step 10 does not start until the rehearsal is under the limit.\n\n3. **Deploy with all flags off (step 3).** The release goes to every instance. It carries the copy function, the dual-write path, the heartbeat, and a tombstone insert inside the erasure delete's MySQL transaction. The tombstone insert is always on. The flags are `dual_write=false`, `source=mysql` and `pg_read_percent=0`. Each instance exports `users_repo_build{version}`. The Postgres pool gets an acquire timeout of 250 ms or less and a statement timeout. No data moves. If the deploy fails, it is rolled back. If the tombstone insert fails, that erasure attempt fails and the erasure job retries it.\n\n4. **Heartbeats and flags.** Every 5 s each instance writes a row to Postgres `instance_status` with its id, build, flag values, `in_flight` count and `seen_at`. Each instance refreshes flags every 30 s. A gate passes only when every running instance has a heartbeat under 15 s old showing the expected value. If Postgres is down, heartbeats stop and the gates stay closed.\n\n5. **Turn on dual write (step 4).** This starts once step 3 is on every instance, so no older build runs. An operator sets `users.dual_write=true`. The gate for step 6 needs every heartbeat to show `dual_write` on and the new build, held for 60 s.\n\n6. **A write while dual write is on (source `mysql`).**\n   - The request writes to MySQL and commits.\n   - The values are read inside the MySQL transaction, so what is copied is the committed row.\n   - The request then calls the copy function with a 250 ms timeout. In one Postgres transaction, the function locks the user id and skips the id if a tombstone exists. Otherwise it inserts the row, or updates it only if the row is missing or the existing `version` is lower.\n   - `version` starts at 1 on create. Each update adds 1 in the same SQL statement. No trigger does this.\n   - If the copy fails, the failure is counted and the user id goes into `migration_pending`. The request still succeeds.\n   - The sweeper retries failed copies later.\n\n7. **A delete before the switch.** One MySQL transaction deletes the user and inserts a tombstone. The request then applies the tombstone to Postgres under the copy lock: it deletes the row and inserts the tombstone, with a 250 ms timeout. If that fails, the sweeper applies it. Tombstones are kept forever in both stores, so an erased id cannot come back.\n\n8. **Forward sweeper (step 5).** It runs on every instance, but only the instance holding `pg_try_advisory_lock(<sweeper key>)` on a dedicated session does the work. Instances without the lock retry every 10 s. The cursor starts at the time dual write was turned on, minus 10 minutes. While `sot=mysql`, the leader loops:\n   - It reads MySQL tombstones with `seq > tomb_seq` from the replica. For each one it deletes the user from Postgres and inserts the tombstone with `ON CONFLICT DO NOTHING`, under the copy lock. It advances `tomb_seq` after each batch.\n   - It reads up to 2000 `users` rows with `updated_at >= cursor` from the replica and copies each with the copy function. After the batch is applied or recorded as pending, it sets the cursor to the largest `updated_at` seen, minus 60 s.\n   - Rows that fail go to `migration_pending`. They are retried with backoff and deleted on success.\n   - The state is kept in `migration_state` (`sweep_users_cursor`, `sweep_tomb_seq`), `migration_pending` and the lock.\n   - The alerts are repair lag above 5 min, or a pending row older than 15 min.\n   - If the leader dies, its lock is released and another instance takes over within seconds. The cursor never moves past unfinished work.\n   - The sweeper scans by `updated_at`, not by flag, so writes made without dual write are still repaired.\n\n9. **Backfill (step 6).** This starts automatically once the step 4 gate has held for 60 s. A separate backfill leader holds its own advisory lock, `pg_try_advisory_lock(<backfill key>)`, so a slow backfill cannot delay the sweeper. It loops:\n   - Read `backfill_cursor` (default 0) from `migration_state`.\n   - Check the replica lag. If it is above 5 s or missing, sleep 5 s and check again.\n   - Read the next 2000 rows by id from the replica.\n   - Check the lag again. If it is above 5 s, drop the batch and go back to the lag check.\n   - In one Postgres transaction, copy the rows and set `backfill_cursor` to the last id read, then commit.\n   - Sleep 200 ms.\n   - When a read returns no rows past the cursor, set `backfill_done=true` and record the max id.\n   - After a crash it resumes from the last committed cursor. A replayed batch is safe because of the version rule.\n   - Together with the request copy and the sweeper, this covers every change: new writes, changes from 10 minutes before dual write onward, and older rows.\n\n10. **Comparison (still step 6).** The same leader scans ids in ranges of 2,000. For each range it compares the counts and a hash of `(id, lower(rtrim(email)), rtrim(name), plan, version)` on the replica and on Postgres. Where a hash differs, it compares the rows one by one. It also compares the two tombstone sets and checks that no Postgres row has a tombstoned id. For a row that differs or changed in the last 60 s, it rereads both sides after a 30 s settle.\n   - A missing row, or one with a lower version in Postgres, is fixed with the copy function.\n   - A Postgres row with a higher version, or one with no MySQL row and no tombstone, is reported and blocks the gate.\n   - Only tombstoned ids are deleted automatically.\n   - The gate passes when one full pass ends with no unresolved mismatch. The run id and time are recorded in `migration_state`.\n   - An unexplained mismatch keeps the gate closed until someone has investigated it.\n\n11. **Read ramp (step 7).** Reads still go to the MySQL replica. After the step 6 gate passes, `users.pg_read_percent` goes to 1, 10, 50, then 100. Each level is held for at least 1 hour and until every heartbeat shows it.\n    - A user is bucketed with `enabled_for(\"users.pg_read_percent\", user_id)`. A bucketed user reads the Postgres primary and everyone else reads the MySQL replica.\n    - If a Postgres read errors, the request falls back to the MySQL replica and the error is counted.\n    - The next level starts only when the error rate is flat and sampled reads (1% of Postgres reads, compared with the replica) show no unrepaired mismatch.\n    - To roll back, set the percentage to 0. A reader may briefly see an old row if its Postgres copy failed, for up to the repair lag.\n\n12. **Hold at 100% (step 8).** Nothing new happens. The sweeper keeps running and the comparison runs daily. The clock is `reads_pg_100_since` in `migration_state`. It resets if the percentage drops below 100, or if a mismatch is not repaired within 1 hour. The hold is 3 days.\n\n13. **Preconditions for the switch (step 9).** An operator asks for the switch. The checks are:\n    - reads at 100% for at least 3 days\n    - a comparison with zero mismatches in the last 24 h\n    - `backfill_done=true`\n    - sweeper lag under 60 s\n    - no pending rows\n    - every heartbeat on the new build\n\n    If any check fails, the switch does not start.\n\n14. **Fence (step 10, T0).** The operator's switch command sets `users.source=fenced`. Each instance refuses new writes with a retryable 503 and `Retry-After`, finishes its in-flight writes, and writes a heartbeat showing `fenced` and `in_flight` 0. `in_flight` counts a write from its start until its response is sent, including the Postgres copy and the tombstone apply. Reads continue. The command waits until every heartbeat shows this. Propagation takes up to 30 s. If any instance has not reported within 35 s, the abort (step 13) runs.\n\n15. **Drain (step 11, 20 s budget).** The switch command runs one forward sweep against the MySQL primary, not the replica, for rows with `updated_at >= cursor - 60 s` and for tombstones since `tomb_seq`. It then compares the hashes of that window on both sides. The drain is done when no rows are pending and the hashes match. Then it reads the next AUTO_INCREMENT value from MySQL `information_schema` on the primary. It sets `users_id_seq` to the larger of that value and the current Postgres sequence value, plus 1,000,000. If the drain exceeds 20 s or the hashes differ, the abort runs.\n\n16. **Flip (step 12, T1).** The command sets `users.source=postgres`, `migration_state.sot=postgres` and `sot_switched_at`. The worst-case pause is 80 s (30 + 20 + 30), measured from the first 503 to the first successful write. An instance that has not refreshed its flag stays `fenced`, which refuses writes safely.\n\n17. **Abort (step 13).** Before step 12 completes, a timeout or failed check makes the command set `users.source=mysql`. Nothing was written to Postgres as source, so no drain is needed. Propagation takes up to 30 s, and the worst case from step 11 is 85 s. If the abort itself fails, it is retried. Writes stay refused until every heartbeat shows `mysql`.\n\n18. **A write after the switch (source `postgres`).**\n    - Create: take the id from `users_id_seq`, insert into Postgres, then shadow to MySQL with that id.\n    - Update: `UPDATE` in Postgres `WHERE id = ? AND version = <the version the caller read>` and add 1 to `version`. If zero rows change, the result is `StaleWrite`. Then shadow to MySQL.\n    - Delete: under the copy lock, insert the tombstone and delete the row in Postgres, then shadow both to MySQL.\n    - The shadow happens when `mysql_shadow` is on. It updates the MySQL row where id matches and `version < incoming`, and inserts if no row changed. A second writer of the same change carries the same version, so it changes nothing.\n    - If Postgres fails, the client gets 503 with `Retry-After`. If the MySQL shadow fails, it is counted and the reverse sweeper repairs it.\n    - All reads go to the Postgres primary.\n\n19. **Reverse sweeper (step 14).** Once `sot=postgres`, it runs the same loop in the other direction with its own lock, which is why the two sweepers cannot clash. It reads Postgres `users` by `updated_at` and `users_tombstones` by `seq`, and applies them to the MySQL primary. Updates use the `version < incoming` rule, and insert if no row changed. A tombstone deletes the MySQL row and inserts the MySQL tombstone. `ON DUPLICATE KEY UPDATE` is not used. Email conflicts go to `migration_pending` with `direction='to_mysql'`. Its cursors are `rsweep_users_cursor` and `rsweep_tomb_seq`. It runs until step 17. Users do not see its lag, but rollback is blocked until reverse lag is under 60 s and nothing is pending.\n\n20. **Rollback (step 15).** This is allowed until step 17, and only if reverse lag is under 60 s with no pending rows. In order:\n    - Set `fenced`.\n    - Wait up to 35 s for all heartbeats to show `fenced` and `in_flight` 0. If that fails, set `postgres` again, which causes a second pause of up to 30 s.\n    - Run the reverse sweeper once against the Postgres primary and confirm matching hashes, within a 20 s budget. If that fails, set `postgres` again.\n    - Set the MySQL AUTO_INCREMENT to the larger of its current value and Postgres's last sequence value, plus 1,000,000.\n    - Set `pg_read_percent=0`.\n    - Set `source=mysql` and `sot=mysql`, and reset the forward sweeper cursor to the fence time minus 10 minutes.\n\n    The worst-case pause is 80 s.\n\n21. **Hold for 14 days (step 16).** Shadow writes, the reverse sweeper and a daily comparison keep running. The clock is `sot_switched_at`. If something goes wrong, step 15 is run.\n\n22. **Postgres-only writes (step 17).** This starts 14 days after `sot_switched_at`, with reads still at 100% on Postgres. A final snapshot of MySQL `users` and `user_tombstones` is taken and checked to restore. Then `users.mysql_shadow=false`, and the reverse sweeper stops. There is no fence and no pause. Instances on an older flag value for up to 30 s may still shadow, which is harmless. If the snapshot does not restore, the flag is not set. After this step, step 15 is no longer safe. If the flag is set back to true, MySQL is behind and a full reverse comparison is needed before any rollback.\n\n23. **Drop the MySQL tables (step 18).** This happens after step 17 has been live for a retention period. The document recommends 30 days, and the owners decide. It drops MySQL `users` and `user_tombstones`, removes the migration code, flags and the `no-raw-users-sql` exception, and updates `existing/users_table.md`. This cannot be undone, and the restored snapshot is the only way back. It does not run until the snapshot restore check has passed.",
+   "gaps": [
+    "How a gate or the switch command learns the full list of running instances. Steps 4, 10 and 12 depend on it, and the document lists it as an open question.",
+    "Whether the app can read replica lag from `mysql_replica_lag_seconds`, which the backfill throttle in step 6 uses.",
+    "Whether a user bucketed to Postgres at 1% stays bucketed at 10%. The document says this is not verified, so I cannot say whether a user stays on one store while the ramp rises.",
+    "What the Postgres primary looks like for read load, and whether `pg-core` has a read replica. After step 7 all reads hit the primary, and its capacity is unknown.",
+    "Whether read-after-write is acceptable when a Postgres copy has failed. The old or missing row stays visible until repair, possibly up to the 5-minute lag alert, and the brief's position is unknown.",
+    "Which instance or process runs the switch command, and how it waits and reads heartbeats. The document says only that 'the command' does."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "MySQL commits first, then Postgres gets an apply_copy within 500 ms. A Postgres failure is logged and counted, and the caller still succeeds.",
+  "q2": "Only if no tombstone exists for the id and the incoming version is higher than the stored row's version (WHERE users.version < EXCLUDED.version).",
+  "q3": "Every instance must show users_mirror=1, series count must equal code-A instance count, and one more minute must pass. Disagreement lasts up to 30 seconds.",
+  "q4": "It pauses until mysql_replica_lag_seconds is 5 or less, polling every 5 seconds, then reads 2000-row id-ordered batches from the replica.",
+  "q5": "Reads need clean G2. The switch needs 3+ days at 100%, G2 within 24 hours, outbox under 10 seconds, and a staging dry run.",
+  "q6": "A MySQL users_sync_outbox row, written in the same transaction, records it. The sweeper retries every second via apply_copy until Postgres catches up.",
+  "q7": "Deletes insert a tombstone even when the row is absent, and apply_copy does nothing for tombstoned ids. Ids are never reused.",
+  "q8": "Progress lives in a one-row Postgres table, migration_backfill(last_id), updated in the same transaction as each batch. It stops when a batch comes back empty, recording backfill_done_at.",
+  "q9": "The compare tool walks tables in both directions, finding missing, extra or differing rows. Confirmed mismatches are enqueued for repair and fail the run.",
+  "q10": "Writes take FOR SHARE on each database's fence; the switch's exclusive lock blocks them. If the drain misses 40 seconds, the fence reverts.",
+  "q11": "Postgres assigns ids after the switch: its sequence starts at max(MySQL AUTO_INCREMENT, max PG id) + 100000. Rollback raises MySQL's counter if needed.",
+  "q12": "Every write commits to Postgres and is mirrored to MySQL by repair. Rollback runs switchctl --to mysql. Option ends at step 10, when mirroring stops."
+ },
+ "sonnet": {
+  "q1": "MySQL (the source) is written first, in a transaction with the fence check and an outbox row (if mirroring is on), then committed; then within 500 ms apply_copy is called on Postgres. If Postgres fails, the error is swallowed, logged and a metric bumped; the request still succeeds, and the outbox row remains for repair.",
+  "q2": "Only if the incoming row's version is higher than the existing one (users.version < EXCLUDED.version), and no tombstone exists for that id.",
+  "q3": "Gate G1 must hold: users_mirror is 1 on every instance, the series count equals the number of deployed code-A instances, and one more minute has passed (backfill refuses to run otherwise and rechecks every minute). Instances can disagree for up to 30 seconds after a flag change.",
+  "q4": "It reads from the MySQL replica (not primary), in batches of 2000 rows, and pauses whenever mysql_replica_lag_seconds exceeds 5 (polled every 5 seconds). Only one runner at a time.",
+  "q5": "Reads: backfill done, oldest outbox row under 1 minute, and a full compare (G2) with 0 confirmed mismatches; then ramp 1, 10, 50, 100% with metrics normal at each stage. Source switch: 3+ days at 100% reads, G2 clean within the last 24 hours, oldest outbox row under 10 seconds, a staging dry run of switch and rollback, and confirmation the app's MySQL account can write users with explicit ids.",
+  "q6": "An outbox row (users_sync_outbox) written in the same transaction as the write, in the source database (MySQL while it is the source). The sweeper process (every second, rows older than 5 seconds) re-reads the current source row and calls apply_copy (or delete with tombstone if the row is absent), retrying forever with backoff.",
+  "q7": "Tombstones: delete(id) removes the row and inserts a tombstone in users_tombstones in the target (even if the row is absent); apply_copy does nothing if a tombstone exists for the id, under a per-id advisory lock in one transaction. Ids are never reused.",
+  "q8": "In Postgres, one-row table migration_backfill(last_id), updated in the same transaction as each batch's apply_copy. It stops when a batch comes back empty, and backfill_done_at is recorded.",
+  "q9": "The compare tool walks both tables in primary-key chunks in both directions, finding missing rows, extra rows and differing columns. Candidates are rechecked against the MySQL primary and Postgres after 60 seconds, with pending-outbox ids retried. Confirmed mismatches are enqueued to the outbox for repair, the run is declared failed, and a new full run is started until one is clean; the result is recorded in migration_compare_runs.",
+  "q10": "A DB-side fence: each database has users_write_state(owner, epoch); every write transaction does SELECT owner ... FOR SHARE and returns a retryable 503 if the owner is not that database. The switch takes an exclusive lock on the row, waiting for in-flight writers. Stale flags only cause 503s, not wrong writes. If it runs long: before the commit point, if drain isn't done 40 seconds after T0 or any step errors, switchctl sets the MySQL fence back to mysql and writes resume at once. After commit, worst case is about 40s plus 30s flag refresh (under 90s); if longer, use the rollback in step 9.",
+  "q11": "Postgres (its sequence). At the switch the sequence is set to max(MySQL AUTO_INCREMENT counter, max PG id) + 100000; mirrored copies keep explicit ids. On rollback, MySQL's AUTO_INCREMENT is checked against the maximum id and raised with ALTER if needed.",
+  "q12": "Every write commits to Postgres first and is mirrored to MySQL through the outbox/sweeper repair machinery; compare runs daily and an alert fires if the oldest outbox row is over 5 minutes. Rollback is switchctl --to mysql: fence Postgres as switching, drain the Postgres outbox into MySQL, check/raise MySQL AUTO_INCREMENT, set MySQL owner=mysql then flag users_source=mysql (same 90-second budget and abort-before-commit rule). The option lasts at least 14 days, and ends at step 10 (users_mirror=false, grants revoked, owner retired), after which rollback needs a MySQL restore."
+ }
+}

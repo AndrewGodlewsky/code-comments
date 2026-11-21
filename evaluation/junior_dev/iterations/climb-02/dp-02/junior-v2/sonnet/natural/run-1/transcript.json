@@ -1,0 +1,158 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the \"replicated log\" and the \"key-value store\" in this system, concretely? Are they specific products, and who runs them?",
+     "about": "Summary of the design / Write to the log, then acknowledge"
+    },
+    {
+     "id": "2",
+     "text": "A client sends a batch and gets a 5xx after a partial write. What exactly does the client see and do next, and how does it know the 7-day retry limit?",
+     "about": "3. Write to the log, then acknowledge"
+    },
+    {
+     "id": "3",
+     "text": "In the live processor, where does \"offset\" in the key-value entry come from, and how does a worker know a record's partition and offset when it claims the key?",
+     "about": "7. Run the live processor as its own consumer group"
+    },
+    {
+     "id": "4",
+     "text": "What is the live processor's \"committed watermark\", and how is it different from the log offsets it commits? Where is it stored so the gate can read it?",
+     "about": "15. Check that the day can be replayed (the gate)"
+    },
+    {
+     "id": "5",
+     "text": "The 8-day key-value TTL and the first copy rule: if a duplicate arrives after the key expired, what happens in live versus replay?",
+     "about": "7 and 17: dedup window"
+    },
+    {
+     "id": "6",
+     "text": "What is the warehouse here, and what does \"atomic single-partition replace\" mean in it? How does `events_clean` get partitioned by day?",
+     "about": "21. Swap atomically"
+    },
+    {
+     "id": "7",
+     "text": "Step 13 says the live sink refuses writes to a replayed day. Where is the \"replayed\" mark stored, and what happens to the refused events (are they dropped, held, or does the processor stall)?",
+     "about": "13. Stop live writes into closed days"
+    },
+    {
+     "id": "8",
+     "text": "What does the archiver write for each file format (`<ext>`), and how does a file get closed and named when its offset range is not known until it is full?",
+     "about": "5. Run the archiver as a separate consumer group"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The brief describes only kinds of system (a Kafka-style replicated log with 14-day retention, a key-value store with per-key TTL, object storage, a warehouse), not products. It does not say who runs them. I added an 'Existing infrastructure' definition and listed the unnamed products under Open decisions."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "The client sees a 5xx or timeout and treats the batch as not stored. It resends the same batch with the same event_ids, backing off from 1 s doubling to 5 minutes (from the brief). The 7-day limit is the mobile SDK's on-device buffer, not something the server tells it. A partial write becomes duplicates that step 4 and the dedup logic remove. I added this to step 3."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Every record delivered by the log client carries its own partition and offset. The worker stores those in the key-value entry. Added one line to step 7."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The old 'committed watermark' was vague. It is now the 'live watermark': after each successful load, the processor writes the highest received_at loaded per partition to a small progress table, then commits log offsets. The archiver writes its watermark to the same table. The gate reads both. The progress table is new and its store is not chosen (any store holding a few rows works). Steps 6, 11 and 15 now say this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Live: a copy arriving after the key expired (over 8 days) would be treated as new and kept. Replay: it would be dropped only if its first copy lies inside the D-8..D window, so otherwise it is also kept. The two agree, and the case breaks the 7-day client contract anyway, so step 17 logs it. The 8-day window gives 1 day of margin."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The brief says only that the warehouse can atomically replace a single day partition of a table. The product is not named. I assume events_clean is partitioned by the UTC date of received_at, as the brief requires. Added to the definitions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The replayed mark is a row per day in the progress table, written at the swap (step 21). Refused rows are dropped, counted and alerted, and the processor does not stall. This is safe because the gate only lets a replay start after the live and archive watermarks passed the end of D, so any later live write for D is for events already in the archive and in the replayed partition. Rewrote step 13 and removed the 'closed past its gate' wording."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The file format is not decided and does not affect the design. Any format that keeps the original bytes exactly works (for example compressed newline-delimited records with the bytes base64-encoded). Say so in the file, not a format. On naming: files are closed at a size or age limit or at midnight, and named from the offsets they actually hold. My earlier claim that names are deterministic was wrong, because a restart can cut files at different points. Fixed: restarts may produce overlapping files, and replay drops records with the same partition and offset (steps 5, 17, 25)."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "If the live processor crashes after a load but before committing offsets, it restarts and may cut its next batch at different offsets. Then the batch identity (topic, partition, start offset, end offset) differs from the first load. How is the same event kept from being written twice?",
+     "about": "11. Write to the warehouse in micro-batches (deterministic identity)"
+    },
+    {
+     "id": "10",
+     "text": "The watermark is the highest received_at loaded or written per partition. What happens for a partition that gets no events near midnight? Its watermark would never pass the end of day D, so how does the gate ever pass?",
+     "about": "15. Check that the day can be replayed (the gate): live and archiver watermarks"
+    },
+    {
+     "id": "11",
+     "text": "The doc says live writes to day D end shortly after 00:00 UTC on D+1. Which events does the live processor still write to day D after midnight, and what ends them? Does a replay at 02:00 UTC risk missing any of them?",
+     "about": "13. Stop live writes into replayed days"
+    },
+    {
+     "id": "12",
+     "text": "Between the replay's read of the archive and the swap, can the live path still be loading rows into day D? If so, what happens to those rows when the partition is replaced?",
+     "about": "21. Swap atomically / 20. Validate before the swap"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "This was a real hole. The old deterministic batch identity does not survive a restart that cuts batches differently. Replaced it: every row carries log_partition and log_offset, and a restarting worker first deletes its partitions' rows at or after the committed offset, then reprocesses. Step 7's same-offset rule keeps those records as winners, so each event is written once. This needs warehouse delete by condition, which I listed as an assumption to confirm."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Correct, the gate would never pass for an idle partition. Fix: when a worker is caught up with the end of its partition, it writes the watermark as now minus 1 hour. This is safe because collectors stamp received_at just before the write, so a record older than an hour cannot still arrive, and the gate already waits until 02:00. The same rule applies to the archiver. Defined once under 'Watermark' in Definitions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "After midnight, live writes to D only events stamped in D that were still in flight (in the log, or in an unflushed batch). Late retries are duplicates, so they add nothing. This ends when the live watermark passes D. A replay at 02:00 cannot miss them, because the gate waits for both watermarks to pass D (plus 5 minutes for collector clock skew) and the archive is read only after that. Rewrote step 13 and the watermark definition."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It could, in the old text, because the replayed mark was only written at the swap. Fixed: the gate marks D as 'started' when it passes, and the live sink drops rows for any started or replayed day. After the gate there are no new D rows anyway, and any straggler is already in the archive the replay reads. So the swap does not discard anything that is not also in the staging table. If a replay fails, D stays 'started' and the rerun covers it (step 22)."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one event, E1, from a client to the warehouse. Then I'll cover a retry, a crash, and a replay of its day.\n\n**Live path**\n\n1. **A client sends a batch.** The batch holds E1 and other events. Each event has an `event_id` and a `device_id`. The collector validates each event on its own. It rejects an event if `event_id` or `device_id` is missing, if it is over 32 KB, or if it is not parseable as an object. Rejected events are listed in the response by position with a reason, and they are not stored. Clients never retry them. The valid events continue. A body that is not an array gets 400, and a batch of more than 100 events gets 413. The document marks both as assumptions to confirm.\n\n2. **The collector stamps and wraps E1.** It sets `received_at` from its own server clock. It puts E1 inside an envelope with `received_at`, `collector_id` and `batch_id`. The original bytes of E1 stay untouched inside the envelope. The state at this point is only in memory.\n\n3. **The collector writes to the log and then acknowledges.** It writes all valid events to the topic `events_raw`, keyed by `event_id`, with full replication acknowledgement. It returns 202 only after the write is acknowledged, and the 202 lists any rejected events. The replicated log is now the durable holder of E1. The collector does not deduplicate.\n\n4. **The write can fail.** If the write fails or times out, the collector returns 5xx. It returns 429 if the log write path is saturated. The client treats 5xx, 429 and a timeout as \"not stored\". It waits 1 s, doubling up to 5 minutes, and resends the same batch with the same `event_id`s. The mobile SDK drops an event after 7 days in its buffer. A partial write from a failed attempt leaves duplicates in the log. The log keeps them, and the later steps remove them.\n\n5. **The log orders the copies.** Keying by `event_id` puts all copies of E1 in one partition, in offset order. The \"first copy\" is the one with the lowest offset in that partition. The partition count is locked, because changing it would break this ordering. Changing it needs a runbook event and a dedup-state cutover. The log retains data for 14 days.\n\n6. **The archiver reads the log.** It is a separate consumer group. It buffers records per partition and day. The day comes from each record's `received_at`. It writes files to object storage at `raw/received_day=.../partition=P/<start>-<end>`. Each file keeps the original bytes and records the `partition` and `offset` of every record. A file closes at a size or age limit, or at UTC midnight. The archiver commits log offsets only after the object is written. After a restart a new file can overlap an earlier one, and readers drop records that share a `partition` and `offset`. After each file it writes its per-partition watermark to the progress table. A lifecycle rule expires raw objects after 90 days, duplicates included. Archiver lag over 1 hour raises an alert, and lag over 24 hours pages. If the archiver falls more than 14 days behind, data is lost.\n\n7. **The live processor does the dedup check.** It is a second, independent consumer group. For each record it runs set-if-absent of `event_id` to `{partition, offset}` in the key-value store, with an 8-day TTL that duplicates do not refresh. If the key is absent, the record is the first copy and continues. If the key is present with a different `{partition, offset}`, the record is dropped and counted in a metric. If the key is present with the same `{partition, offset}`, the record is treated as the winner again. This covers a worker that crashed after claiming the key but before writing to the warehouse.\n\n8. **The key-value store can be unavailable.** The processor fails closed. It stops consuming and lets lag build, because the log can hold 14 days. It never writes events through without a dedup check. If the key-value state is lost, the document prefers rebuilding it from the last 8 days of the archive before resuming. The alternative is to resume and then replay the affected days.\n\n9. **The processor enriches E1.** It looks up geo-IP and parses the user-agent. It records the versions of the geo-IP database and the user-agent parser on the row or in the batch metadata. The enrichment code is one shared library used by both live and replay.\n\n10. **The bot stage is a placeholder.** It sits after dedup and enrichment. Until Product decides, no event is dropped or flagged as a bot.\n\n11. **The processor writes to the warehouse in micro-batches.** It flushes at least every 60 seconds. It appends to the `events_clean` partition for the day of `received_at`. Every row carries `log_partition` and `log_offset`. The order is: load, write the live watermark to the progress table, then commit log offsets. If the worker crashes between the load and the commit, it restarts from the last committed offset. Before consuming, it deletes the rows of its partitions with `log_offset` at or after the committed offset. It then reprocesses, and step 7's same-offset rule makes those records winners again, so each event ends up in the table once. This relies on the warehouse being able to delete rows by condition, which the document marks as an assumption.\n\n12. **Freshness is monitored.** The target is 5 minutes from the moment an event reaches us. Lag from `received_at` to queryable raises an alert at 3 minutes and pages at 5. Late client retries do not count against freshness.\n\n13. **The day is closed.** Day D is closed at 02:00 UTC on D+1. After midnight, live keeps writing to D only the events stamped in D that are still in flight. Late retries add no rows, because they are duplicates. Once the live watermark passes D, live writes to D stop.\n\n**Replay of E1's day D**\n\n14. **An operator runs `replay --day D`.** It returns a run id. The command is safe to rerun.\n\n15. **The gate checks four things.** The time must be at or after 02:00 UTC on D+1. The live and archiver watermarks must both have passed D for every partition. A watermark passes D when it is at least 5 minutes after the end of D. An idle partition's watermark advances to the current time minus 1 hour. The archive must still hold D and the 8 days before it, so replay is possible for about 82 days after D ends. A per-day lock must be free. When the gate passes, the progress table marks D as `started`.\n\n16. **From then on the live sink protects D.** Before each load it checks the progress table. For a day that is `started` or `replayed`, it drops the rows, counts them and alerts. It does not stall. This is safe because those events are already in the archive.\n\n17. **Replay reads only the archive.** It reads `received_day` from D−8 through D. It does not read the log or the live key-value store, and it does not use the live consumers. It runs on separate compute.\n\n18. **Replay rebuilds dedup from the archive.** It drops overlapping records with the same `partition` and `offset`. For each `event_id` it finds the first copy, which is the lowest offset in its partition across the D−8 to D window. It keeps a record for D only if that first copy has `received_at` in D. This matches the live rule. If a duplicate appears more than 7 days after its first copy, it is logged.\n\n19. **Replay re-enriches.** It uses the shared library at a pinned, recorded version. It applies the bot stage only if a decision exists by then.\n\n20. **Replay writes to the staging table.** The table is `events_clean_stage`, written under the run id. Dashboards read only `events_clean`, so they cannot see it.\n\n21. **Replay validates before the swap.** The staging row count must equal the number of distinct first-copy `event_id`s computed from the archive. `event_id` must be unique in staging. Every row must have `received_at` inside D. The row count must be within an expected range of the live partition, and the difference is reported to the operator. If any check fails, the swap is refused.\n\n22. **Replay swaps atomically.** It uses the warehouse's atomic single-partition replace to move the staging data into day D of `events_clean`. Dashboards see either the old day or the new one. The progress table then marks D as `replayed`. The run id, enrichment versions and row counts are recorded, and the staging table is deleted.\n\n23. **A failed replay is recoverable.** If it fails before the swap, `events_clean` is unchanged. D stays `started` and live keeps dropping its rows. The cause is fixed and the replay is rerun. A bad swapped-in replay can be corrected by replaying again within the 90 days.\n\n24. **Monitoring and checks.** Collector status rates and rejection rates, consumer lag, key-value errors, duplicate drops and archive counts are monitored. After each day closes, the live partition for D is compared with a count taken from the archive. A mismatch triggers a replay of D. Pre-launch tests cover duplicates, crashes between steps, an archiver restart, replay isolation and the 90-day rule.",
+   "gaps": [
+    "The document does not say what the 202 response contains for accepted events, or whether `batch_id` and `collector_id` are generated by the collector or supplied by the client.",
+    "It does not say how the live processor's worker sets are assigned to partition ranges or rebalanced, or what happens to the key-value check when ownership of a partition moves.",
+    "It does not say how a restarting worker learns which rows to delete (it says only 'rows of its partitions at or after the committed offset'). It also does not say what happens to those rows if the batch had already been loaded into a day that is now `started` or `replayed`.",
+    "Step 17 says to keep a record for day D only if the first copy has `received_at` in D, but does not say how replay chooses between two copies that share an offset order across different partitions, which should not occur. It also does not say how replay treats an event whose first copy is older than the 8-day window (for example a duplicate arriving after key expiry).",
+    "The document does not say what the progress table's watermark means for the live processor when a day D batch is still being flushed, other than 'highest `received_at` fully written'. It does not say how the per-partition watermarks are combined, or how a worker with several partitions writes them.",
+    "It does not define the 'expected range' for the validation check against the live partition, or who decides it.",
+    "It does not say how the lock per day is released if a replay crashes, or how a stuck `started` day is cleared if replay is abandoned.",
+    "It does not say how the live sink's `started`/`replayed` check is kept consistent with a load that is already in flight when the day is marked `started`.",
+    "The key-value rebuild procedure from the archive is only named, not described, including how it gets the original partition and offset values into the key-value store."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

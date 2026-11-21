@@ -1,0 +1,182 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The login flow says the app takes an advisory lock and runs BEGIN, but the first check is the Origin check. What happens to the response and to the database if the Origin check fails? Is anything recorded?",
+     "about": "POST /login: Origin must be same-origin, else 403"
+    },
+    {
+     "id": "2",
+     "text": "What does the app do with the incoming __Host-sid cookie during a login? Where does it get the old session ID to delete, and what if the cookie is stale or belongs to someone else?",
+     "about": "Delete session whose id_hash matches incoming cookie, if any"
+    },
+    {
+     "id": "3",
+     "text": "How does the app turn the cookie value into the lookup key for sessions? Does it hash the cookie on every protected request before the UPDATE?",
+     "about": "Server stores only a hash of the session ID / Protected request UPDATE sessions"
+    },
+    {
+     "id": "4",
+     "text": "What does a protected request do when the user is valid but the users row is gone or changed? The UPDATE only returns user_id; where is the user loaded for the page?",
+     "about": "Protected request: Row returned, D-->>A: user_id"
+    },
+    {
+     "id": "5",
+     "text": "A success deletes the failure and lock rows only after the password matches. Does a locked email with the right password still get 429? Please confirm the user cannot log in at all during the 15 minutes.",
+     "about": "Lockout: Locked email, 429, no password check"
+    },
+    {
+     "id": "6",
+     "text": "What does the 429 login page look like on the wire? Is there a Retry-After header or any indication of how long to wait, and is the cookie touched?",
+     "about": "Response matrix: Locked email 429"
+    },
+    {
+     "id": "7",
+     "text": "The sequence diagram counts failures with 'count in last 10 minutes' and the 5th failure creates a lock. If the lock exists, then expires, do the old failure rows still count toward the next lock? The text says they are past the window, but the lock lasts 15 minutes and the window is 10. Can you walk through one example?",
+     "about": "Lockout states per email: Locked becomes Clear"
+    },
+    {
+     "id": "8",
+     "text": "What do the two app instances sit behind, and how do requests reach them? The document mentions a load balancer only in passing. Does TLS end there, and does that affect the Secure cookie and Origin check?",
+     "about": "App (instance A or B)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Nothing is recorded and no database access happens. The Origin check is the first step, before BEGIN, the advisory lock, the lock read or any user lookup. A failed check returns 403 with no body and the cookie is untouched. I added a 403 row to the response matrix and wrote the no-database-access rule into decision 12 and the diagram, because the old text did not say this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The app takes the incoming cookie value, hashes it with SHA-256 and deletes the sessions row with that id_hash, inside the same transaction as the new session insert. It only does this on a successful login. A stale cookie matches zero rows, so nothing happens. A cookie that belongs to another user is still deleted: only the browser holding that cookie can send it, and the requirement says to destroy whatever session it points to. A failed login leaves the cookie and any session alone, which is stated in decision 13."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Yes. The app hashes the raw cookie value with SHA-256 on every protected request, and the hash is the key in the UPDATE. Logout hashes the cookie the same way. A value that is not 43 base64url characters is treated as no session, with no database query. This is in decision 3 and the diagram."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The UPDATE returns only user_id, and the page does not reload the users row for the session check. If the user row is deleted, the session row is deleted by ON DELETE CASCADE, so the UPDATE returns zero rows and the response is 303 to /login. If the email changes, the session keeps working until expiry, because sessions are keyed by user_id. Page data is loaded by user_id, and a missing record shows the page's normal not-found response. This is decision 14."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. The lock check runs before the password check and before any user lookup, so a locked email with the right password gets 429. Nobody can log in for the full 15 minutes. A success can only clear the lock after it has expired. The text now says this in decision 9 and the lockout states."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The 429 response is status 429 with the login page body, 'Too many failed attempts. Try again later.' It sends a Retry-After header with the seconds until locked_until, rounded up. It does not reveal existence, because known and unknown emails get the same lock rule and the same value. The cookie is not touched: no Set-Cookie and no clear. The response also has Cache-Control no-store."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Old failure rows do not count toward the next lock. Failures at 00:00, 00:02, 00:04, 00:06 and 00:08 lock the email until 00:23. At 00:23 the cutoff is 00:13, so all five rows are outside the window. Attempts refused by the lock are not counted, so no new rows are added during the lock. The next failure at 00:24 starts a new count, and five new failures are needed to lock again. The example is in the lockout states. The failure timestamp now uses clock_timestamp(), so a request that waited on the advisory lock records the time it actually failed."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not say where TLS terminates, or whether the load balancer rewrites the Host header. The app sets Secure on the cookie either way, since the browser sees HTTPS. The Origin check needs the public scheme and host, so decision 12 now compares against a configured public origin, not the Host header. The exact load balancer setup is not known, and it is listed under open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The lock check runs under the advisory lock on hashtext(email). What does that lock key use: the trimmed, lowercased email? And when is the lock released?",
+     "about": "Serialising attempts per email / BEGIN, then take advisory lock for this email"
+    },
+    {
+     "id": "10",
+     "text": "When a failed login happens, the 401 is returned after COMMIT. Does the 429 case also end the transaction (commit or rollback) before responding, and does it hold the advisory lock until then?",
+     "about": "Email is locked: 429 login page with Retry-After, no password check"
+    },
+    {
+     "id": "11",
+     "text": "Where do the first 'GET /login' page and the CSRF/Origin check for GET requests fit in? What does a visitor with a valid session get when opening /login?",
+     "about": "Protected request (every page except /login)"
+    },
+    {
+     "id": "12",
+     "text": "After a successful login the old session is deleted and a new one inserted. What exact values do idle_expires_at, absolute_expires_at and last_seen_at get on the new row, and which clock is used?",
+     "about": "Insert new session with new random ID, stored as hash"
+    },
+    {
+     "id": "13",
+     "text": "The protected-request diagram shows 'Value is well formed' then UPDATE. What does the UPDATE look like in terms of the where clause and what it sets? Is idle_expires_at set from now() plus 30 minutes capped at absolute?",
+     "about": "UPDATE sessions setting idle_expires_at and last_seen_at"
+    },
+    {
+     "id": "14",
+     "text": "What does a 503 on login do to the advisory lock and the failure count, and what exactly triggers the 503 when the lock check itself cannot be read?",
+     "about": "Failure behaviour: Login, storage unavailable at any step"
+    },
+    {
+     "id": "15",
+     "text": "How is the 'Count login_failures in last 10 minutes' cutoff computed (which clock, relative to the failure time or the current time), and is the failure row itself included in the count?",
+     "about": "Count login_failures in last 10 minutes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The lock key is hashtext of the trimmed, lowercased email, the same value that is stored and matched. It is pg_advisory_xact_lock, so it is released when the transaction ends: at COMMIT after a 401 or success, or at ROLLBACK after a 429 or 503. I chose the transaction-scoped form because the lock cannot stay held if the request dies mid-transaction. A hashtext collision between two emails only makes them queue behind each other. It cannot let two attempts for one email run at once. Decision 10 now states the key and the release point."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. The 429 path now also ends the transaction, with ROLLBACK, before the response is sent. Nothing was written on that path, so rollback and commit do the same thing, and rollback says so plainly. The advisory lock is held until that ROLLBACK. The diagram and decision 9 now show this step."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "GET /login is public and always shows the form. It does not read the session and does not check Origin, because a GET changes nothing. A visitor with a valid session also sees the form. The brief does not ask for a redirect, and signing in again replaces the old session under decision 13. This is now a rule in State and rules."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "On login the new row gets created_at = last_seen_at = now(), absolute_expires_at = now() + 12 hours, and idle_expires_at = least(now() + 30 minutes, absolute_expires_at). All of them use the database clock now(), as decision 4 requires. These values follow from decision 6 and are now written out there."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Yes. The UPDATE sets last_seen_at = now() and idle_expires_at = least(now() + 30 minutes, absolute_expires_at). Its WHERE matches id_hash and requires both idle_expires_at and absolute_expires_at to be later than now(). It returns user_id. The statement is now written as SQL in decision 6."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A 503 is returned for any storage error at any step: the advisory lock wait, the login_locks read, the user read, the failure insert, the count, the lock upsert and COMMIT. The app then rolls back. That releases the advisory lock and discards the failure row, so the attempt is not counted. If the lock row cannot be read, the attempt is a 503. It is never treated as unlocked, so the password is not checked. Set-Cookie is sent only after COMMIT succeeds. This follows the fail-closed rule already in the failure section, and the failure section now lists these steps."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "The cutoff is the database clock at the time of the count, clock_timestamp() minus 10 minutes, not the current time of an unrelated clock. The new failure row is included. It was inserted earlier in the same transaction with failed_at = clock_timestamp(), so it is later than the cutoff. The count is then compared with 5. The lock time uses the same failure timestamp. This matches decisions 4 and 8 and the worked example in the lockout states. The query is now in decision 8."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A user submits the login form. The browser sends POST /login with email, password and an Origin header, plus any existing __Host-sid cookie.\n2. Origin check, first of all. The app compares Origin (or Sec-Fetch-Site) with its configured public origin, not Host. If it does not match, it returns 403 with no database access and records nothing.\n3. The app trims and lowercases the email. It opens a Postgres transaction and takes pg_advisory_xact_lock(hashtext(email)). Concurrent attempts for the same email queue here, so they cannot overshoot the 5-failure limit. The lock is released at COMMIT or ROLLBACK.\n4. Lock check, before any user lookup. The app reads login_locks for this email where locked_until is later than clock_timestamp(). If a row exists, it rolls back and returns 429 (login page, \"Too many failed attempts. Try again later.\") with Retry-After set to the seconds left, rounded up. The password is not checked and the cookie is untouched. This attempt is not counted and does not extend the lock. It applies the same way to unknown emails.\n5. If there is no lock, the app reads the user by email. It runs bcrypt against the user's hash. If no user exists, it runs bcrypt against a dummy hash, computed at startup with the same cost, so the timing matches.\n6. Success (user exists and password matches). In the same transaction the app does four things. It deletes this email's login_failures and login_locks rows. It deletes the session whose id_hash matches the incoming cookie, if there is one. It generates a new session ID (32 CSPRNG bytes, base64url, 43 characters). It inserts a sessions row holding SHA-256 of that ID, with the user_id. The row has created_at = last_seen_at = now(), absolute_expires_at = now() + 12h, and idle_expires_at = least(now() + 30min, absolute). Then it COMMITs. Only after COMMIT does it send 303 to /dashboard with Set-Cookie __Host-sid=<raw ID> (Path=/, HttpOnly, Secure, SameSite=Lax, no Domain, no Max-Age). The database holds only the hash of the ID.\n7. Failure (unknown email or wrong password). The app inserts a login_failures row stamped clock_timestamp(). It counts that email's failures in the last 10 minutes, including the new row. If the count is 5 or more, it upserts login_locks with locked_until = failure time + 15 minutes. It COMMITs and returns 401 with the login page and \"Invalid email or password\". The cookie is untouched. Unknown and wrong-password cases look identical in text, status and timing. After the lock, the 5th failure's own response is still a 401. Later attempts get 429. Once 10 minutes have passed since the old failures, the count starts again. The lock expires after 15 minutes. A successful login clears everything.\n8. Storage failure during login (advisory lock wait, lock read, user read, failure insert, count, lock upsert or COMMIT). The app rolls back and returns 503 (login page, \"Sign-in is temporarily unavailable. Try again shortly.\"). The attempt is not counted. An unreadable lock is never treated as \"no lock\". There is no fallback to memory. No cookie is sent, so a failed COMMIT after a correct password creates no session.\n9. The browser later requests a protected page, for example GET /dashboard, with the cookie. If there is no cookie or it is not 43 base64url characters, the app returns 303 to /login and clears the cookie (same attributes, Max-Age=0). It makes no database query.\n10. If the cookie is well formed, the app hashes it with SHA-256. It runs one UPDATE on sessions where id_hash matches and both idle_expires_at and absolute_expires_at are later than now(). The UPDATE sets last_seen_at = now() and idle_expires_at = least(now() + 30min, absolute_expires_at), and returns user_id. Because the check and refresh are one statement, there is no read-then-write gap. Every comparison uses the database clock.\n11. If a row comes back, the app serves the page for that user_id with 200. It does not reload the users row, so a changed email does not end the session. If the page data record is missing, the page's normal not-found response is shown. If zero rows come back (unknown or expired), the app returns 303 to /login and clears the cookie. If the database errors, it returns 503 with a generic page and keeps the cookie. Protected content is never served without a confirmed session.\n12. Logout: POST /logout. The Origin check comes first, and a failure returns 403 with no database access. If the cookie is present and well formed, the app deletes the sessions row for the hash of the cookie. If the delete succeeds, whether it removed a row or found none, the app returns 303 to /login and clears the cookie. If the database errors, it returns 503 and keeps the cookie so the user can retry. With no cookie or a malformed one, it returns 303 and clears the cookie without a query.\n13. Expiry. The session ends at whichever comes first: 30 minutes idle (reset by each protected request) or 12 hours absolute (never extended). The browser cookie has no Max-Age, so the server alone enforces the limits. A cleanup job runs every 5 minutes. It deletes sessions where idle_expires_at <= now(), login_failures older than 10 minutes, and login_locks past locked_until. Correctness does not depend on it, because the per-request check rejects expired rows. If the job fails, the tables just grow, and the document says to alert after an hour of failures.\n14. Other notes. GET /login always shows the form. It does not read the session, check Origin or touch the cookie. Responses from login, protected pages and logout send Cache-Control: no-store. Deleting a user cascades to delete their sessions.",
+   "gaps": [
+    "How the app decides what counts as a 'protected' route versus /login (route or middleware mechanism) is not described. The document only says every page except /login.",
+    "How the Origin check behaves when both Origin and Sec-Fetch-Site are absent, or how the two headers are prioritised, is not stated. This stops me from explaining the 403 versus pass decision for such a request.",
+    "Where password hashes are stored, such as the users table columns, and what the bcrypt cost factor is, are not given. The schema shows only sessions, login_failures and login_locks."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

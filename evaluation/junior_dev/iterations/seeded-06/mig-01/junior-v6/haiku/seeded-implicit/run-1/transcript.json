@@ -1,0 +1,272 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the possible values of `users.write_mode`, and where is it set? Once dual writes are on, which database does a write go to first, and what does the caller get back if the second write fails?",
+     "about": "Turn on dual writes via `users.write_mode`"
+    },
+    {
+     "id": "2",
+     "text": "What do the tombstones and pending tables each hold, and which step of the plan writes to them?",
+     "about": "Create the new tables in Postgres and MySQL (users, tombstones, pending, backfill progress)"
+    },
+    {
+     "id": "3",
+     "text": "What do the sweepers do, what starts them, and what do they act on?",
+     "about": "Deploy the updated UserRepository, sweepers and comparer"
+    },
+    {
+     "id": "4",
+     "text": "What does the comparer compare, what does 'clean' mean, and what do you do when it reports differences?",
+     "about": "Run the comparer until it's clean"
+    },
+    {
+     "id": "5",
+     "text": "Which replica is it, and how does the backfill avoid overwriting a newer value written by dual writes or resurrecting a deleted user?",
+     "about": "Run the backfill from the replica (2k batches, respect replica lag)"
+    },
+    {
+     "id": "6",
+     "text": "How do you check replica lag, what threshold makes the backfill wait, and how does it resume if it stops partway?",
+     "about": "Run the backfill from the replica (2k batches, respect replica lag)"
+    },
+    {
+     "id": "7",
+     "text": "What is the ramp unit (percent of requests or of users), and what do you watch to decide to go to the next step or go back?",
+     "about": "Ramp `users.read_from_pg` 1/10/50/100, keep it at 100% for 3 days"
+    },
+    {
+     "id": "8",
+     "text": "Why does the id sequence need restarting, what value does it restart at, and how long are writes frozen and what do callers see during that time?",
+     "about": "Freeze writes, restart the Postgres id sequence, switch `write_mode` to Postgres primary"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "`users.write_mode` is a string flag read by every instance every 30 seconds. Values: `mysql_only` (today), `mysql_primary` (dual write, MySQL commits first), `paused` (writes get 503, used only during a switch), `postgres_primary` and `postgres_only` (after the switch). Under `mysql_primary`, MySQL commits first; if the Postgres copy fails, the caller still gets success, because the change stays in the `pending` table and the sweeper copies it."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "`user_tombstones` holds the ids of erased users. It is written in the same transaction as the erasure in the source database, and again in the target when the copy applies it. `pending` holds one row per user whose latest change is not yet copied; it is written in the same transaction as each change. Step 3 (dual writes on) is the first step that writes to either table; step 1 only creates them empty."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The sweeper copies `pending` rows to the other database every 30 seconds, from a worker timer. It starts when the step 2 deploy runs. It acts only on `pending` rows, using the copy rules (including the erasure path when the source row is gone). It retries without end, with no dead-letter state. It keeps running after the switch until both `pending` tables are empty. This merges the sweepers from the first version into one job."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The comparer walks both tables in primary-key order, 2,000 rows per page, and compares each id on row presence, `version`, every column and tombstone status. A pass is clean when it finds zero confirmed mismatches; a difference counts only if it is still there when both sides are re-read from the source primary 5 minutes later. A confirmed mismatch is repaired by copying the source row (version rule), or, if the source has no row, by deleting the target row and tombstoning it. If the target's version is higher, it is not overwritten and is reported."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The backfill reads only the replica `mysql-core-replica`. A stale replica row cannot overwrite a newer dual-write row, because the version rule only inserts a missing row or replaces a lower version. An erased user cannot come back, because each batch checks tombstones under a per-id lock, and a row erased after the replica read is blocked by its tombstone."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Replica lag is checked before each batch of 2,000 rows, using the same replica the lag metric describes. Above 5 seconds, the backfill waits and checks again every 5 seconds. Progress is `backfill_progress.last_id` in Postgres, updated in the same transaction as each batch, so a restart continues after the last committed batch; a batch cut off mid-way is simply read again, which is safe under the version rule."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The ramp unit is users, not requests: `flags.enabled_for` buckets by user id, so each user always reads from the same database. Each step (1, 10, 50, 100 percent) is held at least 24 hours, a first choice. Watch comparer mismatches, Postgres read fallbacks, copy failures and the age of the oldest `pending` row (alert at 10 minutes). Any mismatch, an old pending row, or a rise in fallbacks sends the flag back one step. These metrics are added in step 2."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The Postgres sequence starts at 1 in an empty cluster, but copied rows already use ids up to about 41.2 million, and erased ids must never be reused because their tombstones would block copies. Step 4 of the switch sets it to the larger of MySQL's AUTO_INCREMENT value and the largest Postgres id plus 1. The freeze lasts at most about 75 seconds (30 seconds to see the pause, at most 45 seconds to drain and set the sequence, at most 30 seconds to see the new mode); writes get a retryable 503 and reads continue."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "MySQL assigns the `version` number today. After the switch to `postgres_primary`, who assigns and increments `version` on a write, and does it continue from the value copied from MySQL?",
+     "about": "Write modes / A write in dual-write mode (postgres_primary)"
+    },
+    {
+     "id": "10",
+     "text": "How does the sweeper know a newer change arrived while it was copying? What is in a `pending` row that lets it tell, and how does it interact with the lock per user id?",
+     "about": "Sweeper: Deletes a `pending` row only when the copy succeeded and no newer change arrived"
+    },
+    {
+     "id": "11",
+     "text": "If two writes to the same user arrive at nearly the same time, what order do the copies happen in, and what does the Postgres row end up as? What does the lock protect here beyond the version rule?",
+     "about": "A write in dual-write mode, step 2 (copy under the lock with a 1 second timeout)"
+    },
+    {
+     "id": "12",
+     "text": "Who runs the switch procedure steps: an operator by hand, or a script? And who decides to set the old mode back at the 45 second limit, and how do they see that the old source's `pending` table is empty?",
+     "about": "Switch procedure (planned switch and rollback)"
+    },
+    {
+     "id": "13",
+     "text": "The Postgres `users` table has a unique `email`. What happens if a copy fails because of a unique-email conflict (not a timeout)? Does the sweeper retry it forever, and who notices?",
+     "about": "The copy: inserts it at the target when missing, or replaces the target row"
+    },
+    {
+     "id": "14",
+     "text": "Walk me through one erasure in `mysql_primary` mode: what does the erasure job call, what does the single MySQL transaction do, and what exactly does the copy do in Postgres? What if the Postgres copy fails?",
+     "about": "Erasure job and tombstone (Terms: Tombstone, Lock per user id)"
+    },
+    {
+     "id": "15",
+     "text": "During the switch, an instance that never sees the new value keeps returning 503. Does anything detect or alert on this, and what does the operator do about it other than set the flag again?",
+     "about": "Switch procedure step 5 and An instance has not refreshed the flag"
+    },
+    {
+     "id": "16",
+     "text": "Step 10 says instances can be on `postgres_primary` or `postgres_only` at the same time. In that mixed state, what happens to a write on a `postgres_only` instance versus one on `postgres_primary`, and does MySQL get anything for the former?",
+     "about": "Rollout checklist step 10 (Switch to `postgres_only`)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "In postgres_primary mode, Postgres does the version check and the version + 1, starting from the value copied from MySQL. Copies carry version, so the Postgres row is at the MySQL value at switch time and counting continues. A rollback copies the Postgres version back to MySQL the same way. Added to the write section."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Each change writes a new random change_id into the user's pending row. The sweeper reads the row, copies, and deletes it only with DELETE WHERE user_id AND change_id matches what it copied. A newer write changes change_id, so the delete matches nothing and the row stays. The lock is held during the copy, so the copy and the delete for one id run one at a time. The change_id check also covers writes that commit outside that lock. Added to terms, step 2 and the sweeper."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Two writes to one user commit in MySQL in one order. The MySQL version check lets only one win each version, and the other gets StaleWrite or runs after it. Each copy reads the row committed at the moment it runs, not the version its own write made, so the last copy to run writes the latest row. The version rule stops an older copy from replacing a newer one. The Postgres row ends as the latest committed MySQL row. The lock adds protection the version rule does not give: inserts, erasures and tombstone checks cannot interleave. Added to step 2."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "An operator runs the switch steps by hand, in order. The operator checks paused instances on app_flag_value and checks the old source's pending count with a row count. At 45 seconds the operator decides and sets the old mode back, which releases paused instances. Added to the switch procedure."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "A unique email conflict is a copy failure. The copy never changes or deletes the other row. The sweeper retries it, and it clears when the conflicting row gets its own copy. It is noticed by the pending age alert at 10 minutes and the copy failure metric. Added to the copy section and the failure table."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Erasure in mysql_primary: the erasure job calls UserRepository.delete. One MySQL transaction deletes the users row, writes the tombstone and writes the pending row with a new change_id, then commits. The copy under the lock finds no source row, writes the tombstone at Postgres and deletes the Postgres row. If that copy fails, the pending row stays and Postgres keeps the user until the sweeper runs, so reads in that gap can return the user. Added to the write section and the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Nothing in the plan alerts on an instance stuck on the old mode or on paused. The operator sees it on app_flag_value during steps 2 and 5 of the switch, because each step waits for every instance. The operator restarts that instance so it loads flags again; setting the flag again does not help an instance that cannot read it. Added to step 5, the failure table and open questions."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "On a postgres_only instance, a write commits to Postgres only and writes no pending row for MySQL, so MySQL gets nothing from it. On a postgres_primary instance, the write commits to Postgres and writes a pending row, which the sweeper copies to MySQL. That is acceptable because rollback to MySQL ends as soon as the first instance shows postgres_only. Added to the write modes and step 10."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "After the switch to postgres_primary, the MySQL replica is fed by copies that can lag. If a Postgres read finds no row and falls back to the replica, can the replica return a stale or erased user? Which database do reads use once writes are postgres_only?",
+     "about": "Reads: A Postgres read that errors or finds no row falls back to the MySQL replica"
+    },
+    {
+     "id": "18",
+     "text": "While writes are paused, what stops the old source's pending table from getting new rows, given instances that have not yet seen paused keep writing? How does the operator know every straggler's write has been copied, not just that the count was zero once?",
+     "about": "Switch procedure step 3: Wait until the old source's pending table is empty"
+    },
+    {
+     "id": "19",
+     "text": "When a new user is created in mysql_primary, the copy to Postgres carries that MySQL id. Does Postgres ever assign an id before the switch, and what happens to the Postgres sequence for rows inserted with explicit ids?",
+     "about": "A write in dual-write mode, step 1: A new user gets its id from MySQL"
+    },
+    {
+     "id": "20",
+     "text": "The sweeper runs on worker processes every 30 seconds. If several workers run it at once, or a request-path copy is running for the same user, what prevents double work or conflicts? Is there one sweeper per database?",
+     "about": "Sweeper: Takes pending rows, oldest first"
+    },
+    {
+     "id": "21",
+     "text": "In step 8 the comparer's source flips to Postgres. After the switch, who copies the remaining MySQL pending rows that were not empty, and where do MySQL pending rows go once the old source is MySQL no longer? What happens to the MySQL pending table afterwards?",
+     "about": "Rollout checklist step 8: Planned switch to postgres_primary"
+    },
+    {
+     "id": "22",
+     "text": "In a rollback, steps 3 and 4: the old source is Postgres and the sequence reset applies only to the planned switch to Postgres. How does MySQL's AUTO_INCREMENT get ahead of ids Postgres issued, and what if a Postgres row has a higher version than MySQL's after rollback?",
+     "about": "Rollback (Switch procedure with mysql_primary as new mode)"
+    },
+    {
+     "id": "23",
+     "text": "The erasure job calls delete through UserRepository. During a pause does delete return the 503 to the job, and how does the job treat it as a failure to retry rather than as a completed erasure?",
+     "about": "Erasure job and Switch: Erasure job's delete gets a 503"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "After the switch to postgres_primary, a Postgres miss no longer falls back to the replica, because MySQL can still hold a user that Postgres has erased before the erasure is copied. Before the switch, MySQL is the source, so a miss still falls back. A Postgres error after the switch still falls back, because reads must not fail; that replica can be stale or still hold an erased user until its copy lands. This residual risk is an open question. Once writes are postgres_only, reads use Postgres, since the read flag is at 100% by then, and the replica is used only on a Postgres error."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Paused instances write nothing, and an instance on the old mode stops once it sees paused. A write that started before its instance refreshed can still be in flight, but it is bounded by the 5 second write timeout. So the operator waits 5 seconds after every instance shows paused, then reads the count. Once the count is zero it stays zero, because no instance writes to the old source, so a single zero reading is final. This is added to switch step 3."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "Before the switch, Postgres does not assign ids. MySQL assigns them, and copies carry the MySQL id explicitly. The plan gives the Postgres users.id column no default until step 4 of the switch, and an explicit-id insert does not advance a Postgres sequence. That is why step 4 sets the sequence above every id issued. The document now says this in IDs and in step 1."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "There is one sweeper job, and several workers may run it at once. Each pass tries the per-id lock without waiting, and it skips an id whose lock is busy. The lock is now a Postgres advisory lock, held for every copy in either direction, so a request-path copy and a sweeper copy for the same id cannot run together. Copies are safe to repeat under the version rule. The job drains both pending tables, not one sweeper per database. The lock now lives in Postgres in both directions, so there is a single lock host."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "Switch step 3 requires the old source's pending table to be empty before the new mode starts. So the MySQL pending table is empty at step 8. In postgres_primary, MySQL receives no pending rows; MySQL copies come from the Postgres pending table. The MySQL pending table stays empty and is dropped in step 11. If a switch aborts, the old pending rows remain, and the sweeper keeps copying them to their target until they are gone."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Step 4 of the switch now applies in both directions. On a rollback, MySQL's AUTO_INCREMENT is raised to the larger of its own value and the Postgres sequence's next value. Explicit-id copies raise MySQL's counter, but ids that exist only as tombstones do not, so the explicit reset is still needed. A Postgres row with a higher version than MySQL's is copied back with its version, and the version rule replaces the lower MySQL row. If a MySQL row ever had a higher version than Postgres, the copy will not overwrite it, and the comparer reports it as a bug."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "During a pause, delete returns a 503 to the erasure job. The job treats any error as a failure, so the job system retries it: 5 retries over about 15 minutes cover a 90 second pause. The job counts the erasure as complete only when delete returns success. A repeated delete is safe, because the existing DELETE on a missing row is not an error, and the tombstone write is idempotent. This is added to the switch section."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a user's profile update during dual write (rollout step 3 onward), then the switch and what follows.\n\n1. **A client sends a write for user U** (a create, update or erase). `UserRepository` handles it. The document says every read and write of `users` goes through it, and that the `users.write_mode` flag decides where the write goes. Each app instance reloads flags every 30 seconds, so instances can briefly disagree. In `mysql_only` the write goes to MySQL alone, with no copy and no pending row.\n\n2. **Mode `mysql_primary`: commit to MySQL.** The repository opens one MySQL primary transaction. It makes the change with the version check (`version` goes up by 1). If the row's `version` changed since the caller read it, it raises `StaleWrite`. It also writes U's `pending` row in MySQL with a fresh random `change_id`, then commits. A new user's id comes from MySQL `AUTO_INCREMENT`. Each database write has a 5 second timeout. If this transaction fails, the caller gets the usual error. Nothing is copied and nothing is pending.\n\n3. **Copy to Postgres.** The repository takes the Postgres advisory lock for U's id on `pg-core`. The lock wait plus the copy share a 1 second timeout. It reads U's current committed row from the MySQL primary. That may be a newer version than this request wrote. It then applies the copy rules:\n   - If the row exists and the target has no tombstone for U, it inserts the row if missing, or replaces the Postgres row if the Postgres `version` is lower.\n   - If the row is missing at the source, the user was erased. It writes a tombstone at the target and deletes the target row.\n   - It deletes the `pending` row only if the `change_id` is still the one it copied.\n\n4. **The caller gets success.** This holds even if the Postgres copy failed or timed out. In that case the `pending` row stays in MySQL. A Postgres failure never fails the request.\n\n5. **If the copy failed, the sweeper fixes it.** The sweeper is a timer on the worker processes that runs every 30 seconds. It does not use Redis. It takes `pending` rows oldest first and runs the same copy for each. It tries the id lock without waiting and skips the id if the lock is busy. It deletes a `pending` row only if the copy succeeded and the `change_id` is unchanged. It retries forever and has no dead-letter state. A unique `email` conflict makes the copy fail and be retried until the conflicting row's own copy lands.\n\n6. **Erasure.** The erasure job calls `UserRepository.delete`. One source transaction deletes the row, writes the tombstone and writes the `pending` row. The copy then sees no source row, writes the tombstone at the target and deletes the target row. If that copy fails, the caller still gets success. The sweeper finishes it later, and reads in the gap can still return the user. A repeated delete is safe.\n\n7. **Backfill.** An operator starts it once every instance has shown `mysql_primary` for at least 30 seconds. It reads the MySQL replica in primary-key order, 2,000 rows per batch. Before each batch it checks `mysql_replica_lag_seconds`, and above 5 seconds it waits and rechecks every 5 seconds. Each batch is one Postgres transaction. For each row it takes the id lock and applies the copy rules. It also sets `backfill_progress.last_id`, and both commit together. After a crash it restarts after `last_id`. Re-reading a batch is safe because of the version rule and the tombstones.\n\n8. **Comparer.** It walks both tables 2,000 rows per page, with the same lag check. It compares presence, `version`, every column and tombstone status. A difference counts as a mismatch only if it is still there when both sides are re-read from the source primary 5 minutes later. A confirmed mismatch is repaired by a copy. If the target `version` is higher than the source's, it does not overwrite and reports a bug. A pass with zero confirmed mismatches is clean.\n\n9. **Reads.** In the pre-switch modes, `users.read_from_pg` is a percentage, and `flags.enabled_for` buckets users by id. A user inside the bucket reads from Postgres. A Postgres error or miss falls back to the MySQL replica. Everyone else reads the replica. Operators ramp 1, 10, 50, then 100 percent after a clean comparer pass, holding each step for at least 24 hours. They watch mismatches, fallbacks, copy failures and the oldest pending age. A mismatch, a pending row older than 10 minutes, or more fallbacks sets the flag back one step. Then reads stay at 100% for 3 days.\n\n10. **Planned switch to `postgres_primary`.** An operator does this by hand.\n    1. Set `paused`. Writes then get a retryable 503 and reads continue.\n    2. Wait until `app_flag_value` shows all instances on `paused`.\n    3. Wait 5 more seconds, and check that the old source's `pending` count is 0. One zero reading is final.\n    4. If steps 2 and 3 are not done in 45 seconds, set the old mode back.\n    5. Set the Postgres sequence to the larger of MySQL's `AUTO_INCREMENT` and the largest Postgres id plus 1.\n    6. Set `postgres_primary`, and wait until every instance shows it. Restart any instance that does not show it within 30 seconds.\n\n    The pause is at most about 75 seconds per instance. An erasure job that gets a 503 is retried by the job system, up to 5 times over about 15 minutes.\n\n11. **After the switch.** In `postgres_primary`, writes commit to Postgres first with the same steps reversed, and the `pending` row is in Postgres. They are copied to MySQL, and `version` carries across. Reads go to Postgres. A Postgres miss does not fall back. A Postgres error falls back to the MySQL replica. The system stays this way for at least 14 days, and rollback is possible by running the switch procedure with `mysql_primary`, which also needs MySQL `AUTO_INCREMENT` raised and `read_from_pg` set to 0.\n\n12. **Finish.** When the Postgres `pending` table is empty and 14 days have passed since Postgres became the source, `users.write_mode` goes to `postgres_only`. Writes then stop copying to MySQL and rollback ends. Once every instance shows `postgres_only`, the MySQL `users` table is backed up and dropped, followed by MySQL `pending` and `user_tombstones`.",
+   "gaps": [
+    "The document does not say what the sweeper does for a pending row whose source row no longer exists and has no tombstone at the source. The erasure case is covered, but not that case.",
+    "The document does not say how an operator sets the id counter in practice: which command, who computes the largest id, and what happens to ids issued by in-flight writes. It gives only the rule for the value.",
+    "It does not say what the version check looks like in code, or how the caller learns the new `version` after an update.",
+    "It does not say how the operator starts and stops the backfill and the comparer, or what runs them. It says only that the comparer is not a job and that the backfill is not described as one.",
+    "It does not say what happens to a `postgres_primary` write that is copied to MySQL when MySQL `AUTO_INCREMENT` is too low. It says only that inserts fail with a duplicate key, without saying how a copy to MySQL behaves.",
+    "It does not say what the caller sees for a write on an instance that cannot read the flag at startup, beyond restarting that instance."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

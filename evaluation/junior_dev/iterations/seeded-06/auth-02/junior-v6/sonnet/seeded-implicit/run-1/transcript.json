@@ -1,0 +1,221 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is \"the store\"? Which product or service is it, and where does it run?",
+     "about": "2. Create secrets in the store"
+    },
+    {
+     "id": "2",
+     "text": "How does the app prove its identity to the store when it calls load()? What does \"access policies for orders-api-prod\" grant and to whom?",
+     "about": "1. Access policies"
+    },
+    {
+     "id": "3",
+     "text": "How does the app decide which secrets to read, prod or dev? Where is APP_ENV set in production and in deploys?",
+     "about": "7. make run: APP_ENV=dev"
+    },
+    {
+     "id": "4",
+     "text": "What does \"Retries on load\" mean in practice? If the store is unreachable at startup, does the app fail to start or run without keys?",
+     "about": "3. app/secrets.py load() retries"
+    },
+    {
+     "id": "5",
+     "text": "What does the 5-min refresh do, and what do the clients do if a refresh fails or a key changes mid-request? Do they call secrets.get() on every request or cache the key?",
+     "about": "3. app/secrets.py refresh()"
+    },
+    {
+     "id": "6",
+     "text": "What does `secret_versions` in /healthz contain, and who reads it? Does it expose any value?",
+     "about": "5. /healthz: add secret_versions"
+    },
+    {
+     "id": "7",
+     "text": "Why is rotation (step 9) done after deploy, and how does the rotation get into the store and reach the running app? Who updates the secret value?",
+     "about": "9. Rotate the three keys at the providers"
+    },
+    {
+     "id": "8",
+     "text": "What does the CI check for `api_key` do exactly, and how does the rollback note in step 10 work if old keys are revoked in step 9?",
+     "about": "6. CI check for api_key / 10. rollback notes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief says only 'our managed secret store' with per-environment KMS keys and version ids. It does not name the product or where it runs. I added a definition of the store in the terms and put the missing product name under open questions. The flow does not depend on it."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "How the pod authenticates (workload identity, token or other) is not stated in the brief, so I do not know it. What is known and now in the plan: the identity orders-api-prod gets read-only access to orders-api/prod/* only, security on-call alone can write prod secrets, and engineers cannot read prod values. Added the unknown mechanism to open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The app reads APP_ENV and uses it in the secret name orders-api/<env>/<name>. Prod deploy config sets APP_ENV=prod and make run sets APP_ENV=dev. I decided it has no default and the app exits if it is unset, so it can never silently read the wrong environment. Exactly which deploy file holds it is not known to me; the plan says the prod deploy config."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Checked against the brief: at startup the app must have all three keys before it reports ready. If the store is unreachable, it retries 3 times, 2 seconds apart, then exits non-zero. It does not run without keys. Now stated in runtime step 1."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Refresh re-reads all three secrets every 5 minutes and swaps in new values and version ids. On failure it keeps the last good value and logs a warning (brief requirement). Clients call secrets.get() on every provider call and do not cache, because today's clients copy the key at construction (existing/config_loader.py), which would defeat refresh. A call in flight finishes with the key it started with. During rotation old and new keys are both valid, so this is safe."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "secret_versions maps each secret name to its current version id. It contains no value, and logging version ids is allowed by the brief. Operators and the rotation check read it to confirm which version each replica uses; that is how we know it is safe to revoke an old key. Who can reach /healthz externally is not known; recorded as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Rotation comes after deploy because the app must first be able to read keys from the store, and every instance must be able to pick up a new version on its own, before any key changes. Otherwise a revoked key would break requests. The process: create the new key at the provider with the old still valid, security on-call writes it to the store as a new version, instances refresh within about 5 minutes, check /healthz on all replicas, then revoke the old key. Security on-call is the only one who can write prod secrets, so they update the value."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The CI check fails any change in which config/app.yaml contains an api_key key; it only reads the file. Rollback: after the old keys are revoked, an image built before the migration has dead keys, so rollback must use an image from the code-ship step or later, which reads the store. Before revocation, rolling back to the earlier image is still fine. I made that explicit in rollout step 7 and the failure table. The exact CI implementation (grep or YAML parse) is left open."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Rollout step 4 says to check that all 4 replicas report the same secret_versions. How does someone query each individual replica's /healthz, rather than getting whichever pod the load balancer picks?",
+     "about": "4. Deploy and verify"
+    },
+    {
+     "id": "10",
+     "text": "In step 5(b), security on-call writes a new version of the same secret. Does the store make the newest version the one that reads return by default? Or does something have to mark it current?",
+     "about": "5. Rotate each key (b)"
+    },
+    {
+     "id": "11",
+     "text": "In step 2 the leaked values are written to the store as the first version. Rotation then writes a second version. When a refresh fetches a secret, what does it ask for, and what does it get back besides the value?",
+     "about": "How the app reads keys at runtime, 4. Refresh"
+    },
+    {
+     "id": "12",
+     "text": "If a refresh keeps failing, the instance keeps the last good value and only logs a warning. Does anything alert someone, or show in /healthz, that an instance is stuck on an old version? How would anyone find out before step 5(d)?",
+     "about": "4. Refresh"
+    },
+    {
+     "id": "13",
+     "text": "Step 5 says a refresh happens within about 5 minutes. Do the 4 instances' timers start at startup or are they aligned? Is 'one more refresh' in the failure case another 5 minutes?",
+     "about": "5. Rotate each key (c)"
+    },
+    {
+     "id": "14",
+     "text": "If the store becomes unreachable after a pod is already running, does /healthz still return 200? Does the pod keep serving indefinitely with its last keys?",
+     "about": "2. Ready"
+    },
+    {
+     "id": "15",
+     "text": "If the store is unreachable for all 3 retries at startup, does 'the store cannot be reached' include permission-denied or a missing secret? What happens to the pod in those cases?",
+     "about": "1. Startup"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "The brief and files do not say how operators reach a single pod (pod address, port-forward, exec). The requirement is stated in the plan: query each replica directly, not via the load balancer. The cluster tooling is added to open questions."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The brief says only that each write gets a new version id. It does not say whether an unversioned read returns the newest. The plan assumes newest and refresh asks for the latest version. Step 5(d) would expose a wrong assumption, because the old version id would still show before any revoke. Added to open questions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Refresh asks for each secret by name with no version pinned (latest) and gets back the value and its version id. Not pinning a version is the point: a new version written during rotation is picked up with no code or config change. Added to runtime steps 1 and 4."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "No alert and no extra /healthz field. The brief only requires keeping the last good value and logging a warning, and I did not want to add a mechanism. Safety comes from step 5(d): a stuck instance shows an old version id in /healthz, so the old key is not revoked. Stated in refresh step 4 and listed in open questions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Each instance's timer starts when that instance starts, so ticks are not aligned and instances do not coordinate. Any instance picks up a new version within one full 5 minute interval. 'One more refresh' means waiting another 5 minutes. Stated in step 4 and rotation step 5."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes. Readiness is decided at startup only. After that /healthz stays 200 and the pod serves indefinitely with its last good keys, logging warnings. This follows the brief's keep-last-good-value rule, and failing readiness would take pods out of service for a store outage while the keys still work. Stated in runtime step 2 and the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Yes, any failure to fetch all three secrets, including permission denied or a missing secret, is treated the same: 3 retries 2 seconds apart, then exit non-zero. Permission or missing-secret errors will not fix themselves, but one handling rule is simplest and the outcome is the same: the pod never becomes ready and the rollout halts with old pods serving. Stated in runtime step 1 and the failure table."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "After 5(b), instances refresh and start using the new key. If the provider rejects that new key, those instances' calls would fail, yet the table says no request fails. How does that fit together?",
+     "about": "5. Rotate each key (b)-(c), and failure table row 'New key rejected by the provider'"
+    },
+    {
+     "id": "17",
+     "text": "When is the new key first proven good at the provider, and who checks? Is there a step between (a) and (b) that tests it before it is written to the store?",
+     "about": "5. Rotate each key"
+    },
+    {
+     "id": "18",
+     "text": "If a refresh reads two secrets fine but fails on the third, does the instance swap in the two new values and keep the old third, or does it swap nothing?",
+     "about": "4. Refresh"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "They did not fit; you found a real hole. As written, a bad new key would reach instances at 5(b)-(c) and calls would fail. I changed the plan: the new key is tested at the provider before it is written to the store, so a rejected key never reaches the app. A key that passes the test but still fails in use could cause failures for up to one refresh interval while the previous value is written back. I cannot rule that out, so it is listed as an open question instead of claiming no request can fail."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Nothing tested it before. I added a step between creating the key and writing it: security on-call, who does the rotation, makes one harmless authenticated call to the provider with the new key. If it fails, the key is discarded and no store write happens. Which call to use per provider is not known to me, so it is an open question."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Each secret is swapped on its own. The two good reads are swapped in and the failed one keeps its last good value, with a warning naming that secret. The three keys are independent, so this is safe, it matches the brief's keep-last-good-value rule, and it needs no all-or-nothing mechanism. Stated in runtime step 4 and the failure table."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point. Today orders-api has three provider keys (payments, email, geocoding) in config/app.yaml. That file is committed to git and baked into every image. app/config_loader.py reads it once at import, and each client copies its key at construction. So changing a key means a new image and a redeploy. The plan moves the keys into a managed secret store and treats the old keys as leaked, so they must be rotated.\n\n2. Setup before any code (rollout steps 1 and 2). Security creates access policies. The pod identity orders-api-prod gets read-only access to orders-api/prod/*. Security on-call is the only group that can write prod secrets. Engineers can read and write dev secrets only. Then security on-call writes the three prod secrets (orders-api/prod/payments_api_key, email_api_key, geocoding_api_key) holding the current, leaked values, so behaviour does not change. Engineers write sandbox keys under orders-api/dev/*. A failed write is retried, and nothing depends on the secrets yet.\n\n3. Shipping the code (step 3). One change adds app/secrets.py with load(), refresh() and get(name). It switches the three clients to secrets.get(), adds secret_versions to /healthz, sets APP_ENV=prod in the prod deploy config, and sets APP_ENV=dev in make run. CI builds the image. Merging does not change which keys are valid.\n\n4. Deploy (step 4) and pod startup. The rolling deploy replaces pods one at a time, with maxUnavailable 0, across 4 replicas. A new pod starts with APP_ENV set. If APP_ENV is missing it exits non-zero. Otherwise load() fetches the three secrets for that environment by name, with no version pinned (so the latest). Each fetch returns a value and a version id. Both are kept in a module-level dict in process memory. The values never go to disk, environment variables or logs.\n\n5. Startup failure. If any fetch fails (store unreachable, permission denied, secret missing), load() retries 3 times, 2 seconds apart. If it still fails, the app exits non-zero. The pod never becomes ready, the rollout halts, and the old pods keep serving. Rollback means redeploying the earlier image, which still works because the old keys are still valid.\n\n6. Becoming ready. GET /healthz returns 200 only after all three keys are loaded. The body is {\"status\":\"ok\",\"secret_versions\":{name: version id}}, with no values. The deploy waits for this 200 before stopping an old pod. Readiness is decided at startup only. After that, /healthz stays 200 even if the store becomes unreachable, and the pod keeps serving with its last good keys.\n\n7. Handling a customer request. When the app calls a provider, PaymentsClient, EmailClient or GeocodingClient calls secrets.get(name) on every call. It reads the current in-memory value, so a refreshed key applies without a restart. A call already in flight finishes with the key it started with. This is safe because both the old and new keys are valid during rotation.\n\n8. Background refresh. Each instance runs a timer that starts when the instance starts. Every 5 minutes it calls refresh(), which re-reads each secret (latest version) and swaps in any new value and version id. Each secret is handled independently. If one read fails, that secret keeps its last good value, a warning with the secret name (no value) is logged, and the next tick retries. The other secrets are still swapped in. Instances do not coordinate, so their ticks are not aligned. Nothing alerts on a stuck refresh.\n\n9. Verify the deploy (step 4, continued). Query /healthz on each of the 4 replicas directly, not through the load balancer, and check that all report the same secret_versions.\n\n10. Rotate each key (step 5). Security on-call does this for each provider in turn.\n   a. Create a new key at the provider while the old one stays valid.\n   b. Test it at the provider with one harmless authenticated call, before it goes near the store. If the test fails, discard the key and go back to (a). The app is unaffected.\n   c. Write the tested key to the store as a new version of the same secret.\n   d. Within 5 minutes, every instance refreshes and starts using it.\n   e. Query each of the 4 replicas directly and check that every one reports the new version id.\n   f. Only then revoke the old key at the provider. If any instance still shows the old version, do not revoke. Wait one more refresh (5 minutes), check again, and investigate if it is still old.\n\n11. If a key that passed (b) is rejected in real use. The old key is still valid, so write the previous value again as a newer version. Instances recover on their next refresh, which takes up to 5 minutes. The plan says requests could fail during that window.\n\n12. Clean up the repo (step 6). After rotation, delete the api_key entries from config/app.yaml. Add a CI check that fails any change where that file contains an api_key key. The check only reads the file. If it fails, the change is blocked until the key is removed. Git history is not rewritten, and rotation is what removes the risk.\n\n13. Update the rollback notes (step 7). Once the old keys are revoked, an image built before the migration cannot work, so deploy.md must say that rollback has to target an image from step 3 or later.\n\n14. Local development. make run sets APP_ENV=dev, so the app reads orders-api/dev/* (sandbox keys). Engineers can read dev secrets only, so nobody needs a prod secret.",
+   "gaps": [
+    "How a pod proves to the store that it is orders-api-prod. The document says only that the app calls the store as this identity, so I cannot explain how the fetch in load() is authenticated.",
+    "How an operator reaches each replica's /healthz individually, which rollout steps 4 and 5(e) require. The cluster tooling is not named, so I cannot say how that check is done.",
+    "Whether a read with no version returns the newest version. The plan assumes it does, but the document itself says this is unconfirmed. Steps 1, 4 and 5(d) depend on it.",
+    "What the harmless test call in step 5(b) is for each provider. The document leaves it to security on-call.",
+    "What the load() and get() interface looks like when a key is used. I know get(name) returns the current value, but not what it does if it is called before load() has finished."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

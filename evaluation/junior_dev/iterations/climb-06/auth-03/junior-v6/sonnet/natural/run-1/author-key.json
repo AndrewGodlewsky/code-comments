@@ -1,0 +1,26 @@
+{
+ "q7": {
+  "answer": "The API generates the 32 random bytes in memory, stores only the SHA-256 hash in password_resets, and after COMMIT builds the link (configured client base URL + /reset-password?token=T) and puts it in the queue job {to, link}. The raw token exists only in API memory until the job is built, and the queue job is the one place it travels.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The client page reads T from the URL and asks the API to check it. The API computes h = sha256(T) and selects the password_resets row WHERE token_hash=h (UNIQUE). It is good only if the row exists, consumed_at IS NULL and expires_at > now(); otherwise the client shows the expired page. The POST repeats this check inside the transaction under FOR UPDATE.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "There is no separate counter. The count is derived from password_resets: rows for that user_id with created_at within the last hour, served by an index on (user_id, created_at). Old requests drop out as their created_at passes one hour, which gives the rolling window. Rows are kept after expiry or use because the count depends on them, and a periodic job prunes rows older than about a day.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "In the same transaction as the rate-limit check, after the count passes and before inserting the new row, the API runs UPDATE password_resets SET consumed_at=now() WHERE user_id=? AND consumed_at IS NULL, which kills earlier unused links. The new row is inserted next, then COMMIT. A rate-limited request rolls back before this step, so the older link stays live.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "In one transaction: update users.password_hash, set consumed_at on the reset row, and DELETE all the user's sessions rows. The 'your password was changed' email is enqueued only after COMMIT, so a queue problem never rolls back a successful reset.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The POST transaction does SELECT of the reset row WHERE token_hash=h FOR UPDATE, a Postgres row lock. The second submission waits until the first commits, then sees consumed_at set and gets the expired page. So the first commit wins and the second changes nothing.",
+  "decided": true
+ }
+}

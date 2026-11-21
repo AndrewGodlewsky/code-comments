@@ -1,0 +1,26 @@
+## Review of cred-02 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added an opening paragraph explaining TOTP and time steps for readers new to the stack.
+- Added a short Terms section defining active secret, pending secret, recovery code and challenge.
+- Added a sentence before the diagram saying the two blocks are independent and linked only by totp_enabled.
+- Simplified diagram edge labels: 'cancel or pending secret discarded' became 'cancel'.
+- Removed the contradictory disable sentence about a recovery code being consumed on failure. The password is now checked first, and the redundant mention of a recovery code being valid for disable was dropped from SignedInRecovery.
+- Stated that Cancel clears the pending column under both setup and replacement.
+- Explained why the replay update makes concurrent use of one code safe, and why the window is plus or minus one step.
+- Made LockedOut wording consistent: no path out is designed or built.
+- Tightened wording and made each failure explicit in a bold Failure bullet.
+- Defined 'time step' more directly in the intro and described recovery code as something the user types.
+- Left structure, diagram, tables and requirements unchanged since the document was already clear and complete; only light wording edits were made.
+- Moved the Code checking section ahead of the transitions, because the lifecycle and sign-in sections both refer to it.
+- Stated that code checking applies to the pending secret at confirm as well as the active secret. The old heading said only 'active secret'.
+- Renamed the diagram choice node TwoFactorOn to Has2FA. The old name read like a state rather than a decision.
+- Reworded the replay edge case to say when the new code works again, instead of 'until the next step'.
+- Listed what counts as a wrong entry at the second factor (replayed, out-of-window, unknown or used recovery code), so the attempt counter is defined in one place.
+- Spelled out the order of recovery-code sign-in: consume the code, count the remaining codes, create the session, then queue the email once committed. The old 'after the commit' did not say which commit.
+- Moved the 'Code checking' section out of the lifecycle section's way and grouped 'Single sign-in attempt' under the Transitions heading alongside 'Account lifecycle'.
+
+### Holes
+- None.

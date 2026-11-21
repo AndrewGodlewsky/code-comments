@@ -1,0 +1,291 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the deploy lock, where does it live, and what happens if someone else already holds it or a deploy dies without releasing it?",
+     "about": "Get the deploy lock"
+    },
+    {
+     "id": "2",
+     "text": "How do I work out which colour is live and which is idle? Where is that recorded?",
+     "about": "Work out live / idle colour"
+    },
+    {
+     "id": "3",
+     "text": "What does the migration lint check, and what happens to the deploy if it fails?",
+     "about": "Build image + migration lint"
+    },
+    {
+     "id": "4",
+     "text": "Migrations run before the new code is deployed and the old colour is still serving. Why must they be additive only, and what do I do if a migration fails halfway?",
+     "about": "Run migrations (additive only, indexes built concurrently)"
+    },
+    {
+     "id": "5",
+     "text": "What exactly do the health checks check, who runs them, and what happens if some of the 4 instances fail?",
+     "about": "Health checks"
+    },
+    {
+     "id": "6",
+     "text": "What is the test listener, and what do the smoke tests cover? What happens if they fail?",
+     "about": "Smoke tests via test listener"
+    },
+    {
+     "id": "7",
+     "text": "How is the LB switched to the new colour: all traffic at once or gradually, and how long does it take?",
+     "about": "Switch the LB to the new colour"
+    },
+    {
+     "id": "8",
+     "text": "Who or what watches the 5xx rate, what counts as a spike, and how is the rollback actually done? What happens to migrations on rollback?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "9",
+     "text": "How long is the rollback window, and who decides when the old colour is torn down? Is the lock held the whole time?",
+     "about": "Keep old colour up for the rollback window"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The lock is CI's single-run concurrency group for catalog-web. It is taken at step 1 and released at step 15, so the whole deploy and its rollback window are covered. A second deploy waits rather than cancelling. The reason is that the next deploy would otherwise treat the old colour as idle and overwrite the rollback target. If the run dies, CI releases the lock automatically. The next deploy then clears any expired rollback-window colour at step 2, before it does anything else."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The live colour is whichever target group the public listener forwards to. The listener is the thing that sends users traffic, so it cannot disagree with itself. Nothing else needs to record the live colour. The idle colour is the other one. Tags on each target group record the release and state for rollback and cleanup."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The lint allows only new tables, nullable columns and concurrently built indexes. It rejects drops, renames, type changes, non-nullable columns and non-concurrent indexes. Those are the changes that would break the live release on the migrated schema. If the lint fails, the deploy stops before any migration runs, so nothing has changed."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Additive changes do not break the live release, which keeps reading the old columns and tables. If a migration fails halfway, the deploy stops and migrations that already finished stay applied, because rollback never reverses migrations. The fix is to correct the cause and re-run. Migrations are written so a re-run is safe. An invalid index from a failed concurrent build is dropped first."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The load balancer's target-group health check runs against each instance's /healthz every 10 seconds. An instance is healthy after 3 passes in a row. All 4 must be healthy before the switch. If any instance is still not healthy at the 10-minute deadline, the deploy aborts without touching the public listener, and the 4 new instances are shut down."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The test listener is my design, and it is marked decided above: a second listener on the same load balancer, reachable only from CI, that forwards only to the idle colour. I did not check what the smoke suite covers, and the brief does not say. If the smoke tests fail or do not finish within the 10-minute deadline, the deploy aborts with the public listener untouched."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "All traffic moves at once in one change to the public listener, as the brief requires. How long the change takes to take effect across the load balancer is not known and was not measured."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The deploy run itself watches the load balancer's 5xx count and total response count, once per minute, for 15 minutes after the switch. A spike is a 5xx rate above 1% over any 5-minute window that ends within those 15 minutes. Rollback repoints the public listener to the old target group. Migrations are never reversed. If the counts cannot be read, the run does not roll back and stops for an engineer to decide. Whether the metric is the load balancer's or the application's is unknown."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The rollback window is 30 minutes from the switch. The same run shuts down the old colour when the window ends, unless a rollback happened first. The lock is held through that teardown and released at the end. The reason: a second deploy would take the old colour as idle and overwrite the rollback target. A manual rollback job runs while the lock is still held and works only while the old colour is up."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Step 2 says a colour tagged rollback-window with switch time over 30 minutes ago is shut down. But step 14 shuts it down at 30 minutes in the same run, and the lock is held until then. When can a rollback-window colour exist at step 2 of a new deploy, and is that only after a dead run?",
+     "about": "Clear an old colour left by a dead run"
+    },
+    {
+     "id": "11",
+     "text": "In step 2, if the window is still open, the deploy waits. For how long, and does the lock stay held during that wait? What does a waiting deploy do if the old run's colour was never going to be shut down?",
+     "about": "Clear an old colour left by a dead run"
+    },
+    {
+     "id": "12",
+     "text": "Step 9 says the idle colour is empty for the next deploy. The 4 instances are shut down, but does the idle target group get any tag or state change on abort, such as failed or idle? What is the state tag of the idle colour before step 6?",
+     "about": "Abort without touching the public listener"
+    },
+    {
+     "id": "13",
+     "text": "Step 10 says if the listener change is refused, go to step 9. If the change partly applies or the tagging after it fails, who decides which colour is live? Is the tagging a separate step that can fail?",
+     "about": "Switch the public listener"
+    },
+    {
+     "id": "14",
+     "text": "Step 11 says the 15-minute watch starts at the switch, but step 14 holds the old colour for 30 minutes. What happens between minute 15 and minute 30? Can a rollback still happen then, and is it only manual?",
+     "about": "Watch the 5xx rate for 15 minutes"
+    },
+    {
+     "id": "15",
+     "text": "Step 12 repoints the listener back, tags the colours, and shuts down the new colour. If the repoint works but the shutdown fails, what state are the tags and lock left in?",
+     "about": "Roll back automatically"
+    },
+    {
+     "id": "16",
+     "text": "Step 13 manual rollback does not take the lock and runs while the deploy run holds it. What happens to the deploy run still in step 11 or 14 when an engineer rolls back manually? Does it notice and skip steps, or can the two collide?",
+     "about": "Roll back manually (optional)"
+    },
+    {
+     "id": "17",
+     "text": "The 10-minute deadline starts at step 6, but step 8 smoke tests run on the test listener. Does anything in the doc say how the test listener is set up or pointed at the idle group, and who creates it, since the Terms say it already exists on the load balancer?",
+     "about": "Run the smoke tests against the test listener"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "Checked against steps 11, 13 and 14 of the document. A rollback-window colour exists at step 2 only when an earlier run did not reach step 14. That happens if the run died during its 30-minute window, if it stopped in step 11 because the 5xx counts could not be read, or if the step 14 shutdown failed (the tag then stays rollback-window). A normal run always ends at step 14. A rollback in step 12 or 13 leaves the old colour tagged live, not rollback-window, so it is not a case for step 2."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The wait is bounded: it lasts at most until 30 minutes after the old run's switch time, because that is when the rollback window ends. The waiting deploy holds the lock, since it took it at step 1. CI released the dead run's lock, so the wait does not block on it. When the window closes, step 2 shuts the colour down. If that shutdown fails, the deploy stops and reports, and the live colour is untouched. The reason for the wait rather than an immediate shutdown is that an engineer may still start a manual rollback (step 13) while the window is open."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Abort (step 9) changes no tag on the idle colour. The idle colour keeps whatever state tag it was left with: idle (set when the colour was first created), retired (after a normal switch and shutdown), or failed (after a rollback). It is never live or rollback-window, because those are the states of the live colour and its rollback target. Its release tag keeps the aborted image tag until step 6 of the next deploy overwrites it. The reason is that the state tag must say what the colour is for the next deploy: not live and not a rollback target."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The public listener is the record of the live colour (step 3). If the listener change is refused, the listener is unchanged and the run goes to step 9. If the change succeeds, the new colour is live even if the tags fail. Tagging is part of step 10 and can fail separately, so the tag write is retried, and if it still fails the run stops and reports. The listener is not moved back, because users are already on the new colour. This leaves a hole: no 5xx watch runs, and the old colour may lack its rollback-window tag, so the next deploy could treat it as idle and overwrite it. That is listed under Open questions."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Between minute 15 and minute 30 there is no automatic watch and no automatic rollback. The old colour stays up and untouched. A rollback is still possible during that time, but only as a manual pipeline job (step 13). This follows the brief: the automatic rollback is part of the 15-minute watch, and an engineer-started rollback works until the old colour is shut down."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Step 12 runs in a fixed order: repoint the listener, then tag, then shut down. So if the shutdown fails, the tags are already right. The old colour is tagged live and serving, the new colour is tagged failed, and its instances are still running but receive no traffic. The run fails and stops, and the lock is released at step 15. The lock can be released because no user traffic is at risk. Step 2 of the next deploy shuts down the failed colour's instances, because a non-live colour with running instances is cleared before the next deploy starts."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "If an engineer rolls back during the step 11 watch, the run checks the listener before each reading. It finds the listener on the old colour, stops the watch without changing anything, and releases the lock. If the manual rollback happens during step 12, the run finds the listener already on the old colour and skips the repoint. If it happens during step 14, the run checks the listener before shutting anything down and skips the shutdown when the old colour is live. The check and the action are not atomic, so a small race remains between the step 14 shutdown and a manual rollback. That is listed under Open questions and is not solved here."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The brief does not mention a test listener, so the earlier wording that said it already exists was an assumption. The decision is that it is created once, before the first deploy, as part of load balancer setup: a second listener, reachable from CI only, with one rule. The deploy does not create it. In step 6 the deploy repoints the rule to the idle target group, so the smoke tests reach the new instances only through it. Who sets it up is not stated in the brief and is listed under Open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "18",
+     "text": "Step 2 waits up to 30 minutes after an old switch time. Is the 10-minute deadline from step 6 affected by that wait, and does anything cap how long the whole deploy can sit in step 2?",
+     "about": "Clear the non-live colour left by an earlier run"
+    },
+    {
+     "id": "19",
+     "text": "How does the deploy run \"shut down\" instances and \"tag\" a target group in practice? Which tool or API does CI call, and what does it consider shutdown finished?",
+     "about": "Shut down the old colour 30 minutes after the switch"
+    },
+    {
+     "id": "20",
+     "text": "What is the \"release\" tag used for? Nothing in the steps reads it. Does any step or person use it, for example when rolling back?",
+     "about": "Where deploy state is kept: Tags on each target group"
+    },
+    {
+     "id": "21",
+     "text": "In step 14, the run sits idle from minute 15 to minute 30 holding the lock. Is it a CI job that just waits, and what happens to a merge queued behind it during those 30 minutes?",
+     "about": "Shut down the old colour 30 minutes after the switch"
+    },
+    {
+     "id": "22",
+     "text": "In step 5, the new migrations run against the shared database while the old colour serves. If the new release is aborted at step 9 or rolled back, what state is the schema left in, and does the next deploy re-run those migrations?",
+     "about": "Run the migrations once"
+    },
+    {
+     "id": "23",
+     "text": "After step 10 the old colour stays tagged rollback-window. During minute 15 to 30, who or what tells an engineer a rollback is advisable, since nothing watches?",
+     "about": "Roll back manually (optional)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "The wait in step 2 comes before step 6, and the 10-minute deadline starts at step 6, so the wait does not shorten or extend that deadline. The wait is capped at 30 minutes after the earlier run's switch time, because that is when its window ends. Step 2 now says both points. Nothing else caps the time spent in step 2; it is the only wait before step 6."
+    },
+    {
+     "id": "19",
+     "tag": "unknown",
+     "text": "The brief does not name a tool or API for shutting down instances or tagging a target group, and the document does not choose one. What counts as shutdown finished (instances gone, or deregistered from the target group) is not defined here. This is listed under Open questions."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "No step reads the release tag. It is kept so that once a colour is shut down, its record names the previous release. A normal deploy after a rollback needs that release (brief, step 6). The reason is now given in the Terms and the state section, so the tag is not left unexplained."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Yes. Step 14 is a CI job that waits while holding the lock, from the end of the watch until 30 minutes after the switch. A merge queued behind it waits in the queue until the lock is released, so a queued deploy can start up to about 30 minutes after the switch. This is now stated in step 1, where the lock is taken, and in step 14. A queued deploy does not cancel the waiting run."
+    },
+    {
+     "id": "22",
+     "tag": "checked",
+     "text": "After an abort (step 9) or a rollback (steps 12 and 13), the migrations stay applied, because rollback never reverses them and the schema must keep serving the live release. The next deploy runs its lint and then step 5. Step 5 and the Terms say the migration tool keeps a history table of what it has run, and every migration uses IF NOT EXISTS, so a re-run is safe. I checked this against the document only; I did not verify how the tool itself skips already-applied entries."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "Nothing in the procedure tells the engineer. The automatic watch ends at minute 15, and step 13 is a manual job the engineer starts when they decide to. The brief requires only the automatic rollback, so the document does not add an alert. Step 13 now says the procedure does not advise on when to roll back, and the gap is listed under Open questions. The engineer has to watch the load balancer counts directly."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one deploy of a merge to `main`, from the lock to the end of the run.\n\n1. **A merge to `main` starts the run, and CI takes the deploy lock.** CI's concurrency group for `catalog-web` holds the lock, so only one deploy runs at a time. A second merge waits in the queue and doesn't cancel this run. The lock is held until step 15, which can be up to 30 minutes after traffic moves. If the run dies, CI releases the lock.\n\n2. **The run clears any non-live colour left by an earlier run.** It looks at the colour that isn't live and acts on its `state` tag, which lives on the target group. The 10-minute deadline hasn't started yet.\n   - If the tag is `rollback-window` and the switch was less than 30 minutes ago, it waits until 30 minutes have passed since that switch. It holds the lock while it waits, and the wait is at most 30 minutes. The wait is there because an engineer may still start a manual rollback.\n   - If the tag is `rollback-window` and 30 or more minutes have passed, it shuts down the 4 instances and tags the colour `retired`.\n   - If any other non-live colour still has running instances, it shuts them down and leaves the tag alone.\n   - Otherwise it does nothing.\n   - A normal run never leaves a `rollback-window` colour behind. This case only comes from an earlier run that stopped or died, or from a failed shutdown.\n   - If a shutdown fails, the deploy stops and reports. Nothing new has started, and the live colour is untouched.\n\n3. **The run works out which colour is live.** It reads which target group the public listener forwards to. That group is live and the other is idle. The listener is the only record of this. If the listener can't be read, the deploy stops with nothing changed.\n\n4. **CI builds the image and lints the migrations.** The image is built from the merged commit. The lint accepts only additive changes: new tables, nullable columns and concurrent indexes. It rejects drops, renames, type changes, non-nullable columns and non-concurrent indexes, because the live release still uses the old schema. If the build or lint fails, the deploy stops before any migration runs and nothing has changed.\n\n5. **The migrations run once, before any new instance starts.** They are applied to the shared PostgreSQL database, and the migration tool records them in its history table. Each uses `IF NOT EXISTS`, so a re-run is safe. If one fails, the deploy stops, the new release never starts, and the live colour keeps serving. Migrations that already finished stay applied. To recover, you fix the cause, drop any invalid index left by a failed concurrent build, and re-run the deploy.\n\n6. **The run starts 4 new instances on the idle colour.** They join the idle target group, and the public listener does not point at them. The test listener's rule is repointed to the idle group so the smoke tests can reach them. The image tag is saved as the `release` tag on the idle group. The 10-minute deadline starts now.\n\n7. **The run waits for health checks.** The load balancer calls `/healthz` on each instance every 10 seconds, and an instance is healthy after 3 passes in a row. This step passes when all 4 are healthy. If they aren't all healthy within 10 minutes of step 6, the run goes to step 9.\n\n8. **The run executes the smoke suite against the test listener.** It must pass before the 10-minute deadline. If it fails or runs out of time, the run goes to step 9.\n\n9. **Abort path, where the public listener is never touched.** The run shuts down the 4 new instances. The live colour and public listener are unchanged, the idle group's state tag is unchanged, and the test listener is left pointing at the empty idle group, which the next deploy repoints. Migrations stay applied. Then the run goes to step 15. If this shutdown fails, the run stops and reports, and step 2 of the next deploy shuts the instances down.\n\n10. **Success path: the run switches the public listener.** This happens only if steps 7 and 8 both pass within the deadline. In one change, the public listener is repointed from the old target group to the new one, with no gradual shift. Then the new colour is tagged `live` and the old colour `rollback-window`, both with `switched-at` set to the switch time. If the listener change is refused, the listener still points at the old colour and the run goes to step 9. If a tag write fails, it retries. If it still fails, the run stops and reports, the listener is not moved back, and no watch runs.\n\n11. **The run watches the 5xx rate for 15 minutes from the switch time.** Every minute it reads the load balancer's 5xx count and total response count, and the rate is 5xx divided by all responses. A spike is a rate above 1% over any 5-minute window within the 15 minutes.\n    - Before each reading it checks that the public listener still points at the new colour. If it doesn't, an engineer has rolled back, so the run stops the watch, changes nothing and goes to step 15.\n    - On a spike, it goes to step 12.\n    - If the counts can't be read, it does not roll back. The old colour stays up, the run stops and goes to step 15, and the old colour keeps its `rollback-window` tag for step 2 of the next deploy.\n\n12. **Automatic rollback.** The run does three things in this order:\n    1. It repoints the public listener to the old target group, unless it already points there.\n    2. It tags the old colour `live` and the new colour `failed`.\n    3. It shuts down the new colour's 4 instances.\n\n    Migrations are not touched. If the repoint is refused, the run fails and stops, and an engineer runs step 13. A failed tag write is retried. If the shutdown fails, the listener and tags are already right and the run goes to step 15. Step 2 of the next deploy shuts the instances down.\n\n13. **Manual rollback, optional.** An engineer starts this as a separate pipeline job. It only works while the old colour is up and tagged `rollback-window`. It does the same repoint, tags and shutdown as step 12. It does not take the deploy lock, so it can run while a deploy holds the lock. Steps 11, 12 and 14 notice this through their listener checks. Once the old colour is shut down, this job is refused, and rolling back means a normal deploy of the previous release.\n\n14. **The run shuts down the old colour 30 minutes after the switch.** After the watch ends, the run waits while still holding the lock, and the old colour stays up. At 30 minutes it checks that the public listener does not point at the old colour. If it does, a rollback happened and the step is skipped. Otherwise it shuts down the old colour's 4 instances and tags that group `retired`. If the shutdown fails, the tag stays `rollback-window`, the run goes to step 15, and step 2 of the next deploy retries.\n\n15. **CI releases the lock.** Every run ends here, whether it finished after step 9, 12 or 14, or stopped at any point. The document defines no behaviour for a release failing.",
+   "gaps": [
+    "How the run gets from step 11 (watch ends at 15 minutes) to step 14 when no spike occurred is only implied. The document doesn't say what happens to the tags or the lock if the run dies during the wait, beyond what the open questions say.",
+    "The document doesn't say what CI or the run does to detect a dead run or release the lock (\"CI releases the lock\" is stated with no mechanism), or what happens if the lock release fails (\"none defined\").",
+    "The document doesn't define what shutdown finished means (instances gone, or deregistered from the target group), so I can't say when steps 2, 9, 12 and 14 count as done.",
+    "The document doesn't name the tool or API CI uses to shut down instances, tag target groups, repoint listeners, or read the 5xx counts, so I can't say how those actions are issued.",
+    "The smoke suite's contents aren't specified, so I can't say what passing means.",
+    "The document doesn't say how an engineer learns a rollback is advisable, or what they watch, because no alert exists. It also doesn't say how step 13 is triggered beyond being a separate pipeline job.",
+    "The document doesn't say who sets up the test listener or how CI reaches it.",
+    "The document doesn't say what happens in step 10 if the listener change succeeds but a tag write fails and stays failed. The next deploy could see the old colour as untagged and idle and overwrite it, and the document leaves this unresolved.",
+    "The document doesn't say what happens if a manual rollback collides with the step 14 shutdown. It lists this as unsolved.",
+    "The document doesn't specify the order of tag writes between the two colours in step 10, or what 'untagged' means for a colour whose state tag was never set."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 11 does not say where the run goes when the 15-minute watch ends with no spike. The junior could only infer that step 14 follows, because step 14 starts 30 minutes after the switch. The fix adds an explicit transition from step 11 to step 14 when no spike occurs."
+  },
+  {
+   "text": "1. Trigger and lock. A merge to `main` starts a CI run. CI takes the deploy lock for `catalog-web`. The lock is CI's concurrency group, so CI holds that state. A second merge queues behind it and does not cancel the first. The lock is held until step 15, which can be 30 minutes after traffic switches. If the run dies, CI releases the lock.\n\n2. Clean up the non-live colour from an earlier run. This happens before the 10-minute deadline starts. The run looks at the colour that is not live and reads its `state` tag. The tags live on the target groups.\n - If the tag is `rollback-window` and the switch was under 30 minutes ago, the run waits, still holding the lock, until 30 minutes have passed. The wait is there because an engineer may still start a manual rollback. After the wait it applies the next case.\n - If the tag is `rollback-window` and 30 minutes or more have passed, it shuts down the 4 instances and tags the colour `retired`.\n - If any other non-live colour still has running instances, it shuts them down and leaves the tag alone.\n - Otherwise it does nothing.\n If a shutdown fails, the deploy stops and reports. Nothing new has started and the live colour is untouched.\n\n3. Find live and idle. The run reads which target group the public listener forwards to. That group is live and the other is idle. The load balancer listener is the only record of which colour is live. If the listener can't be read, the deploy stops with nothing changed.\n\n4. Build and lint. CI builds the release image from the merged commit. It also lints the migrations, which must be additive only. Additive means new tables, nullable columns and concurrent indexes. Drops, renames, type changes, non-nullable columns and non-concurrent indexes are rejected. This is because the live release still uses the old schema. If the build or lint fails, the deploy stops before any migration runs and nothing has changed.\n\n5. Run migrations once. The migration tool applies them to the shared PostgreSQL database, before any new instance starts. The tool's history table records what has run. Migrations use `IF NOT EXISTS`, so re-running is safe. If one fails, the deploy stops, the new release never starts and the live colour keeps serving. Finished migrations stay applied, because rollback never reverses them. To recover, fix the cause, drop any invalid index left by a failed concurrent build, and re-run the deploy.\n\n6. Start the new release on the idle colour. The run starts 4 instances of the new release and joins them to the idle target group. The public listener does not point at them. The test listener's rule is repointed at the idle group, so the smoke tests can reach the new instances. The test listener itself was created once during load balancer setup. The `release` tag on the idle group records the image tag. The 10-minute deadline starts here.\n\n7. Wait for health. The load balancer calls `/healthz` on each instance every 10 seconds. An instance counts as healthy after 3 passes in a row. This step passes when all 4 instances are healthy. If they are not all healthy within 10 minutes of step 6, the run goes to step 9.\n\n8. Smoke tests. Once all 4 are healthy, CI runs the smoke suite through the test listener, which forwards to the idle group. It must pass before the 10-minute deadline. If it fails or runs out of time, the run goes to step 9.\n\n9. Abort path. The run shuts down the 4 new instances so the idle colour is empty. The public listener, the live colour and the idle group's `state` tag are unchanged. The test listener stays pointed at the empty idle group, and the next deploy repoints it. Migrations stay applied. Then the run goes to step 15. If the shutdown fails, the run stops and reports, and step 2 of the next deploy shuts the instances down.\n\n10. Switch. Only if steps 7 and 8 both pass within the deadline, one load balancer change repoints the public listener from the old group to the new group. There is no gradual shift. After that, the new colour is tagged `live` and the old colour `rollback-window`, both with `switched-at` set to the switch time.\n - If the listener change is refused, the listener still points at the old colour and the run goes to step 9.\n - If the listener change works but a tag write fails, the run retries the write. If it still fails, the run stops and reports. It does not move the listener back, and no watch runs.\n\n11. Watch for 15 minutes. Starting at the switch time, the run reads the load balancer's 5xx count and total response count every minute. The rate is 5xx divided by all responses. A spike is a rate above 1% over any 5-minute window within the 15 minutes. Before each reading, it checks that the public listener still points at the new colour. If it doesn't, an engineer has rolled back manually. The run stops watching, changes nothing, and goes to step 15.\n - A spike leads to step 12.\n - If the 15 minutes pass with no spike and the listener still points at the new colour, the run goes to step 14 and still holds the lock.\n - If the counts can't be read, the run does not roll back. It leaves the old colour up, stops, and goes to step 15. The old colour keeps `rollback-window`, so step 2 of the next deploy handles it.\n\n12. Automatic rollback. The run does these in order. First it repoints the public listener to the old group, unless it already points there. Then it tags the old colour `live` and the new colour `failed`. Then it shuts down the new colour's 4 instances. Migrations are not touched. It then goes to step 15.\n - If the repoint is refused, the run fails and an engineer runs step 13.\n - If a tag write fails, it retries as in step 10.\n - If the shutdown fails, the listener and tags are already right, the new colour stays `failed`, and the run ends. Step 2 of the next deploy shuts the instances down.\n\n13. Manual rollback (optional). An engineer starts it as a separate pipeline job. It only works while the old colour is up and tagged `rollback-window`. It does the same repoint, tags and shutdown as step 12. It does not take the deploy lock, so it can run while a deploy holds the lock. The running deploy notices through its listener checks in steps 11, 12 and 14. Once the old colour is shut down, this job is refused, and rolling back means a normal deploy of the previous release.\n\n14. Retire the old colour. If the watch passed, the run keeps waiting, holding the lock, until 30 minutes after the switch. The old colour stays up untouched. It then checks that the public listener does not point at the old colour. If it does, a rollback happened and this step is skipped. Otherwise it shuts down the old colour's 4 instances and tags the group `retired`, then goes to step 15. If the shutdown fails, the tag stays `rollback-window`, the run stops, and step 2 of the next deploy retries.\n\n15. Release the lock. Every run ends here, whether after step 9, 12 or 14 or at any stop. CI releases the deploy lock. The document defines nothing for the case where the release itself fails.",
+   "gaps": [
+    "The document does not say what happens if releasing the lock fails in step 15 (it says none is defined).",
+    "The document does not say which tool or API CI uses to shut down instances, tag target groups, or repoint listeners, or what 'shutdown finished' means. This stops me explaining how a shutdown success or failure is detected in steps 2, 9, 12 and 14.",
+    "The document does not say how the new release gets from the built image to running instances. It does not say where the image is stored or what starts the instances.",
+    "The document does not say what the smoke suite checks. It does not say how it reaches the test listener from CI, or what counts as a pass beyond 'the suite passes'.",
+    "The document does not say how step 2 computes the elapsed time since the switch, beyond the `switched-at` tag. It also does not say how it handles a colour with no tag.",
+    "The document does not say how the deploy run learns that a tag write failed or what 'reports' means (who is told and how). This affects the stop-and-report outcomes in steps 2, 9, 10 and 14.",
+    "The document does not say how the manual rollback job in step 13 finds the old colour or gets its tags. It also does not say how the engineer knows a rollback is advisable, because there is no alert after minute 15.",
+    "The document does not say what the migration tool is, how it is invoked, or how the step 4 lint recognises the change types."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

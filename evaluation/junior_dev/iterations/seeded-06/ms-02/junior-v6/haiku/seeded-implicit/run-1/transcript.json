@@ -1,0 +1,313 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are MailRelay and the existing worker, and what does the worker do today to send a notification?",
+     "about": "1. Add MailRelay idempotency keys to the existing worker"
+    },
+    {
+     "id": "2",
+     "text": "What does the outbox relay do, and what triggers it to publish a message to notifications.requested?",
+     "about": "4. Add an outbox relay in the monolith"
+    },
+    {
+     "id": "3",
+     "text": "What does the `route` column hold, and how do the per-type flags decide whether a notification goes to the old worker or the new service?",
+     "about": "2. Add a `route` column and per-type flags (`notify.route.<type>`)"
+    },
+    {
+     "id": "4",
+     "text": "Walk me through one notification, e.g. shipping_update, from the moment the monolith creates it until the email is sent. Who writes what, and where?",
+     "about": "3. Build the Notification Service"
+    },
+    {
+     "id": "5",
+     "text": "When a send fails, who retries it, and what is the 'same policy as today'?",
+     "about": "Notes: Retries: same policy as today"
+    },
+    {
+     "id": "6",
+     "text": "Where is dedupe done: the service's deliveries table, MailRelay idempotency keys, or both? What duplicate does each prevent?",
+     "about": "Notes: Dedupe on notification id"
+    },
+    {
+     "id": "7",
+     "text": "When you flip the flag back, what happens to notifications already published to the broker or already in the deliveries table?",
+     "about": "Notes: Rollback is a flag flip"
+    },
+    {
+     "id": "8",
+     "text": "What does 'latency looks good' mean for password_reset: which latency, measured where, and what is the threshold?",
+     "about": "7. Move password_reset once latency looks good"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "MailRelay is the outside email provider. Its send() takes an optional idempotency_key, and it drops a repeat send with the same key accepted in the last 24 hours. The existing worker is a thread in every monolith instance. Every 5 seconds it takes up to 50 due pending rows, renders the template, calls MailRelay, and marks the row sent. On error it retries with backoff until 5 attempts, then marks the row failed and pages on-call. It commits once per batch, so a crash mid-batch can resend rows."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The outbox relay is a background loop in the monolith. It finds rows with route service and no published_at, publishes each one to notifications.requested, and sets published_at after the broker confirms. It is triggered by a poll, like the old worker, because the monolith's commit notifies nothing and a poll needs no new mechanism. Rows survive a crash between commit and publish, because they stay unpublished until confirmed. Interval and batch size reuse today's values."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "route is a column set at insert time from the flag notify.route.<type>, read with flags.get during enqueue. So a flag change affects only new rows. The old worker sends only route monolith rows, and the relay publishes only route service rows. Each row has one sender, so a flip cannot send it twice. The plan now says this."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "A carrier webhook calls enqueue_notification in its transaction, which inserts a pending row with route service into the monolith's notifications table. After commit, the relay publishes the id, type, email, payload and creation time to notifications.requested and sets published_at. The service consumer inserts a deliveries row keyed by id, acknowledges the message, renders the template, calls MailRelay with the id as idempotency_key, and writes sent or failed to its own deliveries table. The monolith never learns the final status. That is listed as an open question."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The service retries, using attempts and next_attempt_at in its deliveries table. Today's policy comes from the existing constants: MAX_ATTEMPTS 5, and BACKOFF_MINUTES 1, 2, 4, 8 before attempts 2 to 5. After attempt 5 fails, the row is marked failed and on-call is paged. The total retry window is about 15 minutes."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Both, for different duplicates. The deliveries primary key on notification id stops a second row from a broker redelivery or a relay republish. The MailRelay idempotency key stops a second email when the service crashes after MailRelay accepts the send but before it records sent. The MailRelay key lasts only 24 hours. That is far longer than the 15-minute retry window, so it matters only if the sender is down for about a day, which is listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Nothing in flight changes route. Pending monolith rows stay with the old worker. Service rows not yet published are still published, because the relay keeps running. Rows already published are still sent by the service. New rows go to the monolith within 10 seconds. The plan now states this. Whether the broker keeps messages while the service is down during a rollback is not known and is listed as an open question."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief fixes the metric and threshold: enqueue-to-MailRelay latency, p99 under 60 seconds, measured on order_confirmed. The service can measure it, because the message carries created_at and the service records the MailRelay accept time. Not known: the window length, whether retries count, and how the clock is synchronised across hosts. These are listed as open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How often does the service's sender poll deliveries, and how many rows does it take at a time?",
+     "about": "4. Render and send"
+    },
+    {
+     "id": "10",
+     "text": "If several service instances run, how do they avoid picking up the same pending row at the same moment?",
+     "about": "4. Render and send"
+    },
+    {
+     "id": "11",
+     "text": "If rendering the template fails (not the MailRelay call), is that counted as a failed attempt and retried the same way?",
+     "about": "4. Render and send"
+    },
+    {
+     "id": "12",
+     "text": "If the service crashes mid-retry, how does the attempt count and next attempt time survive, and when is the attempt count written relative to the MailRelay call?",
+     "about": "5. Retry"
+    },
+    {
+     "id": "13",
+     "text": "After a service row is published, does the monolith notifications row ever get changed or removed, and what does anyone looking at it see for a notification that has actually failed?",
+     "about": "Where the status lives"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Every 5 seconds, up to 50 rows per poll. These are the same values the old worker uses today (POLL_SECONDS 5, BATCH_SIZE 50). Reusing them avoids choosing new numbers without a reason. The plan now states them in the step."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The sender selects rows with FOR UPDATE SKIP LOCKED, the same pattern the old worker uses today. The lock only covers the short claim transaction. The claim moves each row's next attempt time forward before any send, so another instance does not see the row as due during its wait. The plan now says this in step 4."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes. A render failure counts as a failed attempt with the same retry policy, and after attempt 5 the row is failed and paged. Checked in the existing code: _deliver calls templates.render outside its try block, so a render error escapes the batch and is not counted. The plan now closes that gap so a bad payload cannot loop forever or stall the sender without a page."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The attempt count and next attempt time are stored in the service's deliveries table. The attempt is counted in a committed claim before the MailRelay call, not after it. If the service crashes during the call, the attempt is already counted and the row is due after its wait, with the same key. This stops a row that crashes the sender on every try from being retried without end. The cost is that a crash during attempt 5 pages on-call immediately, even if MailRelay had accepted the email. No duplicate is sent. The plan now states this in step 4 and in the failure table."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Nothing in the plan changes or removes a monolith row after published_at is set. The row shows route service and a published_at time. It has no sent or failed status, because that status is written only to the service's deliveries table. A failed service notification is visible there and in the on-call page. The plan now says this in Where the status lives. It also adds an open question about who looks up that status for support."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "Step 1 says the row is inserted as 'pending'. The service's deliveries row is also 'pending'. When does the monolith row's status ever leave 'pending', and does the old worker skip route service rows by checking route, or status?",
+     "about": "1. Create / Where the status lives"
+    },
+    {
+     "id": "15",
+     "text": "In the Publish step, the relay locks rows with FOR UPDATE SKIP LOCKED. How long is the lock held: through the broker publish and confirmation, or only the read?",
+     "about": "2. Publish"
+    },
+    {
+     "id": "16",
+     "text": "What does the sender do when a MailRelay send succeeds but the write of status 'sent' then fails, or the sender is slow past the next attempt time? Can another instance pick the row up while the first is still sending?",
+     "about": "4. Claim and send"
+    },
+    {
+     "id": "17",
+     "text": "The claim sets next attempt time to the backoff before the following attempt. Is that backoff counted from the claim time or from when the attempt fails? So when exactly is a failed attempt 2 retried?",
+     "about": "4. Claim and send / 5. Retry and fail"
+    },
+    {
+     "id": "18",
+     "text": "If the consumer inserts the deliveries row but crashes before acknowledging, the redelivery is a no-op. But what if the row is stored and the sender has already sent it? Does the redelivery still get acknowledged?",
+     "about": "3. Store"
+    },
+    {
+     "id": "19",
+     "text": "Step 8 says to keep the old worker deployable until then. What is the rollback path after step 8, and what must be true for the relay and flags to be removed? Also, who decides a step has 'passed its gate' and how is it checked?",
+     "about": "8. Remove the old worker / How we ship it"
+    },
+    {
+     "id": "20",
+     "text": "Step 2 says the old worker's query takes only route monolith rows. During the deploy window, before all monolith instances run the new code, could an old-version worker still send rows with route service?",
+     "about": "2. Route column, publish column and flags"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "For a service row the monolith status stays pending for good, and nothing reads it. Monolith rows move to sent or failed when the old worker finishes them. The old worker skips service rows by route (route = monolith), not by status, and the relay selects by route and published_at. Status is not meant to leave pending for service rows. Whether support needs a final status is an open question. Changed: the Terms define route as the selector, and Where the status lives says the service row's status stays pending and is not read."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The lock is held from the read until the batch commits, so it covers the publish and each broker confirmation. The relay sets published_at per row and commits once per batch. Reason: the lock stops two instances publishing the same rows, and checkout only inserts, so it does not wait on these locks. Cost: a slow broker holds the batch's rows locked, and other instances skip them. A crash before commit republishes confirmed rows, and the service ignores the copies. Changed: step 2 states the lock span, the per-batch commit and the crash case."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Two cases. (a) A send that runs past its next attempt time: the claim sets the next attempt time to now plus the backoff, and the MailRelay call must time out sooner than the shortest backoff of 1 minute. So the send ends before another instance can take the row. Reason: MailRelay's key only drops sends it has already accepted, so two copies in flight would not be dropped. (b) A sent write that fails after MailRelay accepted: the row stays pending, the next poll sends again with the same key, MailRelay drops it, and the sender writes sent. The one exception is attempt 5, which is marked failed and paged though the email was sent. Changed: steps 4 and 5 and the failure table state the timeout and the failed sent-write case."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The backoff is counted from the failure, as today's worker does. On failure, step 5 sets the next attempt time to the failure time plus the backoff. So a failed attempt 1 is retried 1 minute after it fails, not 1 minute after the claim. The claim's time (now plus the backoff) is only a guard while the send runs, and the failure write replaces it. Changed: step 5 sets the next attempt time on failure."
+    },
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "Yes. The consumer acknowledges after its insert commits, whether the insert added a row or was a no-op because the id existed. A redelivery for a row already sent is therefore acknowledged with no send, because only the sender sends (step 3 and step 4). Changed: step 3 says the ack follows the commit in both cases."
+    },
+    {
+     "id": "19",
+     "tag": "unknown",
+     "text": "Known: the gate criteria for steps 5 to 7 are the time spans and the latency check the brief gives, plus the three watched measures. Not known: who checks a gate, what counts as a bad backlog, failed count or latency (the brief gives no thresholds), and whether gates for steps 1 to 4 need more than running on every instance. Rollback after step 8 is also not known: removing the old worker means a flag flip can no longer send monolith rows, which conflicts with the brief's flag-flip rule. Whether the relay and flags stay after step 8 is not decided. All of these are in the open questions. Changed: each step names its gate, and step 8 says what removal does to rollback."
+    },
+    {
+     "id": "20",
+     "tag": "checked",
+     "text": "No service row can exist before a flag is on. Flags are all off in step 2, and the first flag flip is step 5, which comes after step 2 and its gate. The column default is monolith, so an insert that does not set route still makes a monolith row. The real risk is later: an instance still on step 1 code does not filter by route, so after a flip it could send service rows that the relay also publishes, which breaks the one-sender rule. MailRelay's key would drop the second send only within 24 hours, and the plan should not rely on that. Changed: step 2 sets the column default and says no flag may be turned on before its gate, and step 2 names every-instance as the gate."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "21",
+     "text": "After attempt 5 is claimed, the next attempt time is set to now. The send then takes up to a minute. Can another instance see the row as due during that send, find 5 attempts, and mark it failed and page on-call while the first send is still running?",
+     "about": "4. Claim and send (Claim)"
+    },
+    {
+     "id": "22",
+     "text": "The sender takes 50 rows with FOR UPDATE SKIP LOCKED, but each claim is its own short committed transaction. Is the select transaction still open while the sender claims and sends each row, or does it end before the first claim? What stops a second instance from selecting the same rows in between?",
+     "about": "4. Claim and send"
+    },
+    {
+     "id": "23",
+     "text": "The deliveries table has no field for the MailRelay accept time. Where does the service record that time so the latency can be measured? Also, where is the Backlog measured, given that it counts rows in the monolith?",
+     "about": "Enqueue-to-MailRelay latency / 7. Move password_reset"
+    },
+    {
+     "id": "24",
+     "text": "If a send succeeds but the sent write fails on attempts 1 to 4, the repeat send happens after the claim's wait. Is that wait the claim's now plus backoff, since no failure write happened? How long is that wait for each attempt?",
+     "about": "4. Claim and send (Render and send)"
+    },
+    {
+     "id": "25",
+     "text": "Who sets the next attempt time to failure time plus backoff when the send times out after exactly the claim's guard time? Can the failure write fail or arrive after the row has become due again?",
+     "about": "5. Retry and fail"
+    }
+   ],
+   "answers": [
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "Yes. The plan as first written allowed this. The attempt-5 claim set the next attempt time to now, so another instance could see the row as due during the send, find 5 attempts, and mark it failed and page on-call while the first send was still running. Fixed in step 4: the attempt-5 claim now sets a 1-minute guard time, and the MailRelay timeout is 45 seconds, so the send ends before the guard expires. A crash during attempt 5 now pages after the 1-minute guard, not at once."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The first version did not say. Decided: the batch read ends at its own commit and holds no lock while the sender claims and sends. Each claim locks its own row with FOR UPDATE SKIP LOCKED, rechecks that the row is still pending and due, and counts the attempt in the same transaction. A second instance that read the same id finds the row locked or no longer due, and skips it. Holding the read open across the sends was rejected, because it would hold locks for up to 50 MailRelay calls."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "Added an accepted_at field to the deliveries table. The sender writes it in the same sent write, using the time it received MailRelay's success. Enqueue-to-MailRelay latency is accepted_at minus the created_at carried in the message. Backlog is counted by the relay in the monolith (route service rows with no published_at), because the service cannot read the monolith database. Failed count is counted in the service from the deliveries table. Which clock to use is still an open question."
+    },
+    {
+     "id": "24",
+     "tag": "checked",
+     "text": "Yes. With no failure write, the repeat waits for the claim's guard time. That is 1 minute after attempt 1, 2 minutes after attempt 2, 4 minutes after attempt 3 and 8 minutes after attempt 4, which are the backoffs before attempts 2 to 5. After attempt 5 the guard is 1 minute. The failure table and step 4 now state these waits."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "The sender that claimed the row writes the failure time plus the backoff, right after the MailRelay error or timeout. The timeout is 45 seconds, so that write normally lands before the 1-minute guard expires. If the write fails or arrives after the guard, the row is due at its guard time, and the next claim sends it again with the same key. Every sent or failed write applies only if the attempt count still equals the count the sender claimed, so a late write cannot overwrite a newer claim. The 45-second value is chosen here to leave margin under the 1-minute guard; it is not from the brief."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one `shipping_update` notification while its flag is on, so its route is `service`.\n\n1. **Create.** A carrier webhook updates a shipment and calls `enqueue_notification(tx, ...)` inside its own database transaction.\n   - The flag `notify.route.shipping_update` is on, so the new row gets route `service`.\n   - When the transaction commits, the monolith's `notifications` table holds the row. It has the id, type, user id, email, payload, creation time, route `service`, status `pending` and an empty `published_at`.\n   - If the transaction rolls back, no row exists and nothing is sent.\n   - The state lives in the monolith `notifications` table.\n\n2. **Publish.** The outbox relay runs in every monolith instance and polls every 5 seconds.\n   - It opens a transaction and reads up to 50 rows with route `service` and no `published_at`. It locks them with `FOR UPDATE SKIP LOCKED`, so two instances never take the same row.\n   - For each row it publishes to the broker topic `notifications.requested`. The message carries the id, type, email, payload and creation time.\n   - When the broker confirms a message, the relay sets `published_at` on that row. It commits once per batch.\n   - If the broker does not confirm, `published_at` stays empty and the next poll retries. If the broker is down, rows wait in the monolith.\n   - If the relay crashes after the broker stored a message but before the commit, the row is published again. Step 3 ignores the copy.\n   - The state stays in the monolith table.\n\n3. **Store.** The service's consumer receives the broker message.\n   - It inserts a row into the deliveries table, which is keyed by notification id. The row has status `pending`, zero attempts and a next attempt time of now.\n   - If the id already exists, the insert does nothing.\n   - After the insert commits, the consumer acknowledges the message, whether the row was new or already there. The consumer never sends email.\n   - If the consumer crashes before acknowledging, the broker redelivers within 30 seconds. The insert is then a no-op and the message is acknowledged.\n   - A redelivered message for a row that is already `sent` or `failed` inserts and sends nothing, and is acknowledged.\n   - From here on the state lives in the service's deliveries table. The service never touches the monolith's database.\n\n4. **Claim and send.** The sender runs in every service instance and polls every 5 seconds. It takes up to 50 due rows with `FOR UPDATE SKIP LOCKED`. For each row:\n   - **Limit check.** If the row already has 5 attempts, the sender sets status `failed` and pages on-call. It does not send. This only happens after a crash during attempt 5.\n   - **Claim.** In one short committed transaction, the sender adds 1 to the attempt count and sets the next attempt time.\n     - After attempts 1 to 4, that time is now plus the backoff before the next attempt.\n     - After attempt 5, the time is now.\n     - Counting before sending means a crash mid-send still uses up an attempt. The moved-forward time also keeps other instances from taking the row while it is being sent.\n   - **Render and send.** After the claim commits, the sender renders the template from the payload and calls MailRelay `send` with the notification id as `idempotency_key`. The call must time out in under 1 minute, so a send ends before the row is due again.\n   - **Success.** If MailRelay accepts, the sender sets status `sent`.\n   - **Failure.** A failed render or send goes to step 5.\n   - If the service crashes before the claim commits, nothing was counted and the row is picked up on the next poll.\n   - If the service crashes after the claim, the row is due again after its wait and is sent again with the same key. MailRelay drops the repeat if it already accepted the first send. The key protects for 24 hours.\n   - If MailRelay accepts but writing `sent` fails, the row stays `pending` and is retried. The repeat is dropped and the sender then sets `sent`. On attempt 5 the row is instead marked `failed` and paged, even though the email was sent.\n\n5. **Retry and fail.** This runs when an attempt fails. That covers a render error, a MailRelay error or a timeout.\n   - The sender sets the next attempt time to the failure time plus the backoff. The waits are 1, 2, 4 and 8 minutes before attempts 2 to 5.\n   - Retries come from the deliveries table, not from broker redelivery, because the message was already acknowledged.\n   - On attempt 5 the sender sets status `failed`, pages on-call with the notification id and the error, and sets no next attempt time.\n   - State stays in the deliveries table.\n\n6. **Old path (route `monolith`).** The old worker in each monolith instance selects due `pending` rows with route `monolith`.\n   - It renders and sends with the notification id as `idempotency_key`, under the same policy: 5 attempts, 1/2/4/8 minute backoff, then `failed` and an on-call page. A render error now counts as a failed attempt.\n   - Its state is the monolith row. It commits once per batch, so a crash mid-batch can re-send rows. They carry the same key, so MailRelay drops the repeats.\n\n7. **Status location.** For a `service` row, the final status (`sent` or `failed`) is written only to the deliveries table.\n   - The monolith row stays `pending` for good, and nothing reads that status. It ends at `published_at`.\n   - A failed service notification is visible only in the deliveries table and in the on-call page.\n   - The old worker and the relay choose rows by route, not by status.\n\n8. **Rollback.** Setting `notify.route.<type>` back to `monolith` changes the route of new rows only. The change reaches all instances within 10 seconds.\n   - A row keeps its route for good.\n   - Rows already routed to `service` are still published by the relay and sent by the service. Rows already routed to `monolith` are sent by the old worker. Each row has exactly one sender, so nothing is re-sent or dropped.\n   - The relay and the service keep running until their rows drain.\n\n9. **Rollout.** The deploy order matters.\n   - First the old worker gets idempotency keys, and the `route` column, `published_at` and the flags are added. No flag may go on until every instance runs that code, because older code would send `service` rows too.\n   - Then the service is built and the relay is deployed.\n   - Then the types move one at a time: `shipping_update`, then `order_confirmed`, then `password_reset`. `shipping_update` and `order_confirmed` each run at least 3 days on the service before the next step. `password_reset` moves only after p99 latency is under 60 seconds on `order_confirmed`.\n   - The old worker is removed only after `password_reset` has run on the service for 7 days.",
+   "gaps": [
+    "The document does not say where the email address and payload are stored in the deliveries table. Step 3 lists only the id, status, attempts and next attempt time, yet the sender must render from the payload and needs the recipient. It is unclear whether the consumer stores the whole message or just those four fields.",
+    "The document does not say how long the sender's row lock lasts. The sender takes 50 rows with the lock, but the claim is a separate short committed transaction per row. I cannot tell whether the lock is held while earlier rows in the batch are being sent, or released between rows.",
+    "The document does not say how the sender chooses a template for a given type, or what the template needs beyond the payload. It only says the templates move into the service.",
+    "The document does not say how anyone sees the final status of a service notification, for example for a support question. The monolith row shows only `published_at`, and the document leaves this open.",
+    "The document does not say how long the broker keeps an unacknowledged message when the service is down during a rollback. The open questions raise this and leave it unanswered."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 3 and the deliveries table do not say that the consumer stores the recipient email, type and payload. Step 4 must render from the payload, pick the template by type and address the email, so the sender cannot do those steps from the table as written. The fix adds those fields to the deliveries table in the terms and in step 3.; Step 4 does not say how the sender chooses the template for a notification's type, or what it renders from. The fix states in step 4 that the sender picks the template by the row's type and renders it from the row's payload, and defines Template in the terms."
+  },
+  {
+   "text": "Walkthrough of one `shipping_update` notification with route `service`, using only the document.\n\n1. Create. A carrier webhook updates a shipment. Inside its own database transaction, business code calls `enqueue_notification(tx, ...)`. The flag `notify.route.shipping_update` is on, so the new row gets route `service`. When the transaction commits, the monolith's `notifications` table holds the row: id, type, user id, email, payload, creation time, route `service`, status `pending`, empty `published_at`. If the transaction rolls back, no row exists and nothing is sent. State lives in the monolith `notifications` table.\n\n2. Publish. In every monolith instance, the outbox relay polls every 5 seconds. It opens a transaction and reads up to 50 rows with route `service` and no `published_at`. It locks them with `FOR UPDATE SKIP LOCKED`, so two instances never take the same row. For each row it publishes a message to the broker topic `notifications.requested`. The message carries id, type, email, payload and creation time. When the broker confirms it has stored a message, the relay sets `published_at` on that row. The lock is held until the batch commits, and the relay commits once per batch. If the broker doesn't confirm, `published_at` stays empty and the next poll retries. If the broker is down, rows wait in the monolith and sends are delayed. If the relay crashes after the broker stored a message but before the commit, the row is published again, and step 3 ignores the copy. State stays in the monolith table.\n\n3. Store. The service's consumer receives the broker message. It inserts a deliveries row in the service's own database. The row has id, type, email, payload and creation time, status `pending`, 0 attempts and next attempt time of now. If the id already exists, the insert does nothing. After the insert commits, the consumer acknowledges the message, whether the row was new or already existed. The consumer never sends email. If it crashes before acknowledging, the broker redelivers within 30 seconds, possibly to another consumer. The insert is then a no-op and the message is acknowledged. If the existing row is already `sent` or `failed`, nothing is inserted or sent and the message is acknowledged. State is in the service deliveries table, keyed by notification id.\n\n4. Claim and send. In every service instance, the sender polls every 5 seconds.\n   a. It reads up to 50 due ids (`pending` rows whose next attempt time has passed). That read holds no lock.\n   b. For each row, it runs its own short committed transaction. The transaction locks the row with `FOR UPDATE SKIP LOCKED` and checks the row is still `pending` and due. If the row is locked or no longer due, the sender skips it.\n   c. If the row already has 5 attempts, which only happens after a crash during attempt 5, the sender sets `failed`, pages on-call with the id, and does not send.\n   d. Otherwise it adds 1 to the attempt count and sets the guard time (the next attempt time) to now plus the backoff. The backoff is 1 minute after attempt 1, 2 after attempt 2, 4 after attempt 3, 8 after attempt 4, and 1 minute after attempt 5. The attempt is counted before sending, so a crash mid-send still uses an attempt. The guard keeps other instances off the row while the send runs.\n   e. After the claim commits, the sender picks the template by the row's type and renders subject and body from the payload.\n   f. It calls MailRelay `send` to the row's email with `idempotency_key` set to the notification id. The call times out after 45 seconds, which is shorter than the 1-minute guard.\n   g. If MailRelay accepts, the sender sets status `sent` and `accepted_at`. This write and the failure writes apply only if the attempt count still equals the count this sender claimed. A late write from a sender that lost its claim changes nothing.\n   If a crash happens before the claim commits, nothing is counted and the row is picked up on the next poll. If a crash happens after the claim, the row is due at its guard time and is sent again with the same key. MailRelay drops the repeat if it accepted the first send within 24 hours. If MailRelay accepted but the `sent` write failed, the row stays `pending`, is retried at its guard time, and the repeat is dropped. The sender then writes `sent`. The exception is after attempt 5, where the row is marked `failed` and paged even though the email went out. State is in service deliveries (and the MailRelay key).\n\n5. Retry and fail. If an attempt fails (render error, MailRelay error or timeout), the sender sets the next attempt time to the failure time plus that attempt's backoff. The backoff is 1, 2, 4 or 8 minutes. So a failed attempt 1 is retried 1 minute after the failure. Retries come from the deliveries table, not from broker redelivery, because the message was already acknowledged. After attempt 5 fails, the sender sets `failed`, pages on-call with the id and the error, and sets no next attempt time. If the failure write fails or arrives late, the row is due at its guard time and is sent again with the same key.\n\n6. Old path (route `monolith`). The old worker, in every monolith instance, selects due `pending` rows with route `monolith`. It renders the template and sends with the notification id as `idempotency_key`. It uses the same policy: 5 attempts, 1/2/4/8 minute backoff, then `failed` and an on-call page. A render error now counts as a failed attempt. The state is the monolith row, and it commits once per batch. After a mid-batch crash, rows are re-sent with the same key and MailRelay drops the repeats.\n\n7. Final status. A service row's `sent` or `failed` status is written only to the deliveries table. The monolith row stops at `published_at`, its status stays `pending` forever, and nothing reads it. The old worker and relay select by route, not status. A failed service notification is visible only in the deliveries table and the on-call page.\n\n8. Rollback. Setting `notify.route.<type>` back to `monolith` changes the route of new rows only. The change reaches every monolith instance within 10 seconds. Existing rows keep their route. Unpublished `service` rows are still published by the relay, and rows already in the service are still sent by it. The relay and service keep running until these drain. Each row has one sender, so nothing is re-sent or dropped.\n\nRollout order for context: deploy 1 puts idempotency keys on the old worker. Deploy 2 adds the route and `published_at` columns and the flags. Deploy 3 builds the service. Deploy 4 adds the relay. Deploys 5 to 7 move `shipping_update`, then `order_confirmed`, then `password_reset`, each by flag flip with 3-day soaks (and a p99 latency gate under 60 seconds before `password_reset`). Deploy 8 removes the old worker after 7 days of `password_reset` on the service.",
+   "gaps": [
+    "How the sender 'poll' picks the 50 due ids when the rows are locked by claim is clear, but the document does not say how the sender instance is scheduled or what happens to rows the read returned that another instance claimed first beyond 'skip'. This is minor.",
+    "How a row's route is decided when the flag is changed mid-transaction is not stated; only that the flag is read at enqueue.",
+    "How long the broker keeps an unacknowledged message if the service is down (open question), which affects the 'service down during rollback' flow.",
+    "Whether and how the monolith ever learns the final `sent` or `failed` status of a service row, and who looks it up for support (open question). The status stays `pending` forever in the monolith.",
+    "How the on-call page is delivered (which channel or system), and who receives it.",
+    "How the broker message is routed to a specific consumer (consumer groups or queues are not described), so it is unclear how 'possibly to another consumer' redelivery is arranged.",
+    "How a `failed` `service` row could be re-sent or recovered after on-call is paged. The document gives no manual recovery procedure.",
+    "What the old worker's due-row selection does about guard time, since the document describes the claim and guard mechanism only for the service sender."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

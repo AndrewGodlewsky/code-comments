@@ -1,0 +1,192 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does KeyService's 'resolve key' return, and how does the Gateway use it? Is it the customer ID, the plan, or both?",
+     "about": "Gateway->>KeyService: resolve key"
+    },
+    {
+     "id": "2",
+     "text": "What identifies the customer on the incoming request (API key header, token)? What exactly does the Redis counter key look like?",
+     "about": "Client->>Gateway: request / Counter keys"
+    },
+    {
+     "id": "3",
+     "text": "Where does the Gateway get the customer's limit (100 for Standard)? Does it come from KeyService, config, or somewhere else, and how does check_and_incr receive it?",
+     "about": "Limits: Standard 100/min"
+    },
+    {
+     "id": "4",
+     "text": "What does check_and_incr return, and does it increment when the request is over the limit? What does the Gateway do with the result?",
+     "about": "check_and_incr is a Lua script"
+    },
+    {
+     "id": "5",
+     "text": "The diagram shows resolve key, check_and_incr and forward in sequence. Is the key resolved first and used in the Redis check, and does a 401 or 429 stop the request before it reaches the Backend?",
+     "about": "sequence diagram order"
+    },
+    {
+     "id": "6",
+     "text": "How is the per-minute window defined: a fixed clock minute or a sliding window? What is the TTL value on counter keys?",
+     "about": "Counters are per minute / Counter keys have a TTL"
+    },
+    {
+     "id": "7",
+     "text": "What does Enterprise get while the limit is TBD? Is there a placeholder, no limit, or the Standard limit?",
+     "about": "Enterprise TBD (Product)"
+    },
+    {
+     "id": "8",
+     "text": "What happens if KeyService is slow or down? Is that also fail open, or does the request fail?",
+     "about": "Gateway->>KeyService: resolve key"
+    },
+    {
+     "id": "9",
+     "text": "Are the X-RateLimit headers on every response, including 429s? How is Retry-After computed?",
+     "about": "X-RateLimit-Limit / X-RateLimit-Remaining headers"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "KeyService's resolve returns both: the customer ID and the plan (Standard or Enterprise). The gateway uses the customer ID to choose the counter and the plan to choose the limit. Each instance caches the answer in memory for 5 minutes."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The customer comes from the X-Api-Key header, which KeyService resolves to a customer ID. The Redis counter key is rl:<customer ID>:<minute>, where minute is the Redis server clock divided by 60, rounded down. Keying on customer ID, not API key, is what makes one budget shared across a customer's keys, as the brief requires."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The limit comes from the plan through a mapping in gateway config: Standard is 100 per minute, Enterprise has none yet. The gateway passes the limit to check_and_incr as an argument on each call, so the script stays generic and the limit can change without editing the script."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "check_and_incr returns allowed or denied, the new count (when allowed) and the seconds left in the minute. It does not increment when the count is already at the limit, so rejected requests use no budget. The check and the increment happen in one atomic Redis step, so two instances cannot both take the last slot. Allowed: forward and add headers. Denied: return 429 with Retry-After."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. The key is resolved first and its customer ID is used in the Redis check. A 401 stops the request before Redis and before the Backend. A 429 stops it before the Backend. The diagram previously showed one straight line; it now has alt branches for 401, 429, the Enterprise path and fail open."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The window is a fixed clock minute, not a sliding window, because it is the simplest correct option for a first version. The counter key's TTL is 60 seconds, set when the first request in that minute creates the key. The known cost, a burst across a minute boundary, is listed under open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Enterprise gets no limit while it is TBD. A placeholder number would break the brief's instruction not to pick one, and reusing the Standard limit would silently set Enterprise policy. The consequence, that Enterprise customers are not limited yet, is stated in the open questions."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not say what the gateway does today when KeyService is slow or down, and this plan does not change it. Fail open (requirement 8) covers only the counter store. A request whose key cannot be resolved cannot be authenticated, so forwarding it would break requirement 3. This is listed as an open question to confirm."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The X-RateLimit headers appear only on responses to requests that passed the check, as requirement 6 says. They are not on 401, 429, or fail-open responses. X-RateLimit-Remaining is 100 minus the new count. Retry-After is the seconds left in the current minute, computed from the Redis clock inside the script, so it is at least 1 and does not depend on each instance's clock. The 429 header rule is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "If Redis fails the check and the request is forwarded, does that request count toward the customer's budget at all? What happens to the counter once Redis comes back?",
+     "about": "Step 5. Fail open"
+    },
+    {
+     "id": "11",
+     "text": "What does the Gateway do with a Backend response when it's a timeout or the Backend is unreachable? The doc only mentions a 500 response.",
+     "about": "What happens when things fail / Backend fails"
+    },
+    {
+     "id": "12",
+     "text": "How does the Gateway know which Backend owns the route? Is that decided before or after the rate-limit check?",
+     "about": "Step 4. Reject or forward: 'the backend that owns the route'"
+    },
+    {
+     "id": "13",
+     "text": "Which 'minute' does the Gateway report in Retry-After and Remaining: is it only returned by the script, with no gateway clock used anywhere?",
+     "about": "Step 3. Count in Redis"
+    },
+    {
+     "id": "14",
+     "text": "In the fail-open case, is the 50 ms timeout counted from when the Gateway sends the call, and does a late Redis answer that arrives after 50 ms still increment the counter?",
+     "about": "Gateway->>Redis: check_and_incr(customer, 100) within 50 ms"
+    },
+    {
+     "id": "15",
+     "text": "What does the client see for a request whose key is cached for 5 minutes but has since been revoked or changed plan? Is there any way to invalidate the cache?",
+     "about": "Gateway->>KeyService: resolve key (cached 5 min)"
+    },
+    {
+     "id": "16",
+     "text": "Who receives the ratelimit_store_unavailable metric and is anything else done when it fires (alert, log)?",
+     "about": "Note over Gateway: emit ratelimit_store_unavailable"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Not necessarily. Redis may have run the script before the 50 ms limit passed. If it did, the count includes the request. The gateway cannot tell which happened. Nothing is replayed when Redis returns: each minute's counter is separate and expires after 60 seconds, so the next request creates or increments the current counter. Reason: the brief requires fail open, and the gateway keeps no record of missed requests to replay."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The brief does not say what the client gets when the backend times out or cannot be reached, or whether the gateway sets a backend timeout at all. The request has already counted against the budget, as with a 500. Added as a table row and an open question."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The brief says the gateway forwards to the backend that owns the route, and this design does not change that routing. The check uses only the customer ID and plan, not the backend, so it can run before or after the route lookup with the same outcome. Reason: the brief requires the check before forwarding, and nothing else in the check needs the route."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Yes. The script returns the count and the seconds left in the minute. The gateway uses no clock for limits: Retry-After is the seconds left from the script, and Remaining is 100 minus the count the script returned. The gateway's only clock use is the 5-minute key cache. Step 3 now says this."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes, the 50 ms is measured from when the gateway sends the call. A late answer is ignored and the request fails open. But if the script reached Redis, it still runs and still increments the counter, because the gateway cannot cancel a script it has sent. Step 5 now says this."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "A revoked key keeps working, and a plan change applies late, for up to 5 minutes on each instance. The brief describes no way to clear the cache, so I do not know whether one exists or is wanted. Step 1 states the delay; the open question asks for confirmation."
+    },
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "The brief says only to emit the metric. I do not know who receives it, or whether it also writes a log line or raises an alert. Added as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request to the Gateway with an `X-Api-Key` header. One of six gateway instances receives it. Each instance keeps its own in-memory cache of key lookups.\n\n2. Key check. The gateway asks Key Service to turn the key into a customer ID and a plan. It uses a cached answer if it has one, because each instance caches answers for 5 minutes. Only the instance's memory holds this state. If the key is missing or unknown, the gateway returns `401` straight away. Redis is not touched. A revoked key keeps working, and a plan change applies late, for up to 5 minutes on each instance, because of the cache.\n\n3. Pick the limit. The plan sets the limit. `Standard` gets 100 requests per clock minute. `Enterprise` has no limit yet, because Product has not decided one. An Enterprise request skips the counting step and goes to forwarding. It gets no rate-limit headers on the response.\n\n4. Count in Redis (Standard only). The gateway calls the Lua script `check_and_incr` in Redis with the customer ID and the limit (100). It waits at most 50 ms, counted from when it sends the call. The shared counters live in Redis, so all instances see the same count. The script runs as one atomic step. It builds the counter key `rl:<customer ID>:<minute>`, where minute is the Redis server's clock divided by 60, rounded down.\n   - If the count is already at the limit, it denies the request. It does not increment, and it returns the seconds left in the minute (at least 1).\n   - Otherwise it adds 1. If this is the first request of the minute, it sets the key's TTL to 60 seconds. It returns allowed, the new count and the seconds left.\n   Because check and increment are one step, two instances cannot both take the last slot.\n\n5. Route lookup. The gateway looks up the backend for the route as it does today. The document says the order relative to step 4 does not matter.\n\n6. Denied. The gateway returns `429` with `Retry-After` set to the seconds left that the script returned. It does not forward the request. The response has no `X-RateLimit-*` headers. The request used no budget.\n\n7. Allowed. The gateway forwards the request to the Backend and returns the backend's response whatever its status. It adds `X-RateLimit-Limit` (100) and `X-RateLimit-Remaining` (100 minus the new count from the script). The request has already counted, so a backend `500` still uses budget.\n\n8. Redis failure (fail open). If the Redis call errors or nothing arrives within 50 ms, the gateway emits `ratelimit_store_unavailable`. It forwards the request anyway and returns the response with no `X-RateLimit-*` headers. It does not retry. Redis may or may not have run the script. If it did, the count includes the request, and a late answer is ignored but its increment still counts. Missed requests are not added back. Each minute has its own counter that expires after 60 seconds, so nothing needs repair when Redis returns. During an outage a customer can exceed 100 in a minute.\n\n9. Other failures. A backend that returns an error has its response passed to the client. A backend that times out or is unreachable was already counted. The client gets \"the error the gateway returns today\", and the document does not say what that is. If Key Service is slow or down, the document says only that this design does not change today's behavior and that a request whose key cannot be resolved is not forwarded.\n\n10. Edge behavior. Because the window is fixed, a customer can send up to 200 requests in a few seconds across a minute boundary. The document accepts this for a first version.",
+   "gaps": [
+    "What the gateway does today when Key Service is slow or down is not stated. The document says only that an unresolvable key is not forwarded, so I cannot say what status or response the client gets.",
+    "What the client receives when the backend times out or is unreachable is not stated. The document says only 'the error the gateway returns today', and does not say whether the gateway sets a backend timeout at all.",
+    "The route lookup is described only as 'the gateway's existing routing'. I do not know how it picks a backend, or what happens when no route matches."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,186 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "How does the old worker decide a pending row is due to send, and what do attempts and next_attempt_at mean in the monolith table? Does the relay hand off a row whose next_attempt_at is still in the future?",
+     "about": "Design in brief: Outbox in the monolith / Step 4 Relay"
+    },
+    {
+     "id": "2",
+     "text": "In the service's notifications table, what are the possible status values, and exactly which rows does the sender loop treat as due to claim (status, next_attempt_at, lease_until)?",
+     "about": "Step 3: Sender loop, claim a due row"
+    },
+    {
+     "id": "3",
+     "text": "What is MailRelay, and what does it return on success, on a repeated key, and on an error or timeout? How does the 60 s lease relate to MailRelay call time?",
+     "about": "Step 3: Sender loop / MailRelay idempotency_key"
+    },
+    {
+     "id": "4",
+     "text": "What is the flag system, who changes a flag, and how do monolith instances learn the new value (the 10 s figure)? What exactly happens to the relay and worker when a flag flips?",
+     "about": "Per-type routing flag / Step 6 operator flips the flag"
+    },
+    {
+     "id": "5",
+     "text": "The relay is described as a background job. Does it run on every monolith instance or just one, and how does SKIP LOCKED keep instances from publishing the same row?",
+     "about": "Step 4: Relay (a background job on the monolith, polling every 1 s)"
+    },
+    {
+     "id": "6",
+     "text": "What does the monolith do with the result (sent or failed) once it has updated the row? Who sees that status, and what happens if the result never arrives?",
+     "about": "Step 4: Result consumer and Reconciler"
+    },
+    {
+     "id": "7",
+     "text": "How does the service handle a message whose payload is already past next_attempt_at versus one with a future next_attempt_at? When does the first attempt of a handed-off row actually run?",
+     "about": "Step 3: Consumer on notification.send / carries attempts and next_attempt_at across the handoff"
+    },
+    {
+     "id": "8",
+     "text": "What produces the rows in the monolith notifications table, and what does a checkout or carrier-webhook caller see when it calls enqueue_notification?",
+     "about": "Design in brief: enqueue_notification(tx, ...)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The old worker's code selects rows with status='pending' AND next_attempt_at <= now(), ordered by created_at. attempts counts failed sends so far; next_attempt_at is the earliest time the next send may run (set to now() on insert, pushed out by the backoff after a failure). Decided: the relay does not check next_attempt_at. It hands off every pending row of a service-flagged type, with attempts and next_attempt_at in the message, and the service sender waits until the time arrives. Added to the plan."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Service statuses are pending, sent and failed (same as the monolith minus handed_off). The sender treats a row as due when status='pending' AND next_attempt_at <= now() AND (lease_until IS NULL OR lease_until < now()). This is my design, chosen to mirror the old worker plus the lease. Added to step 3."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "MailRelay is the email provider, and all three types are email only. Per the overview, send() returns success on accept and also returns success when it drops a repeat of a key accepted in the last 24 h. In the old worker code, any failure including timeouts raises mailrelay.Error. Added a definition. The lease (60 s) is meant to exceed the MailRelay call time, but the call timeout is not in the files."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The flags are the monolith's runtime flags, read with flags.get(name); the overview says a change reaches every monolith instance within 10 s. The plan says an operator flips them. Decided: the worker and the relay read the flags inside each batch, so a flip applies from their next pass, and rows already claimed are never reassigned. Added to the plan. How the operator edits a flag is not described in the files; added to open questions."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The relay runs on every monolith instance, like today's worker thread. FOR UPDATE SKIP LOCKED means each instance locks a different set of pending rows and skips rows another instance holds, so a row is not published by two instances at once. If an instance dies after publishing but before commit, the row is republished and the service dedupes by id. Added to step 4."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The result consumer only updates the monolith row from handed_off to sent or failed. Nothing in the monolith acts on it other than the reconciler, which uses it to see which rows are finished. If a result never arrives, the reconciler republishes after 1 hour and alerts, then pages after 24 hours. Added to step 4."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The consumer stores attempts and next_attempt_at as given, even if in the future. The sender loop, polling every 1 s, runs a row once next_attempt_at has passed. So a past-due handed-off row is sent on the next poll, and a future one waits until its time. The 1 s poll is my choice, picked so the sender adds little to the 60 s latency target. Added to step 3."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Business code (checkout, carrier webhook, password reset) calls enqueue_notification(tx, ...) inside its own transaction. It inserts one pending row with a new uuid and returns nothing. The row exists only if the caller's transaction commits, and the caller never touches the broker. Added to the design summary."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Is a result_outbox row written after every send attempt, or only when the row reaches sent or failed? What does the monolith see for a row that failed once and is waiting on a retry?",
+     "about": "Step 3: Sender loop, record the result / result_outbox"
+    },
+    {
+     "id": "10",
+     "text": "If the service already finished a row but its result was lost, the republished message is ignored because the id exists. How does the monolith then get the result and leave handed_off?",
+     "about": "Step 4: Reconciler, republish the same message and alert"
+    },
+    {
+     "id": "11",
+     "text": "If the broker is down or the publisher crashes after publishing but before marking a result published, what happens to that result_outbox row?",
+     "about": "Step 3: Result publisher, waits for the broker confirm, then marks them published"
+    },
+    {
+     "id": "12",
+     "text": "The old worker sends outside a short transaction or inside the batch transaction? Does it hold the row lock while it calls MailRelay, and what happens to other instances meanwhile?",
+     "about": "Design in brief: A row's owner is whoever moves it out of pending first, under a row lock"
+    },
+    {
+     "id": "13",
+     "text": "When the service marks a row failed, does the monolith or the service page on-call, and does the monolith's failed status from the result consumer trigger anything?",
+     "about": "Step 3: Pager loop and Step 4 Reconciler page"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "A result_outbox row is written only when the service row becomes final (sent or failed), in the same transaction as that update. A row waiting on a retry writes nothing, so the monolith sees it as handed_off until it is final. Chosen because the result is informational and only the final outcome is needed. Step 3 now says so."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "This was a real hole. Fix: when the service consumer finds the id already exists and that row is sent or failed, it adds a fresh result_outbox row in the same transaction. The result is then published, and the monolith's guarded update moves the row out of handed_off. Added to step 3 (consumer) and step 4 (reconciler) and the failure table."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The result_outbox row stays unpublished and the publisher publishes it again later. A crash after publishing but before marking causes a repeated result, which is harmless because the monolith's guarded UPDATE only matches status='handed_off'. Added to the result publisher in step 3."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "In existing/notifications.py the whole batch runs in one db.transaction: the SELECT ... FOR UPDATE SKIP LOCKED and every _deliver call, including mailrelay.send, happen inside it. So the old worker holds the row locks during the MailRelay calls until the batch commits. Other worker instances, and the relay, skip those locked rows with SKIP LOCKED and take other rows. Added to the design summary. The new service deliberately does not do this; it uses a short lease instead."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The service pages on-call when a row fails (pager loop, paged_at guard). The monolith's result consumer only updates the row's status and never pages. The only monolith page is the reconciler's page when a handed_off row has no result after 24 hours. Added a 'Who pages' bullet to the design summary."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "The relay sets handed_off only after the broker confirms, in its transaction. If the service sends the email and publishes the result before that transaction commits, the guarded UPDATE finds the row still pending and does nothing. What happens to that row then?",
+     "about": "Step 4: Relay (set handed_off after broker confirm) and Result consumer (guarded UPDATE WHERE status='handed_off')"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The relay holds the row lock from its claim until it commits, so the result consumer's guarded UPDATE waits on that lock. After the relay commits, the UPDATE re-checks its WHERE, sees handed_off and applies. If the relay's transaction rolls back (crash or failure after publish), the row is still pending and the UPDATE matches nothing, so the result is dropped. The relay then republishes the row on its next pass. The service already has a finished row for that id, so its consumer adds a fresh result_outbox row (step 3) and the result applies the second time. If a database did not wait on the lock, the row would sit as handed_off with no result, and the reconciler would fix it after 1 hour. Added to the result consumer in step 4, the failure list and the failure table. The wait-then-recheck behaviour is PostgreSQL's; the files do not name the database, so I added that as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one `shipping_update` notification after its type has been cut over to the service (flag = `service`).\n\n1. **Something happens in the business code.** A carrier webhook fires. That code calls `enqueue_notification(tx, ...)` inside its own database transaction. The call inserts one row into the monolith's `notifications` table with `status='pending'` and a new uuid, and it returns nothing. The caller never touches the broker. The row exists only if the transaction commits. If the transaction rolls back, there is no row, and the document says that is correct. The monolith table holds the state. This table works as an outbox.\n\n2. **Someone has to claim the row.** The row's owner is whichever component moves it out of `pending` first, under the row lock (`SELECT ... FOR UPDATE SKIP LOCKED`). The type's flag decides who may claim it. Flag `monolith` (the default) lets the old worker claim it. Flag `service` lets the relay claim it. Every monolith instance sees a flag change within about 10 s. If an instance cannot read the flag, the old worker treats the type as `monolith`, so rows are never stranded. A stale flag on one instance is harmless, because the row lock picks the winner.\n\n3. **The relay hands the row off.** The relay runs on every monolith instance and polls every 1 s. In one transaction it claims `pending` rows of `service` types and publishes each to the broker topic `notification.send`. The message carries `id, type, user_id, email, payload, attempts, next_attempt_at, created_at`. The relay does not check `next_attempt_at`, because the service honors it. After the broker confirms it has stored the message, the relay sets `status='handed_off'` and `handed_off_at=now()` and commits. A `handed_off` row is never reclaimed.\n   - If the broker is down, there is no confirm. The row stays `pending` and unowned, and checkout is unaffected. An operator can flip the flag back so the old worker sends it. An alert fires when the oldest unhanded `service`-flagged row is older than 30 s.\n   - If the relay crashes after publishing but before committing, the row stays `pending`. The next pass republishes it, and the service ignores the repeated id.\n\n4. **The service receives the message.** The consumer takes the message from `notification.send`. In one service-DB transaction it runs `INSERT ... ON CONFLICT (id) DO NOTHING`, commits, and only then acks. It never calls MailRelay, so it stays inside the broker's 30 s ack deadline. It stores `attempts` and `next_attempt_at` exactly as given, even if the time is in the future. The service `notifications` table has `id` as primary key, plus `status`, `attempts`, `next_attempt_at`, `lease_until` and `paged_at`.\n   - If the id already exists and that row is `sent` or `failed`, the same transaction also adds a fresh `result_outbox` row, so a lost result reaches the monolith again.\n   - If the service DB is down, the consumer does not ack, and the broker redelivers. A redelivered message hits the primary key, is ignored and is acked.\n\n5. **The service sender sends the email.** The sender loop polls every 1 s. A row is due when `status='pending'`, `next_attempt_at <= now()`, and `lease_until` is null or in the past. A row whose time is still in the future waits.\n   - It claims the row by setting `lease_until = now()+60s` in a short transaction. Other sender passes then skip the row.\n   - Outside any transaction, it renders the email and calls `mailrelay.send(..., idempotency_key=id)`.\n   - In another short transaction it records the outcome. On success it sets `sent`. On a `mailrelay.Error` (a timeout counts) it increments `attempts` and sets `next_attempt_at` by the retry policy. The policy is 5 attempts, with waits of 1, 2, 4 and 8 minutes before attempts 2 to 5. After the 5th failure it sets `failed` and `paged_at = NULL`.\n   - Only when the row becomes `sent` or `failed` does it add a `result_outbox` row, in that same transaction. A row waiting on a retry writes no result, so the monolith keeps showing `handed_off`.\n   - If the service crashes after MailRelay accepts but before it records the result, the lease expires. The row is resent with the same key, MailRelay drops the repeat and returns success, and the row is recorded as `sent`. This is why there are no duplicate emails.\n\n6. **The pager loop pages on failure.** For `failed` rows with `paged_at IS NULL`, the service pager loop pages on-call and then sets `paged_at`. A crash between failing and paging loses nothing, because the next pass still sees `paged_at` as null. Only the service pages on failure. The monolith's result consumer never pages.\n\n7. **The result goes back to the monolith.** The result publisher sends `result_outbox` rows to `notification.result`. Each carries the `id` and `sent` or `failed`. It waits for the broker confirm, then marks the rows published. If the broker is down, or the publisher crashes before marking, the row is published again. The monolith's result consumer runs `UPDATE ... SET status=<sent|failed> WHERE id=? AND status='handed_off'`, so repeats do nothing. Results are informational and never cause a send.\n   - Race: the service can finish before the relay commits. The `UPDATE` waits on the relay's row lock, then sees `handed_off` and applies. If the relay rolled back instead, the row is `pending`, so the `UPDATE` matches nothing and the result is dropped. The relay then republishes, the service's consumer re-queues the result (step 4), and it applies.\n\n8. **The reconciler checks for stuck rows.** For `handed_off` rows with no result after 1 hour, the monolith republishes the same message and raises an alert. This is safe. The service never makes a second row for an id. If it already finished that row, step 4 queues the result again so the monolith row leaves `handed_off`. If it has not finished, nothing changes. If there is still no result after 24 hours, the reconciler pages.\n\n**Flag still set to `monolith`, or flipped back.** The old worker claims the row instead. It holds the row lock through its MailRelay calls until the batch commits. It ends the row as `sent` or `failed`. It now passes `idempotency_key=row.id`, so a crash before the commit leads to a resend that MailRelay drops. If the flag is flipped back, unclaimed `pending` rows go to the old worker. `handed_off` rows keep finishing in the service, so its consumer and sender must keep running until they drain.\n\n**Rollout order.**\n- First, ship the idempotency key on the old worker.\n- Second, add the flags (all `monolith`) and the type filter.\n- Third, deploy the service with no traffic.\n- Fourth, add the relay, result consumer and reconciler, dormant.\n- Fifth, rehearse cutover and rollback in staging.\n- Then cut over `shipping_update`, `order_confirmed` and `password_reset`, each with a hold period.\n- Finally, remove the old worker.",
+   "gaps": [
+    "The document does not say how the monolith's old worker, relay and reconciler are triggered. The relay polls every 1 s, but the old worker's polling interval and batch size are not given.",
+    "The document does not say how an operator edits the flag, in a tool or UI. It lists this as an open question. The cutover trigger in step 2 of 'How it runs' is therefore unexplained.",
+    "MailRelay's call timeout is not stated. The 60 s lease is supposed to be longer than it, but the document says this is unconfirmed. I cannot say whether a slow send can overlap a resend.",
+    "The document does not say how the relay or the old worker actually reads 'due' rows for retries. It says the relay does not check `next_attempt_at`, and it says the old worker's due condition is `next_attempt_at <= now()`. How a `pending` row with `attempts>0` is rescheduled in the monolith table when the old worker fails a send is not spelled out.",
+    "The document does not say which database the monolith uses. It says the step 7 race depends on PostgreSQL-style lock waiting, and calls this unconfirmed.",
+    "The document does not say how `result_outbox` rows are selected and marked 'published' (column names, polling interval), or how the result publisher is scheduled.",
+    "The document does not say how the sender loop's lease-claim transaction avoids two service instances claiming the same row, for example whether it uses a row lock like the monolith does. It says only that `lease_until` makes other passes skip the row.",
+    "The document does not say how the service finds the recipient address or renders content beyond 'copy template rendering into the service'. It does not say which MailRelay call arguments are used besides `idempotency_key`.",
+    "The document does not say what the monolith does for a row that has gone `handed_off` and whose service-side row ends `failed`. It says only that the monolith status becomes `failed` and the service pages. Who acts after the page is not described.",
+    "The reconciler's schedule is not given. The document also does not say how often the 24 h page check or the other alerts run."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

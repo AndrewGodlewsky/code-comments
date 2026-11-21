@@ -1,0 +1,110 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Who decides a row's type is service-routed at the moment the relay or old worker queries? Do both read the flag on every poll, or does each instance cache it (the 10 s skew)?",
+     "about": "Components: Relay and Old worker"
+    },
+    {
+     "id": "2",
+     "text": "The relay publishes to the broker while holding the row lock in one transaction. How many rows go in one batch, and what happens to the other rows if one publish in the batch is not confirmed?",
+     "about": "Step 4. Relay, polling every 1 s"
+    },
+    {
+     "id": "3",
+     "text": "What is the broker here, and how does the consumer receive messages (push or pull)? What does 'ack' do, and what is the 30 s before redelivery measured from?",
+     "about": "Step 3. Consumer rule"
+    },
+    {
+     "id": "4",
+     "text": "If the service crashes after the lease is set but before the send, or the lease expires while a slow send is still running, can two workers send the same row? What stops a late first worker from overwriting the second one's state?",
+     "about": "Step 3. Worker rule"
+    },
+    {
+     "id": "5",
+     "text": "When the service marks a row failed and pages, the monolith row becomes failed too. Does anything in the monolith (user-facing or operational) act on that failed status, or is it only a record?",
+     "about": "Result consumer"
+    },
+    {
+     "id": "6",
+     "text": "Where does the reconciler run and how often? It republishes a handed_off row after 60 min, but a row can sit in service retries for about 15 min. Does the reconciler change the row status or only publish?",
+     "about": "Reconciler"
+    },
+    {
+     "id": "7",
+     "text": "When an operator resets handed_off rows to pending, the service may still hold those rows in its DB and later send them. How is that second send prevented, and does the service ever learn that the monolith took the row back?",
+     "about": "If the service itself is dead (break-glass)"
+    },
+    {
+     "id": "8",
+     "text": "How does an operator see the exit-criteria numbers (pending or handed_off over 30 min, count reconciliation)? Are these dashboards and alerts that already exist, or are they built as part of this plan?",
+     "about": "Step 6. Cut over shipping_update"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Both the relay and the old worker call flags.get on every poll and do not cache. The only skew is the platform's 10 s propagation. Row locks plus the status re-check make that skew safe."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Batch is up to 50 rows, same as the old worker. Rows with a confirmed publish are marked handed_off and committed. Rows whose publish failed or was unconfirmed stay pending and are retried on the next 1 s poll, so one failure does not block the batch."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The docs only say it is the platform broker already used by billing and search, at-least-once, with an unacked message redelivered after 30 s and publisher store confirmations. The product, push versus pull, and exactly what the 30 s is measured from (presumably delivery) are not known. Ack means the consumer is done with the message. The plan does not depend on push or pull. Added to open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, two workers can both send if a lease expires during a slow send, and that is safe because both use the same idempotency key. A late worker cannot overwrite state because every update is now guarded by status='pending' and lease_until equal to the value that worker set at claim time. The MailRelay timeout is unknown, so it is listed as an open question."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Nothing in the monolith acts on failed. It is only a record. The existing code and overview show paging happens at the point of failure, and in the new design the service pages, so the result consumer does not."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The reconciler runs in the monolith in the relay's loop, every minute. It only publishes and never changes status. 60 min exceeds the roughly 15 min of retries (1+2+4+8), so it does not fire during normal retries."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The service is not told. A second send is prevented by the shared idempotency key within MailRelay's 24 h window, which is why only rows younger than 12 h may be reset. The service's late result matches no handed_off row and is ignored. This is a break-glass path, so no extra mechanism was added."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "I do not know whether such dashboards exist. The plan now builds them in step 4: per-type counts and oldest age of pending and handed_off, failed count, and the reconciler alert. The two databases cannot be joined, so count reconciliation is a side-by-side comparison of the monolith and service dashboards."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Something in the monolith (a caller) calls enqueue_notification(tx, ...). It inserts a row with status `pending` into the monolith `notifications` table, inside the caller's own transaction. That row is the durable record and the only way into the new path. Callers are unchanged. The monolith DB holds the state.\n\n2. Routing decides who sends it. A flag `notifications.route.<type>` (`monolith` or `service`) decides where new `pending` rows go. The flag only affects new `pending` rows. It never moves a row already `handed_off`. Workers read the flag on every poll, and the platform adds up to 10 s of propagation delay.\n\n3. If the type is routed to `monolith`, the old worker (run_worker) claims the row. The query now filters on `type IN (types routed to monolith)`. It claims with FOR UPDATE SKIP LOCKED and re-checks status = 'pending'. `_deliver` calls mailrelay.send with idempotency_key = row.id, then commits per batch and marks the row `sent`. If MailRelay is down, attempts count up and the row is marked `failed` and paged at attempt 5. If an instance dies mid-batch, the rows stay `pending` and are re-sent with the same key. MailRelay drops the repeat and returns success.\n\n4. If the type is routed to `service`, the relay takes over. It polls every 1 s and handles up to 50 rows. In one transaction it selects `pending` rows of service-routed types with SKIP LOCKED. It publishes each to the broker topic `notifications.requested` with {id, type, user_id, email, payload, created_at, schema_version}. It waits for the broker's store confirmation, then sets `status='handed_off', handed_off_at=now()` for the confirmed rows and commits. Unconfirmed rows stay `pending` and are retried on the next poll. The row locks are held while publishing. At this point the service owns the row. The old worker never touches `handed_off` rows.\n\n5. The service consumer receives the message. It inserts into the service DB `notifications` table with ON CONFLICT (id) DO NOTHING and commits. Only then does it ack. If the row already exists it acks anyway. If that existing row is terminal and its result is unpublished or may be lost, it queues the result for republishing. If the service DB is down, it does not ack and the broker redelivers after 30 s. The primary key on id means duplicates and concurrent redeliveries produce exactly one row.\n\n6. The service worker is woken right after the insert, and also polls every 1 s. It claims a row where status='pending' AND next_attempt_at <= now() using SKIP LOCKED. It sets lease_until = now()+60 s and commits the claim immediately. It then renders the template and calls mailrelay.send with idempotency_key=id, outside any DB transaction. Every later update is guarded by WHERE id AND status='pending' AND lease_until = my lease, so a stale worker matches no row and cannot overwrite a newer worker.\n\n7. On success the worker sets status='sent', attempts+1 and accepted_at, committing per row. On a MailRelay error with n attempts, if n>=5 it sets `failed` and page_pending=true in one transaction. Otherwise it sets next_attempt_at to now() plus 1, 2, 4 or 8 minutes. A render error goes straight to `failed` plus page_pending. If the service crashes mid-send or a lease expires, the row is re-claimed and re-sent with the same key, so MailRelay returns success without a second email.\n\n8. Two outbox loops run in the service. The pager calls alerts.page_oncall for rows with page_pending=true and then clears the flag. A crash between those two steps can page twice, which is accepted. The publisher sends `notifications.result` {id, outcome, attempts, finished_at} for terminal rows where result_published_at IS NULL. It sets that column after the broker confirms. If the broker is down, results wait in the service DB.\n\n9. The monolith result consumer receives the result. It runs UPDATE ... SET status=:outcome, result_at=now() WHERE id=:id AND status='handed_off', then acks. It does not page. A repeated or stale result matches no row and does nothing. If the consumer crashes before acking, the message is redelivered and the update is idempotent. The row is now terminal (`sent` or `failed`). A monolith `failed` is only a record.\n\n10. The reconciler runs every minute in the relay's loop. A `handed_off` row with no result after 60 minutes is republished with the same id, without changing the row's status. The service dedupes it. If its row is terminal, the service re-emits the result. A non-paging alert is also raised.\n\n11. Failure cases in the relay path. If the broker is down, rows stay `pending` and a backlog builds. An alert fires when the oldest service-routed `pending` row is older than 2 minutes. If the relay crashes after the broker confirmed but before the commit, the row is still `pending` and is republished. The service PK dedupes it. In a rollback the old worker might send it instead. The shared idempotency_key makes MailRelay drop the second send.\n\n12. Rollout and rollback. The sequence is: fix the key (step 1), add the additive monolith changes (step 2), deploy the service dark (step 3), add the relay, result consumer, reconciler and dashboards (step 4), run the staging fault-injection gate (step 5), then flip shipping_update, order_confirmed and password_reset in turn, each with exit criteria. The decommission is step 9. Rollback means flipping the flag back to `monolith`. New and `pending` rows go to the old worker. Rows already `handed_off` stay with the service, which must not be stopped until `handed_off` reaches 0. If the service is dead, an operator may reset `handed_off` rows younger than 12 h to `pending`, relying on the shared key to drop any duplicate send.",
+   "gaps": [
+    "The document does not say how the monolith's request actually reaches `enqueue_notification` or what the caller does with its transaction beyond inserting the row, so the trigger events (what causes a shipping update, order confirmation or password reset) are not explained.",
+    "The document does not say how the relay and result consumer receive or subscribe to messages, or how the service consumer is triggered. Whether consumers push or pull is explicitly left open, so I cannot say how a message is delivered to a consumer.",
+    "The document does not say what the old worker's retry and backoff policy is, beyond 'handled exactly as today' with attempts counted and failure at attempt 5, so I cannot explain the old path's retry timing. The service's timing is given as 1/2/4/8 minutes.",
+    "The document does not say how the service gets the rendered email's content or template selection beyond 'render the template', or how templates are chosen per type.",
+    "The document does not say what happens to a service-side row whose result publish keeps failing for reasons other than the broker being down, or how the result consumer behaves if a result arrives for a row that is not `handed_off` for some other reason.",
+    "The document does not explain how the break-glass reset of `handed_off` rows is carried out (what the operator runs) or how an operator verifies the service is dead.",
+    "MailRelay's send timeout is unknown (an open question), so I cannot say how long a send can take relative to the 60 s lease.",
+    "The document does not say what the alert thresholds and rules are for the 'oldest handed_off' age on the dashboards, beyond the 2-minute pending alert, the 45 s p99 alert and the 60-minute reconciler alert."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

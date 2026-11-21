@@ -1,0 +1,37 @@
+## Review of feat-01 (junior-v7, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Step 1: says the export starts from the first matching row, not the scroll position (Q1).
+- Step 3: builds the whole CSV before sending headers, so a replica failure returns an error status; adds a memory note and makes the 60-second limit explicit (Q2).
+- Step 4: stale check and insert run in one transaction; a unique-index conflict rolls back and returns the active export; explains two simultaneous clicks (Q3).
+- Step 5: states that the job may start before job_id is saved and does not need it; a failed save is logged and still returns 202; notes the rare stale case (Q4).
+- Step 6: attempt number comes from ctx.attempt; claim has a zero-row check; fenced writes are explained with the queue-timeout assumption (Q5).
+- Step 6: a done export with an empty email_sent_at now goes to step 10 instead of ending the attempt, fixing the email retry bug (Q9).
+- Step 7: object_key is saved with upload_id in one fenced update; next part number is len(parts)+1; header rule added; a gone upload clears state and ends the attempt, so the restart uses the next attempt (Q7, Q8).
+- Step 8: the buffer holds only whole lines, so parts end at row boundaries; the checkpoint records rows_written; the 500-row page size is kept as a reference point (Q6).
+- Step 9: the final part is checkpointed before complete; rows_written moved to the checkpoint; the object-exists branch clears state when no object is found.
+- Step 10: retry path from step 6 is spelled out (Q9).
+- Step 11: expiry uses completed_at instead of created_at, because the 7-day lifecycle counts from object creation; the expired state is described.
+- Step 12: corrected the stale-block to up to 2 hours (it was wrongly stated as the next click); an email failure after failed status is logged only.
+- Restructured into summary, terms, steps, failures, build and rollout, and open questions. Removed the summary-of-state table, which repeated the steps. Moved the timing test, replica index and table creation into a separate Build and rollout section.
+- Open questions: kept all eight from the first version as six, merging the rollout items (timing, index) into Build and rollout and adding the small-path memory measurement.
+- Added a plain sentence on how the page works today (rows loaded in pages from the replica, no server-side view state) to the summary.
+- Restored the out-of-scope line from the brief (scheduled exports, non-CSV formats, table changes), which the first version left out.
+- Replaced the first version's terms with one-line definitions, and added definitions for checkpoint, status, active export and stale export where they apply.
+- Moved the export record's column list out of the terms into Build and rollout, so it appears once.
+- Added the reason for the two paths (a 60-second request cannot safely build a large report) to the summary.
+- Step 3: stated that the whole CSV is built before the 200 is sent, and that the export starts from the first matching row, not the scroll position.
+- Step 4: merged the stale-export rules and the second-click handling into one transaction description, and stated the two-simultaneous-clicks case in one line.
+- Step 5: kept the job-may-start-before-job_id rule and its rare stale case in one place.
+- Step 6: merged the access-removed and finished-export branches into one ordered list, and kept the fencing explanation once.
+- Step 9: changed the ordering so that an unknown-upload error on complete_multipart first checks whether the object exists before clearing the export. The first version would have tried to complete a missing upload and cleared a finished export. This is a fix to the flow, not a change of intent.
+- Step 9: a done-update failure after completion now routes through the unknown-upload path, which removes a separate branch.
+- Step 8: merged the batch-versus-part explanation and the memory, size and time facts so each appears once; the timing measurement now lives only in Build and rollout.
+- Replaced the first version's per-job bullets and open-risk notes with one failure table that lists what the user sees and what is left behind, while step-level failure handling stays in each step.
+- Replaced references such as 'Open question 3' with the question's subject, so no step depends on a code.
+- Kept all six open questions and all brief facts (permission checks, limits, row_count threshold, 512 MB, 2M rows, 900 MB, send_email signatures, 24-hour links, 7-day lifecycle, polling interval, error and Try again behaviour, one-active-export rule, email-failure handling).
+
+### Holes
+- None.

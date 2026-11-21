@@ -1,0 +1,184 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The document refers to numbered requirements (1 to 4, 6, 7, 8), but I can't see them and 5 is never mentioned. What are they, and is there a requirement 5 that this design covers?",
+     "about": "Login (requirements 1 to 4) / Protected requests (requirements 6 and 7)"
+    },
+    {
+     "id": "2",
+     "text": "The middleware runs on every request except GET /login, POST /login and POST /logout. Does that include static files like CSS and images? If so, does each one write a row and restart the idle clock?",
+     "about": "Rules: Protected requests, middleware"
+    },
+    {
+     "id": "3",
+     "text": "After the UPDATE returns zero rows, how does the app know whether a row exists to delete? Is that a separate query, or does it just run DELETE by hash? Is it in the same transaction as the UPDATE?",
+     "about": "Protected requests: Zero rows means the session is missing, unknown or expired"
+    },
+    {
+     "id": "4",
+     "text": "What actually triggers the sweep on each instance, a timer inside the app process or something external? What happens if a sweep fails or both instances run it at the same moment?",
+     "about": "Removing abandoned sessions: sweep every 5 minutes"
+    },
+    {
+     "id": "5",
+     "text": "When the lock expires, the login_lockouts row is still there until a sweep. How does the check treat that row, and what does the upsert do to it on the next lockout? Also, do attempts made during a lockout get recorded as failures?",
+     "about": "Login: lockout check and 15-minute lock"
+    },
+    {
+     "id": "6",
+     "text": "On success, what do the dummy hash and the real user lookup return to the app? And if the old sid cookie belongs to a different logged-in user, that user's session is deleted. Is that intended?",
+     "about": "Login: success path and old sid cookie"
+    },
+    {
+     "id": "7",
+     "text": "If Postgres fails partway through a login attempt, such as after the failure insert but before COMMIT, what does the user see and does that failure still count toward the 5?",
+     "about": "Sequence diagram: Login, Postgres error"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The numbers came from the brief, which the reader cannot see. I removed the codes and put each requirement in plain words where it applies. The old 'requirement 5' (cookie carries only the opaque ID, HttpOnly, Secure, SameSite=Lax) is covered by the Cookie row in Decisions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "No. Static files (CSS, images, scripts) are not pages, so they are exempt from the middleware: no session check, no row write, no idle-clock restart. The login page needs its CSS while signed out, and writing a row per asset would be wasteful. Whether this app serves static files at all is not known, so it is listed under Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It does not need to know. After zero rows it runs a separate DELETE by hash, outside the UPDATE's transaction. Deleting zero rows is harmless. There is no race, because a row that failed the check can never become valid again (time only moves forward and created_at never changes)."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A timer inside each app process fires every 5 minutes, so no external scheduler is needed. If a sweep fails, the error is logged and the next tick retries. Cleanup is never needed for correctness, because the request-time check rejects expired rows. If both instances sweep at once, the deletes are idempotent and just overlap."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The check treats a lockout row as active only when locked_until > now(), so an expired row is ignored until the sweep removes it. The upsert on the next lockout overwrites locked_until. Attempts refused during a lockout are not recorded as failures: the 429 returns before the password check and no insert happens."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The user lookup returns id and password_hash, or no row. If there is no row, bcrypt runs against a fixed dummy hash and the result is always 'no match'. The old-cookie deletion is intended: the brief says to destroy whatever session the incoming cookie pointed to, even if it belongs to another user, so a login in a browser ends the session that browser presented."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The transaction rolls back, so the failure insert disappears and that attempt does not count toward the 5. The user sees the 503 'Sign-in is temporarily unavailable' page. This is acceptable because a 503 reveals no password verdict, so an attacker gains no guess by causing or hitting a database error."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "8",
+     "text": "The Protected requests UPDATE takes $1 as id_hash. Where does the app get it: does it read the __Host-sid cookie and compute SHA-256 itself? What happens if there is no cookie at all?",
+     "about": "Protected page: UPDATE sessions ... WHERE id_hash"
+    },
+    {
+     "id": "9",
+     "text": "After the UPDATE returns a row, the request proceeds 'as that user'. How does the page code receive the user_id, and is the UPDATE inside any transaction with the page's own queries?",
+     "about": "Protected requests: One row returned means the request proceeds as that user"
+    },
+    {
+     "id": "10",
+     "text": "When does the lazy delete after a rejected request happen relative to the redirect? If that DELETE fails with a Postgres error, does the user get the 503 page or the redirect to /login?",
+     "about": "Protected requests: Zero rows ... separate DELETE"
+    },
+    {
+     "id": "11",
+     "text": "On a 429 during lockout, how is the Retry-After value worked out, and what does the 429 page say to the user?",
+     "about": "Login: During a lockout the response is 429 with a Retry-After header"
+    },
+    {
+     "id": "12",
+     "text": "After a successful login, `login_failures` for that email are deleted. Does a success also remove any `login_lockouts` row? That can't happen during an active lock, but I want to confirm what happens to an expired row.",
+     "about": "Login: On success, delete that email's login_failures rows"
+    },
+    {
+     "id": "13",
+     "text": "What is the 'users' lookup's relation to the transaction: is it inside the advisory-locked transaction, and does the lock get released at COMMIT or ROLLBACK automatically?",
+     "about": "Login: pg_advisory_xact_lock(hashtext(email))"
+    },
+    {
+     "id": "14",
+     "text": "The Trade-offs say to reject emails over 254 characters with the same 401. Is this a step in the main login flow, and is it counted as a failure or checked before the transaction starts?",
+     "about": "Trade-offs to review: login_failures can grow with junk emails"
+    },
+    {
+     "id": "15",
+     "text": "What does the 503 page do for the user on a protected request when the session is actually expired and storage is down at the same time? Also, what happens on GET /login when the user already has a valid session?",
+     "about": "Rules: When storage fails / GET /login exempt from middleware"
+    }
+   ],
+   "answers": [
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes. The middleware reads the __Host-sid cookie, computes SHA-256 of its value and passes that as $1. With no cookie it skips the UPDATE and the DELETE and redirects straight to /login (the brief says a missing session redirects). Added to Protected requests."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The middleware puts the returned user_id on the request for the page code. The UPDATE is its own auto-committed statement, not in a transaction with the page's queries, because it only touches the session row and nothing needs to be atomic with it. Added one line."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The lazy DELETE runs before the redirect is sent. If it fails, the error is logged and the user still gets the redirect to /login, not the 503: the session already failed the check and can never be honored, and the sweep removes the row later. Failing the user over a cleanup step would add nothing. The diagram note was adjusted to match."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Retry-After is the number of whole seconds from now() until locked_until, rounded up. The 429 page reads the same for every email: 'Too many attempts. Try again later.' Both moved from the trade-offs into the Login rules."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "No. Success deletes only that email's login_failures rows. A success cannot happen during an active lock because the password is never checked then. An expired login_lockouts row is ignored by the check and removed by the sweep, or overwritten by the next lockout upsert."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Yes. The users lookup, the bcrypt compare and all writes run inside the one transaction that took the lock. pg_advisory_xact_lock is a transaction-level lock, so Postgres releases it automatically at COMMIT or ROLLBACK. Added a sentence to the Login rules."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes, it is part of the main login flow: it runs before the transaction starts, touches no table and is not counted as a failure, so it takes no lock and writes nothing. It returns the same 401 and login page text as a wrong password. Moved from the trade-offs into the Login rules."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "If storage is down the app cannot tell whether the session is expired, so the user gets the 503 page, with the cookie kept and no redirect, the same as any protected request. GET /login is exempt from the middleware and always shows the login page, even with a valid session, with no redirect. That choice is the simplest, but the brief does not say, so it is also listed under Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. The app is a server-rendered web app. Two identical instances run behind a load balancer with no sticky sessions, so any request can land on either one. They share one Postgres database, which holds the `users` table plus three new tables: `sessions`, `login_failures` and `login_lockouts`. Every page except `/login` now needs a signed-in user. The session state lives only in Postgres. The browser's cookie holds nothing but a random ID.\n\n2. The browser submits the login form. It sends `POST /login` with email and password. It may also send an old `__Host-sid` cookie, which can be absent, stale or someone else's. Either instance can handle it.\n\n3. The app normalizes the email. It lowercases and trims it. Failures and lockouts are keyed on that string, not on a user row. So an unknown email is counted and locked exactly like a real one.\n\n4. The app rejects over-long emails. If the email is over 254 characters, the app returns the same 401 as a wrong password. This happens before any transaction. It touches no table and is not counted as a failure.\n\n5. The app opens a transaction and takes an advisory lock. It runs `BEGIN`, then `pg_advisory_xact_lock(hashtext(email))`. Concurrent attempts for the same email wait for each other, even across the two instances. Postgres releases the lock at COMMIT or ROLLBACK. Everything below happens inside this transaction.\n\n6. The app checks the lockout. It reads `locked_until` from `login_lockouts` for that email.\n   - A lock is active only if `locked_until > now()`. An expired row is ignored.\n   - If the lock is active, the app commits and returns 429. The response has a `Retry-After` header with the whole seconds left, rounded up. The page says \"Too many attempts. Try again later.\"\n   - The password is never checked, so even a correct password is refused. These refused attempts are not recorded as failures.\n\n7. The app checks the password. It selects `id` and `password_hash` from `users` for the email. If no row exists, it runs bcrypt against the fixed dummy hash and treats the result as \"no match\". Unknown email and wrong password follow the same path.\n\n8. Failure path.\n   - The app inserts a `login_failures` row for the email.\n   - It counts that email's failures from the last 10 minutes.\n   - If the count is 5 or more, it upserts `login_lockouts.locked_until = now() + 15 min`. This overwrites any expired row.\n   - It commits and returns 401 with \"Invalid email or password\".\n   - The 5th failure itself still gets 401. Later attempts get 429 until the lock expires.\n   - Failed logins and lockouts leave any existing session untouched.\n\n9. Success path.\n   - Inside the same transaction, the app deletes that email's `login_failures` rows.\n   - It deletes the session the old cookie points to, by SHA-256 hash of the cookie value. It does this even if that session belongs to another user.\n   - It generates a fresh session ID of 32 CSPRNG bytes, base64url-encoded. It inserts a `sessions` row holding the SHA-256 hash of that ID plus `user_id`. `created_at` and `last_seen_at` default to now.\n   - It commits.\n   - It replies `303` to `/dashboard` with `Set-Cookie: __Host-sid=<new id>; HttpOnly; Secure; SameSite=Lax; Path=/`. The cookie has no `Domain` and no `Max-Age`.\n   - The database stores only the hash. The old ID is never reused.\n\n10. The browser requests a protected page, for example `GET /dashboard`, with the cookie. Static files skip all of this. They need no session check and do not touch the session row.\n    - The middleware reads the cookie and hashes the value.\n    - It runs one auto-committed statement. This `UPDATE` sets `last_seen_at = now()` where `id_hash` matches, idle time is under 30 minutes, and age since `created_at` is under 12 hours. It does `RETURNING user_id`.\n    - Every request restarts the idle clock. The 12-hour limit is never extended.\n    - All time checks use the database clock.\n\n11. A row is returned. The middleware puts `user_id` on the request. The page runs as that user and returns 200.\n\n12. No row is returned, or there is no cookie. This covers a missing, unknown or expired session.\n    - With a cookie, the app runs a separate `DELETE FROM sessions WHERE id_hash = $1`. This is harmless if no row exists. If the delete fails, the error is logged and the redirect still happens.\n    - The app replies `303` to `/login` with `Set-Cookie: __Host-sid=; Max-Age=0`, which clears the cookie.\n    - With no cookie, it skips straight to the redirect. The document says the cookie-clearing header goes with this redirect and does not separate the no-cookie case.\n\n13. Logout. The browser sends `POST /logout`. This route is exempt from the middleware.\n    - If a cookie is present, the app deletes the session by hash, whether or not it has expired. This happens before any reply.\n    - It replies `303` to `/login` with the cookie cleared.\n    - A request with no cookie gets exactly this response.\n    - Because it is a POST and the cookie is `SameSite=Lax`, a cross-site page cannot trigger it.\n\n14. The sweep. Each app process runs a timer every 5 minutes. It deletes:\n    - sessions that are idle for over 30 minutes or older than 12 hours;\n    - `login_failures` rows older than 10 minutes;\n    - `login_lockouts` rows whose `locked_until` has passed.\n\n    It is only space reclamation, and correctness never depends on it. If both instances run it at once, the deletes overlap harmlessly. A failed run is logged and retried on the next tick.\n\n15. Failure handling. The policy is fail closed, and every storage error is logged with a request ID.\n    - Login: the transaction rolls back and the user gets 503 with \"Sign-in is temporarily unavailable. Please try again.\" No session is issued. A failure insert made before the error is rolled back, so that attempt does not count toward the 5.\n    - Session check on a protected page: 503 with a \"temporarily unavailable\" page and no content. There is no redirect and the cookie is kept, even if the session was really expired.\n    - Cleanup delete after a rejected session: logged only.\n    - Logout: 503 with \"We couldn't sign you out. Please try again.\" The cookie is kept.\n    - Sweep: logged and retried on the next tick.\n\n16. `GET /login` always shows the login page, even for a signed-in user. It does not redirect.",
+   "gaps": [
+    "The document does not say how the app decides what to do when the email or password field is missing or empty in the POST /login body.",
+    "It does not say how the page (a server-rendered HTML page, not an API) learns the `Retry-After` value for display, or whether the 429 page shows any countdown. It only gives the fixed text.",
+    "It does not say what a protected-page request does for non-GET methods or for paths not listed. It only says that all pages except GET /login, POST /login and POST /logout are protected.",
+    "It does not say what the app does on GET /login or POST /login if the 503 error occurs while only a cookie lookup is involved (the login flow does not do a session lookup, so this is likely fine).",
+    "The Open Questions section says the design merely assumes static files are exempt, and does not say which paths count as static. So I cannot say exactly which requests bypass the session check."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

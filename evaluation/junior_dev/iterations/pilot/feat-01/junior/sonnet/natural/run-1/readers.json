@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "row_count: 10,000 or fewer streams CSV in the response, nothing stored. Above 10,000, a background job runs and emails a 24-hour link.",
+  "q2": "The existing export is returned with its original filters and no new export starts; the page says the filters differ.",
+  "q3": "Link works 24 hours from sending. The exports bucket's existing lifecycle rule deletes files 7 days after creation; no cleanup job exists.",
+  "q4": "Up to three attempts via queue retries (backoff 60 s, 300 s). After the last failure, state becomes failed, the user gets an export_failed email, and the page shows failed.",
+  "q5": "The read replica. Row_count may come from the primary if the replica lacks the reports table.",
+  "q6": "The report_exports row on the primary. The page reads it on load and polls every 5 seconds while queued or running.",
+  "q7": "Streams 2,000-row pages from the replica into 8 MB multipart parts, never holding the whole report. Speed and memory are unmeasured.",
+  "q8": "Aborted uploads stay invisible; the next attempt restarts from zero with a new upload_id, as no progress is kept between attempts.",
+  "q9": "Stored unparsed as text in report_exports (filters and cols columns) at click time; the job payload carries only export_id and the job loads the row.",
+  "q10": "A partial unique index on (user_id, report_id) where state is queued or running; the database rejects the second insert.",
+  "q11": "The file is completed and the row marked done. A rerun on a done row skips rebuilding and emails only if emailed_at is empty.",
+  "q12": "Before the first byte: HTTP 500. Mid-stream: the connection is aborted, so the fetch fails and the page shows an error, never a partial file."
+ },
+ "sonnet": {
+  "q1": "By reports.row_count (unfiltered total, read from the replica). 10,000 or fewer: the response itself is the CSV (text/csv, Content-Disposition attachment), streamed, nothing stored, no job. More than 10,000: returns at once (202 JSON export status) and a background job builds the file; the user gets an email with a 24-hour signed link, and the page shows the status.",
+  "q2": "No second export or job starts. The unique-index insert fails, the existing active row is selected, and it is returned as JSON with 200, carrying its original filters. The page says so if those filters differ from the current view. Exception: if that row is dead (no job_id after 2 min, or updated_at over 2 hours old), it is marked failed and a new insert is tried once.",
+  "q3": "The link works 24 hours (signed_url with 86400 s, generated at send time and never stored). The exports bucket's existing lifecycle rule deletes objects 7 days after creation; no cleanup job is built.",
+  "q4": "Up to 3 attempts (backoff 60 s then 300 s). After the last failure on_final_failure sets the row to failed with an error message, and the user gets an export_failed email; the page shows failed with the error_message. (If the file was built but only the email kept failing, the state stays done and no failure email is sent.)",
+  "q5": "The read replica for all report rows (via iter_report_rows) and for reading reports.row_count (falling back to the primary only if the replica lacks the reports table). The report_exports table is application state and uses the primary.",
+  "q6": "In the report_exports table on the primary database (single source of truth). The page calls GET /api/reports/{id}/export on load (covers returning later) and, after a click, shows the POST response immediately, then polls the GET every 5 seconds while queued or running, stopping at done or failed or when the user leaves the page.",
+  "q7": "By streaming: iter_report_rows yields pages of about 2,000 rows from the replica; rows go into an in-memory buffer of about 8 MB, which is uploaded as a multipart part (about 113 parts for ~900 MB) and emptied. Only one buffer plus one page is in memory at a time; the whole report is never collected. A 25-minute soft deadline guards the 30-minute limit, and performance and memory on a 2M-row run are unmeasured (to be tested in staging).",
+  "q8": "The data is not kept. On an exception the handler calls abort_multipart and re-raises; if the worker dies or times out, the incomplete multipart upload is orphaned and discarded by the bucket after 24 hours. Nothing is visible at the key until complete_multipart, so no half-written file is downloadable. The next attempt starts from the beginning with a fresh upload_id (the queue keeps no progress), and the row goes back to queued if attempt is below 3.",
+  "q9": "They are stored as unparsed text in the filters and cols columns of the report_exports row, sent by the page in the POST JSON body. The job payload is only {\"export_id\": ...}; the job loads the row to get filters and cols.",
+  "q10": "A database partial unique index on report_exports (user_id, report_id) WHERE state IN ('queued','running'), so only one insert can win.",
+  "q11": "complete_multipart must have succeeded and the row must have been set to done (UPDATE ... WHERE state='running', then reloaded and confirmed done). If the row is anything else (e.g. failed) no email is sent. On a rerun: if the row is done, the job skips the build and goes to the email step, sending only if emailed_at is empty (so no second email); if the row is failed it returns without doing anything. If the row is still running after a crash before done, it rebuilds the file and overwrites the same key.",
+  "q12": "If the replica errors before the first byte, the endpoint returns 500. If it errors mid-stream, the connection is aborted (no normal final chunk) so the page's fetch fails and shows an error, never ending normally with partial data. Nothing is stored and the user clicks again."
+ }
+}

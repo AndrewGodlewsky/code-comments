@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Each write adds a row to the MySQL outbox table users_sync_outbox in the same transaction as the user write, and the row stays until Postgres has it. A single relay leader drains it, and the periodic sweep repairs anything the outbox missed, so an app crash after the MySQL commit still leaves the record in MySQL.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Erasure writes a tombstone in users_tombstones and removes the Postgres row, and it also deletes that user's pending upsert outbox rows. Backfill, relay, inline apply and sweep copies all take the same per-id Postgres advisory lock and skip any tombstoned id, so a copy either commits before the delete or sees the tombstone and skips.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept in users_backfill_state in pg-core, and the cursor_id is updated in the same Postgres transaction as the batch's rows, so the cursor is never ahead of the data. After a crash the worker resumes after the last committed cursor, and it stops once a read past the cursor returns nothing and the state is marked done, which the step 7 gate depends on. The stop condition is my reading of the step, not spelled out in the text.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The sweep in step 6 (plus the full comparison in step 7) compares 2,000-id chunks by row-content fingerprint, then re-reads mismatched rows on the MySQL primary and checks the outbox first. If MySQL has a newer or missing row, it copies with the version rule; if Postgres has a row MySQL lacks and no outbox row is pending, it deletes the Postgres row and writes a tombstone; if Postgres has a higher version, it never overwrites and alerts.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Every instance is first set to write mode paused, and the MySQL outbox must drain to empty before the commit point. The commit point (c) takes users_migration exclusively in MySQL, and every app write takes the shared lock and checks sot, so a stale instance either commits before (c), which makes (c) retry the drain, or gets a 503 once sot is pg. If the drain takes longer than 20 s before (c), the mode goes back to mysql with nothing changed; after (c) the switch must be rolled forward, and a long crash there can exceed 90 s, which is an open question.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "After the switch Postgres assigns ids from users_id_seq, which is set in step 10d to the greater of the two maxima plus 1,000,000, and users.id then defaults to that sequence. MySQL assigns no ids in mode pg, and reverse copies carry Postgres ids as given, so nothing collides. On rollback, step 11d sets MySQL AUTO_INCREMENT past both maxima before MySQL assigns ids again.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After step 10e each Postgres write also inserts a reverse outbox row and copies to MySQL inline with a 200 ms timeout, and a reverse relay copies any remaining rows with the version rule, so MySQL stays current. Rollback is step 11: reads move to MySQL, writes are paused, the reverse outbox is drained, Postgres takes the commit point with sot=mysql and epoch+1, MySQL copies that epoch and stops the reverse relay, and then the mode returns to mysql with users_dual_write still on. The option ends in step 13, at least 14 days after step 10e, once the reverse outbox is empty and a reverse comparison shows zero mismatches, when users_reverse_sync is turned off and write grants are revoked.",
+  "decided": true
+ }
+}

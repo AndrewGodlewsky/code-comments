@@ -1,0 +1,35 @@
+## Review of dp-02 (junior-v5, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a Terms section defining the log, in-sync replicas, KV store, warehouse, events_clean and raw archive.
+- Step 3: added that keying by event_id puts all copies in one partition.
+- Step 4: defined the seal as an empty _SEALED marker object written by the sink, and said what happens when a partition is stuck.
+- Step 5: stated one consumer per partition within the group, and that dropped duplicates are counted in a metric.
+- Step 7: explained the idempotent load key, and what happens when a load fails or is slow.
+- Step 9: explained how the live writer detects a closed day and what happens to in-flight events of that day.
+- Step 10: said a rejected replay request returns the failed conditions, and noted the request interface is not chosen.
+- Step 11: said the seen-ID set is written as files in scratch object storage.
+- Step 15: stated the replay job runs validation automatically, and changed the membership check so staging may contain extra IDs that live missed after lagging past close; this fixes a contradiction where replay recovery would fail validation.
+- Step 14: corrected a wrong cross-reference to the bot rule (step 8, not step 9).
+- Added an Open questions section for the replay request interface, the batch engine and seen-ID set size, and the KV product.
+- Step 7: split each micro-batch by received_at UTC day and key the idempotent load by (partition, offset range, day), so a midnight-spanning batch loads correctly (Q10).
+- Step 5: removed the unused received_at day from the KV value (Q11).
+- Step 9: a fenced part is counted, treated as handled, offsets commit and the consumer keeps going (Q12).
+- Step 15: extras and failures go to the ledger and operator tool output; a failed check marks the ledger failed, releases the lock and shows the failed checks (Q13).
+- Decisions: added why live and replay pick the same winner (same partition, offset order); open questions: added operator paging and the KV-loss caveat (Q14, Q13).
+- Checks before launch: added a test for a micro-batch spanning two UTC days.
+- Rewrote in skill order: summary paragraph (including that no pipeline exists today and why the archive is the replay source), terms, assumptions, open bot decision, live steps, replay steps, failure table, launch checks, open questions.
+- Merged the 'Decisions that shape the plan' section into the steps: partition key into step 3, same-winner reasoning into step 5, replay isolation into the replay intro.
+- Added terms the junior stumbled on: Event, Day, Offset, Duplicate and winner, Envelope, Sealed day, Staging; shortened the log, KV and warehouse definitions.
+- Added a short reason clause for the own-offset check and for why live and replay pick the same winner, both in step 5.
+- Added a failure table, and a 'which part keeps its data' note on steps 3 to 7.
+- Cut the KV TTL-loss caveat details from the steps and the raw-retention rationale repeated across sections; kept the KV-loss note under open questions.
+- Removed step cross-references where possible (replaced 'step 9 fence' with a short description); kept the bot hook references since it is an open placeholder.
+- Separated how the system runs from launch checks; no rollout section existed, so none was added.
+
+### Holes
+- Q2: What is the 'KV store' (which product), and where does the consumer run? Does one consumer or several handle a partition? (author: The brief only says a key-value store with per-key TTL exists. The product is unknown, so I cannot say what its set-if-absent behavior is beyond what the plan assumes. The consumer runs as a consumer group on our own compute. Decided: each partition is read by one consumer at a time within the group, which is how log consumer groups work. I defined the KV store in Terms, stated the one-consumer-per-partition rule in step 5, and listed the product as an open question.)
+- Q7: How does the operator request a replay (tool, command, API), and what do they see if the request is rejected? (author: The brief does not say how the operator makes the request, so I have not chosen a tool, command or API. Decided: a rejected request returns the list of conditions that failed. Added that line to step 10 and an open question.)
+- Q8: What runs this batch job (which engine) and what does it output? Is the seen-ID set kept in memory, a file or a table, and how big is it? (author: The engine is not specified in the brief, so I do not know which one is used. Decided: the job runs on separate compute and writes the seen IDs as files in scratch space in object storage, not memory or the live warehouse. Size is unknown because event volume is not given; it is 8 days of event_id values at peak. Added the output to step 11 and listed engine and size as an open question.)

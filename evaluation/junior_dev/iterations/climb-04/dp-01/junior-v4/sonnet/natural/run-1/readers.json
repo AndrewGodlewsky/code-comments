@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The scheduler starts the runner at 02:00 UTC. It extracts app orders rows from the read replica with updated_at after HWM minus 2 hours, up to the replica's now().",
+  "q2": "Bulk imports stamp updated_at when written, but rows become visible only at transaction commit, up to 90 minutes later. The 2-hour lookback covers that lag.",
+  "q3": "The edit is a normal write with a newer updated_at. A later nightly window that covers it extracts it, and the merge applies it because it is newer.",
+  "q4": "The app sets deleted_at, a normal write with new updated_at. The warehouse keeps the row and sets is_deleted to true. Nothing is physically deleted.",
+  "q5": "The attempt rolls back, so core.orders and the HWM stay unchanged, and it is logged failed with an error. The runner retries after 15 minutes, up to 3 attempts, then pages on-call.",
+  "q6": "Dashboards refresh at 06:00 anyway and show the previous night's committed data. The 06:00 watchdog posts a staleness alert to #data-alerts.",
+  "q7": "The Sunday reconciliation. It compares count and checksum per creation day for the last 30 days and reloads any mismatched day from the replica.",
+  "q8": "Staging keeps only the newest version per order_id by updated_at. The MERGE updates a row only when the staged updated_at is greater than the warehouse's, so older or equal versions are skipped.",
+  "q9": "It is stored in ops.etl_state as high_water_mark in the warehouse. It is set to GREATEST(HWM, hi), where hi is the replica now() of the snapshot, in the same transaction as the load commit.",
+  "q10": "The core.orders merge, HWM advance and run_log committed status run in one warehouse transaction. Any failure rolls it back, and dashboards read only committed data.",
+  "q11": "Staged rows carry the failed run's run_id and are deleted by the retry's extract step once that run is no longer running. The retry reads the unchanged HWM, so lo is the same, and hi is a fresh replica now().",
+  "q12": "It re-reads all rows of each mismatched day from the replica in one REPEATABLE READ snapshot. It applies them through the guarded merge in one transaction. The nightly HWM is not touched."
+ },
+ "sonnet": {
+  "q1": "The scheduler starts the runner at 02:00 UTC. It extracts replica `orders` rows with updated_at > lo (HWM minus 2h) and <= hi (replica now() at snapshot open).",
+  "q2": "Bulk imports stamp updated_at when a row is written, but the row becomes visible only when its transaction commits, up to 90 minutes later.",
+  "q3": "The edit gets a new updated_at, so a later nightly extract (updated_at after lo) picks it up and the guarded MERGE updates core.orders because it is newer.",
+  "q4": "The app sets deleted_at (a normal write with new updated_at). It flows through the same merge; the warehouse keeps the row and sets is_deleted = true. Nothing is physically deleted.",
+  "q5": "Rollback: core.orders and HWM unchanged; run_log row marked failed with error. If fewer than 3 attempts used, the runner waits 15 min and retries (twice); after the 3rd failure on-call is paged.",
+  "q6": "Dashboards refresh anyway and show the previous night's committed data. The 06:00 watchdog posts a staleness alert to #data-alerts (retries keep running).",
+  "q7": "The Sunday reconciliation: it compares per-creation-day count and checksum over the last 30 days, finds the mismatched day, and reloads all rows of that day from the replica.",
+  "q8": "The MERGE keeps only the latest version per order_id in staging (ROW_NUMBER by updated_at DESC), and updates a matched row only when s.updated_at > t.updated_at, so equal or older versions are skipped.",
+  "q9": "In ops.etl_state (warehouse, high_water_mark column). Written as GREATEST(HWM, hi), where hi is the replica's now() taken when the snapshot was opened, in the same warehouse transaction as the merge and the run_log committed update, just before COMMIT.",
+  "q10": "The merge, HWM advance and run_log commit happen in one warehouse transaction, so readers see either the previous night or the whole new night. Staging is never read by dashboards, and the dashboards read committed data only.",
+  "q11": "The retry's extract step first deletes staging rows of runs no longer running, and later steps only use rows with the retry's own run_id, so the failed attempt's staged rows are ignored/cleaned. The retry reads the unchanged HWM and so extracts the same window (HWM minus 2h up to a new hi, covering the same ground).",
+  "q12": "It re-reads all rows of each mismatched creation day from the replica in one REPEATABLE READ snapshot into stg.orders_recon (staged count checked against replica count). They are applied in one warehouse transaction with the same guarded MERGE into core.orders (after confirming own run_log row is still running). It does not touch the nightly HWM."
+ }
+}

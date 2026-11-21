@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "If the Postgres copy fails after the MySQL commit, the failure is counted and a row is written to Postgres `migration_pending` with the user id. If the app dies after the MySQL commit and before any copy, nothing is recorded, but the forward sweeper scans MySQL by `updated_at` from its cursor (which starts 10 minutes before dual write and trails by 60 s), finds the row, and repairs Postgres through the copy function while `sot=mysql`.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Tombstones are kept forever in Postgres `users_tombstones`, and the copy function locks the user id in its Postgres transaction and skips any tombstoned id. The erasure's Postgres delete and tombstone insert run under the same copy lock, so an in-flight backfill or repair copy cannot re-create the user after the delete.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Backfill progress is `backfill_cursor` in Postgres `migration_state`, and it is committed in the same Postgres transaction as the batch it covers, so the cursor and the copied rows cannot disagree. A crash resumes after the last committed cursor, and a replayed batch is harmless because of the version rule. Backfill stops when a read returns no rows past the cursor, which sets `backfill_done=true` and records the max id.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The step 6 comparison runs in id ranges of 2,000, comparing counts and hashes on the replica and on Postgres, then row by row for any range whose hash differs, and it compares the tombstone sets. Rows that are missing in Postgres or have a lower version there are fixed with the copy function, tombstoned ids are deleted automatically, and a higher version in Postgres, or a Postgres row with no MySQL row and no tombstone, is reported and blocks the gate.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The switch is coordinated by the `users.source=fenced` flag: every instance refuses new writes, waits for its own `in_flight` to reach 0, and reports `fenced` in its heartbeat, so no instance can write under the old or new order while the switch runs. If any instance has not reported `fenced` within 35 s, or the drain is not done within 20 s or its hashes differ, the switch aborts to `mysql` (step 13), which keeps the total pause within 90 s. How a gate learns the full list of running instances is not settled, and steps 4, 10 and 12 depend on it.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Before the switch, MySQL AUTO_INCREMENT assigns ids; after step 12, Postgres `users_id_seq` assigns them and MySQL receives the same id explicitly on shadow. Collisions are avoided at step 11 by setting `users_id_seq` to the larger of the MySQL next AUTO_INCREMENT value and the current sequence value, plus 1,000,000, and after a rollback step 15 sets the MySQL AUTO_INCREMENT to the larger of its current value and Postgres's last sequence value, plus 1,000,000.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, MySQL stays complete through the shadow writes when `mysql_shadow` is on and through the reverse sweeper (step 14), which has its own cursors and applies Postgres rows and tombstones to MySQL. Rollback is step 15: fence the writes, confirm the reverse sweep drains and the hashes match within a 20 s budget, move both AUTO_INCREMENT and the sequence past each other, set reads back to MySQL, and set `sot=mysql` with the forward cursor reset. The rollback option ends at step 17, 14 days after `sot_switched_at` and with reads at 100%, when `mysql_shadow` is turned off and rollback is no longer safe.",
+  "decided": true
+ }
+}

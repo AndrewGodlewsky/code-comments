@@ -1,0 +1,153 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The diagram shows the Gateway calling KeyService and then Redis. What exactly does 'resolve key' return, and what is the key made of (customer, API key, plan)?",
+     "about": "Gateway->>KeyService: resolve key"
+    },
+    {
+     "id": "2",
+     "text": "How does the Gateway know a customer's limit (Standard 100/min)? Does KeyService return the plan, or does the Gateway look it up elsewhere?",
+     "about": "Limits: Standard 100/min, Enterprise TBD (Product)"
+    },
+    {
+     "id": "3",
+     "text": "What does check_and_incr take as input and return? Does it increment even when the request is over the limit, and how does the Gateway use the result?",
+     "about": "Gateway->>Redis: check_and_incr"
+    },
+    {
+     "id": "4",
+     "text": "What does 'Counters are per minute' mean: a fixed clock-minute window or a sliding 60 seconds? How is the counter key named, and what TTL is used?",
+     "about": "check_and_incr is a Lua script. Counters are per minute. / Counter keys have a TTL"
+    },
+    {
+     "id": "5",
+     "text": "The diagram shows the Gateway forwarding to Backend after check_and_incr. Where in the flow does the 429 or 401 happen, and is the Backend skipped in those cases?",
+     "about": "Over limit: 429 + Retry-After. Bad key: 401."
+    },
+    {
+     "id": "6",
+     "text": "How is the Retry-After value calculated?",
+     "about": "Over limit: 429 + Retry-After"
+    },
+    {
+     "id": "7",
+     "text": "When Redis is slow or down and the Gateway fails open, is the 50 ms a timeout per call? Are X-RateLimit headers still sent in that case, and what values?",
+     "about": "Redis slow/down (50 ms): fail open, ratelimit_store_unavailable metric"
+    },
+    {
+     "id": "8",
+     "text": "What happens if KeyService is slow or down? The notes only cover Bad key and Redis failure.",
+     "about": "Gateway->>KeyService: resolve key"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Per the brief, the existing Key Service resolves the X-Api-Key to a customer ID and a plan (Standard or Enterprise). The rate-limit counter key is built from the customer ID plus the minute, not the API key, so all of a customer's keys share one budget."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "The Key Service answer includes the plan (per the brief). The Gateway maps plan to limit: Standard 100/min; Enterprise is undecided by Product and left open."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Input: customer ID and limit. It does not increment when the count is already at the limit (so 429s use no budget, required). Returns allowed/rejected plus remaining, or seconds left in the window when rejected. The Gateway forwards on allowed, returns 429 on rejected. Done in one Lua script so the check and increment are atomic across instances."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Fixed clock minute, chosen for simplicity in a first version (one key, one INCR-style counter). Key is rl:{customerId}:{minute}, with minute from Redis time / 60. TTL 120 s so the key outlives its window and then cleans itself up. Boundary bursts of up to 2x are an accepted trade-off."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "401 happens right after key resolution and before Redis. 429 happens right after check_and_incr. In both cases the Backend is never called. The diagram now shows these branches."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Retry-After equals seconds until the current clock minute ends, minimum 1, calculated inside the Lua script from Redis time. This is exact for a fixed window because the budget resets at that moment."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, 50 ms is the timeout for the single Redis call. On error or timeout the Gateway forwards the request. X-RateLimit headers are omitted in that case because the remaining budget is unknown and inventing values would mislead clients. The brief leaves the fail-open response shape to me."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not say how the Key Service behaves when slow or down, and this feature does not change that path. It is whatever the Gateway does today (the 5-minute cache helps for recently seen keys). Added to open questions rather than guessing."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "When an Enterprise customer's request arrives today, what does the Gateway actually do: skip the check, apply Standard's 100, or reject? What limit value is passed to check_and_incr?",
+     "about": "Limit: Enterprise is not decided yet"
+    },
+    {
+     "id": "10",
+     "text": "If the Gateway gives up after 50 ms but the Lua script still runs in Redis, is that request counted even though the Gateway forwards it as fail open?",
+     "about": "Redis error or no answer within 50 ms"
+    },
+    {
+     "id": "11",
+     "text": "Does the 5-minute cache hold only valid keys, or also unknown keys? What happens to the limit if a customer's plan changes within those 5 minutes?",
+     "about": "Gateway->>KeyService: resolve key (cached 5 min)"
+    },
+    {
+     "id": "12",
+     "text": "If the limit passed in changes mid-minute (for example a plan change), what does the script do with the existing counter for that minute?",
+     "about": "Gateway->>Redis: check_and_incr(customer ID, limit)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "Not decided. The brief says Product has not set the Enterprise limit and I must not pick a number, and it gives no fallback behavior (skip, reject or reuse 100). So no value is passed for Enterprise yet. Added to open questions that the Enterprise behavior is undecided."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes, it can be. If the script ran in Redis before the Gateway gave up, the request is counted even though it is forwarded. Accepted for a first version because a retry or extra queue would add a mechanism the brief does not require; the effect is a slightly higher count during an outage. Added to the failures table."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "Whether the cache holds unknown keys is not known: the brief only says the Gateway caches the Key Service answer for 5 minutes. Added to open questions. On plan changes: the Gateway uses the cached plan, so the old plan's limit can apply for up to 5 minutes. I accept that staleness because it follows from the existing cache and avoids a new invalidation mechanism. Noted under Limit."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The script keeps the existing counter and compares it with the new limit passed in. It never resets the count mid-minute, so a lowered limit can reject immediately and a raised limit allows more right away. This is the simplest behavior and needs no extra state. Noted under check_and_incr."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request to the Gateway with an `X-Api-Key` header. The load balancer hands it to any one of 6 stateless Gateway instances. Any instance can take any request, so no instance holds the counters.\n\n2. The Gateway resolves the key through the Key Service. Each instance keeps the answer in its own memory for 5 minutes. A cache hit skips the Key Service call. The Key Service returns a customer ID and a plan (Standard or Enterprise). One customer can have several keys, and the limit belongs to the customer, so all of a customer's keys share one counter.\n\n3. If the key is missing or unknown, the Gateway returns 401 to the client. Redis is not touched, so an unauthenticated caller cannot read or change a counter.\n\n4. If the key is valid, the Gateway maps the plan to a limit. Standard is 100 requests per minute. Enterprise has no number yet.\n\n5. The Gateway calls the Redis Lua script `check_and_incr` with the customer ID and the limit. It waits at most 50 ms. Redis runs the script as one uninterruptible step. That is what stops requests arriving at different instances at the same moment from overshooting the limit.\n\n6. Inside the script, the counter key is `rl:{customerId}:{minute}`. `minute` is Redis server time divided by 60. Redis time is used so all instances agree on the minute. The script reads the current count for that key.\n\n7. If the count is already at the limit, the script increments nothing. It returns \"rejected\" plus the seconds left in the minute, at least 1. The Gateway sends the client 429 with a `Retry-After` header. The Backend is not called. Rejected requests use no budget.\n\n8. If the count is under the limit, the script increments it. When it creates the key, it sets a 120-second expiry. It returns \"allowed\" plus the remaining budget (limit minus the new count). The script never resets an existing count. If the limit passed in changes mid-minute, it just compares the existing count with the new limit.\n\n9. On \"allowed\", the Gateway forwards the request to the Backend that owns the route. The Backend responds, and the Gateway passes the response through to the client. It adds `X-RateLimit-Limit` (the customer's limit) and `X-RateLimit-Remaining` (the value the script returned). The request stays counted even if the Backend returns a 500.\n\n10. The fixed window ends at the clock minute boundary. The next minute uses a new key, so the budget resets. The old key expires after 120 seconds and cleans itself up. A customer can send 100 requests just before a boundary and 100 just after. The document accepts this for a first version.\n\n11. Failure: Redis error or no answer in 50 ms. The Gateway fails open. It emits `ratelimit_store_unavailable`, forwards the request to the Backend, and returns the response without `X-RateLimit-*` headers. The remaining budget is unknown, and made-up values would mislead clients. If the script still ran in Redis after the Gateway gave up, that request is counted anyway. The document accepts this.\n\n12. Failure: plan changes. A plan change only takes effect when the cached Key Service answer expires, so the old plan's limit can apply for up to 5 minutes.\n\n13. Failure: Key Service slow or down. The design does not change this, and it behaves as it does today. The document does not say what that is.",
+   "gaps": [
+    "What the Gateway does for an Enterprise customer is undecided (skip the check, reject, or another rule). No limit value is passed to check_and_incr for them, so I cannot explain steps 4 to 9 for Enterprise.",
+    "What happens when the Key Service is slow, times out or is down is not described. I cannot say what the client sees at step 2 in that case.",
+    "It is not said whether the 5-minute cache also holds unknown keys. I cannot say whether a repeated bad key causes a Key Service call each time.",
+    "I do not know how the Gateway reaches the Backend that owns a route, or what happens if the Backend is unreachable or times out. The document only covers a Backend that answers, including with a 500."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

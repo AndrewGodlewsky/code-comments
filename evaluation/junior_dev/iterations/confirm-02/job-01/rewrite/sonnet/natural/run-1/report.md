@@ -1,0 +1,18 @@
+## Review of job-01 (rewrite, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a 2-3 sentence summary up front, including how the existing system looks today (tenants table only, nothing for jobs).
+- Added a Terms section defining names a newcomer would not know: run vs attempt, in progress, heartbeat, reaper, fencing token, FOR UPDATE SKIP LOCKED, soft delete.
+- Merged the Approach bullets and scattered global limits (50 schedules, 5-minute interval, one in-progress run, most-recent-missed only, 90 days, idempotent handlers, database clock) into one 'Rules that hold everywhere' list, stated once.
+- Kept the ER diagram unchanged, placed after the summary and terms, with the constraints notes directly after it; added a short reason to each constraint line.
+- Restructured the mechanics into numbered steps that each name trigger, action, data location and failure handling; moved the orphan-cancel statement into step 2 and the loop description now lists it.
+- Added a failure table, one row per step, replacing failure notes spread through the steps.
+- Removed repetition: the duplicated 'retry_wait counts as in progress' remark (kept in step 1), repeated fencing explanations (kept in step 4), and the duplicate pause-check note.
+- Moved 'Backoff for presumed-dead workers' and 'Large outages' assumptions into step 5 where they apply, and 'Fire-time precision' into Terms; kept Latency and Retry-wait/disable as open points.
+- Moved partitioning to a separate 'Later, if needed' section to keep rollout/future work apart from how the system runs.
+- Removed no stated requirement, limit, number or rule from the first version.
+
+### Holes
+- None.

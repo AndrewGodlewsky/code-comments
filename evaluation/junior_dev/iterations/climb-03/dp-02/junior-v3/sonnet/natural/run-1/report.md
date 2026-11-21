@@ -1,0 +1,31 @@
+## Review of dp-02 (junior-v3, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a short summary and a Terms section (client behavior, existing infrastructure, log position, watermark, closed day) before the decisions, answering Q1, Q2, Q5, Q6.
+- Step 6: explained the same-position crash-restart case and the later-day retry case, answering Q3 and Q4.
+- Step 10: defined the watermark check concretely for both loader and archiver, removed the separate archiver-complete wording, and clarified the pinned code version.
+- Step 14: stated causes of an id mismatch and that the swap proceeds with staged data after operator confirmation.
+- Added an Open questions section for where code versions live and the exact enriched columns.
+- Merged the 8-day lookback and archive-window checks into one line and tightened steps 11, 16 and 17 wording.
+- Step 8: replaced 'live writes only target the current day' with writing to each event's own received_at day partition, explaining the just-after-midnight case.
+- Step 8 and Open questions: marked warehouse idempotent load mechanism as an open question instead of inventing one.
+- Step 10 and Terms: replaced the per-partition 'first D+1 record' watermark rule with a simpler 'caught up' definition, which also handles quiet partitions; removed the separate Watermark term.
+- Step 17: spelled out how keys and TTLs are rebuilt from the archive and why the resumed loader neither reprocesses nor wrongly drops events.
+- Dedup winner decision and step 12: stated that offsets are compared within one partition regardless of day folder.
+- Step 15: added that nothing further is needed after the swap and why.
+- Step 18: midnight test now includes an event loaded after midnight.
+- Open questions: added clock skew near midnight and the warehouse idempotent load question.
+- Reordered into the newcomer layout: summary, terms, numbered steps, a failure table, monitoring and tests, then open questions.
+- Merged the separate 'Decisions that shape the plan' section into the Terms (day of an event, first copy, dedup window, caught up, closed day) and removed the duplicated explanations from steps.
+- Merged the Open decision step into the Open questions section, with a one-line pointer from the enrichment step.
+- Replaced scattered failure notes (steps 3, 6, 14, 15, 17) with one failure table; the key-value rebuild stays as a table row instead of its own step.
+- Removed cross-references such as 'see step 6' and 'step 10' in favour of standalone wording; renumbered steps 1-15.
+- Cut the freshness and log-epoch detail to one line each and dropped repeated reasoning about replay never disturbing live state.
+- Shortened the archiver, loader and replay isolation steps; merged the 'Archive' and 'Raw archive' rules; dropped the separate 'Replay input' decision since step 11 says it.
+
+### Holes
+- Q6: Why must day D be closed at 02:00 UTC on D+1 specifically, and what happens to events whose received_at is on D but that are still being loaded late by then? (author: 02:00 UTC on D+1 comes from the brief and I do not know the reason behind it. My reading is that it gives two hours for lag to drain. Since received_at is stamped by the collector, nothing new can belong to D after midnight; events still being loaded late are covered by the watermark check in step 10, which blocks the replay until they are processed. Stated as such in Terms.)
+- Q7: What does the enrichment step actually produce (which columns) and what does 'pinned enrichment code version' mean — where does that code live and how does the replay tool run it? (author: Exact enriched columns are not defined yet; they are the geo-IP and user-agent derived fields plus the two version stamps. Where the pinned code version is stored and how the replay tool runs it is not specified. Added both to Open questions rather than inventing a mechanism.)
+- Q10: How does the warehouse make a load idempotent by event_id? Is it an upsert or a delete-then-insert, and does it work inside a partition that dashboards are querying? (author: The brief only guarantees atomic replace of a whole day partition, so I do not know whether the warehouse offers upsert or transactional delete-then-insert, or whether it is safe in a queried partition. I did not invent a mechanism. Added to Open questions and step 8 points to it.)

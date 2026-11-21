@@ -1,0 +1,60 @@
+## Review of mig-01 (junior-v6, author haiku, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Summary now says how the system works today (replica reads, primary writes, version column, StaleWrite) before describing the change.
+- Restored stated facts that the first version dropped: the no-raw-users-sql lint rule, table size, peak load, about 2,000 erasures a day, the empty pg-core cluster and pool, the 30 s flag refresh, and the jobs:dead and Redis reasons for not using app.jobs.
+- Added a Terms section that defines SoT, outbox, relay, inline apply, version rule, tombstone, advisory lock, control row, write mode, fence, StaleWrite and flag refresh.
+- Outbox row now holds the row snapshot read in the same transaction, and outbox rows are deleted by seq, not by user id (Q1).
+- Relay leader is now chosen by GET_LOCK on the primary, with a 5 s retry and no takeover rule for a slow leader (Q3).
+- Erasure order and per-id advisory lock with tombstone check are stated, so copies and erasure cannot race (Q4).
+- Commit point (c) now locks users_migration and re-checks that the outbox is empty in the same transaction. Every MySQL write takes a shared lock on that row, so a stale write cannot slip past the switch (Q5).
+- Drain limit cut from 60 s to 20 s. The first version's worst case was about 120 s, which broke the 90 s budget.
+- Step (d) copies the epoch instead of incrementing it, so a rerun is idempotent. Crash detection and the roll-forward rule are stated (Q6).
+- No Postgres ids are assigned before (e), so the sequence value is the same on a rerun. Stated in step (d).
+- Erasure and other UserRepository writes are paused and retry during the switch, which the first version did not say.
+- Step 8 explains that a stale read cannot be detected, how it leads to StaleWrite, and that the user must retry. Adds the outbox-lag definition (Q8).
+- Step 11 states where the reverse outbox row is written (in the Postgres transaction), the 200 ms MySQL inline copy and the failure behaviour (Q7).
+- Step 4 states that outbox rows accumulate from step 3 until the relay starts.
+- Removed the separate failure table. Every step now states its failure handling on its own.
+- Removed the first version's 'my choice' wording. Chosen values are named in the steps and listed as open questions for the owner.
+- Added open questions: crash during the switch may exceed 90 s, outbox-lag metric does not exist yet, and StaleWrite display is not specified.
+- Kept how the system runs in its own section, separate from the rollout checklist.
+- Terms: added write mode, dual-write flag, reverse sync flag, read source flag, reverse outbox and reverse relay, with what each controls (Q9, Q14).
+- Step 1: added users_id_seq and no default on users.id until the switch (Q10).
+- Step 3: stated that users_dual_write and users_reverse_sync stay off (Q9, Q14).
+- Step 4: stated that inline apply and relay run only in mode mysql, and that the inline apply takes the same advisory lock and tombstone check (Q9, Q13).
+- How the system runs: wrote the before-switch write as ordered steps, with the shared lock on users_migration as the fence (Q9).
+- Copies section: added why a late inline commit cannot overwrite newer data (Q13).
+- Writes after the switch: defined the reverse path as gated by users_reverse_sync, with the fence check on the Postgres control row, and noted the MySQL copy is direct and not through the MySQL outbox (Q11, Q14).
+- Writes after the switch: the MySQL copy checks MySQL tombstones, as the Terms rule already requires for every copy (consistency fix).
+- Erasure after the switch: spelled out the Postgres erasure transaction and the MySQL follow-up (Q12).
+- Step 10d: set the users.id default to users_id_seq and started the reverse sync (flag on, reverse relay lock users_reverse_relay) (Q10, Q11).
+- Step 10 failure: stated that Postgres refuses writes until step 10d finishes, because its control row still says mysql (Q11).
+- Step 11: stated that the reverse outbox turns on at 10d and that the rollback swaps roles in the runbook (Q14).
+- Step 13: defined the reverse-direction comparison as step 7 with the roles swapped.
+- Open questions: added fallback reads after the switch, the sweep after the switch, where the clocks are recorded, and the erasure job owner (Q12, Q15).
+- Rewrote the whole document for a newcomer: a summary that first says how MySQL works today, then the terms, the runtime flow, and the rollout checklist, with open questions at the end. Kept every stated fact, number and rule from the brief and the first version.
+- Added the reverse-copy exception to the MySQL fence (Q16): reverse copies run only while MySQL says sot='pg', and app writes run only while it says sot='mysql'.
+- Turned the rollback in step 11 into numbered steps, with the swapped runbook, the commit point in Postgres, the epoch copy into MySQL, who stops the reverse relay, and the dual-write path returning (Q17).
+- Stated that a reverse copy carries the Postgres id, that MySQL assigns no ids in mode pg, and that rollback sets AUTO_INCREMENT past both maxima (Q18).
+- Added the email-conflict rule for reverse copies, matching the sweep rule in step 6 (Q19).
+- Added a note that a reverse copy stops and leaves its row when it finds sot='mysql', and that the MySQL erasure delete and tombstone are written in one transaction.
+- Made the MySQL-side and Postgres-side erasure and fence wording explicit, and defined the shared lock and the fence in the terms.
+- Moved the failure detection for a crashed rollback into step 11, and added the rollback drain and replica lag to the open questions.
+- Summary: rewritten as a plain paragraph that first says how the system works today (reads from replica, writes to primary, version and StaleWrite), then the four stages and the main rules. Long design-decision bullets were removed, because the same reasons now sit in the sections where each mechanism runs.
+- Terms: rewritten as one plain line each. Added definitions for version rule (with its SQL), fence, shared and exclusive lock on users_migration, control row, flags and their 30 s refresh, write mode, dual-write flag, reverse sync flag, read source flag, reverse outbox, reverse copy, reverse relay, backfill and sweep. Added that the dual-write flag is not used in mode pg and stays on through the switch.
+- How the system runs: the write path, relay, Redis reasons, copy rules, erasure before and after the switch, and email conflicts are each written as one section. Before the switch, the copy rules are stated once under Copies into Postgres, not repeated in each step. Added that the relay skips an already-applied inline row because its version is equal (answers Q1), and that a copy which commits before a tombstone is removed by the delete (answers Q4).
+- Writes after the switch: added the explicit exception for reverse copies to MySQL while MySQL says pg. Reverse copies skip the 503, apply the version rule and tombstone check, write no outbox row, and stop if they find sot=mysql (answers Q16).
+- Email conflicts: split into before-switch and after-switch cases, with the reverse rule written out (answers Q19).
+- Ids: kept every id fact. Added that step 10d also sets the users.id default to the sequence, and that Postgres-assigned ids start at least 1,000,000 above the old maximum (answers Q10 and Q18).
+- Failure table: added one table of the main failure cases, pulled from the steps, so a reader can see the outcome of each failure in one place. The per-step If-it-fails lines are kept.
+- Rollout steps 1 to 14: kept all numbers, limits, settings and rules, including the 2,000-row batch, 5 s lag limit, 100 ms pause, 500-row relay batches, 200 ms inline timeout, 5 min outbox alert, 1 s Redis timeout, 20 s drain limit, 90 s pause budget, 75 s alert, and the 3-day, 14-day and 7-day waits. Each step keeps Starts, Changes, State and If it fails. Step 10 (b) keeps the 20 s limit. The reason for the 20 s limit (a 60 s drain could take about 120 s in the worst case) is kept.
+- Step 10 (d): made explicit that no Postgres write reaches the database in this window, because the mode is still paused (answers Q11).
+- Step 11: rewritten as numbered rollback steps (1 to 6) with the reads switch first, a clear decision trigger, and the epoch rules (answers Q17). Step 13 gained a State line.
+- Open questions: kept all eleven from the first version without change. No new open question was added, because the answers to Q1 to Q19 are either decided or already listed.
+- Length: about 1.4 times the first version. Repetition was cut, and the step bodies were written to stand alone.
+
+### Holes
+- Q15: Once reads are at 100% on Postgres after step 10e, MySQL is no longer the source of truth but reads fall back to the MySQL replica. Is that replica still current from the reverse sync, and what does a user get if the fallback is also stale? (author: Not known. The MySQL replica is fed only by the reverse sync (the inline copy and the reverse relay) and by normal replication. After the switch it can therefore be behind by the reverse outbox lag. The files give no bound and no freshness check. A stale fallback read behaves like step 8: a write may get StaleWrite, and the user retries. After the switch the version check runs in Postgres. What the user sees on a stale fallback is not defined. Added as an open question.)

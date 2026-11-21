@@ -1,0 +1,136 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is MailRelay, and what does 'drops a second send with the same key and returns success' mean for the caller? Does the caller learn the email was a duplicate?",
+     "about": "Idempotency key as the backstop"
+    },
+    {
+     "id": "2",
+     "text": "What is the broker, and what does 'confirmed storing the message' mean? Who gives that confirmation, and to whom?",
+     "about": "Who owns a notification / Forwarder thread"
+    },
+    {
+     "id": "3",
+     "text": "Who inserts a row into the monolith notifications table today, and what does the old worker do with it each batch (poll interval, batch size, commit point)?",
+     "about": "Step 1: _deliver / old worker"
+    },
+    {
+     "id": "4",
+     "text": "The forwarder ignores next_attempt_at. If a pending row is waiting for its 4-minute retry and gets forwarded, how does the service know when to retry it?",
+     "about": "Forwarder thread / Message contract"
+    },
+    {
+     "id": "5",
+     "text": "How does the service's result get back to the monolith row? What does the monolith do with `outcome` and `attempts` once it applies the UPDATE?",
+     "about": "Result consumer"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'result_published' flag and how does it relate to the status column and the result publisher? The table list in step 2 does not mention it.",
+     "about": "Step 2: Failure behaviour, Broker down"
+    },
+    {
+     "id": "7",
+     "text": "What happens to a forwarded row if the service dies and never sends, and the reconciler republishes it after 1 hour? What stops it staying stuck beyond that?",
+     "about": "Reconciler"
+    },
+    {
+     "id": "8",
+     "text": "How do the three types differ (shipping_update, order_confirmed, password_reset), and why is the order of migration this one? What is the 60 s requirement and where does it come from?",
+     "about": "Steps 4 to 6: Move types"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "MailRelay is the external email service all three types send through. On a duplicate key within 24 h it drops the new send and returns success, so the caller cannot tell a duplicate from a first send. That is intended. Added a Terms entry."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "The broker is the shared at-least-once message broker already used by billing and search. The broker itself sends the confirmation to the publisher (here the monolith forwarder) once it has stored the message. Added a Terms entry."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "enqueue_notification, called by business code inside its own transaction, inserts a pending row. Each worker instance polls every 5 s, locks up to 50 due pending rows with FOR UPDATE SKIP LOCKED, sends them, and commits once per batch. Added a short 'How it works today' paragraph."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The message carries attempts and next_attempt_at. The service consumer stores both in its own row and the sender loop only picks rows whose next_attempt_at is due, so a row waiting for its 4-minute retry waits out the remainder. The forwarder ignores next_attempt_at only so that the handoff is not delayed. Added a line to the message contract, the consumer and the forwarder."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The service publishes notifications.result (id, outcome, attempts) and the monolith result consumer runs UPDATE setting status=outcome and attempts on the row, only if it is still forwarded. Nothing else reads them in this plan. Clarified in the message contract and result consumer."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "result_published is a boolean column on the service notifications table, false until the result message is published. The publisher sets it after publishing, and a loop republishes terminal rows where it is false, so a restart or broker outage does not lose results. It was missing from the column list, so I added it and clarified the result publisher."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Republishing does not change a row that is still in progress. The service sends it when due. If the service is down, nothing is sent until it is back, and the reconciler alert is how a human learns of it. The reconciler repeats every 10 minutes until the result arrives. If the service already has a terminal result, it republishes that result and the monolith row completes. Clarified in the Reconciler bullet."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The types differ by trigger, volume and requirement. All three are email only, through MailRelay. Only password_reset has the p99 enqueue-to-MailRelay under 60 s requirement, which comes from the existing notifications overview. The order of migration is given by the brief without a reason. My inference (highest volume with no latency requirement first, latency-sensitive last) is labelled as such in step 4 and in the open questions. Added the types table to the design section."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What starts the Sender loop, and how often does it look for a due row (polling interval, or triggered by the consumer insert)? Does it handle one row per pass?",
+     "about": "Step 2: Components, Sender loop"
+    },
+    {
+     "id": "10",
+     "text": "Step 5 says the service stores the MailRelay accept time and emits it with the result, but the result message contract and the column list have no accept-time field. Where is it stored and how does it reach the monolith?",
+     "about": "Step 5: Added measurement, and Message contract (notifications.result)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The sender loop polls every 1 s, matching the forwarder. Each pass claims one due row with FOR UPDATE SKIP LOCKED, sends it and commits; if it found a row it loops again immediately, otherwise it waits for the next poll. The consumer insert does not trigger it. At 53,000 rows a day, one row per pass is ample. One row per transaction keeps a crash from affecting other rows. Added to the Sender loop bullet."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "This was a real gap. The service stores the accept time in a new accepted_at column, set in the same transaction as the successful send, and keeps created_at from the message. It computes accepted_at minus created_at itself and emits it as a metric, so the result message does not need a new field and nothing extra goes to the monolith. The monolith has no use for it. Updated the column list, the sender loop, the message contract note and step 5."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one `shipping_update` notification, after the flag `notif.route.shipping_update` is set to `service`. I use only the document.\n\n1. **Trigger and recording.** The carrier webhook updates a shipment. Business code calls `enqueue_notification(tx, ...)` inside its own transaction. That inserts a `pending` row into the monolith `notifications` table. The row exists only if the caller's transaction commits. If that transaction rolls back, there is no row and no notification. The monolith database holds the state.\n\n2. **Who may touch the row.** A `pending` row is monolith-owned. Two things can act on it: the old worker (polls every 5 s, takes up to 50 due rows) and the forwarder (polls every 1 s). Both take the row with `FOR UPDATE SKIP LOCKED`, so they cannot both act on one row. The old worker now adds `AND type NOT IN (service-routed types)`. It reads the flags at the start of each batch, so it skips `shipping_update` once the flag is `service`. The flag is read only by the monolith and takes up to 10 s to reach every instance.\n\n3. **Forwarding.** The forwarder selects `pending` rows of service-routed types under the row lock. It ignores `next_attempt_at`. It re-checks the flag after taking the lock. It publishes `notifications.requested` (`id, type, user_id, email, payload, created_at, attempts, next_attempt_at`) to the broker. It waits for the broker's confirmation of storage, then sets `status='forwarded'` and commits. From then on the monolith never sends this row; the service owns it.\n\n4. **Forwarding failures.**\n   - If the monolith crashes after the confirmation but before the commit, the row stays `pending` and is republished. The service dedupes by id.\n   - If the confirmation is lost, the row is treated as unpublished and republished.\n   - If the broker is down on the monolith side, the row stays `pending` and the forwarder retries every poll. An alert fires when the oldest forwardable row is older than 2 minutes.\n\n5. **Service intake (consumer).** The broker delivers the message to the service. In one service-DB transaction the consumer runs `INSERT ... ON CONFLICT (id) DO NOTHING`. It copies `attempts` and `next_attempt_at` from the message, then acks. A crash before commit means no ack, so the broker redelivers. A crash after commit but before ack means redelivery, a conflict, a no-op and an ack. The service `notifications` table (id as primary key, kept at least 30 days) is the state. A redelivered message for a known id never re-sends.\n\n6. **Sending (sender loop).** The loop polls every 1 s. Each pass claims one due row (`next_attempt_at` reached) with `FOR UPDATE SKIP LOCKED`. It renders the email, calls MailRelay `send()` with `idempotency_key = notification id`, updates the row (setting `accepted_at` on success) and commits. If it found a row it loops again at once. The consumer insert does not wake it. A crash mid-send releases the lock, and the row is retried with the same key. MailRelay drops the duplicate within 24 h and still returns success.\n\n7. **Send failure and retry.** A failed attempt 1 to 4 sets `next_attempt_at` to now plus 1, 2, 4 or 8 minutes, and the row stays `pending` in the service. Attempt 5 failing sets `failed`. A render exception counts as a failed attempt under the same policy. If MailRelay is down, rows follow this policy, then fail.\n\n8. **Paging.** A separate pager loop finds `failed` rows with `paged_at IS NULL`, pages on-call, then sets `paged_at`. It runs outside the send transaction. A duplicate page after a crash is acceptable.\n\n9. **Publishing the result.** After the terminal state (`sent` or `failed`) commits, the service publishes `notifications.result` (`id, outcome, attempts`) and then sets `result_published`. A loop republishes any terminal row where `result_published` is false. If the broker is down on the service side, sending continues and results wait until the broker returns.\n\n10. **Mirroring back.** The monolith result consumer runs `UPDATE ... SET status=outcome, attempts=attempts WHERE id=? AND status='forwarded'`. If the row is already terminal, it acks as a no-op. If the row is still `pending` (the result beat the forwarder's commit), it does not ack, and the broker redelivers 30 s later. The row is then `sent` or `failed` in the monolith, which is terminal.\n\n11. **Safety net (reconciler).** Every 10 minutes it finds `forwarded` rows older than 1 hour with no result. It republishes them and raises an alert. The service dedupes: for a terminal id it republishes the stored result, and for an id in progress nothing changes. This is how a human learns that the service is down.\n\n12. **Rollback.** Flip the flag to `monolith`. It takes effect within 10 s. Rows already `forwarded` stay with the service. Unforwarded `pending` rows go back to the old worker.\n\n13. **Rollout around this flow.** First the old worker passes the key. Then the service is built and tested in staging. Then the monolith side ships \"dark\", with all flags at `monolith`. Then the types move in the order `shipping_update`, `order_confirmed`, `password_reset`, each with a soak period. Finally the old worker is removed.",
+   "gaps": [
+    "The forwarder and the old worker both take `pending` rows under a lock, but when the forwarder finds a row it cannot lock because the old worker holds it, the document does not say how long it waits or whether it retries beyond the next 1 s poll (SKIP LOCKED implies skipping; the retry is only implied).",
+    "When the service sender marks a failed attempt for retry, the document does not say how the service's retry count in `attempts` relates to what the monolith copies back for a `sent` result beyond 'attempts into its attempts column'. It is also unclear whether the monolith row's retry state is updated mid-flight. The monolith only learns the final count.",
+    "The document does not say how the monolith finds the user's email or builds the payload at enqueue time (the arguments to `enqueue_notification` are elided with `...`), nor what the payload contains.",
+    "The document does not say how the service renders (template contents, which template per type). It only says templates are copied and output matches the monolith's `templates.render` byte for byte.",
+    "The document does not say how the broker routes messages to the right consumer: topic or queue names beyond `notifications.requested` and `notifications.result`, subscription setup, or how the service and monolith consumers are assigned.",
+    "The document does not say how paging on-call is performed (what the pager calls) or what 'alert' mechanisms are used for the monitoring conditions.",
+    "The document does not say what `attempts` means at forwarding time for a brand-new row (presumably 0) or whether the service increments it before or after a send."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

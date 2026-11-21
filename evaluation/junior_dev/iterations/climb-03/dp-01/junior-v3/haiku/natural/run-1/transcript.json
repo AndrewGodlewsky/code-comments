@@ -1,0 +1,289 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Preflight reads hwm_ts, but on the very first night ever, what is hwm_ts and so window_lo? Who seeds ctl.pipeline_state?",
+     "about": "Preflight / ctl.pipeline_state"
+    },
+    {
+     "id": "2",
+     "text": "What actually runs these steps and the timers: what is the 'scheduler', and what executes Extract, Stage and the MERGE?",
+     "about": "Trigger: 02:00 UTC scheduler"
+    },
+    {
+     "id": "3",
+     "text": "Preflight step 1 says to stop if run_date is committed. How does a retry (attempt 2 or 3) know its attempt number and reuse the stored window? Which row in pipeline_runs does it read?",
+     "about": "Preflight: read hwm_ts and the attempt count"
+    },
+    {
+     "id": "4",
+     "text": "How do rows get from the replica into the staging table, and how is the 'extract count' obtained for the row count check?",
+     "about": "Extract / Stage and check"
+    },
+    {
+     "id": "5",
+     "text": "If a night is committed late (e.g. at 03:00 after retries), does the next night's window_lo = hwm minus 2h still work, and what is window_lo if a night was skipped entirely (all 3 attempts failed)?",
+     "about": "Failure handler / D3 Failed attempts so far under 3?"
+    },
+    {
+     "id": "6",
+     "text": "After the third failure and the page, what happens next? Does anything run again that night or the next day, and who fixes it?",
+     "about": "Page on-call"
+    },
+    {
+     "id": "7",
+     "text": "The diagram shows dashboards refreshing at 06:00 and reading fact_orders, but the text says 'Dashboards can now see this night' at commit. Which is it: do dashboards query live or only at 06:00?",
+     "about": "OK / Dashboards refresh at 06:00 UTC"
+    },
+    {
+     "id": "8",
+     "text": "How does the Sunday reconciliation relate to a failed Sunday? If Sunday's load fails all retries, is reconciliation skipped until next week?",
+     "about": "D5 Sunday run?"
+    },
+    {
+     "id": "9",
+     "text": "How are updates to rows with an old created_at handled in the normal load versus how reconciliation catches them, and what kinds of differences is reconciliation meant to find?",
+     "about": "Reconciliation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The first night has no stored hwm. A one-time seed row is inserted into ctl.pipeline_state when the ctl schema is created, with hwm_ts set to a fixed first backfill start. The first night then loads everything updated after that start minus 2 hours, which may be a large load. The start value is an open question. Steps and State now say this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The brief does not name the scheduler. Its only jobs are starting the job at 02:00 UTC, starting the retry 15 minutes after a failed or crashed attempt, and enforcing the 45-minute timeout. Preflight, extract, check, commit, the failure handler and reconciliation all run in the job process. The job process reads the replica and writes the warehouse, and it issues the MERGE as a warehouse statement. Which scheduler product runs it is an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Preflight computes the attempt number. It marks leftover running rows for run_date as timed out, then counts the non-committed rows for run_date. A retry reads window_lo and window_hi from the latest row for run_date, which attempt 1 wrote when it started. The earlier draft only stored the window at commit, which was a gap. Fixed in Preflight and State."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Extract reads the replica in keyset chunks inside one REPEATABLE READ transaction and writes each chunk into staging. extract_count is the number of rows read in that transaction, and it is stored on the running row. The check compares the staged count with it. The single snapshot also stops a row updated mid-extract from being read twice, which would have failed the duplicate check. The bulk-load mechanism is an implementation detail, so the document leaves it out."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes, it still works. hwm_ts is window_hi of the last committed night, a scheduled instant rather than the commit time, so a 03:00 commit still sets hwm_ts to 02:00. If a night is skipped, hwm_ts stays at the older value, and the next night's window starts 2 hours before it, so it also covers the skipped night. Windows grow with each skipped night. The brief sets no limit on that, and the failure table now says so."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Nothing runs again automatically that night. The next scheduled run is 02:00 UTC the next day, and its window covers the missed changes. On-call investigates and may start a manual attempt for that run_date, which reuses the stored window and counts as an attempt. Who is on call is not in the brief, so that stays an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Dashboards read committed data. The brief says they refresh at 06:00 UTC whether or not the load has finished, so a night committed after 06:00 appears at the next refresh rather than at commit. The earlier line saying they can see the night at commit was wrong and is removed. Whether dashboards also query live between refreshes is not in the brief, so it is an open question."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes. If the Sunday night fails every attempt, that Sunday's reconciliation is skipped and is not retried separately. The next Sunday's window covers the last 30 creation days, including the missed ones, so the delay is at most one week. A reconciliation failure never affects the night's commit."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The nightly load keys only on updated_at. An old order that changes today gets a new updated_at, so it loads tonight regardless of created_at. Reconciliation groups rows by created_at and finds rows missing from the warehouse, stale rows where the warehouse holds an older updated_at, and anomalies where the warehouse holds a row the replica does not. The checksum includes updated_at, so stale versions show as mismatches. One gap was fixed: an order that changed after window_hi and was already loaded in an older version would cause a false mismatch, so reconciliation now ignores those order_ids on both sides. The assumption that created_at never changes is an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "What job does the 2-hour lookback do? What kind of rows would be missed without it?",
+     "about": "window_lo: hwm_ts minus 2 hours"
+    },
+    {
+     "id": "11",
+     "text": "How does preflight tell a crashed attempt's leftover running row from an attempt that is still alive, for example when a manual attempt is started during a scheduled one?",
+     "about": "Preflight: mark leftover running rows timed out"
+    },
+    {
+     "id": "12",
+     "text": "How does the scheduler know an attempt crashed or failed? Does it read the process exit status, or does it look at ctl.pipeline_runs?",
+     "about": "RETRYT: Scheduler 15 minutes after a failed or crashed attempt"
+    },
+    {
+     "id": "13",
+     "text": "If the process crashes and the failure handler never runs, who drops the staging table? Can the next attempt collide with the leftover one?",
+     "about": "STG: stg.orders_run, per attempt, dropped at the end"
+    },
+    {
+     "id": "14",
+     "text": "The merge matches staged rows to fact_orders by order_id. If the commit fails halfway, what state is fact_orders in, and what do dashboards see?",
+     "about": "T1: One warehouse transaction (commit)"
+    },
+    {
+     "id": "15",
+     "text": "When reconciliation reloads day D and commits, does that touch hwm_ts or write a ctl.pipeline_runs row? Does the 45-minute timeout cover it?",
+     "about": "R2: Reload day D (Reconciliation)"
+    },
+    {
+     "id": "16",
+     "text": "Is the 45-minute timeout per attempt covering extract, check and commit together? What happens to an in-flight commit transaction when the timeout kills it?",
+     "about": "Worst case timing: ends at 04:45 UTC"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The brief says bulk-import transactions stay open up to 90 minutes and updated_at is stamped at write time. So a row stamped at 01:50 may only become visible at 03:20, after the previous night's extract has run. The next window starts at the stored hwm (02:00 of the previous run_date), so without the lookback that row is never read. window_lo = hwm minus 2 hours starts before the stamp, so tonight's extract reads it. The 2 hours is the 90 minutes plus margin. Rows delayed beyond that are the reconciliation's job. The Terms entry for window_lo now says this."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The database row alone cannot prove that a process is alive. The design uses two facts instead. A scheduled start only follows an attempt that has already exited, so any running row left when a scheduled start begins is dead, and it is marked timed out at once, without waiting 45 minutes. A manual start is refused while any running row for run_date is under 45 minutes old, and a scheduled start also defers to a live manual row. The 45 minutes is the kill limit that the scheduler enforces. The 'alive' check therefore matters only for manual starts. Two starts at the same instant could both pass, which is listed as an open question. Changed: preflight step 2 now has these rules, a trigger column was added to pipeline_runs, and the failure table and diagram match. The first draft would have blocked a scheduled retry for 45 minutes after a crash, which was a bug."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The scheduler reads only the process exit status, plus its own 45-minute kill. It never reads ctl.pipeline_runs. The job exits non-zero when a night is not committed and exits 0 after a commit or after paging, so the scheduler stops. If an attempt is killed or crashes before writing its row, the scheduler sees a non-zero exit or a kill and starts the retry 15 minutes later. The retry's preflight then marks the leftover row timed out. If the crashed attempt was the third, the retry's preflight counts three non-committed attempts, pages on-call and exits 0. That is a fourth start, but it does no load work. Changed: the Start step, the failure table rows for kill, crash and attempt 3, and the diagram edges."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The next attempt's preflight drops and recreates stg.orders_run before extract. Staging is scratch with no value across attempts, so a leftover copy is safe to drop. Two attempts cannot collide, because preflight step 2 stops a start when a live manual attempt exists, and a scheduled start only follows an exited process. Dashboards never read staging. Changed: preflight step 5, and the State entry for staging."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The merge, the hwm_ts update and the committed row are one warehouse transaction. If it fails before COMMIT, all three roll back. fact_orders and hwm_ts stay as they were, and dashboards keep seeing the last committed state, because the merge is not visible until commit. This relies on atomic multi-statement transactions, which the existing open question covers. If the connection drops during COMMIT, the outcome is unknown. The committed row is part of the same transaction, so the next preflight can tell from it whether the commit happened. Changed: the Commit step now states the rollback rule and the unknown-COMMIT rule."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "No. The reload changes fact_orders and ctl.recon_results only. It does not move hwm_ts and writes no pipeline_runs row, because it is not an attempt. The earlier draft said to reload 'using the nightly rules', which would have included steps 5b and 5c and moved hwm_ts. That was wrong and is fixed. The 45-minute kill covers the Sunday process, which includes reconciliation. If it is killed, an uncommitted day merge rolls back, recorded days stay, and the scheduler's retry exits at preflight because the night is already committed. Changed: reconciliation intro and steps 3 and the time limit paragraph, plus the R2 diagram node."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes. The 45 minutes is the wall-clock limit for the whole attempt: extract, check and commit. A kill terminates the process, so the failure handler does not run. The retry's preflight marks the row timed out, and the warehouse rolls back the open transaction when its session ends, so fact_orders and hwm_ts are unchanged. If the kill lands after COMMIT was sent, the same rule as Q14 applies: the committed row decides. The brief gives no time limit, so 45 minutes is this design's choice, and it is listed as an open question. Changed: the failure table row for kill and crash, the diagram edges from E1 and T1 to the scheduler retry, and the open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "After three failed attempts, preflight step 3 pages and exits 0. If on-call then starts a manual attempt for that run_date, does it hit the same rule and exit? How can a manual attempt ever run after a night is skipped?",
+     "about": "On-call wants the data sooner / Preflight step 3"
+    },
+    {
+     "id": "18",
+     "text": "The Sunday reconciliation process shares the 45-minute limit with the load. If the load takes 40 minutes, what happens to reconciliation, and does it get reattempted that week?",
+     "about": "Reconciliation (Sundays) / same 45-minute kill"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "No, not as the earlier draft was written. Preflight step 3 applied to every start, so a manual start after a skipped night would have hit the same page-and-exit rule. That contradicted the on-call row. The fix: the three-attempt rule now applies only to scheduled starts. A manual start after a skipped night runs one attempt with the stored window and counts as an attempt. On-call has already been paged, so it is the right person to decide. A manual attempt that fails exits non-zero, does not page and is not retried, because the scheduler only retries its own attempts. This adds no lock or new mechanism. The brief's 15-minute retry and the page rule are unchanged for scheduled starts."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "Reconciliation is not reattempted that week. The 45-minute kill covers the whole job process, so after a 40-minute load reconciliation has about 5 minutes. If the kill lands, the process stops, an uncommitted day rolls back and recorded days stay. The scheduler's retry then exits at preflight, because the night is committed. Days not yet recorded are checked again the next Sunday, because that 30-day window covers them. The brief sets no time limit for reconciliation, and whether 5 minutes is enough is not known, so that is listed as an open question rather than decided here."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "19",
+     "text": "Step 4 says only attempt 1 inserts a running row. When attempt 2, 3 or a manual attempt starts, which row does it mark failed or committed, and where does its own row come from?",
+     "about": "Preflight step 4 / ctl.pipeline_runs: one row per attempt"
+    },
+    {
+     "id": "20",
+     "text": "The page rule counts three or more non-committed attempts as rows. If retries add no rows, how does the count reach three? Does a timed out row count as an attempt?",
+     "about": "Preflight step 3 / D3 Scheduled attempt and three non-committed attempts now?"
+    },
+    {
+     "id": "21",
+     "text": "The extract is capped at window_hi, which is 02:00, but the job may run at 03:00 or later. A row updated between 02:00 and the run is skipped tonight. Is it picked up the next night through the 2-hour lookback, and is that intended?",
+     "about": "Extract / window_hi"
+    },
+    {
+     "id": "22",
+     "text": "If the connection drops during COMMIT and the next preflight finds a committed row, it exits 0. If no committed row exists, does it rerun with the same stored window? What does it do with the staging and the running row?",
+     "about": "Commit: unknown outcome during COMMIT"
+    },
+    {
+     "id": "23",
+     "text": "The 06:00 check reads ctl.pipeline_runs for a committed row for run_date. What exactly does it query, and does it run on Sundays even if reconciliation is still going?",
+     "about": "CLOCK: Scheduler 06:00 UTC check / D4 run_date committed by 06:00?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Every attempt inserts its own running row at preflight step 4, with its attempt number, trigger and the window. Attempt 2, 3 and manual attempts write their outcome to that row: the failure handler marks this attempt's row failed, and the commit marks this attempt's row committed. Preflight step 2 has already marked any older running row timed out, so only one row is running at a time. The earlier text said only attempt 1 inserts a row, which left later attempts nowhere to record their result. Fixed in step 2.4, the Terms entry for attempt, the diagram and the failure table."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The count reaches three because each attempt that reaches step 4 adds one row. Timed out rows and manual attempts are rows, so they count, as Terms already says. Step 3 now says so. A crash in the first seconds of preflight, before step 4 writes the row, adds no row. The retry then runs as the next attempt, so the page can come one start later. I accepted this because a separate counter would be a new mechanism the brief does not need."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "Checked against the window rules in Terms and step 3. A row updated after 02:00 has updated_at above window_hi, so tonight's extract skips it. The next night's window_lo is hwm_ts minus 2 hours, where hwm_ts is 02:00 of tonight's run_date, so the next window starts at 00:00 and includes that row. This is intended. window_hi now says rows updated after it wait for a later night, and step 3 says which night reads them."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "If no committed row exists, the commit did not happen. Nothing changed in fact_orders or hwm_ts, so the next attempt reruns with the same stored window. Its preflight step 2 marks the leftover running row timed out, and step 5 of its preflight drops staging. The committed row is in the same transaction as the merge, so its presence is the only check needed. Step 5 now states this."
+    },
+    {
+     "id": "23",
+     "tag": "checked",
+     "text": "The check reads only ctl.pipeline_runs. It looks for a row with status committed and run_date equal to the UTC date of the 06:00 check. It runs every day, Sundays included. Reconciliation writes no runs rows and does not change hwm_ts, so it has no effect on the check. The CLOCK node and the failure table row now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. The scheduler starts the job at 02:00 UTC with trigger `scheduled`. run_date is that UTC date. The scheduler only reads the exit status and enforces a 45-minute kill. It never looks at the warehouse. Everything else happens inside the job process, which reads the replica and writes the warehouse. (A retry or an on-call manual start can also trigger the job. See step 9.)\n\n2. Preflight. The job checks `ctl.pipeline_runs` (one row per attempt) and `ctl.pipeline_state` (hwm_ts), in this order:\n a. If a committed row exists for run_date, exit 0. The night is done.\n b. If a `running` row under 45 minutes old exists and either that row or this start is manual, another attempt is live. Exit 0 and change nothing. Otherwise mark all `running` rows for run_date `timed out`. They are leftovers from dead processes.\n c. If this start is scheduled and three or more non-committed attempts exist, page on-call and exit 0. Manual starts skip this check.\n d. If there are no attempts, this is attempt 1. It sets window_hi = 02:00 UTC of run_date and window_lo = hwm_ts minus 2 hours. It inserts a `running` row holding both, plus the trigger and started_at. Otherwise it reads the stored window_lo and window_hi from the latest row, so every retry uses the same window.\n e. Drop and recreate the staging table `stg.orders_run`.\n\n3. Extract. The job opens one REPEATABLE READ read transaction on the read replica. It reads `orders` in keyset chunks ordered by (updated_at, order_id), keeping rows with updated_at greater than window_lo and at most window_hi. Each chunk is written to staging. When the read ends, it stores extract_count (the rows read) on the running row and closes the replica transaction. The replica holds no state of its own.\n\n4. Check. Staging must hold exactly extract_count rows, with no repeated order_id and no null order_id or updated_at. If a check fails, the job goes to the failure handler (step 8).\n\n5. Commit. This is one warehouse transaction.\n a. It merges staging into `mart.fact_orders`. A new order is inserted. An existing order is replaced only if the staged updated_at is equal to or later than the stored one. is_deleted is set to (deleted_at is not null) and deleted_at is copied. Deletes are therefore ordinary updates, and no row is ever removed.\n b. hwm_ts is set to window_hi, only if hwm_ts is lower.\n c. The running row is marked `committed`, with its row counts.\n Then COMMIT, and staging is dropped. If anything fails before COMMIT, a, b and c all roll back. If the connection drops during COMMIT, the outcome is unknown. The next preflight resolves it, because the committed row exists only if the commit happened. Re-running a night writes the same values.\n\n6. Dashboards. At 06:00 UTC they refresh from `mart.fact_orders`, which holds only committed data. They show either the whole previous night or the whole new one.\n\n7. Staleness check. A separate 06:00 UTC scheduler check reads `ctl.pipeline_runs`. If run_date is not committed, it alerts #data-alerts. The load keeps going, and dashboards keep showing the previous night. A late commit, for example at 03:00, still sets hwm_ts to 02:00 of its run_date, so the next window is correct.\n\n8. Caught failure. The failure handler rolls back any open warehouse transaction, drops staging, and marks the running row `failed` with the error text. hwm_ts does not change.\n - A scheduled attempt that is not the third exits non-zero.\n - A scheduled attempt that makes three non-committed attempts pages on-call and exits 0.\n - A manual attempt exits non-zero. Nothing retries it and it does not page.\n\n9. Retry.\n - The scheduler starts a retry 15 minutes after a scheduled attempt exits non-zero or is killed at 45 minutes. The retry runs preflight again (step 2) and uses the same stored window.\n - If the job is killed or crashes, no failure row is written. The retry's preflight marks the leftover `running` row `timed out`, and the warehouse rolls back any open transaction when its session ends.\n - If the third attempt is killed or crashes, the next retry's preflight sees three non-committed attempts. It pages and exits 0, about 15 minutes later.\n - Worst case, the attempts end by 04:45 and the page comes by 05:00.\n\n10. Skipped night. After three failures, hwm_ts does not move. The next night's window starts from the older hwm_ts, so it also picks up the skipped night's changes. On-call can start a manual attempt for that run_date. It skips the three-attempt rule, uses the stored window and counts as an attempt.\n\n11. Sunday reconciliation. After a successful commit on a Sunday, the same process reconciles. If the Sunday night never commits, reconciliation is skipped that week. For each creation day D from run_date minus 30 to minus 1:\n a. Find the order_ids on the replica with updated_at after window_hi and ignore them on both sides.\n b. Over rows created on D with updated_at at most window_hi, compute COUNT and a checksum on the replica and on the warehouse.\n c. If both match, write a match row to `ctl.recon_results`.\n d. If either differs, reload day D (extract, check and merge, as steps 3 to 5a). This does not change hwm_ts and writes no runs row. The result goes to `ctl.recon_results`. A failed reload is recorded there and retried next Sunday.\n e. An order_id in the warehouse but not on the replica is recorded as an anomaly and not deleted.\n If the 45-minute kill hits during reconciliation, an uncommitted day rolls back and recorded days stay. The retry exits at preflight because the night is committed, so unfinished days wait until next Sunday.",
+   "gaps": [
+    "The document does not say how reconciliation gets the warehouse-side COUNT and checksum for day D. It names the fact table as read, but the fact table has no stated created_at column. The stated columns are is_deleted and deleted_at, plus the order data. So I cannot say how the warehouse is filtered by creation day.",
+    "The document does not say what a manual start does when a running row is 45 minutes or older and there are fewer than three attempts. Preflight step 2 marks it timed out, but the document does not say whether that manual attempt takes a new attempt number or reuses the latest row's window. The rule 'read window from the latest row' seems to apply.",
+    "The document does not say how a scheduled attempt 1 knows it is attempt 1 versus a retry if the scheduler restarts. It only says the count lives in ctl.pipeline_runs, so I assume it counts the rows there."
+   ],
+   "verdict": "wrong",
+   "notes": "Reconciliation step 2 says to compare COUNT and checksum on the warehouse side over rows created on day D, but the document never says mart.fact_orders holds created_at. A reader cannot tell how the warehouse is filtered by creation day, so the reconciliation step cannot be explained back."
+  },
+  {
+   "text": "1. Start. The scheduler starts the job at 02:00 UTC. run_date is that UTC date, and the start's trigger is `scheduled`. The scheduler only sees the exit status and enforces a 45-minute kill. It never reads the warehouse. Everything else runs inside the job process, which reads the replica and writes the warehouse. On-call can also start a manual attempt, and nothing retries those.\n\n2. Preflight. This runs on every start, in order. It reads `ctl.pipeline_runs`, which lives in the warehouse.\n   - 2.1. If a `committed` row exists for run_date, exit 0.\n   - 2.2. If a `running` row is under 45 minutes old and either it or this start is manual, another attempt is live. Exit 0 and change nothing. Otherwise mark all `running` rows for run_date `timed out`. A scheduled start only follows a process that has exited, so those rows are dead.\n   - 2.3. If the start is scheduled and three or more non-committed rows exist (`failed`, `timed out`, manual), page on-call and exit 0. The step 2.2 marking means a killed attempt counts.\n   - 2.4. Set the window and insert this attempt's `running` row (run_date, attempt number, trigger, started_at). The attempt number is the number of existing rows plus one. The first attempt for the night computes window_hi (02:00 UTC on run_date) and window_lo (hwm_ts minus 2 hours). hwm_ts is read from `ctl.pipeline_state`. Later attempts copy both values from the latest row, so the window never changes. The 2 hours of overlap cover rows that become visible up to 90 minutes after their updated_at.\n   - 2.5. Drop and recreate `stg.orders_run`, the staging table.\n\n3. Extract. The job opens one REPEATABLE READ read transaction on the read replica. It reads `orders` in keyset chunks ordered by (updated_at, order_id), with updated_at greater than window_lo and at most window_hi. It writes each chunk into staging. When the read ends, it stores extract_count (rows read) on this attempt's row and closes the replica transaction. Rows updated after window_hi are picked up by the next night.\n\n4. Check. Staging must hold exactly extract_count rows, with no repeated order_id and no null order_id or updated_at. If the check fails, the failure handler runs (see step 8).\n\n5. Commit. This is one warehouse transaction.\n   - (a) Merge staging into `mart.fact_orders`. Insert new orders. Replace an existing order only if the staged updated_at is equal to or later than the stored one. Copy created_at, deleted_at and the other columns, and set is_deleted to (deleted_at is not null).\n   - (b) Set hwm_ts to window_hi, but only if hwm_ts is lower.\n   - (c) Mark this attempt's row `committed` with its row counts.\n   - Then COMMIT and drop staging.\n   - An error before COMMIT rolls back a, b and c together, so the fact table and hwm_ts are unchanged. If the connection drops during COMMIT, the outcome is unknown. The next preflight settles it. If a committed row exists, the commit happened and the retry exits 0. If not, nothing changed. The next attempt reuses the same stored window and marks the leftover row `timed out`.\n\n6. Dashboards. At 06:00 UTC they refresh from `mart.fact_orders`, which holds only committed data. A deleted order is an ordinary update. It gets a new updated_at, loads like any change and stays in the table with is_deleted = true. Re-running a night writes the same values, and a row never moves back to an older version.\n\n7. Sunday reconciliation. This runs in the same process after the night's commit succeeds, under the same 45-minute kill. It covers creation days from run_date minus 30 through minus 1. For each day D:\n   - It finds the replica's order_ids with updated_at after window_hi and ignores them on both sides.\n   - It computes COUNT(*) and a checksum on both the replica and `mart.fact_orders`. The checksum is the sum, modulo 2^64, of a 64-bit hash of the text `order_id|updated_at`.\n   - If both match, it writes a match row to `ctl.recon_results`.\n   - If they differ, it reloads day D. It extracts that day's rows from the replica, then stages, checks and merges them (steps 3 to 5a). It does not change hwm_ts and writes no runs row. It records the result in `ctl.recon_results`. A failed reload is recorded and retried next Sunday.\n   - If the warehouse holds an order_id for D that the replica lacks, it records an anomaly and does not delete anything.\n   - If the 45-minute kill lands during reconciliation, the uncommitted day rolls back and days already recorded stay. The scheduler's retry exits at preflight because the night is committed, so unfinished days wait for the next Sunday.\n\n8. Failure handling. For an error the job catches (extract, check or commit), the failure handler rolls back any open warehouse transaction, drops staging, marks this attempt's row `failed` with the error text, and leaves hwm_ts alone.\n   - Scheduled attempt 1 or 2: the job exits non-zero and the scheduler starts a retry 15 minutes later, with the same stored window.\n   - Scheduled attempt 3 (caught error): the handler pages on-call and exits 0, so the scheduler stops.\n   - Manual attempt: the job exits non-zero. Nothing retries it and nothing pages.\n   - Kill at 45 minutes or a crash after step 2.4: the row stays `running` and any open warehouse transaction rolls back when its session ends. The scheduler retries 15 minutes later, and that retry's preflight marks the row `timed out`. If it was the third attempt, that preflight sees three non-committed rows, pages on-call and exits 0.\n   - Manual start while a running row is under 45 minutes old: exit 0 with a message. Start again once that row is 45 minutes old.\n\n9. The 06:00 check. Independently of the load, at 06:00 UTC the scheduler checks `ctl.pipeline_runs` for a committed row with run_date equal to that UTC date. This runs every day, including Sundays. If there is none, a staleness alert goes to #data-alerts. The load keeps going and dashboards keep showing the previous night.\n\n10. After a skipped or late night.\n   - A night committed late (for example 03:00) still sets hwm_ts to 02:00 of its run_date, so the next window is correct.\n   - A skipped night leaves hwm_ts unmoved. The next window starts from the older hwm, so the following night also loads the skipped night's changes, and windows grow after each skipped night.\n   - On-call can start a manual attempt for that run_date. It uses the stored window, skips the three-attempt rule and counts as an attempt.\n\nWorst-case timing: three 45-minute kills with two 15-minute gaps end the attempts at 04:45 UTC. A page after a killed third attempt comes by 05:00.",
+   "gaps": [
+    "The document does not say what the 06:00 check does after it sends the alert beyond the alert itself. It also does not say who acts on the alert or how a missed night is recovered apart from the optional manual attempt.",
+    "The document does not say what happens if the job exits 0 from the third-failure page path with respect to the 06:00 check. It does not describe how the scheduler is told to stop retrying except by the exit 0 status, because the scheduler is itself an open question. Which scheduler runs the job is unknown, and so is whether it enforces the 45-minute kill and the 15-minute gap.",
+    "The document does not give the value that seeds hwm_ts for the very first run, only that it is a fixed first backfill start. So it does not tell me what window the first-ever night extracts.",
+    "The document does not say whether dashboards query the warehouse only at 06:00 or also live between refreshes.",
+    "The document does not say how the job decides that a start is the first attempt for a run_date when it computes window_lo. It says only that the first attempt computes the window and later ones copy it. It does not say what happens if two starts pass preflight step 2 at the same instant, which it lists as an open question.",
+    "The document does not say whether the warehouse supports multi-statement transactions and rolls back on session end. The commit and kill behavior assumes this and is unconfirmed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

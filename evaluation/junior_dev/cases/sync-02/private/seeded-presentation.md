@@ -1,0 +1,25 @@
+# Catalogue sync notes
+
+So the incremental bit (runs on any network, cellular is fine): the app hits `GET /catalogue/changes?since=N&limit=1000` with N being the last_seq from the progress row and gets up to 1,000 rows back in change_seq order, tombstones included, plus has_more, and for every row it either deletes the local copy (when it's a tombstone, deleted=true, and if the row isn't there that's just a no-op) or upserts it, but only when the incoming change_seq is >= the change_seq we've already got locally, and the bookmark (last_seq) gets moved to the biggest change_seq in the batch inside the same transaction as the writes, and it keeps going while has_more is true, and after that last_sync_at is stamped, and if it dies halfway the batches that committed stay and the next trigger just carries on from last_seq.
+
+1. Retries, for every call. Network error or 5xx → same request again, waits 2 s, 4 s, 8 s, 16 s, max 5 attempts total, then give up until the next trigger. Nothing committed is lost because everything is in the sync table. Any other 4xx except 410: log it and stop until the next trigger.
+
+2. Big download pages: `GET /catalogue/full?after_id=X&limit=500`, which returns non-deleted products with id > X in ascending order and an is_last flag. One request in flight at a time. Fetching writes nothing; if a fetch fails for good the cursor hasn't moved, so the same page gets asked for next time.
+
+- The device-side DB is SQLite: `products` (what the screens read), the shadow table `products_staging`, and the sync table, a single row with mode (full/incremental), start_seq, cursor, pages_done, last_seq and last_sync_at. Rule of thumb: a page or a batch always lands in the same SQLite transaction as its bookkeeping.
+
+3. When a 410 resync_required comes back (the server sends it when since < purge_horizon_seq, the highest change_seq of any tombstone purged so far, and the purge job that deletes 7-day-old tombstones keeps it updated), from either the normal incremental loop or the post-download catch-up (e.g. a download that took more than 7 days), don't touch the live products table, flip the sync row to mode=full, wipe start_seq and the cursor, set pages_done=false, and start over with the Wi-Fi-only kickoff further down, which empties staging.
+
+Server side has an index on change_seq on the products table (product_id PK, deleted flag, change_seq).
+
+4. Kickoff (from the launch check, or after a 410): `POST /catalogue/full/start` returns start_seq = the highest change_seq right now. Then one transaction: empty the shadow table and write mode=full, start_seq, last_seq=start_seq, cursor=null and pages_done=false to the progress row. Wi-Fi only; if not on Wi-Fi, wait. If the call fails for good nothing was written, so the next trigger just kicks off again.
+
+Note: the change feed returns rows with change_seq > N, tombstones included, ordered by change_seq, each product once in its latest state; change_seq is assigned at commit so there are no gaps.
+
+5. Saving a page = one SQLite transaction that upserts the 500 rows into the staging table AND moves the bookmark to the page's last product_id AND sets pages_done if the page had is_last; the next page is only requested after that commits; if the app dies or the write fails first, the page is simply fetched again because nothing from it was kept. Before every page request check the network, and if we're not on Wi-Fi stop (a request already in flight still finishes and gets saved) and wait, then pick up from the saved cursor when Wi-Fi is back or on the next launch/foreground. Same thing if the app was killed, the phone restarted or retries ran out. Never back to page 1.
+
+6. On launch / coming back to the foreground, look at the sync row: nothing there or mode=full without start_seq → kickoff; mode=full with start_seq and pages_done=false → continue fetching pages; mode=full with pages_done=true → catch-up; mode=incremental and last_sync_at < 15 minutes ago → skip; else → the incremental loop at the top. This check doesn't write anything.
+
+7. Once pages_done is set, run the incremental loop against the shadow table from since=last_seq (start_seq the first time; any network is fine for this), which picks up everything edited during the download, including deletes and products inserted with an id behind the cursor. Paging over live data alone would miss those. Duplicates are harmless because of the >= rule. Each catch-up batch commits with its last_seq, so a failed catch-up resumes from there on the next trigger. When has_more is false, one transaction swaps staging into products and sets mode=incremental, cursor=null, pages_done=false and last_sync_at. The old catalogue stays on screen until this commit.
+
+Also, nobody has decided whether reps can look at the half-downloaded catalogue (reading the staging table, incomplete and filled in id order) during their FIRST download, or get a progress screen until the swap. Still open. For a re-download it doesn't matter, because the old products table keeps showing.

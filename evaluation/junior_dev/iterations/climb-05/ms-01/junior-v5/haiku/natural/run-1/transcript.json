@@ -1,0 +1,107 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The flowchart shows Place order creating the order PLACING and then POSTing /reservations to Inventory. Who makes that reservation call, and what does Cart wait for? Does the customer's request stay open until the charge is accepted, or does it return earlier?",
+     "about": "Customer presses Place order -> POST /orders -> Create order PLACING"
+    },
+    {
+     "id": "2",
+     "text": "When Order receives 'Order AWAITING_PAYMENT' after the 202 from Payment, how does the customer find out the result? What does the customer see while waiting up to 30 minutes for the webhook?",
+     "about": "Order AWAITING_PAYMENT / webhook, seconds up to 30 min"
+    },
+    {
+     "id": "3",
+     "text": "The reservation holds for 10 minutes but the webhook can take up to 30. How often does the late-success refund path actually happen, and is that the normal outcome for slow payments rather than a rare edge case?",
+     "about": "Claim versus expiry / Late success"
+    },
+    {
+     "id": "4",
+     "text": "What does the customer see on the Place order screen when stock is short? Cart is 'unchanged', so what does the customer do next, and what happens to the order row and checkout row in Order and Cart?",
+     "about": "Order REJECTED_OUT_OF_STOCK / Show short items to customer"
+    },
+    {
+     "id": "5",
+     "text": "The note says PaymentDeclined makes Order release the reservation. What does Order do if the Inventory release call fails or is slow, and does the hold simply expire on its own after 10 minutes?",
+     "about": "Release reservation, order PAYMENT_DECLINED"
+    },
+    {
+     "id": "6",
+     "text": "How does Order get the 'Request charge' result and the claim result: are the calls to Inventory and Payment synchronous HTTP, or events on the broker? The doc mixes POST calls and published events.",
+     "about": "Request claim of reservation / Broker"
+    },
+    {
+     "id": "7",
+     "text": "What happens if the provider accepts the charge but no webhook ever arrives, or the Payment row is stuck in AWAITING_WEBHOOK? Is there anything that polls or times it out?",
+     "about": "Payment AWAITING_WEBHOOK"
+    },
+    {
+     "id": "8",
+     "text": "The charge retry loop on timeout or 5xx: how many times, and what happens to the order if retries never succeed? Does the reservation get released?",
+     "about": "P2 -> P2 timeout or 5xx, retry same key"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Order makes the reservation call. In step 2, Order calls Inventory POST /reservations right after it creates the PLACING order. Cart's Place order request stays open until Order has the reservation answer and the provider's 202 for the charge, or a short-stock answer. It does not wait for the webhook. Reason: the short-stock answer must come back at once (note 3 of the brief), and the 202 comes quickly. The time the request may stay open depends on the open retry count."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The customer sees payment pending with the order id. The customer's page polls Order's status endpoint. Reason: Order already holds the result, so polling needs no new channel. The brief does not set the poll interval, and does not say whether a success email is sent. Both are open questions."
+    },
+    {
+     "id": "3",
+     "tag": "unknown",
+     "text": "The document has no measure of how often webhooks run past the 10-minute hold. The brief says they usually take seconds. Late success is a designed path for any payment whose webhook arrives after the hold lapses, so it is not rare if slow webhooks are common. We do not know the frequency. Added to open questions."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "On the Place order screen, the customer sees the short SKUs and stays on the cart. The cart is unchanged. Order keeps the order row as REJECTED_OUT_OF_STOCK, with the short SKUs stored, as a record. Cart marks its checkout row as rejected and keeps the snapshot. The customer edits the cart and presses Place order again. That creates a new attempt and a new order. Reason: a rejected row keeps a record for audit, and the brief says the cart stays unchanged."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Order retries the release call. The document does not say how long it retries, so that is an open question. If the release never succeeds, the hold still expires 10 minutes after it was made. The sweeper then marks it EXPIRED and frees the stock, so no stock is lost for good. Yes, the hold simply expires on its own."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Calls that need an answer now are synchronous HTTP: reserve, claim, release, charge and refund. Facts that other services act on are broker events: PaymentDeclined, PaymentSucceeded and OrderConfirmed. The provider's outcome arrives by webhook at Payment. Reason: reserve and claim each need a reply, and the rest are facts already known. The document now says this in its own section."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "No. The document has no poll and no timeout for a missing webhook. The Payment row stays AWAITING_WEBHOOK and the order stays AWAITING_PAYMENT. This is a real gap in the design. It is in the failure table and in the open questions."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The retry count is not set. Retries use the same key, so the provider cannot charge twice. The document does not say what the order becomes if the retries never succeed. The order stays PLACING, because no 202 arrives. This path does not release the reservation. The reservation lapses after 10 minutes and the sweeper frees the stock. The final order state is open."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer presses Place order. Cart (own DB) saves a checkout row holding a snapshot of the cart lines and prices plus a new checkout attempt id. The cart is NOT emptied. Cart calls Order over HTTP at POST /orders with the snapshot and attempt id, and the customer's request stays open. If the response is lost, retrying with the same attempt id returns the same order.\n\n2. Order (own DB) receives POST /orders. It creates an order with status PLACING, a new order id, the snapshot lines and the total. If the attempt id was seen before, it returns the existing order instead of making a second one. Order then calls Inventory at POST /reservations for all lines.\n\n3. Inventory checks, in one transaction, whether every line has enough available stock (on hand minus reserved).\n - If every line has enough: it inserts a hold with status HELD and expires_at = now + 10 minutes, raises the reserved count, and returns a reservation id.\n - If any line is short: it holds nothing and returns 409 with the short SKUs. Order sets REJECTED_OUT_OF_STOCK, stores the short SKUs and returns them to Cart. Cart marks its checkout row rejected and shows the customer the short items. The cart is unchanged and no charge is made. The customer edits the cart and presses Place order again, which is a new attempt with a new order. The old rows stay as a record.\n\n4. With the hold in place, Order calls Payment at POST /charges, using the order id as the idempotency key. Payment writes a payment row (REQUESTED), then calls the provider with the same key. On a timeout or 5xx it retries with the same key, so the provider cannot charge twice. When the provider accepts, Payment sets the row AWAITING_WEBHOOK and answers 202. Order sets AWAITING_PAYMENT and returns the order id through Cart to the customer. The customer's request ends here with payment still pending. The customer page then polls Order over HTTP for the order's status. If the provider never accepts the charge, the order stays PLACING, the hold is not released, the hold lapses after 10 minutes and the sweeper frees the stock, and the final order state is left open.\n\n5. Later the provider calls Payment's webhook with the outcome. This usually takes seconds and can take up to 30 minutes. Payment verifies the signature and inserts the provider's event id under a unique key. If that event id is already stored, it answers 200 and stops, with no state change and no event. If it is new, one transaction does three writes: a conditional update of the payment from AWAITING_WEBHOOK to DECLINED or SUCCEEDED, the event id insert, and an outbox row. After the commit a relay publishes PaymentDeclined or PaymentSucceeded to the broker. A repeated success finds the row no longer in AWAITING_WEBHOOK, so the update matches nothing and no second event goes out.\n\n6. Declined path. Order receives PaymentDeclined and sets PAYMENT_DECLINED. It calls Inventory to release the hold. Inventory sets the hold to RELEASED and lowers reserved, so the stock is on sale again. The cart is untouched, the status poll shows \"declined\", and the customer can retry. If the release call fails or is slow, Order retries it. If it never succeeds, the hold still expires 10 minutes after it was made and the sweeper frees the stock.\n\n7. Success path. Order receives PaymentSucceeded and calls Inventory to claim the hold. Inventory changes it to CLAIMED only if it is still HELD and not expired. It lowers both on hand and reserved. If the claim succeeds, Order sets CONFIRMED and publishes OrderConfirmed. Cart receives that event and removes the snapshot lines from the cart, matched by line id and quantity. Items added during checkout stay. The hold is not extended while the customer pays.\n\n8. Late success path. If the claim finds the hold EXPIRED, Inventory returns EXPIRED and takes no stock, since the stock may have been sold to someone else. Order sets CANCELLED_OUT_OF_STOCK, asks Payment for a full refund, and emails the customer that the refund is in progress. Payment writes a refund row REQUESTED with the refund key (order id plus \"refund\") and calls the provider. If the provider accepts, the row becomes REFUNDED. If it refuses, errors or times out, the row becomes FAILED, the attempt count goes up and the next attempt is scheduled with backoff, using the same refund key. The row is never deleted. When attempts run out, ops is alerted and the row stays open for a reconciliation job.\n\n9. Sweeper. Every minute a timer in Inventory marks HELD holds past expires_at as EXPIRED, putting their stock back on sale, at most about a minute after expiry. The sweeper and the claim use the same conditional update, so only one of them can change a given hold. The claim also checks expires_at itself, so a lapsed hold cannot be claimed even before the sweeper runs.\n\nDelivery between services is at least once. Receivers ignore an event id they have already handled and act only when the row is in the expected state. Senders write events through the outbox.",
+   "gaps": [
+    "What happens when the claim call from Order to Inventory fails (the document says this is open), so I cannot say what state the order, the hold or the payment ends in after PaymentSucceeded.",
+    "What happens when a webhook never arrives: the order stays AWAITING_PAYMENT and Payment stays AWAITING_WEBHOOK with no poll and no timeout, so I cannot say how that order ever ends.",
+    "The final order state, and the retry count and backoff, when the provider never accepts the charge. The order stays PLACING but how it finishes is not said.",
+    "How the broker events actually reach Order: how Order learns of PaymentDeclined and PaymentSucceeded and who triggers the Order-side steps is described only as events, with no detail on how Order records receipt. Also how Cart tells the customer about a rejection or confirmation when the original request has already ended.",
+    "How Order's status reaches the customer after step 4 is only 'polls Order'. The poll interval and whether a success email is sent are not given."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

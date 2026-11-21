@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The user_sync_outbox row in MySQL records that Postgres is behind. It is written in the same MySQL transaction as the change, so it survives an app crash right after the MySQL commit. The forward sweeper, or the inline apply if it succeeds first, copies the row to Postgres under the version rule, and the outbox row is deleted only after a copy at or above its version succeeds.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Every copy (inline apply, sweeper, backfill, repair) takes a per-id lock and checks user_tombstones in the target database before writing. Erasure writes the tombstone first and only then deletes the target copy, so a copy that races the erasure either sees the tombstone and stops, or finishes before the delete and is removed by it.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept in migration_state.last_completed_id in MySQL. The backfill commits each batch to Postgres first and then sets the checkpoint, so a crash between the two repeats the last batch, which is safe because copies are idempotent. It stops when a read from the replica in primary-key order returns an empty batch.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Full compare runs (step 6) find differences in id chunks of 2,000, reading the replica and Postgres, with delta checks at the switch and at rollback. Confirmed missing or lower-version rows are repaired by inserting an outbox row for the sweeper to copy. A higher version in Postgres raises an alert, and field differences or extra rows are investigated by hand rather than repaired automatically. Tombstoned ids are excluded.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Every write reads the MySQL control row first under a FOR SHARE lock, and the switch's UPDATE to owner='paused' waits for in-flight writes while new ones get a 503, so no MySQL-first write overlaps the switch. The Postgres commit point comes before MySQL is set to 'pg', and in that gap MySQL still says paused, so writes get a 503. If the switch runs long, the job aborts at 80 s before the commit point, restoring owner='mysql'; after the commit point it cannot abort and instead retries step 5 until it succeeds.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "In phase B, Postgres's identity sequence assigns ids, starting at MySQL MAX(id) + 10,000,000 set at the step 9 commit point, so the new ids sit in a range MySQL has not reached. MySQL's counter moves only when reverse copies insert ids into it. Before a rollback, step 5 checks that MySQL AUTO_INCREMENT is above MAX(id) and raises it if not, so MySQL assigns only ids that are not already in use. Ids are never reused, and the 32-bit lock-key limit is an open question.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "During phase B the reverse outbox in Postgres, drained by the reverse sweeper under the version rule and tombstone check, keeps MySQL complete, and erasures run with the roles swapped. A rollback sets read_source to 0, drains the reverse outbox, pauses Postgres, runs a delta check with zero mismatches, fixes AUTO_INCREMENT, commits owner='mysql' in MySQL, then sets Postgres to owner='mysql', clears mode, and restarts the forward sweeper. The option ends at step 11, when Postgres sets mode='pg_only' at least 14 days after pg_owner_since with the reverse outbox empty, after which MySQL is frozen and rollback is no longer possible.",
+  "decided": true
+ }
+}

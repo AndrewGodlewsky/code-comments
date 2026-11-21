@@ -1,0 +1,189 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What do the health probes check, and what exactly makes them alert on-call? Does on-call decide to fail over by hand, or does anything trigger automatically?",
+     "about": "Probes --> On-call"
+    },
+    {
+     "id": "2",
+     "text": "What does the failover command need as input, and where does it run? What does 'Take lock' lock, and who or what else could be holding it?",
+     "about": "Take lock"
+    },
+    {
+     "id": "3",
+     "text": "How does 'Fence A' work concretely? What does the control store hold, how do the apps learn A is fenced, and what happens if A is unreachable or an app ignores it?",
+     "about": "Fence A / Fencing goes through the control store"
+    },
+    {
+     "id": "4",
+     "text": "How is replication lag measured, what is the RPO and where is it set, and what does the command do when lag exceeds it? Who uses the override and what data is lost then?",
+     "about": "Lag check"
+    },
+    {
+     "id": "5",
+     "text": "What does 'Promote B' do to B, and how does the command know the promotion succeeded? What happens if it fails or hangs?",
+     "about": "Promote B"
+    },
+    {
+     "id": "6",
+     "text": "What is 'Fix up jobs'? What state do the job workers and Redis hold, and what gets changed or re-run so jobs that were mid-flight on A are handled?",
+     "about": "Fix up jobs"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Scale up B' change, and why is it needed? What does 'Health check' test, and what happens if it fails after B is already promoted?",
+     "about": "Scale up B / Health check"
+    },
+    {
+     "id": "8",
+     "text": "What does 'Switch DNS' change, and how does the global traffic manager do it? How long until clients reach B, and what do users see in the meantime?",
+     "about": "Switch DNS"
+    },
+    {
+     "id": "9",
+     "text": "If the command stops partway, how do you decide whether to resume or abort, and what does abort undo at each step (especially after fencing or promotion)?",
+     "about": "The command logs its progress and can be resumed or aborted"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Probes call A's /healthz every 10 s from three locations. A is down when 2 of 3 see 3 failures in a row. That only pages on-call. Nothing fails over by itself, and on-call starts the command by hand."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The command runs from outside region A and takes the target region and an operator name as input. 'Take lock' marks the active-region record 'failover running', so a second run refuses to start. A crashed run leaves the mark until resume or abort clears it. The brief does not require this, but the draft already had it and two concurrent runs are the main hazard."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Fencing uses a lease. The control store holds the active region, the lease expiry and the failover state. A's apps and workers renew the lease every 20 s, each renewal lasting 60 s. The command sets 'fenced', so renewals are refused, then waits out the lease plus 10 s. A partitioned A stops writing on its own, with no contact needed. A stale app that ignores the lease is not stopped; this is an open question about the database itself."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "B records replay lag each time it receives changes from A, and the command reads the last recorded value. The RPO of 30 s is set in the brief, and the command stops above 30 s. The person running the command passes the override flag, and it is logged with their name and the lag value. Lost data is writes A committed after B last received them. Its size is not known, because the recorded value may understate it."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Promotion turns B's replica into a primary that accepts writes, and the command confirms B accepts writes. If it fails or hangs, the command first checks whether B already accepts writes, then retries. If B is still a replica, A stays fenced. Resume retries, and abort is allowed because B was not promoted."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Job state is in the Postgres jobs table. Redis holds only sessions, per the brief. After promotion, B's fix-up resets `running` rows to `queued`. A job that was mid-run on A restarts from the beginning, so jobs must be idempotent. The brief does not say that, so it is a decision; the earlier notes already required it. Side effects A made but did not record may repeat."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Scale up takes B's web tier from 2 to 12 instances to match A, and starts workers. This is needed to carry full traffic, and workers must wait until B's database is writable. The health check calls /healthz through B's load balancer on every instance. What the endpoint tests is not known. If it fails after promotion, DNS is not moved, and the command cannot abort back. The operator fixes B and resumes."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not say how the traffic manager is changed, by API or console. The DNS name is pointed at B's load balancer, and the 60 s TTL means most clients move within about a minute. It is not known how resolvers that ignore the TTL behave. Until the switch, users see an outage because A is down. After it, they must sign in again."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The step log lets the command resume from the last completed step. Abort is allowed only before promotion. Before fencing, clear the mark. After fencing but before promotion, confirm B is still a replica, then lift the fence and renew A's lease, since nothing was written to B. After promotion, abort is refused. After DNS has moved, there is no abort. The operator chooses between resume and abort."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Do B's apps and workers also need a lease from the control store before they can write? If so, when does the active-region record change from A to B, and which step does that?",
+     "about": "Fence A / Lease"
+    },
+    {
+     "id": "11",
+     "text": "After promotion the record says 'A fenced'. What value does it hold while B is writable, and what does a second run of the command see at that point?",
+     "about": "Promote B"
+    },
+    {
+     "id": "12",
+     "text": "The lag is read before fencing, but A may still write during the lease wait. Do those writes count toward the 30 s RPO, or are they lost too without anyone measuring them?",
+     "about": "Check lag / Fence A"
+    },
+    {
+     "id": "13",
+     "text": "For a hung promotion, the table says the command checks whether B accepts writes, and the abort section says to confirm B is still a replica. Who runs that check, the command or the operator, and what if the promotion is half done and B is in neither state?",
+     "about": "Step 5 failure row / Resume or abort"
+    },
+    {
+     "id": "14",
+     "text": "How does the fix-up tell a job that was running on A from one that B's own workers just picked up, given B's workers start only after it? Does a rerun after resume risk resetting jobs B has already started?",
+     "about": "Fix up jobs"
+    },
+    {
+     "id": "15",
+     "text": "When the health check fails and there is no abort, how long can users stay down, and who decides when to stop fixing B? Is there any path back to A at that point?",
+     "about": "Health check"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. B's apps and workers also need the write lease. The record moves from B promoted to B active at step 7, when the command grants B the lease. That is after promotion and the job fix-up, and before B's workers start at step 8."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The record holds B promoted from step 5 until step 7, and B active from step 7 on. A second run sees a state other than normal, so it refuses to start. The operator resumes the marked run instead."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, they count toward the RPO. Before this round no step measured them. Step 4 now re-reads B's lag after the lease wait and applies the same 30 s rule, so the gap that exists when A stops is checked. The re-read reflects what B received, so writes B never got are lost. A failed re-check leaves A fenced and B unpromoted."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The command runs the check, not the operator. A replica means B was not promoted, so A stays fenced. A primary means the promotion worked, so the command continues. If B cannot be read at all, the command stops. A stays fenced, so nothing writes, and the operator checks B's database by hand before resuming."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No B worker can have started before step 6 is logged, because workers start at step 8 and the step 6 log write comes first. A rerun after resume skips step 6 when the log shows it done. If the log write was lost, the rerun still happens before any worker starts, so it resets only A's jobs. Rows that B's web tier adds later are queued, so they are untouched."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "Not known: how long users may stay down, and who sets that limit. The brief gives an RTO of 15 min but no limit on fixing B. The plan has no path back to A, because after promotion there is no abort and A's old database is never primary again. On-call decides when to stop fixing B, for now. This is listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough: region A has been serving everything and has just been lost. I follow one failover run from the first page to the last DNS change.\n\n1. Detection. Three outside probes call A's `/healthz` every 10 s from three locations. A counts as down when 2 of the 3 probes see 3 failures in a row. The only result is a page to on-call. No data changes and nothing fails over by itself. If the probes were wrong, nothing changes and on-call decides.\n\n2. Start. On-call runs the failover command for region B from outside A, because A may be unreachable. The operator's name is an input. The command reads the active-region record in the control store, which sits outside A and both regions can reach. If the state is `normal`, it sets it to `failover running`. If it is any other state, the command refuses, so a second run cannot start. The mark can be cleared only after confirming the other run is dead. From here every completed step is written to the step log in that same record, so any machine can resume the run. Each step first checks whether it already happened.\n\n3. Check lag. The command reads the last replay lag that B recorded the last time it received WAL from A. That number stops moving while A is silent. At 30 s or less the command continues. Over 30 s it stops, clears the mark and leaves A untouched, unless the operator passes the accept-data-loss override. The override is logged with the operator's name and the lag value. The operator can wait and rerun, or rerun with the override.\n\n4. Fence A. The command sets the record to `A fenced`. The control store now refuses A's lease renewals. A's apps and workers renew every 20 s and each renewal lasts 60 s, so A stops writing at most 60 s after its last renewal. The command never contacts A. It waits for lease expiry plus 10 s of margin, then reads B's lag again and applies the same 30 s rule or the override. Writes that A makes during the wait count toward the RPO only if B received them. If the control store write fails, the command stops with A untouched and still writing, and resumes once the store is reachable. If the re-check fails, the command stops and A stays fenced. B is not promoted, and the operator can resume or abort.\n\n5. Promote B. The command promotes B's PostgreSQL replica to primary and checks that it accepts writes. On success it sets the record to `B promoted`, and B is then the only writable database. If promotion fails or hangs, the command reads B's state. A replica means the promotion did not happen, so A stays fenced and the operator resumes to retry or aborts. A primary means it worked, and the command continues. If B cannot be read, the command stops and A stays fenced. The operator checks B by hand and then resumes.\n\n6. Fix up jobs. On B's database, every row in the jobs table marked `running` is set to `queued` and its attempt count goes up by 1. No B worker is running yet, so every `running` row must have been started on A. Those jobs restart from the beginning, so they must be idempotent. A side effect that A made but did not record may repeat. The command writes step 6 to the step log before step 7. If this step fails part way it is safe to rerun, because it touches only `running` rows and no B worker has started. Resume covers that case.\n\n7. Grant B's lease. The command sets the record to `B active` and grants the write lease to B. B's apps and workers then renew it the same way A's did. If the control store write fails, B is promoted but holds no lease, so nothing in B writes and A stays fenced. The operator resumes.\n\n8. Scale up. The command takes B's web tier from 2 instances to 12 and starts B's workers. Workers start only now, after B's database accepts writes and B holds the lease. Workers poll the jobs table and pick up the `queued` rows, including the reset ones. If scale-up fails, DNS has not moved, so users still reach A, which is down and fenced. The operator resumes.\n\n9. Health check. The command checks `/healthz` on every B instance through B's load balancer. Every instance must pass. If any fails, B is promoted but DNS is not moved. The operator fixes B and resumes. Abort is not allowed at this point.\n\n10. Switch DNS. The command tells the global traffic manager to point the one DNS name at B's load balancer. With a 60 s TTL, most clients reach B within about a minute. If the call fails, DNS is not moved, users still reach A (down and fenced), and the operator resumes.\n\n11. Users. Sessions live in Redis, once per region, and are not copied to B. Users who were signed in must sign in again, which is accepted.\n\nResume and abort. Resume is the default and continues from the last completed step in the step log. Abort is allowed only before promotion. Before fencing, it clears the mark. After fencing and before promotion, the command confirms B is still a replica, then the operator clears `A fenced` and A's apps take the lease again. After promotion or DNS, there is no abort. The operator chooses between resume and abort.\n\nAfterwards. A's old database is never primary again. It is rebuilt as a replica of B when A returns. Moving back to A is a separate, planned switchover.\n\nTargets: RPO 30 s and RTO 15 min, measured from when on-call starts the failover.",
+   "gaps": [
+    "The document does not say how the failover command learns which machine to run on or how it authenticates to the control store, B's database, the load balancer or the traffic manager. I could not explain how it reaches each of those.",
+    "The control store product is unnamed, and the document does not say how it keeps the lease and the `A fenced` state consistent. It also does not say what happens if it is unreachable once A is lost, beyond 'resume when reachable'. I could not explain the mechanism behind refusing A's renewals.",
+    "The document does not say how the operator tells the command to resume, abort or pass the override, or how the command decides which step it is on after a restart beyond 'the step log'.",
+    "The document does not say how a worker actually claims a `queued` job and marks it `running`, or how jobs reach the jobs table on B's side during normal operation.",
+    "The document does not say what B's `/healthz` checks, so I cannot say what a pass means.",
+    "The document does not say how the web tier is scaled or how workers are started, such as by API, orchestrator or a script.",
+    "The document does not say how the traffic manager is changed, by API or console, and it says some resolvers may ignore the TTL. I cannot explain how clients that do ignore it reach B.",
+    "The document does not say how a partitioned A that ignores its lease is stopped from writing. It lists this as an open question, so the 'never writes to two databases' guarantee is not explained for that case.",
+    "The document does not say what B's apps do with requests while B has no lease, or what users see between the fence and the DNS switch.",
+    "The document does not say how a stale `failover running` mark is judged dead before it is cleared, or who decides."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

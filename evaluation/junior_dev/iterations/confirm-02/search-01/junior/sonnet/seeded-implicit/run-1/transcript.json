@@ -1,0 +1,187 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Debezium reads from Postgres. What exactly does it read, and what is the \"slot\" the notes mention? What does a change event look like when it lands in Kafka?",
+     "about": "Postgres --> Debezium; Notes: Watch WAL growth on the slot"
+    },
+    {
+     "id": "2",
+     "text": "When a product row is updated in Postgres, what are the steps until the new data is searchable in products_v3? Roughly how long does that take?",
+     "about": "Kafka catalog.products --> Indexer --> products_v3"
+    },
+    {
+     "id": "3",
+     "text": "What does \"Versions come from commit_lsn\" mean? What is the version used for, and what does the search index do with it?",
+     "about": "Notes: The indexer batches and bulk-writes. Versions come from commit_lsn."
+    },
+    {
+     "id": "4",
+     "text": "\"Only active products are indexed.\" What happens when a product goes from active to inactive, or is deleted? Does it get removed from the index, and how does the indexer know?",
+     "about": "Notes: Only active products are indexed"
+    },
+    {
+     "id": "5",
+     "text": "What counts as an error that is retried with backoff, and what counts as a bad doc that goes to the DLQ? How many retries before it gives up, and does the indexer keep going or block while retrying?",
+     "about": "Notes: Retries with backoff on errors; bad docs go to the DLQ"
+    },
+    {
+     "id": "6",
+     "text": "Who reads the DLQ, and how do its messages get fixed or replayed? Does a doc in the DLQ mean the index is stale for that product?",
+     "about": "IX -.-> DLQ"
+    },
+    {
+     "id": "7",
+     "text": "In the reindex, what does the reindex job read from for the snapshot backfill, and how does catch-up from Kafka into products_v4 work? How do the snapshot and the Kafka events avoid overwriting newer data with older data?",
+     "about": "Reindex: snapshot backfill, catch up from Kafka; Reindex job --> products_v4; K -.-> V4"
+    },
+    {
+     "id": "8",
+     "text": "What decides that products_v4 is \"ready\" for the swap, and who performs the alias swap? What does the Search API see during the swap, and how do you go back to v3 if v4 is bad?",
+     "about": "Reindex: swap the alias when ready, keep v3 for 48 h; Alias swap; alias products"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Debezium reads the Postgres WAL through replication slot search_slot. The slot makes Postgres keep WAL until Debezium reads it. Events are {op, id, after (full row or null for d), commit_lsn}. Now defined in Terms and step 1."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Postgres commit, then WAL, Debezium, Kafka, then the indexer batches and bulk-writes to products_v3 with version commit_lsn. The target is 95% of changes searchable within 5 s; this is a target, not measured. Added to live sync steps 3-4."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The index applies a write only if its version is at least the stored version; otherwise it returns a version conflict. commit_lsn is larger for later commits, so older changes are rejected. A conflict means stale; it is counted, not an error. Added to Terms and step 5."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. A delete event (op d) or any event whose status is not active becomes a delete action in the index. This is also what fixes the hard-delete gap in the cron job. Added to live sync step 3."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Brief: timeouts, 5xx and throttling are retried with backoff 1 s doubling to a 60 s cap, with no retry limit and no skipping ahead, so the partition blocks while retrying. A document the index refuses as invalid goes to the DLQ with the error plus an alert, and processing continues. Added to step 5."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "Who reads the DLQ and how messages are replayed is not decided. The product stays stale in the index until a later change for it succeeds or a replay happens. Added to open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The snapshot reads active rows from Postgres in one repeatable-read transaction and writes them to v4 with the snapshot LSN as version. After the backfill, a second consumer group replays catalog.products from before the snapshot time into v4. Events older than the snapshot LSN lose the version check; newer ones apply. Starting catch-up after the backfill avoids a delete being applied before its document exists. Added as rebuild steps 2-3."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Ready means v4 is under 5 s behind and its document count is within 0.5% of the active row count. The reindex job swaps the alias atomically, so the API sees v3 or v4, never neither. Rollback is to move the alias back to v3, which stays current because both writers keep running for 48 h. Added as rebuild steps 4-6."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "After the slot is dropped, what makes Debezium start producing events again, and how does the rebuild's catch-up get events for changes made after the snapshot? Does a new slot have to exist before the snapshot is taken?",
+     "about": "Replication slot (search_slot); step 1 Postgres to Debezium: At 50 GB ops drop the slot, and a full rebuild is then the only way back"
+    },
+    {
+     "id": "10",
+     "text": "How does indexer-v4 find the Kafka offset to start from, given it only knows a snapshot time or LSN? How far before the snapshot does it start?",
+     "about": "Rebuild step 3. Catch-up: reads catalog.products from before the snapshot time"
+    },
+    {
+     "id": "11",
+     "text": "What happens if the backfill finishes but the catch-up indexer (indexer-v4) fails or stalls partway? Does the same drop-and-restart rule apply?",
+     "about": "Rebuild step 2. Snapshot backfill: If it fails, drop v4 and start again"
+    },
+    {
+     "id": "12",
+     "text": "Which processes are the two writers during the 48 h, and do they read the same topic with separate offsets? What if v4 is slow or blocked on a transient failure: does that hold up the v3 writer?",
+     "about": "Rebuild step 6. Keep v3 for 48 h: Both writers keep running"
+    },
+    {
+     "id": "13",
+     "text": "How do you move from the cron job to the indexer? The cron job wrote products_v3 without commit_lsn versions, so how does the indexer treat documents already in v3, and when does the cron stop?",
+     "about": "Plan summary: the cron job is retired; Rules that apply throughout"
+    },
+    {
+     "id": "14",
+     "text": "What happens if Kafka or the Debezium to Kafka link is down or slow? And what happens if the indexer is down for longer than 7 days, or a rebuild takes longer than the retention allows?",
+     "about": "Live sync step 2. Debezium to Kafka: Kafka keeps events 7 days"
+    },
+    {
+     "id": "15",
+     "text": "What makes the index refuse a document as invalid? Is that something that depends on the product data, such as a bad title or price?",
+     "about": "Live sync step 5. Failures: Index refuses a document as invalid"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "After a drop, nothing produces events until an operator recreates search_slot and restarts Debezium. The snapshot must be taken after the new slot exists, so every change after the snapshot reaches Kafka and catch-up can read it. Changes made while no slot existed are covered only by the snapshot. Added to rebuild step 1. How Debezium itself recreates the slot is not in the setup notes."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The reindex job records the snapshot start time. indexer-v4 asks Kafka for the offsets at that time minus 5 minutes, per partition, by timestamp. The margin covers clock skew; events older than the snapshot LSN lose the version check and are harmless. The 5 minutes is my choice, not a measured value. Added to rebuild step 3."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "No, the drop-and-restart rule is for a failed backfill only. If indexer-v4 fails or stalls, v4 is kept and the indexer resumes from its own committed offsets with the live-sync retry rules. v4 is dropped only if the events it still needs have aged out of the 7-day retention. Added to rebuild step 3."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The two writers are the live indexer (group indexer-v3) and indexer-v4, separate processes with separate offsets on the same topic. A stall on v4 does not hold up v3, so rollback stays safe. Added to rebuild step 6."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "Cutover from the cron job is not decided. Cron wrote v3 without commit_lsn versions, and the setup notes do not say how the store compares a versioned write with an unversioned stored document, so I cannot say when cron can safely stop. Added to open questions."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "If Kafka or the Debezium-to-Kafka link is down, Debezium cannot publish and stops reading the slot, so the WAL piles up under the same 20 GB alert and 50 GB drop as step 1. If the indexer is down for more than 7 days, the missed events are gone and a full rebuild is the way back; alert on indexer lag well before then (no threshold set). A rebuild is about 2.5 h of backfill and catch-up starts from the snapshot time, so retention is not a limit for it. Added to live sync step 2."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "Not known. The brief only says the index may refuse a document as invalid; what triggers it (for example data that does not fit the mappings) is not stated in the files. Added to open questions; no change to the flow."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one change, an update to a product row, through live sync. Then I'll follow a rebuild.\n\n**Live sync: one product update**\n\n1. A write is committed to the `products` table in Postgres (the primary, `catalog-primary`). The change is an insert, an update or a hard delete. Postgres records it in the write-ahead log (WAL). The table is published by `catalog_search`. State sits in Postgres and its WAL. The replication slot `search_slot` is a bookmark that makes Postgres keep the WAL until Debezium has read it.\n2. Debezium reads the committed change through the slot and turns it into one event. The event looks like `{op: c|u|d, id, after: full row or null for d, commit_lsn}`. `commit_lsn` is the WAL position of the committing transaction, and a larger value means it committed later. Debezium writes the event to Kafka topic `catalog.products`. The topic has 12 partitions and is keyed by product id, so one product's changes stay in commit order. Kafka keeps events for 7 days.\n3. The indexer reads new batches from the topic as consumer group `indexer-v3`. Each group keeps its own offsets, which record how far it has read. The indexer turns each event into one bulk action on index `products_v3`, with the document version set to `commit_lsn`.\n   - If the op is `d`, or `after.status` is not `active` (draft or archived), the action is a delete. That is how hard deletes and active-to-inactive changes leave search.\n   - If the op is `c` or `u` and the status is `active`, the action indexes the document. The fields are sku, title, description, and price = price_cents / 100.\n4. The index applies a write only if its version is at least the stored version. An older write gets a version-conflict error for that document.\n5. The index acknowledges the batch. Only then does the indexer commit the Kafka offsets for that batch. This is a rule that holds throughout. So the progress state is the slot (how far Debezium has read) plus the group's offsets (how far the indexer has written).\n6. The Search API queries only the alias `products`. The alias currently points at `products_v3`, so the updated product shows up there. The target is 95% of committed changes searchable within 5 s. That target has not been measured.\n\n**Failures in live sync**\n\n- Debezium is down, or Kafka is down so Debezium cannot publish and stops reading the slot. In both cases the WAL piles up on the primary. There is an alert at 20 GB retained. At 50 GB ops drop the slot, and after that a full rebuild is the only way back.\n- The indexer is down for more than 7 days. The events it missed are gone, and a full rebuild is the way back. A lag alert is wanted, but no threshold is set.\n- Version conflict. The change is stale. It is counted, and it is not treated as an error.\n- Transient index failure (timeout, 5xx, throttling). The same batch is retried with backoff starting at 1 s, doubling, and capped at 60 s. There is no retry limit and it never skips ahead. That partition waits until the index recovers.\n- The index refuses a document as invalid. The document and the error go to the DLQ `catalog.products.dlq`, an alert is raised, and processing continues. That product stays stale until a later change for it succeeds or someone replays the DLQ message.\n\n**Rebuild, run by an operator by hand (new mappings or after data loss)**\n\n1. Create `products_v4` with the new mappings. The alias still points at v3. If the slot was dropped, first recreate `search_slot` and restart Debezium, and only then take the snapshot. That way every change after the snapshot reaches Kafka. Changes made while there was no slot are covered only by the snapshot.\n2. The reindex job opens one repeatable-read snapshot of Postgres. It notes the snapshot LSN and start time. It reads active rows at up to 5,000 rows/s, about 2.5 h, and writes them to v4 with the snapshot LSN as version. If this fails, drop v4 and start again.\n3. After the backfill finishes, a second indexer in group `indexer-v4` (its own offsets) starts reading `catalog.products`. It starts at the offsets Kafka reports for 5 minutes before the snapshot start time, per partition, by timestamp. The margin is a choice, not a measured value. It writes to v4 with the same rules as live sync. Events older than the snapshot LSN lose the version check and are counted as stale. Newer events apply. If indexer-v4 stalls, keep v4, restart it, and it resumes from its own offsets with the same retry rules. Drop v4 only if the events it needs have aged out of the 7 days.\n4. Ready check. Swap only when v4 is less than 5 s behind Kafka and its document count is within 0.5% of the active row count in Postgres.\n5. Swap. The reindex job moves the alias `products` to v4 in one atomic step. The Search API then sees v3 or v4, never neither.\n6. Keep v3 for 48 h. indexer-v3 keeps v3 current, so rolling back means moving the alias to v3, and no changes are lost. After 48 h, stop the v3 writer and delete v3.\n\n**Cron job.** Today a cron job polls every 15 minutes and writes v3 directly. It is to be retired. The document does not say when it stops.",
+   "gaps": [
+    "Cutover from the cron job is undecided, so I cannot say what writes v3 during the transition. The document says it is unconfirmed how the store compares a versioned write with an unversioned stored document written by cron.",
+    "Whether the store keeps version information for deleted documents is not confirmed. I cannot say whether an older write could bring a deleted product back.",
+    "What data makes the index refuse a document as invalid is unknown. Who reads the DLQ and how messages are replayed is undecided.",
+    "How Debezium recreates a dropped slot is not in the setup notes. I cannot explain that part of rebuild step 1.",
+    "The indexer lag alert threshold is not set, so I cannot say when the 7-day-loss warning would fire.",
+    "The 5 s latency target is unmeasured, so I cannot say whether the live flow meets it.",
+    "The document does not say what the 'ready check' compares to measure 'less than 5 s behind Kafka', or how the reindex job learns that indexer-v4 has caught up.",
+    "The document does not say how the operator or the reindex job launches and sequences the rebuild steps."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

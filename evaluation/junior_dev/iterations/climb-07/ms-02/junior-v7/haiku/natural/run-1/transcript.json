@@ -1,0 +1,189 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the broker, and what does the publisher actually send to it? Is a message the whole notifications row including email and payload?",
+     "about": "Summary: A publisher in the monolith hands each row to the broker"
+    },
+    {
+     "id": "2",
+     "text": "In step 6 the publisher publishes and waits for broker confirmation before committing. What happens if the broker is slow and that transaction stays open? Does it block the monolith worker or enqueue_notification?",
+     "about": "Step 6: Publisher, per batch, in one transaction"
+    },
+    {
+     "id": "3",
+     "text": "Who sets claimed_at on the service side, and how does the service's lease work? What is the service's equivalent of the 5-minute lease and the 12-hour in-doubt rule?",
+     "about": "Service worker: claim queued rows due now with a lease"
+    },
+    {
+     "id": "4",
+     "text": "What are the 'monolith worker' and 'old worker'? Is it the same thing as the 'old worker' in step 6? How does it find rows (poll interval, batch size)?",
+     "about": "Monolith worker, new claim flow"
+    },
+    {
+     "id": "5",
+     "text": "What does the monolith do with notifications.status for a service-owned row between handoff and the outcome event? What do support and users see during that time?",
+     "about": "Outcome events"
+    },
+    {
+     "id": "6",
+     "text": "In step 2, the monolith worker claims rows where route is NULL or monolith. During step 6, when a type is set to service, how does the worker avoid grabbing route-NULL rows of that type before the publisher does?",
+     "about": "Single owner / Old worker skips service-routed rows"
+    },
+    {
+     "id": "7",
+     "text": "Who pages on-call and how, for the paging cases such as in-doubt rows, backlog age and the 7-day republish cap? Where do these alerts come from?",
+     "about": "Paging"
+    },
+    {
+     "id": "8",
+     "text": "What is the in-doubt rule on the service side when a claim is more than 12 hours old? Is a row stuck in 'sending' failed without checking whether MailRelay accepted it?",
+     "about": "In-doubt rule"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The broker is the message broker already used by billing and search. It delivers at least once, redelivers a message not acknowledged within 30 s, and confirms a publish once the message is stored. The publisher sends one message per row, with the notification id as the message id, carrying the row's id, type, user id, email and payload. The summary and step 6 now say so. Whether the payload should be minimised or encrypted is open question 1."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Changed. The publisher now commits the handover (route = service) before it publishes, so no transaction waits on the broker. The only open transaction is the short select-and-update, which holds row locks for a moment. The monolith worker skips locked rows (SKIP LOCKED) rather than waiting. enqueue_notification inserts new rows and is not blocked by row locks on other rows. If the broker is slow, handed-off rows stay unpublished and the publisher retries on each poll."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The service worker sets claimed_at and first_claimed_at when it moves a row from queued to sending, in its own committed transaction, and clears claimed_at when it schedules a retry or the row is terminal. The service uses the same 5-minute lease: a sending row whose claimed_at has expired can be claimed again with the same key. Its in-doubt rule is the same as the monolith's: if first_claimed_at is more than 12 hours old and there is no result, the row is failed and paged. The invariants now state this for both sides."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The monolith worker and the old worker are the same thing: the in-process run_worker in app/notifications.py. Steps 1 and 2 change it, and it stays in the monolith as the rollback path until decommission. It polls every 5 s (POLL_SECONDS) and claims up to 50 rows per batch (BATCH_SIZE). The Terms section now defines both names as one component."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The monolith row keeps status pending until the outcome event arrives, and then the consumer sets status and outcome_at. Support tooling sees pending with route = service and handed_off_at set. Users see nothing until the service sends the email. Support tooling may need to show route beside pending, which is open question 7."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Changed. The monolith worker's claim filter now takes route-NULL rows only when that type's flag is monolith. The publisher takes route-NULL rows only when the flag is service. The flag decides which side tries first. The committed claim decides ownership, so a late-read flag cannot give a row to both sides."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The owning side pages, through the existing alerts.page_oncall. In-doubt rows are paged by whichever sender finds them, the monolith worker or the service worker. The 7-day republish cap is paged by the monolith publisher, which owns handed-off rows. The source of the 5-minute backlog-age alert is not named in the brief, so it is open question 8."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes. An in-doubt row is failed and paged. It is not checked against MailRelay, because the overview documents no lookup. The row may already have been delivered, and on-call decides. Resends stop 12 hours after the first claim, so every resend falls inside MailRelay's 24-hour key window measured from the first send. The 12-hour threshold itself is open question 3."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The summary says the publisher 'commits a row's handover first, then sends to the broker', and the service 'reports the outcome on a topic'. Which broker topic carries the handed-off rows: is it notifications.v1, and what is the outcome topic called?",
+     "about": "Summary / Step 3: notifications.v1 topic"
+    },
+    {
+     "id": "10",
+     "text": "When the monolith worker's send fails with a retryable error, it clears claimed_at and sets next_attempt_at. Does the claim query also check next_attempt_at, and does the route stay 'monolith' for the retries?",
+     "about": "Monolith worker, new claim flow"
+    },
+    {
+     "id": "11",
+     "text": "In step 6 the service worker claims queued rows and sends them. If MailRelay is slow or times out on one send, what happens to that row and to the other rows in the batch? How does the lease relate to the MailRelay timeout?",
+     "about": "Service worker: claim queued rows that are due, with the lease"
+    },
+    {
+     "id": "12",
+     "text": "How does the service publish its outcome_outbox rows to the outcome topic, and when does it set published_at there? What does the monolith consumer do with an event for a row whose route is not 'service'?",
+     "about": "Outcome events / outcome_outbox"
+    },
+    {
+     "id": "13",
+     "text": "The step 4 dry run copies rows to notifications.shadow.v1 'published only', with no route change. How does the publisher know which rows are 'newly enqueued', and does it do this on top of the normal worker sending the real email?",
+     "about": "Step 4: Dry run on the service"
+    },
+    {
+     "id": "14",
+     "text": "During rollback, a type flag goes back to monolith while some rows are handed off and some route-NULL rows exist. If the publisher has claimed a batch (handover committed) but not published, does that batch go to the service anyway? What does 'full effect within one minute' mean for a row sitting in this state?",
+     "about": "Rollback procedure steps 2-3"
+    },
+    {
+     "id": "15",
+     "text": "Reconciliation: what exactly does the monolith compare, how often does it run, and who looks at the mismatch report?",
+     "about": "Step 7: Reconciliation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Handed-off rows go on notifications.v1. The brief does not name the outcome topic, so I named it notifications.outcome.v1 to match the v1 pattern. The shadow copies are on notifications.shadow.v1. All three names are now in Terms, and the summary and steps 5 and 6 use them."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The claim query now says it takes pending rows that are due (next_attempt_at <= now()), so retries wait for their backoff. A retryable failure clears claimed_at and sets next_attempt_at, and the row keeps route = 'monolith'. The route is set on the first claim and the publisher never claims monolith rows, so the flag does not move a retry to the service."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Each service row is sent and its result written in its own transaction, so a slow or timed-out send is a retryable failure for that row only and the other rows in the batch continue. The lease must be longer than the MailRelay timeout (invariants). The brief does not give the timeout value or the service batch size, so these are open question 10."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The service's outcome publisher sends each outcome_outbox row with no published_at to notifications.outcome.v1, sets published_at after broker confirmation, and retries unconfirmed rows on its next poll. The monolith consumer does not apply an event for a row whose route is not service. It logs the event as a mismatch for reconciliation, because applying it would give one row two owners' outcomes, and logging keeps the problem visible."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The publisher selects rows with shadow_published_at NULL and created_at after the step 4 deploy, and sets shadow_published_at when the broker confirms. A column is the simplest marker, and it needs no cursor state. The step 4 copy does not change routing or claims. The monolith worker still claims and sends real email as in step 2. render_hash is added to the schema for the monolith's hash."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes. A batch whose handover committed but was not yet published still goes to the service. The publisher keeps publishing handed-over rows whatever the flag says (rollback step 2), and the monolith never claims a service-routed row. The one-minute window applies to new route-NULL rows reaching the monolith. This row is already route = 'service', so it finishes on the service once published and is not sent by the monolith. Rollback step 2 and step 3 now say this."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The monolith compares route-service rows that have handed_off_at set with applied outcome events (outcome_at), and it also reports outcome events for rows that are not route service. It runs hourly, which matches the republish cadence. The Platform team gets the mismatch report because the overview names Platform as the owner of this code. Paging for rows with no outcome after 7 days stays in step 6."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point: business code (for example checkout committing an order) calls `enqueue_notification(tx, ...)` inside its own transaction. This inserts a `pending` row into the monolith `notifications` table. The row exists only if the caller commits. Its `route` is NULL. This table is the first record of the notification, and callers never change.\n\n2. Who may claim it: two senders can claim a route-NULL row. The monolith worker claims it when that type's flag `notifications.route.<type>` is `monolith` (the default). The publisher claims it only when the flag is `service`. Only the monolith reads flags, and a flag change reaches every instance within 10 s. Both use `FOR UPDATE SKIP LOCKED`, which locks the rows taken and skips locked ones. The first committed claim decides the owner, and the owner never changes. The flag only decides which side tries first.\n\n3. Path A, monolith-owned (flag `monolith`). The monolith worker polls every 5 s. In one committed transaction it selects rows that are due (`next_attempt_at <= now()`), have no live lease (`claimed_at` NULL or older than 5 minutes) and are routed to the monolith. It sets `route = monolith` if NULL, sets `claimed_at`, and sets `first_claimed_at` if NULL.\n\n4. Outside any open transaction, the worker renders the email and calls MailRelay `send()` with `idempotency_key = row.id`. If MailRelay has accepted that key in the last 24 hours, it drops the repeat and returns success.\n\n5. In a second transaction the worker records the result. On success it sets `status = sent` and clears `claimed_at`. On a retryable failure it sets `attempts` and `next_attempt_at` and clears `claimed_at`. The row keeps `route = monolith`, so retries stay on the monolith even if the flag changes later. Retries wait 1, 2, 4 and 8 minutes, up to 5 attempts. After the fifth failure the row is `failed` and on-call is paged through `alerts.page_oncall`. Step 1 of the rollout also makes this worker commit per row instead of per batch.\n\n6. Path B, service-owned (flag `service`). Handover: the publisher polls every 5 s. In one short transaction per batch it selects route-NULL rows of that type with `FOR UPDATE SKIP LOCKED`. It sets `route = service` and `handed_off_at = now()`, then commits. From that commit on, the old worker's claim filter skips the row. The monolith `status` stays `pending`.\n\n7. Publish: the publisher publishes each handed-off row to broker topic `notifications.v1`, using the notification id as the message id. The message carries id, type, user id, email and payload. After the broker confirms storage, it sets `published_at`. A handed-off row with no `published_at` is published again on the next poll.\n\n8. Consume: the service consumer inserts the message into its own `inbox` table with `ON CONFLICT DO NOTHING`, commits, and only then acks. If the service database is down, it does not ack and the broker redelivers after 30 s. A crash after insert but before ack leads to a redelivery that hits the primary key and is acked.\n\n9. Send: the service worker claims `queued` rows that are due, and `sending` rows whose lease has expired. It sets `status = sending`, `claimed_at`, and `first_claimed_at` if NULL. It renders from the payload and sends with key = notification id. Each row is sent and written in its own transaction.\n   - Success: `status = sent`.\n   - Retryable failure: it sets `attempts` and `next_attempt_at`, clears `claimed_at`, and sets `status = queued`.\n   - Final failure: `status = failed` and a page.\n   - The `outcome_outbox` row is written in the same transaction as each status change.\n\n10. Report: the service's outcome publisher sends each `outcome_outbox` row with no `published_at` to `notifications.outcome.v1`. The event is `{notification_id, status, accepted_at}`. It sets `published_at` after confirmation and retries unconfirmed rows on the next poll.\n\n11. Apply: the monolith outcome consumer handles the event. For a row with `route = service` it sets `status` and `outcome_at`, moving status forward only. A duplicate is harmless. For a row whose route is not `service`, it does not apply the event and logs a mismatch for reconciliation.\n\n12. Safety nets:\n    - A row that is published but has no outcome after 1 hour is republished, hourly, until it is 7 days old from `handed_off_at`. Then on-call is paged and republishing stops.\n    - An hourly reconciliation compares service-owned rows with outcome events and sends mismatches to the Platform team.\n    - A duplicate message for a terminal row makes the service re-emit its outcome if missing, then ack. It never resends.\n\n13. Failure and crash rules, both sides:\n    - If a sender crashes after claim or after send, the 5-minute lease expires and the next claim resends with the same key.\n    - If the first claim is more than 12 hours old and there is no result, the row is marked `failed` and paged, and never resent. It may already have been delivered, and on-call decides.\n    - If the broker is down, the handover still commits and the row waits unpublished. The publisher retries each poll, and a backlog-age alert fires after 5 minutes.\n    - A publisher crash before publish means the row is published on the next poll. A crash after publish but before `published_at` means a duplicate publish, which the inbox absorbs.\n    - If MailRelay is down, the retry ladder applies.\n    - If one send times out, only that row is a retryable failure.\n\n14. Rollout order:\n    - Step 1: add the idempotency key and per-row commits on the old worker.\n    - Step 2: add columns, flags (all `monolith`) and an inactive publisher.\n    - Step 3: deploy the service with no traffic and run golden render-parity tests.\n    - Step 4: optional shadow dry run on `notifications.shadow.v1`, comparing render hashes over at least 3 days.\n    - Step 5: turn on the outcome path.\n    - Step 6: cut over `shipping_update`.\n    - Step 7: soak for 3 days against the gate.\n    - Step 8: cut over `order_confirmed`.\n    - Step 9: p99 gate.\n    - Step 10: cut over `password_reset`.\n    - Step 11: decommission after 7 days.\n\n15. Rollback: set the flag back to `monolith`. The publisher stops handing over new rows of that type, and the monolith worker picks up new route-NULL rows. Rows already handed off stay on the service and are sent there. They are not recalled or resent, so there is exactly one owner each. If the service is down, those rows wait and are paged by age.",
+   "gaps": [
+    "Render errors: the document does not say what happens on a render exception, in the monolith worker or the service worker. Today the batch repeats forever, and the recommended fix is not decided.",
+    "MailRelay send timeout: no value is given. It must be shorter than the 5-minute lease, but I cannot say when a send counts as timed out.",
+    "Service worker batch size and poll interval: not given. The latency budget mentions about 5 s, but the worker's batch size is not stated.",
+    "Who raises the 5-minute backlog-age alert, and how it measures route-NULL rows and unpublished handovers: not stated.",
+    "Broker retention: not stated, so I cannot say what happens to messages during a long service outage.",
+    "How the service's dry-run render hashes reach the monolith for comparison in step 4: not stated.",
+    "How the service reads the password_reset payload safely: whether the token is minimised, encrypted or kept out of the message is undecided.",
+    "How the in-doubt row is surfaced to on-call and how the service reports its in-doubt failure to the monolith: not described. The service in-doubt path is described only generally as 'both sides'.",
+    "What 'sufficient sample count' means for the p99 gate: not defined.",
+    "What an outcome event does when the service marks a row failed from the in-doubt rule: the document does not say whether the outcome carries an accepted_at value, since nothing was accepted."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

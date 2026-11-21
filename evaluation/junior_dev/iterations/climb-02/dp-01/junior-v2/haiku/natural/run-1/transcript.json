@@ -1,0 +1,185 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is the \"Orchestrator\" and the \"scheduler\"? Are they the same tool, and what runs the actual pipeline code (extract, validate, merge)?",
+     "about": "Orchestrator / Cron 02:00 UTC starts attempt 1"
+    },
+    {
+     "id": "2",
+     "text": "How does the lock lease work? Who sets lease_expires_at, how long is it, and what happens if a run dies while holding the lock so it never releases?",
+     "about": "Lock free? pipeline.run_lock lease"
+    },
+    {
+     "id": "3",
+     "text": "The first run has no watermark row. What is hwm_ts then, and what does the very first window look like?",
+     "about": "pipeline.watermark hwm_ts / Window start = hwm_ts minus 2 hours"
+    },
+    {
+     "id": "4",
+     "text": "Why does the window start 2 hours before hwm_ts, and what problem does the overlap solve? What kind of rows would be missed without it?",
+     "about": "Window start = hwm_ts minus 2 hours"
+    },
+    {
+     "id": "5",
+     "text": "The cutoff is the replica's now(). If the replica lags behind the app database, how does the pipeline avoid missing rows that haven't reached the replica yet?",
+     "about": "cutoff = replica now() in UTC"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'sane row count' check in validation? What range counts as sane, and where does that number come from? It is in the text but not in the flowchart.",
+     "about": "Staging valid? / Staging section"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Check rows equal distinct order_id' count: the whole warehouse.orders table or only this run's merged rows? What would cause it to fail after staging already passed?",
+     "about": "ONE WAREHOUSE TRANSACTION step 2"
+    },
+    {
+     "id": "8",
+     "text": "The staleness check asks for 'success for tonight's window'. How does it identify tonight's window in run_log, and what does a failed attempt 1 that later succeeds on attempt 2 look like to it?",
+     "about": "06:00 UTC staleness check / Success for tonight's window committed since 02:00 UTC?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The \"Orchestrator\" and the \"scheduler\" were two names for one thing. The design now has one scheduler, which fires the 02:00 UTC cron, the 15-minute retries, the 45-minute stop and the 06:00 check. The pipeline job is the code it starts for each attempt, and it runs extract, validate, merge and reconciliation. The brief does not name a product, so none is chosen here."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The lock is taken at attempt start and released on commit or failure. lease_expires_at is 45 minutes after taking it, the same as the attempt deadline. The scheduler stops an attempt at 45 minutes and releases the lock, so the lease only matters if the scheduler itself dies. A retry or manual run that finds the lock held logs skipped and does not count as an attempt. Whether that should page is an open question. The lock stays because the original design uses it to stop a retry and a manual rerun from overlapping."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "With no watermark row there is no hwm_ts, so a person seeds pipeline.watermark with one start time before the first run. The first window runs from that time minus 2 hours to cutoff. Without a seed, the attempt fails before extract. The seed value is not in the brief, so it is listed as an open question."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The brief says bulk-import transactions can stay open up to 90 minutes after updated_at is stamped. A row can therefore become visible after the window its timestamp falls in has already been extracted. Starting the window 2 hours before the HWM re-reads those rows. Without the overlap, such rows would be missed until the Sunday reconciliation, because the previous window had already moved past them."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "If the replica lags, a row whose updated_at is before cutoff but which has not reached the replica yet is missed tonight. The next window starts at cutoff minus 2 hours, so the row is picked up then, provided it reaches the replica before that run. Lag longer than the gap to the next run is caught by the Sunday reconciliation. The cutoff uses the replica's clock, so the pipeline relies on the app clock only through the 2-hour margin."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The brief gives no number, and I will not invent one. I removed the vague \"sane row count\" from validation, so validation checks only for null and duplicate order_id. A row-count bound would need a source, such as past nightly counts, and that is listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The check covers only the order_ids in this run's staging, not the whole table. Staging already passed, so the staged ids are unique. A failure therefore means warehouse.orders already holds duplicate rows for those ids, or the MERGE matched more than one target row. That can happen because many warehouses do not enforce unique keys. A whole-table scan is not needed for this check."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Tonight's window is identified by committed_at: any success row committed at or after 02:00 UTC today. A failed attempt 1 writes a failed row, which the check ignores. If attempt 2 succeeds, it writes a success row with committed_at after 02:00, so the check finds it and posts no alert. If the warehouse cannot be read, the check posts the alert."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The Sunday reconciliation runs inside the same pipeline job after the commit. Does the lock stay held during it, and does the 45-minute deadline cover it too?",
+     "about": "Reconciliation / Sunday run"
+    },
+    {
+     "id": "10",
+     "text": "When the scheduler stops an attempt at 45 minutes, who rolls back the open transaction and drops staging? Does the scheduler do it, or is it left for a later run?",
+     "about": "Failure and retry: 45-minute deadline"
+    },
+    {
+     "id": "11",
+     "text": "How does the extract get from the replica into staging? Is it one bulk load of the whole window, and what happens to the attempt if the replica is unreachable or slow?",
+     "about": "Extract from replica, read only"
+    },
+    {
+     "id": "12",
+     "text": "What is in staging's updated_at versus the target's when they are equal, and how does a deleted order reach the warehouse? Does the replica keep deleted rows with deleted_at set, so the extract picks them up like any update?",
+     "about": "M1: MERGE staging into orders on order_id"
+    },
+    {
+     "id": "13",
+     "text": "When would cutoff not be later than the stored hwm_ts? Can that happen in normal operation, and what does the run do then?",
+     "about": "Set hwm_ts to cutoff, only if cutoff is later than hwm_ts"
+    },
+    {
+     "id": "14",
+     "text": "If attempt 1 fails at 02:20, the retry starts at 02:35. What marks the attempt as failed, and who writes the error to run_log if the job itself crashed hard?",
+     "about": "Failure and retry: Retry"
+    },
+    {
+     "id": "15",
+     "text": "How does the job or scheduler know which attempt number it is on? Where is that counted?",
+     "about": "Attempt number 3 / Page on-call"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The lock is released at commit, so the committed night does not hold it during reconciliation. Reconciliation is its own job that takes the lock again, so it cannot overlap a manual rerun, and it has its own 45-minute deadline. The nightly deadline does not cover it. Reconciliation writes only through reload, which does not touch the watermark."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The scheduler does it, because a killed job cannot. At 45 minutes the scheduler stops the job, writes the failed run_log row (only if no success row exists for that run_id), drops this run's staging and releases the lock. The open transaction is rolled back by the warehouse when the job's connection closes. That is standard behaviour I have not verified for this warehouse, so it is an open question. Nothing is left for a later run except staging with a unique name, which is never read."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "One query reads the whole window from the replica, and the result is bulk loaded into staging in one load. There is no chunking, because the brief does not need it. If the replica is unreachable, the query errors and the attempt fails. If it is slow, the 45-minute deadline stops the attempt. Either way staging is dropped and the watermark does not move."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "For an unchanged row, both sides have the same updated_at, so the rule staged >= target rewrites identical values and a rerun changes nothing. Deleted orders reach the warehouse through the normal path. The brief says every write sets updated_at, and the app's delete sets deleted_at as a write. So the replica row has a later updated_at and the extract picks it up like any update. The merge then sets is_deleted = deleted_at IS NOT NULL."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "It should not happen in normal operation. It needs the replica clock to go backwards, or a seed later than the clock. The merge still runs and commits, the watermark stays where it is, and the run is logged as success. The next run uses the old watermark and covers the same window again, which is safe because the merge is idempotent."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The scheduler marks the attempt failed, because it sees the job exit or the 45-minute stop. It writes the failed row, releases the lock, and then waits 15 minutes. A hard crash therefore does not leave the lock held, so the retry is not skipped as lock-held. If the scheduler cannot reach the warehouse, the failed row and lock release can fail too. That is in the open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The scheduler counts attempts. It creates the run_id and the attempt number (1, 2 or 3) and passes both to the job, which records them in run_log. A skipped run does not increase the count. The scheduler pages on-call after the third failed attempt, unless a success is already committed for tonight."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Follow one normal night (Sunday variant included) through the pipeline.\n\n1. Trigger. The scheduler's cron fires at 02:00 UTC. The scheduler creates a `run_id` and sets the attempt number to 1. It passes both to the pipeline job and starts the job. Starting the job also starts a 45-minute clock.\n\n2. Lock check. The job looks at `pipeline.run_lock` in the warehouse. The warehouse holds all pipeline state.\n   - If the lock is held, the job logs \"skipped\" and exits. A skipped run is not an attempt and does not change the attempt count.\n   - If the lock is free, the job takes it, writing `run_id` and a `lease_expires_at` of take time plus 45 minutes. It also writes a `run_log` row for the attempt start, with `run_id` and attempt number.\n\n3. Read the watermark. The job reads `hwm_ts` from `pipeline.watermark`. The window start is `hwm_ts` minus 2 hours. The 2-hour lookback is there because bulk-import transactions can stay open up to 90 minutes after `updated_at` is stamped. Rows can therefore become visible late, and the lookback re-reads them. The cutoff is the replica's `now()` in UTC, read before the extract. If no watermark row exists (first run) and nobody has seeded one, the attempt fails before extract.\n\n4. Extract. The job runs one query on the read-only app Postgres replica. It selects orders with `updated_at` after the window start and at or before the cutoff. The result is bulk loaded into `staging.orders_<run_id>` in the warehouse. Deleted orders come through the same way. The app's delete sets `deleted_at`, which is a write, so `updated_at` also moves. A replica error fails the attempt.\n\n5. Validate. The job checks the staged rows for a null `order_id` or a duplicate `order_id`. Either one fails the attempt (see step 9).\n\n6. Merge. This is one warehouse transaction with four steps.\n   1. MERGE staging into `warehouse.orders` on `order_id`. A row is updated only if staged `updated_at` is at least the target's `updated_at`. Missing keys are inserted. `is_deleted` is set to `deleted_at IS NOT NULL`. Deleted rows stay. Ties rewrite identical values, so a rerun changes nothing (idempotent).\n   2. Check that every staged `order_id` has exactly one row in `warehouse.orders`. If not, the attempt fails.\n   3. Set `hwm_ts` to the cutoff, but only if the cutoff is later than the stored `hwm_ts`. If it is not, the HWM stays and the run still commits as a success.\n   4. Write the `run_log` success row with `committed_at`.\n\n7. Commit. Any error before COMMIT rolls back all four steps. After COMMIT, dashboards can see the new data. At 06:00 they refresh and read only committed `warehouse.orders`, so they see either the previous night or the new one, never a mix. After the commit, staging is dropped and the lock is released. The job releases the lock at commit.\n\n8. Sunday only. After a Sunday night commits, the scheduler starts the reconciliation job.\n   1. The job takes the lock.\n   2. For each order-creation day (by `created_at`) in the last 30 days, it computes the row count and a checksum on both the replica and the warehouse, deleted rows included. The checksum is a sum of a hash of `order_id` plus `updated_at` as UTC microseconds.\n   3. If no day differs, it logs clean per day and releases the lock.\n   4. If a day differs, it stages that day from the replica and runs merge steps 1 and 2 in one transaction. It does not touch the watermark. It logs per day. Any day still differing is alerted, with replica lag as the likely cause.\n   5. If reconciliation errors or passes 45 minutes, it logs the error and releases the lock, and the committed night is kept. The scheduler retries it 15 minutes later, up to the third attempt, then pages on-call. These attempts are counted separately from the nightly attempts.\n\n9. Failure of a nightly attempt. Failure means any error, a failed check, or the job still running at 45 minutes.\n   - At 45 minutes the scheduler stops the job. The warehouse rolls back the stopped job's open transaction when the connection closes. The document lists this as something still to confirm.\n   - The scheduler writes the failed `run_log` row, but only if there is no success row for that `run_id`. It also drops the staging table and releases the lock. The watermark is unchanged.\n   - Before retrying or paging, the scheduler checks whether a success has been committed since 02:00 UTC. If so, it stops, with no retry and no page.\n   - Otherwise, if this was attempt 1 or 2, it starts the next attempt 15 minutes later with a new `run_id` and the next attempt number. The retry is a full rerun from step 2. If this was attempt 3, it pages on-call. Worst case, on-call is paged by 04:45.\n\n10. 06:00 staleness check. This is a separate scheduled job, so a hung run cannot suppress it. It looks in `run_log` for a `success` row with `committed_at` at or after 02:00 UTC today. If there is one, there is no alert. If there is none, or the warehouse cannot be read, it posts a staleness alert to the data-alerts channel. This happens even while retries are still running.",
+   "gaps": [
+    "The document does not say how the job gets its connection to the replica or the warehouse. This includes credentials and whether the warehouse's multi-statement transaction support is confirmed. It lists transaction support as an assumption, with a side-table swap as the fallback.",
+    "It does not say how the scheduler learns that the job has failed or crashed so it can mark the attempt failed. It only says the scheduler does so. It also does not say how the 15-minute retry is triggered other than 'the scheduler'.",
+    "It does not say how the scheduler knows a night is a Sunday night that has committed, or how it hands off to the reconciliation job. This includes what run_id and attempt number reconciliation uses.",
+    "It does not say who seeds the first watermark or to what time. It also does not say what a person has to do to seed it.",
+    "It does not say what happens when the warehouse is unreachable at the moment the scheduler marks an attempt failed. It only says the failed row and lock release can fail and the retry may then be skipped. It does not say how that is recovered. Nor does it say whether a skipped retry gets another try or a page.",
+    "It does not say exactly how the reconciliation 'Still differing' alert is delivered, or to which channel. It also does not say what reconciliation does if the lock is held when it starts."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

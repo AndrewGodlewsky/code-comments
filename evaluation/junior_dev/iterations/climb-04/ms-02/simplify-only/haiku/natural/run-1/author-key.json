@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "enqueue_notification inserts the row into the monolith's notifications table inside the caller's transaction, with an owner column set from the flag. For service-owned rows, the monolith outbox relay publishes the row to notification.requested.v1, keyed by id, and sets service_published_at. The service consumer stores it in its inbox and acks. The monolith's part is tracked through the status events: the status consumer mirrors sent or failed onto the row, and the reconciler re-publishes rows whose status never arrived. The document does not name one exact moment when the monolith calls its part done, so that is inferred from this design.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The flag notifications.owner.<type> decides it. enqueue_notification reads the flag inside the caller's transaction when the row is inserted, and writes owner = monolith or service in that same INSERT. The decision is made once, at insert time, and never changes after that.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The service's inbox insert uses ON CONFLICT (id) DO NOTHING, so a second copy of the same message creates no second row and no second send. Also, every MailRelay call carries idempotency_key = notification id, so MailRelay drops a repeat it accepted within the last 24 hours. The residual risk is a send after that 24-hour window, which the 23-hour resend guard narrows.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The consumer inserts the message into the inbox and commits first, then acks. It never waits on MailRelay, and sending happens later in a separate sender that claims rows under a lease. If it crashes before the commit, nothing is acked, the broker redelivers, and the insert succeeds. If it crashes after the commit but before the ack, the redelivery hits ON CONFLICT, is acked, and creates no duplicate.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The retry state (state, attempts, first_attempt_at, next_attempt_at, lease_expires_at, last_error) lives in the service's inbox table. The service sender acts on it: it claims due rows under a roughly 60-second lease, applies 5 attempts with 1, 2, 4 and 8 minute waits, and after attempt 5 marks the row failed and pages on-call. A lease expiry after a crash counts as an attempt. The monolith's old worker filters on owner = monolith and does not touch service-owned rows.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Nothing is moved. Rows already owned by the service keep going through the service, including pending outbox rows, and the flag only affects rows inserted after the flip, which get owner = monolith within about 10 seconds. Those already-routed rows are not lost or re-sent. The exception is an emergency re-own, which needs explicit approval and applies only to rows with service_state null that are under 24 hours old.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The broker message carries {id, type, user_id, email, payload, created_at, schema_version}, keyed by id, so the email address and payload do travel to the service. The email content itself is produced in the service: for service-owned rows, the service sender renders the template with its own copy of templates.render. During shadow runs, the service also renders a copy and reports only a hash back, and no email content flows back to the monolith.",
+  "decided": true
+ }
+}

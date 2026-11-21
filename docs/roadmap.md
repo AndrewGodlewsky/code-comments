@@ -24,6 +24,7 @@ what the skill does and does not do.
 | --- | --- | --- |
 | Long-horizon pilot: no downstream benefit | [#37](https://github.com/AndrewGodlewsky/code-comments/issues/37) | [Pilot report](evaluation/pilot-report-2026-11-08.md) |
 | Hygiene skill shipped as a Claude Code plugin | [#45](https://github.com/AndrewGodlewsky/code-comments/issues/45) | [Plugin](../plugins/code-comments/README.md), [hygiene eval](../evaluation/hygiene/README.md) |
+| Junior-dev plugin for GitHub Copilot and Claude Code: built, climbed and confirmed. It does not beat SelfReview on fresh cases; it helps thin Haiku drafts | [#52](https://github.com/AndrewGodlewsky/code-comments/issues/52) | [Report](junior-dev/report-2026-11-21.md), [plugin](../plugins/junior-dev/README.md) |
 | Iteration 5: the skill against a one-line reminder | [#46](https://github.com/AndrewGodlewsky/code-comments/issues/46) | [Hygiene eval](../evaluation/hygiene/README.md), [purpose document](skill/hygiene-skill.md) |
 
 ## Next

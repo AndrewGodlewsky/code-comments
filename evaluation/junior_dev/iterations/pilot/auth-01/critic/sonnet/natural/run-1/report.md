@@ -1,0 +1,32 @@
+## Review of auth-01 (critic, author sonnet, natural)
+
+Rounds: 3. Ended: cap.
+
+### What changed
+- Point 1: Listed each login storage-failure step explicitly (GET lock, user lookup, LOGIN_OK, FAIL) as 503, stated the scripts are atomic so no partial state commits, and split the diagram's single 'error at any step' branch into per-step error branches.
+- Point 2: Dropped the pointless Set-Cookie clear when no cookie was sent (protected page and logout), stated the rule in the Cookie decision, and renamed 'sid' to `__Host-sid` throughout the diagram.
+- Point 3: Replaced the overclaim about storage errors with a narrower argument: 503s come before account existence is known or are identical for known and unknown emails, and timing equality during partial outages is explicitly not promised.
+- Point 4: Fixed the Summary to say the 12h check lives in the TOUCH Lua script, not the app, and stated that all scripts take 'now' from Redis TIME.
+- Point 5: Reordered the FAIL steps as add, trim, count, TTL, lock, and stated that failure timestamps come from Redis TIME.
+- Point 6: Bounded the concurrency overshoot with a 4-worker bcrypt pool per instance (at most 8 in flight, so at most 8 extra checks per lockout cycle), and made LOGIN_OK refuse when a lock exists (429) so a success cannot race with a lock; FAIL skips if already locked so it cannot extend the lock.
+- Point 7: Reworded durability: sessions are disposable and lockout state is best-effort. Fixed the topology (one primary, one async replica, automatic failover) and stated as accepted that failover or Redis loss can drop recent sessions and locks and reset lockouts.
+- Point 8: Added a Scope section with non-goals (CSRF, privilege-change rotation, password change invalidation, session listing/revoke, per-IP limits, MFA, lockout DoS) and explained the 302 vs 303 split.
+- Replaced the 'no partial state' claim with an explicit Atomicity section separating atomic Lua scripts, non-atomic cross-step sequence, and best-effort failure counting (point 1).
+- Specified FAIL return values: COUNTED and LOCKED_NOW give 401, ALREADY_LOCKED gives 429; added that branch to the diagram (point 2).
+- Rewrote the concurrency bound honestly: about 5 counted plus up to about 8 extra per cycle under normal latency, uncounted extras, correct guesses blocked after the lock, and no hard guarantee if Redis is slow (point 3).
+- Added an explicit accepted-timing note for 429 vs 401: it reveals only lock state, not existence (point 4).
+- TOUCH now handles missing or malformed created_at by deleting the key; stated Redis 7.x and script-effects replication (point 5).
+- Stated non-Cluster deployment and that all script keys, including the old session key, are passed in KEYS (point 6).
+- Added decisions for GET /login when signed in, the per-page Postgres read, failover behavior and alerting, and a verification plan (point 7).
+- Trimmed: removed the 302/303 'either would work' paragraph, merged decision 5 (abandoned sessions) into decision 1, dropped the Redis keys table, and consolidated all cookie set/clear rules into one table in decision 3 with the diagram referring to it (point 8).
+- Point 1: Rewrote the guess bound as an explicit, flagged deviation from requirement 3 with a stated limit (5 counted + up to 8 extras = 13 verifications per cycle), made the 8 bound real by taking a bcrypt slot before the lock check with no queue, and asked for a decision with the strict alternative named.
+- Point 2: Merged the lock-disclosure argument into a single 'Lock disclosure' bullet that covers the 429 speed difference, the correct-password 429 from LOGIN_OK, and ALREADY_LOCKED; removed the separate Timing bullet and noted the 429 does not confirm the password was correct.
+- Point 3: Dropped the broad 'does not reveal accounts' claim; limited it to pre-bcrypt 503s and stated the residual leak (a script-selective Redis fault makes a correct password return 503 while a wrong one returns 401), accepted and flagged.
+- Point 4: Reworded Atomicity to per-script all-or-nothing with at-least-once delivery and unknown outcome on error, removed the 'treat as not applied' and 'idempotent' claims, acknowledged FAIL double-counting (off by at most one), and corrected the LOGIN_OK error case (old session may already be destroyed).
+- Point 5: Reduced TOUCH to one validity rule covering missing key, missing user_id, missing/non-integer/future created_at, and stated all steps run atomically in one script; added malformed cases to the test plan.
+- Point 6: Expanded the cookie table with a server-side-session column and rows for login 401/429/503 with an old cookie (session stays live), protected-page 503, logout 503, and logout with an already-gone session; aligned the diagram with a note and updated the LOGIN_OK branches.
+- Point 7: Replaced the one-line CSRF dismissal with a section explaining that login CSRF sets a cookie, the impact (victim signed in as attacker, data lands in attacker's account, victim cookie overwritten), why it is accepted, and a recommended Origin/Referer check.
+- Point 8: Declared the diagram the single source of truth for status codes, bodies and headers and trimmed prose that repeated them (decision 5 per-step list, lockout responses); split 'Other rules' into Login rules, Protected requests and Verification plan sections.
+
+### Holes
+- None.

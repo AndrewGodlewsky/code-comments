@@ -1,0 +1,47 @@
+## Review of ms-01 (junior-v7, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Fixed the Confirm order to Refund edge: refund now happens only on the late-success path, where stock is gone (Q7).
+- Split Confirm and Clear cart: the cart empties only on the OrderConfirmed event (Q7).
+- Added the claim step: a hold must be claimed before it lapses, so stock is deducted only once paid (Q6, Q8).
+- Replaced Reserve stock and Take payment with steps that name the caller, the callee and the stored data (Q1, Q2, Q3).
+- Added the decline path and the release of the hold (Q8).
+- Added the dedupe key for webhooks, the provider event id saved in Payment's database (Q5).
+- Replaced the 'Refunds are retried' note with the pending-refund rule, so a refund is never dropped.
+- Defined the order statuses: Placed, Reserved, Confirmed, Cancelled (Q1, Q6).
+- Replaced the 're-reserve' note with an explicit late-success path, and listed it as an open question because the brief only names the refund case.
+- Added the terms, the steps, the rules list restoring every fixed requirement from the brief, the failure table and the open questions.
+- Added the Refund idempotency key (the order id), following the brief's rule that every charge and refund carries the order id.
+- Added the Terms for Service, Charge, Refund, Broker and Event, which a newcomer needs and the first version lacked.
+- Diagram: added a branch for a failed provider call, and a Reserved check so a success for a cancelled order goes straight to refund.
+- Diagram: the claim is one Inventory step that also re-holds a lapsed hold when stock is free (Q15).
+- Diagram: refund request is stated as a payment step; retry job named in the refund node (Q11, Q13).
+- Step 1: the UI polls the order status by id instead of waiting on the request (Q14).
+- Step 3: a failed provider call may still have charged; its later success is handled in step 6, and the hold release call to Inventory is named (Q10).
+- Step 4: the event carries the order id, and the unique constraint is explained in one clause (Q9, Q5 from round 1).
+- Step 5: Order subscribes to Payment events and matches them by order id (Q9).
+- Step 6: the cancelled-order check comes first, and the claim is one transaction that checks stock (Q10, Q15).
+- Step 7: Order calls Payment over HTTP; Payment refuses a refund for a non-Succeeded charge; a retry job resends pending refunds (Q11, Q13).
+- Rules: added the repeat rule for claim and refund calls with no answer, with the same order id, as the simple handling for the stated 'never dropped' rule.
+- Failure table: added the claim-no-answer row and the late-charge row for a failed provider call.
+- Open questions: added the refund retry interval, how long repeats continue, the provider key-namespace question, and the cart-missed-event question.
+- Notes after the diagram now describe each branch in plain words.
+- Summary: added one sentence on how checkout runs today (inside the monolith), as the plan changes an existing system.
+- Terms: added definitions for the names a newcomer would not know (Snapshot, Hold, Claim, Charge, Refund, Provider, Idempotency key, Webhook, Broker, Event, Unique constraint, Retry job), and the order statuses. Each term is one line.
+- Step 1 (Place order): added that the UI polls the order status by id until Confirmed or Cancelled, and that short items are shown from that status, since the outcome can take up to 30 minutes (answer 14).
+- Step 2 (Reserve stock): added what each hold records (order id, item, quantity, expiry), and laid out the three outcomes (all held, any short, no answer) as a list so each is clear.
+- Step 3 (Take payment): stated that the idempotency key stops a repeat from charging twice, and linked the failed-call case to step 6 by name rather than by code.
+- Step 5 (Declined): stated how Order receives the event, by subscribing to Payment's Succeeded and Declined events and matching on order id (answer 9). Step 6 refers back to this rather than repeating it.
+- Step 6 (Succeeded): the cancelled check comes first and sends the order to the refund step (answer 10). Added the claim explanation (one transaction, deducted once, paid orders only) and the same-transaction re-hold for a lapsed hold (answer 15). Split the outcome into a list.
+- Step 7 (Refund): added that Payment refuses a refund unless the charge is Succeeded and sends nothing to the provider in that case (answer 11).
+- Diagram: kept the flowchart as it was. The edge from Confirm order to Refund was already removed in the first draft (answer 7).
+- Notes on the diagram: shortened to five bullets that point at the diagram's branches. Removed the repeated explanations of hold release, claim and refund, which the steps already give.
+- Rules: merged the rules into one list and removed repetition from the steps. Every rule from the brief and the first version is kept.
+- Failure table: kept all rows unchanged.
+- Open questions: kept all ten questions from the first draft. Merged the customer waiting-screen question with the short-items screen question, since the first draft's answer 14 left both undecided. Reworded the cancellation email question as a check on the plan's choice that Order sends it.
+- Checked against the brief line by line. Restored nothing that had been dropped, since all fixed requirements (own databases, snapshot, all-or-nothing reservation, 10-minute hold, order id as key, webhook dedupe and 30-minute delay, late-success refund, refund never dropped, cart emptied only on confirmation) are present.
+
+### Holes
+- Q12: The charge and the refund both use the order id as the idempotency key. How does the provider tell the two requests apart? (author: The brief does not say how the provider keys requests. The plan assumes charge and refund are different provider calls, so their keys do not clash. If the provider uses one key space for both, the refund key needs another prefix, and the plan does not decide that yet. Listed in open questions.)

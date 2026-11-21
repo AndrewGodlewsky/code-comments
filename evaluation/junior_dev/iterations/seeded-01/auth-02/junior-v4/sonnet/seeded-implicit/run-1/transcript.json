@@ -1,0 +1,125 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is \"the store\"? Which product is it, and how does the app authenticate to it?",
+     "about": "2. Create secrets in the store"
+    },
+    {
+     "id": "2",
+     "text": "What do the three clients do today to get their key from config/app.yaml, and what changes in their code when they call secrets.get()?",
+     "about": "4. Switch PaymentsClient / EmailClient / GeocodingClient to secrets.get()"
+    },
+    {
+     "id": "3",
+     "text": "When does load() run, and what happens if it still fails after the retries? Does the app refuse to start?",
+     "about": "3. New app/secrets.py with load(), refresh(), get(name) ... Retries on load"
+    },
+    {
+     "id": "4",
+     "text": "What does the 5-min refresh do, and what happens if a refresh fails or the store is down? Does get() keep returning the old value?",
+     "about": "5-min refresh"
+    },
+    {
+     "id": "5",
+     "text": "How does get(name) know which environment's secrets (prod or dev) to read? How does APP_ENV tie to the secret path?",
+     "about": "7. make run: APP_ENV=dev"
+    },
+    {
+     "id": "6",
+     "text": "What is secret_versions on /healthz? Does it show version ids or values, and who reads it and for what?",
+     "about": "5. /healthz: add secret_versions"
+    },
+    {
+     "id": "7",
+     "text": "What are the access policies in step 1? Which identity does orders-api-prod run as, and what can security on-call and engineers each do?",
+     "about": "1. Access policies for orders-api-prod, security on-call, engineers"
+    },
+    {
+     "id": "8",
+     "text": "How does rotating the keys at the providers (step 9) reach the running app? Do you update the store first, and is there downtime between the old key being revoked and the app picking up the new one?",
+     "about": "9. Rotate the three keys at the providers and revoke the old ones"
+    },
+    {
+     "id": "9",
+     "text": "What does the CI check for api_key look for, and what happens when it fails?",
+     "about": "6. Delete api_key entries from config/app.yaml. CI check for api_key"
+    },
+    {
+     "id": "10",
+     "text": "If the deploy fails verification in step 8, how do you roll back? What goes into the rollback notes, given the yaml keys are deleted by then?",
+     "about": "8. Deploy + verify / 10. Update rollback notes in deploy.md"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief only says 'our managed secret store'; the product and how a pod authenticates as orders-api-prod are not given. Added to Open questions rather than guessing."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Today each client copies settings['<provider>']['api_key'] into self._key in __init__, built once at import as a module-level singleton, and sends it as a Bearer header. Now each client calls secrets.get('<name>') on every request instead of storing the key, so refreshed keys reach the running pod. Non-secret settings such as base_url stay in the yaml."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "load() runs at startup before the server reports ready. It tries once and retries 3 times, 2 seconds apart, then exits non-zero, which the brief requires. A pod that exits never becomes ready, so the rolling deploy halts and old pods keep serving."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Every 5 minutes a background thread re-reads all three secrets and swaps in new versions. If a read fails, get() keeps returning the last good value and a warning is logged, with no values. Yes, the old value is kept, as the brief requires."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "APP_ENV (prod or dev) is put into the path orders-api/<APP_ENV>/<name>. The prod deployment config sets prod, and make run sets dev. If unset, the app exits, so a local run can never silently read prod."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It is a map of secret name to version id, never values. It is the only way to see which key version each pod has. The rollout check and the rotation check read it per pod before the old key is revoked. Also changed: /healthz returns 503 until the keys are loaded."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "From the brief: orders-api-prod gets read-only on orders-api/prod/* and nothing else. Only security on-call writes prod secrets. Engineers have no prod read. I decided engineers get read and write on orders-api/dev/* for local runs. The pods run as the service identity orders-api-prod, per deploy.md. How it authenticates to the store is unknown."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes, the store comes first. Security on-call creates a new provider key (old still valid), writes it as a new store version, and pods pick it up within 5 minutes. After confirming every pod reports the new version id on /healthz, the old key is revoked. There is no downtime, as long as the provider allows two live keys at once. That is unverified, so it is in Open questions."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The CI check fails the build if config/app.yaml contains any api_key key (a simple text or parsed-key check). A failed check blocks the merge until the key is removed."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Rollback is redeploying an earlier image. Before the old keys are revoked, a pre-migration image still works because its yaml key is valid. After revocation, only images with secrets.py can be rolled back to. For a bad key value, write the previous version back to the store instead. The notes now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough, using only the document. I follow one key, `payments_api_key`, from the old setup to the new one.\n\nBackground: today the three provider keys (payments, email, geocoding) sit in `config/app.yaml`. That file is committed and copied into every image. It is read once at startup, and the old keys are leaked in git history. The plan moves them into a managed secret store (\"Store\") and then rotates them at the providers.\n\n1. Access is set first (security/us). The prod service identity `orders-api-prod` gets read-only access to `orders-api/prod/*` only. Only security on-call can write prod secrets. Engineers get read and write on `orders-api/dev/*` and no prod access. The state is the store's policies. If this is wrong, we fix the policy. Nothing else has changed yet.\n\n2. The store is filled (security on-call). They copy the three current key values into `orders-api/prod/payments_api_key`, `.../email_api_key` and `.../geocoding_api_key`. They put sandbox keys under `orders-api/dev/*`. Every write creates a new version id, for example v7. If a copy is wrong, they write a corrected version. Running pods are unaffected because they still use yaml keys.\n\n3. The code change goes in by pull request. It adds `app/secrets.py`. It switches the three clients to call `secrets.get(\"<name>\")` on every outgoing request, instead of copying the key once in `__init__`. It changes `/healthz`. It deletes the `api_key` lines from `config/app.yaml`. It adds a CI check that fails the build if the file contains any `api_key` key. It sets `APP_ENV=dev` in `make run` and `APP_ENV=prod` in the production deployment config. State is in git. If the CI check fails, the merge is blocked until the key is removed.\n\n4. Deploy: merge to `main` starts the normal rolling deploy. For each new pod:\n   a. The process starts and `APP_ENV` picks `<env>` in the secret name. If `APP_ENV` is unset, the app exits at startup. It never defaults to prod.\n   b. `load()` in `app/secrets.py` runs before the HTTP server reports ready. It reads the three secrets for that env from the store into process memory. It tries once, then retries 3 times, 2 seconds apart. If it still fails, the process exits non-zero. Keys are held only in memory, never on disk, in env vars or in logs.\n   c. Until `load()` succeeds, `/healthz` returns 503. After it succeeds, `/healthz` returns 200 with each secret's version id and never the values. Example: `{\"status\":\"ok\",\"secret_versions\":{\"payments_api_key\":\"v7\",...}}`.\n   d. If a pod fails to load, it exits, the rollout halts, and the old pods keep serving with their yaml keys. No request fails.\n   e. Verification: all 4 pods report all three version ids on `/healthz`.\n\n5. Steady-state runtime for a request. When orders-api makes an outgoing payments call, the client calls `secrets.get(\"payments_api_key\")`. That returns the value from process memory and sends it to the provider. A background thread re-reads all three secrets from the store every 5 minutes. If a refresh read fails, `get()` keeps returning the last good value, a warning is logged with no values, and the next cycle retries.\n\n6. Rotation, one key at a time (security on-call, only after step 4 is verified):\n   a. Create a new key at the provider. The old one stays valid.\n   b. Write the new key to the store as a new version, for example v8.\n   c. Wait at least 5 minutes so the refresh thread on each pod picks it up. Then check every pod's `/healthz` for the new version id.\n   d. Only if every pod shows the new version, revoke the old key at the provider.\n   e. If any pod still shows the old version, do not revoke. Fix the pod or the store and check again. Both keys are valid in the meantime, so no request fails.\n\n7. Rollback notes go in `deploy.md`. Rollback means redeploying an earlier image. Before step 6d, a pre-migration image still works because its yaml key is still valid. After the old keys are revoked, roll back only to images that include `secrets.py`. For a bad key value, write the previous version back to the store. The pods pick it up on refresh, so no redeploy is needed.\n\nFailure summary from the document:\n- Store unreachable at startup: 3 retries, then the process exits non-zero, the pod never becomes ready, and the rollout halts.\n- Store unreachable during refresh: the last good value is kept, a warning is logged, and the next cycle retries.\n- A new key does not reach every pod: the old key is not revoked.\n- Local development: `make run` uses `APP_ENV=dev` and sandbox keys. Engineers cannot read prod values.",
+   "gaps": [
+    "The document does not say which store product is used, or how a pod authenticates to the store as `orders-api-prod`. It lists this as an open question affecting step 1 and `load()`, so I cannot explain how the first read in `load()` is authorised.",
+    "It does not say whether each provider allows two live keys at once. The rotation in step 5 depends on that. For a provider that allows only one live key, I cannot explain how zero-failure rotation works.",
+    "It does not say whether or how often keys are rotated on a schedule. Security has not decided, so I cannot say what triggers step 5 in the long run."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,27 @@
+## Review of auth-03 (junior-v3, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a Summary and a Terms section at the top, so a newcomer reads the purpose and vocabulary before the diagrams.
+- Data section: users is no longer described as unchanged. A reset changes users.password_hash and deletes the user's sessions rows.
+- Email normalization is defined (trim and lowercase, then match users.email).
+- Link format is defined: https://<app-origin>/password/reset?token=<token>, base64url without padding.
+- Breached-password check: the plain password is never sent to a third party. The unavailable-list case is now a row in the failure table, not only a note.
+- Logout: explained that deleting sessions rows logs out every device and that the submitting browser's cookie is cleared.
+- Failure table: the worker always marks the token superseded on final send failure (was 'unless the worker marks it'), and the row notes that it still counts toward the hourly limit.
+- Known gaps merged into a short Decisions list. Duplicate statements about rate limits and session timing removed.
+- Open questions moved to the end: queue location, breached-list source, alert destination and owner, stored email case, cookie format.
+- Diagrams kept in their original form. Only the wording of the email job and the notes around them changed.
+- Shortened the summary to three sentences and put it first, followed by the terms, then the flows, the failure table and the open questions, in the order the skill sets for a newcomer.
+- Cut the terms from wordy paragraphs to one line each and moved the data-retention and queue-secrecy rules next to the table they belong to.
+- Turned the flow notes into numbered steps that stand alone, replacing the bullet notes that repeated the diagrams.
+- Merged the Decisions section into the failure table plus three short bullets, so the rate-limit, failed-send and per-IP rationale is stated once.
+- Removed duplicated statements: the row-lock and double-submit explanation appeared in both the notes and the table, and the 'no automatic login' and session-check logout points each appeared twice. Each now appears once.
+- Trimmed diagram annotations in the link-click flow that repeated what the steps already say. The request flow diagram is unchanged in content. Both diagrams keep their diagram form.
+- Added one failure row for the session race that was previously only in Decisions, so the table holds every failure case.
+- Kept all five open questions and the intent of the design unchanged. No behaviour was changed.
+
+### Holes
+- Q1: What is the "email job" queue concretely? Is it a database table, and how does the email worker find new jobs and know which ones are unsent? (author: The brief says only that the API adds a job and an email worker sends it. It does not say whether the queue is a Postgres table or how the worker finds unsent jobs. The same-transaction guarantee in the design holds only if the queue is in Postgres. Added to Open questions.)
+- Q8: What is the "counted alert" the worker emits, and where does it go? Who sees it? (author: The brief does not name an alerting system, a metric, a destination or an owner. The design says only 'counted alert'. Added to Open questions, so nobody assumes a destination.)

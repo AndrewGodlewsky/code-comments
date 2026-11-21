@@ -1,0 +1,178 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In step 5 you apply changes to product_next, but step 8 says live_cursor is the last change_seq applied. Where is that value kept between step 5 and the swap, and is download_catchup_since the same thing?",
+     "about": "Step 5 and Step 8"
+    },
+    {
+     "id": "2",
+     "text": "Step 5 says to apply a change only if change_seq is greater than the change_seq stored on the row. Pages from /sync/products don't show a change_seq in their response. Where does a row in product_next get its change_seq from?",
+     "about": "Step 3 / Step 5 apply rule"
+    },
+    {
+     "id": "3",
+     "text": "Step 5 and 7 delete a row by id when a change is a tombstone. If a delete arrives for a row not in product_next yet, or an older upsert arrives later, how does the 'only if newer' rule handle that?",
+     "about": "Step 5 idempotent apply"
+    },
+    {
+     "id": "4",
+     "text": "Step 1 says it starts when a Wi-Fi connection is available, but step 7 says incremental sync can use any network. Does the catch-up in step 5 (after the last page) also need Wi-Fi, or can it run on cellular?",
+     "about": "Step 5 and Step 4 Wi-Fi gate"
+    },
+    {
+     "id": "5",
+     "text": "Step 9 (resync) rebuilds while product_live keeps serving. What stops step 7 incremental sync from running against product_live during that rebuild, and what is last_incremental_at/mode doing then?",
+     "about": "Step 9 and Step 7"
+    },
+    {
+     "id": "6",
+     "text": "Step 6 lists modes that trigger resume, but step 1 sets mode to downloading only after W is fetched. If the app is killed between the watermark call and the sync_state write, or when mode is idle but a resync is needed, what restarts things?",
+     "about": "Step 6 Resume after interruption"
+    },
+    {
+     "id": "7",
+     "text": "What does a rep see on first install before step 8, given no product_live exists? Also, how is mode idle used when product_live exists and a resync is running, since mode would be downloading?",
+     "about": "Step 8 and sync_state.mode"
+    },
+    {
+     "id": "8",
+     "text": "The server check says 410 when N < purge_horizon. Step 12 says the horizon is the highest change_seq purged. Is a client with since exactly equal to the horizon safe, and who stamps change_seq on a purge (does purge itself create changes)?",
+     "about": "Server endpoints, resync_required check and Step 12"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The catch-up position is the same idea as download_catchup_since, renamed next_cursor. It lives in sync_state and is updated in the same transaction as each catch-up batch. At the swap it is copied into live_cursor. live_cursor is used only for product_live, so the two never mix."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Each item in the page response now carries its change_seq, so the row written to product_next has one. This is an endpoint design choice we make here, and it is in the endpoint table. The apply rule in step 5 depends on it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "A delete with no matching row is a no-op. Changes arrive in change_seq order and all pages finish before catch-up starts, so no older upsert for the same id can arrive after a delete. An older upsert is skipped by the change_seq check. A repeated batch is safe for the same reasons, since repeated upserts are skipped and repeated deletes do nothing."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, catch-up needs Wi-Fi. It is part of the full download, and the brief says the full download runs only on Wi-Fi. Step 4 gates each catch-up batch, and it pauses at a batch boundary on cellular. Incremental sync (step 7) can use any network."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Step 7 does not run while download_state is not idle. So the old live_cursor is never used against a rebuild, last_incremental_at is not written during the rebuild, and the 15-minute gate applies again only after the swap. product_live keeps serving reps throughout."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Step 1 fetches W first and writes all its state in one transaction, so a kill before that write leaves the device with no catalogue (live_cursor null), and launch runs step 1 again. A resync (step 9) sets downloading and clears watermark_W in one transaction. If the app is killed after that, step 6 sees watermark_W null and runs step 1. The 410 path from step 5 now also goes to step 9, so there is one resync path."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "On first install there is no catalogue, so what a rep sees before the swap is open question 1 and is not decided here. download_state describes only the download: idle means no download is running. It does not mean there is no catalogue. A device has a catalogue once live_cursor is set. During a resync, download_state is downloading while product_live keeps serving reps."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes, since equal to H is safe. Every purged tombstone has a change_seq at most H. A client at N = H needs changes above H, and none of those were purged, so nothing is missing. The server defines H as the highest change_seq among purged tombstones. Purging creates no change rows and stamps no change_seq. That server behaviour is listed in open question 2 for confirmation."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 1 and step 9 both say they set download_state to downloading, and step 1 starts when step 9 has set it. Step 9 clears watermark_W, then step 1 fetches W. Is that the handoff, and what runs step 1 after step 9 commits?",
+     "about": "Step 9 and Step 1"
+    },
+    {
+     "id": "10",
+     "text": "The page endpoint keeps no session and pages are read over hours while products change. A product updated mid-download could be on a page with a newer change_seq, or skipped if its id was already passed. How does catch-up from W end up correct in both cases?",
+     "about": "Step 2 Fetch one page / Step 5 Catch up"
+    },
+    {
+     "id": "11",
+     "text": "The summary says Wi-Fi gate pauses on cellular, but step 10 says retries wait for Wi-Fi. When all 5 attempts fail and state is failed_exhausted, what exactly restarts it, and does the in-memory attempt count start again at 5 on that trigger?",
+     "about": "Step 10 Retry policy"
+    },
+    {
+     "id": "12",
+     "text": "Step 8 says the swap sets live_cursor = next_cursor. If the live_cursor was set before (a resync), is the old product_live fully dropped, and does the incremental sync (step 7) restart at the first launch after, using the 15-minute gate based on an old last_incremental_at?",
+     "about": "Step 8 Atomic swap"
+    },
+    {
+     "id": "13",
+     "text": "Step 8 is titled 'end of the first download' but step 9 reuses it for resyncs. Is the swap identical in both cases, and in step 3 with both product_next and product_live as tables in the same file, how does the app read from the right one by name after a rename?",
+     "about": "Step 8 Atomic swap"
+    },
+    {
+     "id": "14",
+     "text": "What does a failed_exhausted download look like to a rep who already has a catalogue, and to one on first install? Does anything tell them?",
+     "about": "Step 10 / failed_exhausted"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes, that is the handoff. Step 8 commits download_state = downloading and clears watermark_W and the other download fields, and step 1 then runs in the same process. Step 1 fetches W and rebuilds the staging table. If the app is killed between the two, launch sees downloading with watermark_W null, and step 9 sends it to step 1. The document now names step 1's three triggers."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "W is the highest committed change_seq, and change_seq order is commit order, so every change not already in W has a change_seq above W and is replayed by catch-up. A page can read a product before or after a later change. If the page is older, catch-up applies the newer change. If the page is newer, the change_seq check skips the older catch-up change. A product created behind the page cursor is only delivered by catch-up. Overlap is harmless because of the change_seq check. Step 5 now states this argument. The assumption that ids are never reused is an open question."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The attempt count belongs to one request, is kept in memory, and survives a cellular pause, because retries wait for Wi-Fi. When all five attempts fail, the download sets failed_exhausted. The next trigger restarts the step with a fresh count of 5. Triggers are app launch, foreground, Wi-Fi returning for a download, and the 15-minute gate for incremental sync. Step 9 now lists Wi-Fi returning, which step 10 already relied on. The summary's cellular pause is now stated in step 2 and step 11."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. The swap drops the old product_live completely, so no old rows survive. live_cursor is overwritten with the new next_cursor. last_incremental_at is not reset, so if it is older than 15 minutes, which it normally is after a rebuild, the next launch or foreground runs incremental sync at once. That is the right behaviour, because the new copy is only as current as its last catch-up batch. Step 7 now says this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, the swap is the same in both cases. On first install there is no old product_live to drop. The app reads only the name product_live. The rename commits in the same transaction as the cursor and state changes, so a read sees the old table or the new one, never neither. Step 6 is now titled as the swap for both the first download and a resync. How an already-open read behaves across the rename is an SQLite detail for the implementer to verify."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A rep with a catalogue sees the old catalogue, unchanged, and nothing tells them, because the plan specifies no UI message. Their catalogue also stops getting incremental updates while the download is failed_exhausted, which is open question 9. A first-install rep has no catalogue, so they see whatever the first-download screen shows. That is open question 1. Whether anything tells them is open question 8. The rep table in the document states these cases."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Start of a download. The trigger is one of: first install (live_cursor null and download_state idle), a resync, or a resume that finds watermark_W null. The app first passes the Wi-Fi gate (unmetered Wi-Fi only). It then calls GET /sync/watermark, and the server returns W, the highest committed change_seq. Nothing is written before W arrives. Then, in one SQLite transaction in the catalogue file, the app drops any old product_next, creates an empty one, and sets sync_state: download_state=downloading, watermark_W=W, download_last_id=null, download_pages_saved=0, pages_complete=false, next_cursor=W. If the app is killed before that transaction commits, nothing changed and the next start fetches W again. A network error or 5xx goes to step 9 (retries).\n\n2. Fetch a page. The trigger is step 1 finishing, step 3 saving a non-final page, or a resume. The Wi-Fi gate must pass first. The app calls GET /sync/products?after_id=download_last_id&limit=500, and the first page omits after_id. It asks for gzip. Pages go one at a time, never in parallel. The server keeps no session, because after_id is the only cursor. The response is up to 500 items, each {id, change_seq, product}, plus next_after_id and done. Nothing is written until the whole body has arrived and passed the check. A timeout, network error or 5xx goes to step 9. A partly received body is discarded and the same page is requested again.\n\n3. Save the page. The app checks the page: at most 500 items, each with id and change_seq, ids strictly increasing and greater than download_last_id. If it passes, one transaction writes each product into product_next by id, sets download_last_id to the page's last id, and adds 1 to download_pages_saved. If done is true, the same transaction also sets pages_complete=true and the flow goes to step 4. Otherwise it loops back to step 2. If the app is killed mid-transaction, SQLite rolls back, the cursor still points at the previous page, and that page is fetched again. Rewriting a page is harmless. A page that fails the check is treated like a 5xx and goes to step 9.\n\n4. Catch up. Once pages_complete is true, the app loops while has_more is true. Each batch passes the Wi-Fi gate, then calls GET /sync/changes?since=next_cursor&limit=1000. It applies the changes to product_next in one transaction that also sets next_cursor=next_since. An upsert is written only if the row is missing or its stored change_seq is lower than the change's. A delete removes the row if it exists, and does nothing otherwise. This replays everything committed after W, so it covers pages read before or after a later change, new ids the pages had already passed, and deletes. The doc says this relies on product ids never being reused. A network error or 5xx goes to step 9, and the cursor stays at the last applied batch. A 410 resync_required goes to step 7. If the app is killed, step 8 resumes from next_cursor. When has_more is false, go to step 5.\n\n5. Swap. In one transaction the app drops the old product_live (there is none on first install) and renames product_next to product_live. It sets live_cursor=next_cursor and download_state=idle, and clears watermark_W, download_last_id, download_pages_saved, pages_complete and next_cursor. The app always reads the name product_live. If the app is killed before the commit, the old live table and the staging table both stay intact, and step 8 resumes catch-up. Reps see the new catalogue from this point. The device now counts as having a catalogue because live_cursor is set.\n\n6. Incremental sync. On launch or return to foreground, it runs only if live_cursor is set, download_state is idle, and last_incremental_at is at least 15 minutes old. Any network may be used, and it is not Wi-Fi gated. It writes last_incremental_at=now at the start, and a failed run still counts. Then it calls GET /sync/changes?since=live_cursor&limit=1000 and applies each batch to product_live with the step 4 rules. Each batch is one transaction that also sets live_cursor=next_since. It repeats while has_more is true. Deletes remove rows, so reps stop seeing those products. A network error or 5xx goes to step 9, and the cursor stays at the last applied batch. A 410 goes to step 7. While a download is running (download_state not idle), this step does not run.\n\n7. Resync. When step 4 or 6 gets 410 (the cursor is older than the purge horizon H, for example after more than 7 days offline), one transaction sets download_state=downloading and clears watermark_W, download_last_id, download_pages_saved, pages_complete and next_cursor. Step 1 then runs, behind the Wi-Fi gate, and a full rebuild follows through steps 1 to 5. product_live is untouched, so reps keep the old catalogue until the swap.\n\n8. Resume. On launch, foreground, a start after being killed, or Wi-Fi returning, if download_state is downloading, paused_cellular or failed_exhausted, the app passes the Wi-Fi gate. If watermark_W is null it goes to step 1. Otherwise it sets download_state=downloading, then goes to step 2 with after_id=download_last_id if pages_complete is false, or to step 4 with since=next_cursor if it is true. It never restarts from page 1 once it has a watermark. A resume into catch-up that gets 410 goes to step 7. A resume that fails again waits for the next trigger.\n\n9. Retries. For a network error, timeout, 5xx, or a page that fails the check, in steps 1, 2, 4 or 6, the same request is sent again after waits of 2, 4, 8 and 16 s, for at most 5 attempts. If the device goes to cellular, the retry waits for Wi-Fi and keeps its count. The count lives in memory only. If all 5 fail, a download sets download_state=failed_exhausted, and incremental sync leaves live_cursor where it is. Saved data is kept. There are no more automatic retries until the next trigger, which starts a fresh count of 5. The triggers are launch or foreground, Wi-Fi returning (for a download), and the 15-minute gate (for incremental sync). Other 4xx responses are not retried and end in the same failed state.\n\n10. Connectivity and background. If Wi-Fi is lost between requests, the gate sets download_state=paused_cellular and stops on a saved boundary. If it is lost during a request, step 9 applies. Downloads run via a background URL session on iOS and WorkManager with an UNMETERED constraint on Android. The OS may kill background work at any time. Only the in-flight page or batch is lost, since each one is saved atomically, and the next launch resumes at step 8.",
+   "gaps": [
+    "What reps see and can do before the first swap on first install (browse a partial catalogue or a progress screen) is undecided, so I cannot say what the UI does during step 1 to 5 on first install.",
+    "What a first-install device with failed_exhausted shows is not defined, so the UI for that case is missing.",
+    "What a read already open on product_live does during the swap's drop and rename is not stated. The implementer is told to check it.",
+    "How a 401 or 429 or any other non-410 4xx is handled beyond 'not retried, counts as failed' is undecided, for example re-authentication or Retry-After.",
+    "What happens when a download takes more than 7 days from W is undecided, because catch-up would get 410 every time. The doc does not say whether the server keeps the window open or the client restarts.",
+    "The server behaviours the whole catch-up logic depends on are unconfirmed: that the watermark is the highest committed change_seq, that queries read only committed rows, that purging stamps no change_seq, and that ids are never reused.",
+    "The doc does not say how the app finds out the Wi-Fi state changed so that it can trigger step 8. Step 10 only says the OS reports connectivity changes and does not say what the app does with that report.",
+    "It does not say what happens if a swap or resync trigger arrives while a download is already running, or how concurrent triggers such as launch plus foreground are prevented from starting two runs at once.",
+    "It does not say how a rep is told that the catalogue is frozen during failed_exhausted or a resync, or whether incremental sync should keep the old copy current meanwhile (open questions 8 and 9)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

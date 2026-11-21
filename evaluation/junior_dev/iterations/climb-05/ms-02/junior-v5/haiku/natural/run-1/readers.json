@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "It becomes durable when the caller's transaction commits and enqueue's pending row is written. If the caller rolls back, there is no row and no email.",
+  "q2": "It redelivers the message after 30 seconds, possibly to another consumer, until it is acknowledged.",
+  "q3": "Five attempts total. Retries wait 1, 2, 4, then 8 minutes. At attempt 5 the row becomes failed and on-call is paged.",
+  "q4": "shipping_update, then order_confirmed, then password_reset, each after at least 3 days with no mismatch. password_reset needs order_confirmed p99 latency under 60 seconds.",
+  "q5": "The notification's id, passed as idempotency_key. Within 24 hours MailRelay drops a repeat with the same key and reports success.",
+  "q6": "The relay publishes each service row to notifications.requested and sets published_at after the broker confirms. The monolith is done then; status returns later.",
+  "q7": "enqueue_notification sets the route at insert from flag notify.route.<type>. Missing or non-service means monolith. It never changes after insert.",
+  "q8": "The jobs table has one row per notification id, so a second insert does nothing. MailRelay also drops a repeat send with the same key within 24 hours.",
+  "q9": "It acks only after the jobs row insert commits, before sending. A crash before commit means redelivery; a crash after commit but before ack is blocked by the primary key.",
+  "q10": "In the service's jobs table: attempts, next_attempt_at and lease. The service's sender loop, every 5 seconds, claims and acts on due jobs.",
+  "q11": "Service rows are not moved back. Published rows wait in the broker or the service's jobs table until the service runs again; restoring the service is the fix.",
+  "q12": "Each message carries id, type, email, payload and created_at. The service renders the email from templates moved from the monolith."
+ },
+ "sonnet": {
+  "q1": "The notification becomes durable when enqueue_notification writes the pending row to the monolith's notifications table, which happens only if the caller's own transaction commits. If the caller rolls back, there is no row and no email.",
+  "q2": "The broker redelivers it if it is not acknowledged within 30 seconds, possibly to another consumer (at-least-once).",
+  "q3": "Up to 5 attempts. Failures (MailRelay errors, timeouts, render errors) each add 1 to attempts. After attempts 1 to 4 the retry is delayed 1, 2, 4 and 8 minutes. At attempt 5 the job is set to failed, a failed event is written, and on-call is paged.",
+  "q4": "Order: shipping_update (at least 3 days), then order_confirmed (at least 3 days), then password_reset (7 days before decommission). Before password_reset moves, order_confirmed must have run with a p99 latency (sent_at - created_at) under 60 seconds over its 3-day window. The plan also says order_confirmed moves only after shipping_update has run 3 days with no reconciliation mismatch. Step 5 end-to-end verification must pass before step 6, and every monolith instance must run the step 2 build.",
+  "q5": "An idempotency_key, which is the notification's id (str(row.id) in the old worker). It comes from the notification row id. If MailRelay already accepted a send with that key in the last 24 hours, it drops the repeat and reports success.",
+  "q6": "The outbox relay, every 5 seconds on each monolith instance, locks unpublished pending service rows and publishes {id, type, email, payload, created_at} to the notifications.requested topic. It waits for the broker's confirmation of storage, then sets published_at and commits. The monolith's part of the delivery is done when the broker confirms and published_at is committed. The row's final status is set later by the status consumer from the service's status event.",
+  "q7": "The monolith's enqueue_notification decides, by reading the flag notify.route.<type> (missing or any value other than service means monolith). It writes the route on the row at insert time, inside the caller's transaction, and the route never changes afterward.",
+  "q8": "The jobs table has one row per notification id (primary key / ON CONFLICT (notification_id) DO NOTHING), so the second insert does nothing and the consumer just acks. MailRelay's idempotency key is the second layer.",
+  "q9": "It acks only after the jobs-row insert transaction commits, and the send happens later in a separate sender loop. If it crashes before the commit, nothing is stored and the broker redelivers the message. If it crashes after the commit but before the ack, the broker redelivers and the primary key makes it a no-op that is acked with no second send.",
+  "q10": "In the service's own jobs table (attempts, next_attempt_at, lease_until, status). The service's sender loop acts on it, running every 5 seconds on each service instance, claiming due jobs with FOR UPDATE SKIP LOCKED and a lease.",
+  "q11": "Nothing moves back. Rows already routed to the service finish there, because the route is set once at insert. Only new rows go to the old worker. Published rows wait in the broker or in the service's jobs table until the service runs again, and if the service is down long term the fix is to restore the service. Verification is by the daily reconciliation.",
+  "q12": "Each message carries {id, type, email, payload, created_at}. The email content is rendered in the service by the sender, using the templates moved from the monolith."
+ }
+}

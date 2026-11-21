@@ -1,0 +1,18 @@
+## Review of sync-01 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Summary cut to three sentences and placed before the diagram, saying how the current local-only system works today and that there is no sync server.
+- Added a terms section (SQLite, version, base version, outbox, change id, in flight, change log, seq, cursor, conflict, conflict note, idempotent, sync lock) placed before the diagram. Each term is defined in one plain line.
+- Kept the Mermaid sequenceDiagram verbatim and placed it after the terms. Added one short note after it describing the scenario.
+- Moved the state description into its own section and kept every table and field name, merged the phone and server lists under one heading.
+- Turned the rule lists into four numbered steps (edit, sync, upload, download). Each step names its trigger, what it does, which part keeps its data and what happens on failure. The collapsing and in-flight rules sit under the edit step, and the seq-order reason is one clause in the upload step.
+- Merged the failure bullets and the failure rules into one table. Removed duplicate statements of the same failure handling that appeared in both the rules and the failure list.
+- Restored the out-of-scope line (deletes, attachments, sharing between users, auth) from the brief, which the first version had dropped.
+- Restored the brief's fixed requirements that the first version had dropped or shortened: the 60-second timer, the 100-change batch limit, the 500-entry page limit, the losing body never being thrown away, and that conflict notes are logged so every device sees them.
+- Kept all four open questions from the first version, reworded in plain words. Also kept the conflict-note versioning as an open question, noting that it is the working choice and not settled by the brief.
+- No junior questions were supplied, so no answers were used. Nothing was invented: no new mechanisms, loops or retry rules were added beyond the first version.
+
+### Holes
+- None.

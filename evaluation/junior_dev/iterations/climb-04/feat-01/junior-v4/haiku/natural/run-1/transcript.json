@@ -1,0 +1,113 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The same POST returns either a CSV file (200) or a JSON 202. How does the page tell which one it got and what to do with each?",
+     "about": "Step 1 / Step 2 / Step 3.3: POST /api/reports/{report_id}/exports"
+    },
+    {
+     "id": "2",
+     "text": "Step 4.1 says to return normally when state is `done`. Step 7 says a retry with `done` and empty `emailed_at` sends the email again. Where in the handler does that retry get past 4.1?",
+     "about": "Step 7 failure vs Step 4.1"
+    },
+    {
+     "id": "3",
+     "text": "`completing` is not in the allowed `state` values in 0.2, and not in the 4.2 update's `state IN ('queued','running')` or in Step 9's display list. How does a retry in `completing` get through Step 4, and what does the page show then?",
+     "about": "Step 6.1 `completing` state"
+    },
+    {
+     "id": "4",
+     "text": "If another attempt holds the lease and has a fresh heartbeat, this attempt returns normally. What then retries the export if that other attempt dies later?",
+     "about": "Step 4 failure: conditional update changes zero rows"
+    },
+    {
+     "id": "5",
+     "text": "What is a stale heartbeat in Step 4 terms: how old, and who decides? Heartbeat is only written after each 8 MB part, so how long can a healthy attempt go between heartbeats?",
+     "about": "Step 4.2 Take the lease"
+    },
+    {
+     "id": "6",
+     "text": "How does the queue decide to retry: does raising an error trigger a retry and returning normally mean success? What are `ctx.attempt` and the 30-minute limit, and what happens to the running code when the limit hits?",
+     "about": "Step 4: the queue runs the `report_export` handler"
+    },
+    {
+     "id": "7",
+     "text": "The attempt limit is 30 minutes but the page shows \"retrying\" only after the heartbeat is 35 minutes old. During the wait for the 60 s or 300 s backoff, what does the user see?",
+     "about": "Step 9.2 `running` display"
+    },
+    {
+     "id": "8",
+     "text": "Step 8.2 updates the row only if `lease_token` matches. Which token does it check, given the final attempt has already died? What if no attempt ever took a lease?",
+     "about": "Step 8 on_final_failure"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The page tells the responses apart by status and Content-Type: text/csv means save the file, JSON 202 means show the status panel and poll, and a JSON error means show the message. Step 1 now lists these three shapes."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Step 4.1 now sends a done row with empty emailed_at to Step 7 instead of returning normally. Only failed, or done with emailed_at set, returns normally."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The completing state is removed. After a failed completion, the retry checks whether the object exists at the key (Step 6) instead of relying on a state. The page never shows completing, so the 4.2 condition needs no change."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "If another attempt holds a live lease, this attempt raises so the queue retries it later, instead of returning normally. The remaining gap, where the live copy dies after the queue has stopped, is open question 10."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The heartbeat is written when the lease is taken, after every replica page, and after every part, so a healthy attempt writes at least once per page read or part upload. Stale means older than STALE_AFTER (5 minutes), set by the server when it computes the stale flag. The 5-minute value is a guess and is open question 12."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The Terms section now defines attempt, queue retry and the 30-minute kill. Raising an error is a failed attempt, and returning normally is success. ctx.attempt is the queue's count from 1 to 3 (jobs.py). When the limit hits, the job code stops with no cleanup, and Step 5 covers the resulting row state."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "An attempt that raises sets the row back to queued with an error text. During the 60 s or 300 s backoff, the page shows 'Export queued. Retrying after an error.' Running and stale appears only after a kill or a worker death."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The final-failure handler does not check a lease token. It sets failed unless the row is done, because the last attempt may never have taken a lease. A duplicate live copy is a remaining gap, listed as open question 10."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. User clicks Download CSV on the reports page. The browser sends POST /api/reports/{report_id}/exports with the filters and cols from the page URL. The server checks report.view (403 if missing), validates filters and cols the same way the page does (400 if bad), and reads reports.row_count from the replica (404 if the report is missing, 503 if the read fails). It keeps no state at this step. If row_count is 10,000 or less it goes to step 2. Otherwise it goes to step 3. The page tells the response apart by status and Content-Type: 200 text/csv means save the file, 202 JSON means show the status panel and poll, and a JSON error means show the message.\n\n2. Small path (10,000 rows or fewer). The server reads rows from the replica in keyset pages of 1,000 (row_id > after, ordered by row_id). It formats them with the shared CSV writer and builds the whole file in memory. Buffering is deliberate. Once headers are sent an error can't reach the user, and a cut-off file would look complete. It then returns 200 with a Content-Disposition attachment. Nothing is written to the database or storage. A replica error or the 60-second API limit gives 503, and the page shows \"Export failed, try again\". Retrying is safe.\n\n3. Large path (more than 10,000 rows). 3.1 The server inserts a report_exports row with state queued, plus the user, report, filters and cols. A partial unique index allows only one queued or running export per user and report. If it rejects the insert, the server reads the existing active export and goes to 3.4. Any other insert error gives 500, and no job was queued. 3.2 It calls enqueue(\"report_export\", {export_id}) and stores the returned job_id on the row. If that update fails it logs and carries on, because the job finds the row by export_id. If enqueue raises, the row is set to failed with \"could not queue\" and the server returns 503. 3.3 It returns 202 with export_id, state queued, filters and cols. 3.4 A duplicate click returns 202 with the existing active export's ID, state, filters and cols. State kept: one queued row in the primary database.\n\n4. A job attempt starts. The queue runs the job and passes ctx.attempt (1 to 3). 4.1 It loads the row. If the row is missing, or is failed, or is done with emailed_at set, it returns normally. If the row is done with emailed_at empty, it jumps to step 7. Otherwise it continues. 4.2 It takes the lease with one conditional update. The row must be queued, or running and stale (heartbeat more than 5 minutes old). The update sets running, attempt, a new random lease_token, started_at and heartbeat_at, and keeps the checkpoint fields (upload_id, parts, last_row_id). If zero rows change, a live attempt holds the lease, so the job raises and the queue retries later. Once it has the lease, any raise first sets state back to queued with error \"attempt N failed, retrying: ...\", using its lease token, and then re-raises. If that update fails, it raises anyway. 4.3 It re-checks report.view. If access is gone, it sets failed with \"no access\", sends the export_failed email and returns normally.\n\n5. Streaming into a multipart upload. 5.1 If upload_id is empty, it calls start_multipart(\"exports\", \"<export_id>.csv\") and saves upload_id on the row before writing data. The key is the same on every retry. 5.2 It reads a page of up to 5,000 rows from the replica (row_id > last_row_id, ordered by row_id), then writes the heartbeat, checking lease_token. 5.3 It writes the rows as CSV into an in-memory buffer. The header row goes first, only when parts is empty. 5.4 When the buffer reaches 8 MiB, cut at a row boundary, it calls upload_part with part_number = len(parts)+1. In one lease-checked update it then appends {part_number, etag} to parts, sets last_row_id to the last row in the part, and sets heartbeat_at. It then clears the buffer. 5.5 It repeats until a page comes back empty, then uploads any leftover buffer as the final part. State is checkpointed after every page and part. Failures: a replica read error or upload_part error raises, and the next attempt resumes from last_row_id and re-uploads the unrecorded part. A timeout over 30 minutes or a dead worker stops the code, so the row stays running with an old heartbeat, becomes stale, and the queue retries from the checkpoint. A lost lease (a write changes zero rows) raises.\n\n6. Finish the file. 6.1 It calls complete_multipart(upload_id, etags), and the object appears at exports/<export_id>.csv. 6.2 In one lease-checked update it sets done, object_key, completed_at and expires_at (now + 24h), and clears upload_id and parts. If complete_multipart fails, it raises and the retry repeats 6.1. If 6.1 succeeded but 6.2 failed, the retry's 6.1 fails because the upload is gone. The job then checks whether an object exists at that key. If it does, it runs 6.2. If not, it raises.\n\n7. Send the email. The row is done with emailed_at empty. This happens right after 6.2, or via the retry path in 4.1. It creates a signed URL for the object (TTL = min(86400, expires_at - now)), calls send_email(user_id, \"export_ready\", {report, url, expires_at}), and sets emailed_at. If send_email raises, the attempt raises, and the retry goes straight back to step 7 without rebuilding the file. If attempts run out while the row is done, step 8 logs and alerts operators but does not mark it failed. The user still sees Download.\n\n8. Permanent failure. After attempt 3 fails, the queue calls the final-failure handler, unless the row is done. 8.1 It loads the row. If the row is done, it logs, alerts operators and stops. 8.2 Otherwise it sets failed and a short error, without checking lease_token. 8.3 If upload_id is set, it calls abort_multipart and clears upload_id. If the abort fails it logs, and the lifecycle rule removes leftover parts after 24h. 8.4 It sends export_failed. If that email fails it logs, and the page still shows failed. If the row update fails, the handler raises and operators see it in the logs. Nothing is downloadable on this path.\n\n9. The page shows state. This runs when the page loads or after a 202. 9.1 The page calls GET /api/reports/{report_id}/exports/latest. It checks report.view, returns only the caller's own exports, and returns the active export if there is one, otherwise the most recent. The response has state, attempt, error, expires_at, filters, cols and a stale flag. 9.2 Display by state. queued shows \"Export queued\", plus \"Retrying after an error\" if error is set. running and not stale shows \"Export running, attempt N of 3\". running and stale shows \"Export retrying\". done shows a Download button that calls GET /api/exports/{id}/download. That endpoint checks ownership, report.view and that expires_at hasn't passed, then redirects to a fresh signed URL that lasts until expires_at. failed shows \"Export failed: <error>\" and a Try again button, which restarts at step 1. 9.3 Past expires_at, or if the download finds the object missing, it shows \"This export has expired. Start a new one.\" 9.4 While the state is queued or running, the page polls every 3 seconds. It stops on done or failed, or when the user leaves. If a poll fails it keeps the last state and tries again. A 403 on download shows \"You no longer have access to this report.\" The server holds all state, so another device sees the same status.",
+   "gaps": [
+    "The document does not say how the filters and cols in the page URL are encoded, or how the 202 response's filters and cols are used on the page beyond display.",
+    "It does not say what happens if a job finishes the work but the attempt then runs out of time before 6.2 or step 7 on the final attempt, other than the done-state email case. For a row that stays running and stale after attempts are exhausted (open question 10), nothing restarts it, and it is not said what the user then sees beyond the 'Export retrying' text.",
+    "It does not say how the final-failure handler is registered or how it learns which export it is handling (what arguments it receives).",
+    "It does not say what 'stale' means for a queued row, or how the server computes the stale flag in the latest endpoint (STALE_AFTER is defined, but the exact check is not given).",
+    "It does not say whether re-uploading an existing part number replaces the earlier part. Step 5.4 depends on this, and open question 11 says it is unconfirmed.",
+    "It does not say how step 6 checks that an object exists, because storage.py has no such helper (open question 11).",
+    "It does not say what the page does for a replica-based small export whose response is slow beyond the 60-second limit, or how the browser saves the file (only that it does).",
+    "It does not say what happens to the page and the export when a second click comes with different filters (open question 4, undecided).",
+    "It does not say how the export keeps a consistent snapshot if report_rows is rebuilt nightly mid-export (open question 2, undecided).",
+    "It does not say how the 30-minute attempt limit and 3-attempt limit interact for a 2-million-row export. Throughput is unmeasured, so whether a large export can finish is unknown (open question 1).",
+    "It does not say when the enqueue payload is delivered relative to the row commit, so it is unclear whether the job can start before the row is visible. Step 4.1's 'row missing: return normally' hints at this but does not explain it."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

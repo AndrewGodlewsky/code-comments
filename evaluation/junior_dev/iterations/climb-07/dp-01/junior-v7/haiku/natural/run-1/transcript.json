@@ -1,0 +1,197 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The text says the extract window is based on hwm minus 2h. On the very first run, what is the hwm, and is there an initial backfill?",
+     "about": "S1: Read hwm from ops.pipeline_state"
+    },
+    {
+     "id": "2",
+     "text": "The diagram shows the 'Drop staging rows for run_id' step after COMMIT. If it fails or the job dies there, what happens, and does the next attempt clean it up?",
+     "about": "S10: Drop staging rows for run_id"
+    },
+    {
+     "id": "3",
+     "text": "If an attempt fails after the commit has actually happened, or a duplicate trigger arrives, how does the 'existing committed row for its run_date' check stop a new attempt, and where is that check in the flow? I don't see it in the diagram.",
+     "about": "Failure, retry and paging: check for committed row before starting"
+    },
+    {
+     "id": "4",
+     "text": "What exactly is 'run_date' for a night that starts at 02:00 UTC, and how do retries after midnight or the 06:00 check pick the same value?",
+     "about": "T6 / run_log run_date"
+    },
+    {
+     "id": "5",
+     "text": "What does the 60-minute timeout cover: the whole attempt from S0 to S10, or only S3, S7 and S9? Who enforces it and what rolls back if it fires mid-extract?",
+     "about": "S3/S7/S9 'error or 60 min timeout' to FAIL"
+    },
+    {
+     "id": "6",
+     "text": "Is the page to on-call sent by the job itself? And if the 06:00 check finds no committed row while attempts are still retrying, is the Slack post expected in that case?",
+     "about": "RET: 3 failures -> Page on-call, and T6 staleness check"
+    },
+    {
+     "id": "7",
+     "text": "The merge picks the greatest updated_at per order_id, but what is the unit of an order: one row in the replica orders table, or are there child tables like line items that also get loaded?",
+     "about": "RO orders / analytics.orders: one row per order_id"
+    },
+    {
+     "id": "8",
+     "text": "What triggers the Sunday reconciliation exactly (a separate scheduler entry, or a hook after the nightly commit), and what is night_cutoff for the comparison?",
+     "about": "TS: Sunday, after the night's load commits"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The first run has no HWM, so the job is set up with ops.pipeline_state seeded to hwm = 1970-01-01, and the first run loads the whole table. The brief gives no initial backfill, so this is my decision. Whether one attempt can finish that load within 60 minutes is an open question, and the file now lists it."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Staging rows are deleted in step 11 after COMMIT. If the job dies or cleanup fails there, the data and HWM are already correct and the rows stay in staging. Nothing reads staging, so they are harmless. The next start for the same run_date deletes them in step 1, which is why staging rows now carry run_date. If no further attempt runs, they stay until the next night's start for that date, which is harmless."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The check is step 0, the first decision in the diagram, before any write. It stops the attempt if run_log has a committed row for run_date, or a started row under 60 minutes old. Status committed is written in the same transaction as the data, so a committed row exists exactly when the data committed. A retry after a commit that looked like a failure therefore stops at step 0."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "run_date is the UTC date of the 02:00 scheduled start. Attempts store it as a column, so retries and the 06:00 check read the stored value and never recompute it from the clock. All attempts end before 06:00 UTC on the same date, so no retry crosses midnight."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The 60-minute limit covers the whole attempt, from step 0 to COMMIT, not only the extract. The job's own timer ends the attempt, and the open warehouse transaction rolls back. If the timeout hits during COMMIT, the outcome is unknown, and the next start resolves it from run_log, which is written in the same transaction."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The job itself pages on-call after the third failed attempt. The 06:00 Slack post is expected whenever no committed row exists for run_date, even if on-call was already paged. Worst-case timing has all attempts ending before 06:00, so a missing commit at 06:00 means every attempt failed or the job died."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The unit is one row of the orders table, as the brief says. Child tables such as line items are not in the brief and are not loaded. The file lists this as an open question so it can be checked."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "It is not a separate scheduler entry. It is a step in the same job, after COMMIT and cleanup, and runs only when run_date is a Sunday. night_cutoff is the cutoff of the Sunday attempt that committed, which is also stored in last_success_cutoff. If no Sunday attempt commits, reconciliation is skipped for that week and recorded as skipped."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The cutoff is the job's clock, but the extract reads from the read replica. If the replica lags behind the app database, what stops rows written before cutoff from being missed?",
+     "about": "Set cutoff = current UTC time, before the replica query"
+    },
+    {
+     "id": "10",
+     "text": "When a job dies and leaves a started row, who changes it to failed? Does that dead attempt count toward the 3 failed attempts, and what starts the next one?",
+     "about": "Job dies with no retry scheduled / Start (step 0)"
+    },
+    {
+     "id": "11",
+     "text": "Does the 60-minute limit cover the reconciliation too? If reconciliation errors out or runs past 06:00, is anything retried, and does it change the night's committed status?",
+     "about": "Sunday reconciliation / R1 to R5"
+    },
+    {
+     "id": "12",
+     "text": "Is this dedupe done inside staging.stg_orders or on the way into the MERGE? Why would the extract return more than one row per order_id?",
+     "about": "Keep one row per order_id: greatest updated_at wins"
+    },
+    {
+     "id": "13",
+     "text": "For the warehouse side of the comparison, is the count and checksum computed from analytics.orders, including soft-deleted rows? How is creation day derived for a row whose created_at is near midnight?",
+     "about": "R1: count and checksum at or before night_cutoff"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The cutoff does not guard against replica lag. It only guards against writes made during the extract, because cutoff is the job's own clock and the replica query stops at it. If the replica is behind the app, a row written before cutoff may not be on the replica yet, so this night misses it. A later night's lookback can pick it up if its updated_at is recent enough. Otherwise the Sunday reconciliation finds it when its creation day is within 30 days. The brief names this case and assigns it to the reconciliation. Changed the Window note to say this and added a row to the failure table."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Nothing changes a dead started row. The next start reads its age: under 60 minutes it blocks a new start, over 60 minutes it counts as failed. So it counts toward the attempt number once a later start reads run_log. A dead job sets no retry timer, so nothing starts the next attempt by itself. That needs a manual rerun, and the 06:00 check still alerts. I did not add a watchdog, because the skill says not to add a mechanism the brief does not require. The brief does ask for retries, though, so I added this as an open question. Changed the Start note to say these things."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The 60-minute limit does not cover reconciliation. It ends at COMMIT, as decided for Q5, and reconciliation runs after the commit with no timer of its own. Nothing retries it. A reconciliation error on a day records that day as unresolved and posts to #data-alerts. It does not change the night's committed status, because that status is written at COMMIT. Running past 06:00 does not affect dashboards, which read analytics.orders, and each reload commits one day at a time. Added a failure row and an open question, since the brief sets no limit or retry for reconciliation. Changed the Sunday reconciliation note."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The dedupe is in staging. It runs after the extract writes rows to staging and before the MERGE. The reason is that a MERGE needs one source row per key. With two, it can fail or pick one at random. The replica holds one row per order, so the extract should not return two. I cannot confirm that the replica never returns duplicates, so the conflict count in run_log is the check. The tie-break for equal updated_at with different content is not defined, so I added it to the open questions and did not invent a rule."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. The warehouse side is computed from analytics.orders and includes soft-deleted rows, which have is_deleted = true. Rows are never removed on either side, and the app never hard-deletes, so the replica side includes them too. Both sides count the same set. Creation day is the UTC date of created_at. Both sides take it the same way, so a row near midnight lands on the same day on both sides. Changed the Sunday reconciliation note to say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one ordinary night (run_date = D, a Monday, say), then the Sunday and failure branches.\n\n1. Trigger. At 02:00 UTC the scheduler starts the job. (A retry timer, set 15 minutes after a failed attempt, can also start it.) run_date is the UTC date of the 02:00 start. Every attempt for the night stores it, so later steps use the stored value, not the clock.\n\n2. Guard check. Before writing anything, the job reads `ops.run_log` (in the warehouse). It stops if there is a `committed` row for run_date (night already loaded) or a `started` row less than 60 minutes old (another attempt is running). Otherwise it goes on.\n\n3. Register the attempt. The job inserts a `started` row in `run_log`. It gets a new `run_id`. The attempt number is the count of `failed` rows for run_date. It also deletes any leftover `staging.stg_orders` rows for run_date from earlier attempts. A `started` row older than 60 minutes counts as failed, but nothing rewrites it. The 60-minute timer now covers everything up to COMMIT.\n\n4. Read the HWM. It reads `hwm` from `ops.pipeline_state` in the warehouse. This is the time up to which the warehouse has data. It starts at 1970-01-01, so the first run loads the whole table.\n\n5. Fix the cutoff. It reads the UTC clock as `cutoff`, before querying the replica. This keeps a row written during the extract from falling between two windows. It is held by the job until commit.\n\n6. Extract. It reads from the read-only app replica every `orders` row with `updated_at > hwm - 2h` and `updated_at <= cutoff`. The 2-hour lookback re-reads the previous window's tail. This catches bulk-import rows whose `updated_at` is up to 90 minutes before they became visible. Soft deletes are ordinary updated rows, so they come through here.\n\n7. Stage. The rows are written to `staging.stg_orders`, tagged with `run_id` and `run_date`. Dashboards never read staging.\n\n8. Deduplicate. In staging, only the row with the greatest `updated_at` per `order_id` is kept, because MERGE needs one source row per key. If two rows tie on `updated_at` but differ in content, one is kept and a conflict is counted in `run_log`. Which one is kept is undefined.\n\n9. Merge. The job opens one warehouse transaction and MERGEs staging into `analytics.orders` on `order_id`. If the order exists and the incoming `updated_at` is newer, it overwrites the columns and sets `is_deleted = (deleted_at IS NOT NULL)` and `loaded_run_id`. If the order is new, it inserts it. Otherwise it does nothing, so stale copies never overwrite newer ones and re-running is safe. Rows are never removed.\n\n10. Move the HWM. In the same transaction it sets `hwm = cutoff` in `ops.pipeline_state` (also `last_success_cutoff` and `last_success_run_id`, which the table lists as stored there) and sets this attempt's `run_log` status to `committed`. The HWM is the cutoff, not max(updated_at), so the window does not keep growing on quiet nights.\n\n11. COMMIT. The merge, HWM and committed status become visible together or not at all. Dashboards read only `analytics.orders`, so they see either all of the old night or all of the new one. The document gives a shadow-table-and-swap fallback if the warehouse cannot isolate MERGE and ops writes this way.\n\n12. Clean staging. It deletes this run_id's staging rows. If this fails, nothing is wrong, because the next start for the same run_date removes leftovers.\n\n13. Sunday check. If run_date is a Sunday, the same job runs the reconciliation after COMMIT. It has no time limit and no retry. The steps are:\n   a. `night_cutoff` is the committed Sunday attempt's cutoff (stored as `last_success_cutoff`). Both sides only compare rows with `updated_at <= night_cutoff`.\n   b. For each creation day (UTC date of `created_at`) in the last 30 days, it computes the count and checksum on the replica and on `analytics.orders`. The checksum is the count plus the wrapping 64-bit sum of a hash of `order_id|updated_at`. Soft-deleted rows are counted on both sides.\n   c. A match is recorded as `ok` in `ops.reconcile_result`.\n   d. A mismatch reloads that day: it re-extracts from the replica, stages the rows, and does the same guarded MERGE in that day's own transaction. The HWM is not moved. It then recomputes the count and checksum.\n   e. If it now matches, it records `reloaded`. If not, it records `unresolved` and posts to #data-alerts.\n\n14. 06:00 UTC. A check looks in `run_log` for a `committed` row with the stored run_date. If there is none, it posts a staleness alert to #data-alerts, even if on-call was already paged. Dashboards refresh at 06:00 regardless and show the last committed night. If the night commits later, the next refresh shows it.\n\nFailure handling.\n- An error or the 60-minute timeout before COMMIT rolls back the transaction, marks the `run_log` row `failed`, and leaves the HWM unchanged. The next attempt re-extracts the same window, so no data is lost.\n- If the failure is on attempt 1 or 2, the retry timer starts the next attempt 15 minutes later. If attempt 3 fails, the job pages on-call.\n- If COMMIT itself times out or the connection is lost, the outcome is unknown. The next start checks `run_log`: a committed row means stop, otherwise the attempt counts as failed.\n- If the job dies with no retry scheduled, nothing retries it. A manual rerun is needed, and the 06:00 check still alerts.\n- If Sunday's load never commits, reconciliation is skipped and recorded as `skipped`.\n- A reconciliation error on a day, or a failed reload, records that day as `unresolved` and posts to #data-alerts. The night's committed status is unchanged and nothing retries.\n- If the replica lags and a row is not visible at extract time, it is missed that night. The next night's lookback or the Sunday reconciliation (if the creation day is within 30 days) picks it up.\n\nTiming worst case: attempt 1 ends by 03:00, attempt 2 by 04:15, attempt 3 by 05:30, then the 06:00 check.",
+   "gaps": [
+    "How the job process is hosted or triggered, and who or what runs the 06:00 check. The text says 'the job looks in run_log' at 06:00, but also says the job may be dead. Which component runs that check is not stated.",
+    "How the 60-minute timer is enforced if the job process itself dies. The document says the job's own timer enforces it, but also says a dead job leaves a started row that is only treated as failed by age.",
+    "Which tie-break rule decides the winner when two rows for one order have equal updated_at but different content. The document says only that the rule is an open question.",
+    "Whether the warehouse gives snapshot isolation across the MERGE and the ops writes. The normal flow depends on it, and the shadow-table fallback is only described, not specified.",
+    "The full detail of how the reconciliation's hash is computed identically on Postgres and on the warehouse. The document says the hash function is an open question.",
+    "How a Sunday reconciliation day reload gets its rows. The document says to re-extract that creation day, but not whether the extract is bounded by night_cutoff.",
+    "When exactly the 'on-call page' reaches a person and by what mechanism. Also whether the third failed attempt is paged immediately or only after its retry window.",
+    "How a manual rerun is started, and what run_date it uses when the job is rerun after the original night has passed."
+   ],
+   "verdict": "wrong",
+   "notes": "06:00 check: the text says 'the job looks in run_log' at 06:00, but the failure rules say the check still alerts when the job has died. The check is a separate scheduled check that does not depend on the job, and the text now says so. Which component hosts it is left to Build and rollout and the open questions.; 60-minute timer: the text says the job's own timer enforces the limit, but a dead job has no timer. Only the age rule applies, and only a later start for the same run_date reads the old started row. The text now says so.; Reconciliation reload: step 4 says to re-extract the day but does not say whether the extract and the recheck are bounded by night_cutoff, so a reader cannot tell which rows the reload loads or which rows the recheck counts. The text now bounds both by night_cutoff.; Manual rerun: the failure table requires a manual rerun, but the document never says how one is started or which run_date it uses, while run_date is defined as the UTC date of the 02:00 start. The text now says a rerun keeps the original run_date, and the start mechanism is an open question."
+  },
+  {
+   "text": "Walkthrough of one ordinary night (not a Sunday, no failure), then the failure and Sunday branches.\n\n1. **Trigger.** At 02:00 UTC the scheduler starts an attempt. The same entry point is used by the retry timer (15 minutes after a failed attempt) and by a manual rerun, which keeps the original night's `run_date`. `run_date` is the UTC date of the 02:00 start. It is stored with every attempt, so later steps use the stored value, not the clock.\n\n2. **Guard check.** Before writing anything, the job reads `ops.run_log` in the warehouse. If there is a `committed` row for this `run_date`, it stops: the night is already loaded. If there is a `started` row under 60 minutes old, it also stops: an attempt is still running. Otherwise it goes on.\n\n3. **Register the attempt.** The job inserts a `started` row into `run_log`. This row has its own `run_id`. The attempt number is the count of `failed` rows for that `run_date`. It also deletes any staging rows that earlier attempts left for that `run_date`. A `started` row older than 60 minutes counts as failed, but nothing rewrites it.\n\n4. **Read the HWM.** The job reads `hwm` from `ops.pipeline_state`, which is in the warehouse. The HWM is the time up to which data has been loaded. It starts at 1970-01-01, so the first run loads the whole table.\n\n5. **Set the cutoff.** The job reads the UTC clock before it queries the replica. This value is the cutoff. It exists so that a row written during the extract cannot fall between two nights' windows.\n\n6. **Extract.** The job reads the read-only app replica. It takes every `orders` row with `updated_at > hwm - 2h` and `updated_at <= cutoff`. The 2-hour lookback re-reads recent rows. Bulk imports stamp `updated_at` at write time but can become visible in the replica up to 90 minutes later, so the lookback catches those.\n\n7. **Stage.** The rows are written to `staging.stg_orders` with this attempt's `run_id` and `run_date`. Dashboards never read this table.\n\n8. **Deduplicate.** In staging, the job keeps one row per `order_id`, the one with the greatest `updated_at`. This is needed because a MERGE requires one source row per key. If two rows have the same `updated_at` but different content, the job keeps one and counts a conflict in `run_log`.\n\n9. **Merge.** The job opens one warehouse transaction and MERGEs the staged rows into `analytics.orders` on `order_id`.\n   - If the order exists and the incoming `updated_at` is newer, it overwrites the columns, sets `is_deleted = (deleted_at IS NOT NULL)`, and sets `loaded_run_id`.\n   - If the order is new, it inserts it.\n   - Otherwise it leaves the row alone.\n   - Soft deletes are ordinary updates that set `is_deleted`. Rows are never removed.\n   - Re-running the same extract therefore changes nothing.\n\n10. **Move the HWM and mark the attempt.** In the same transaction, the job sets `hwm = cutoff` in `ops.pipeline_state`. It uses the cutoff, not `max(updated_at)`, so the window does not grow on quiet nights. It also sets this attempt's `run_log` status to `committed`.\n\n11. **Commit.** The merge, the new HWM and the `committed` status all commit together, or none of them does. Dashboards read only `analytics.orders`, so they see either the whole previous night or the whole new one.\n\n12. **Clean up staging.** The job deletes this `run_id`'s staging rows. If this fails, nothing is harmed, because the next start for the same `run_date` removes the leftovers.\n\n13. **Sunday check.** If `run_date` is a Sunday, the same job runs reconciliation after the commit. On other nights the job is done.\n\n14. **Sunday reconciliation (steps 15 to 18).** It pins `night_cutoff`, which is the cutoff of the committed Sunday attempt, stored as `last_success_cutoff`. Both sides compare only rows with `updated_at <= night_cutoff`.\n\n15. For each creation day (UTC date of `created_at`) in the last 30 days, it computes a count and a checksum on the replica and on `analytics.orders`. The checksum is the count plus the wrapping 64-bit sum of a hash of `order_id|updated_at`, with `updated_at` written as UTC microseconds in text. Soft-deleted rows are included on both sides.\n\n16. If a day matches, `ok` is written to `ops.reconcile_result`.\n\n17. If a day does not match, the job re-extracts that creation day from the replica (bounded by `night_cutoff`), stages it, and runs the same guarded MERGE in that day's own transaction. This does not move the HWM.\n\n18. The job recomputes the count and checksum for that day. If they now match, it records `reloaded`. If not, it records `unresolved` and posts to #data-alerts.\n\n19. **06:00 check.** A separate scheduled check, independent of the nightly job, looks in `run_log` for a `committed` row for the stored `run_date`. If there is none, it posts a staleness alert to #data-alerts, even if on-call was already paged. Dashboards refresh at 06:00 regardless and show the last committed night.\n\n**Failures**\n\n20. If there is an error or timeout before COMMIT, including the 60-minute limit, the transaction rolls back. The `run_log` row becomes `failed`, and the HWM is unchanged. The next attempt re-extracts the same window.\n    - After failure 1 or 2, the retry timer starts the next attempt 15 minutes later.\n    - After failure 3, the job pages on-call.\n\n21. If there is a timeout or connection loss during COMMIT, the outcome is unknown. The next start checks `run_log`. A `committed` row means stop. Otherwise the attempt counts as failed.\n\n22. If the job dies, no retry is scheduled and nothing enforces the 60-minute limit. Its `started` row only counts as failed when a later start for that `run_date` reads it. A manual rerun is needed, and the 06:00 check still alerts.\n\n23. If the Sunday load never commits, reconciliation is recorded as `skipped`. If reconciliation errors on a day, or a reload fails, that day is recorded `unresolved` and posted to #data-alerts. Nothing retries it, and the night's committed status is unchanged.\n\n24. If the replica lags, the row is missed that night. The next night's lookback or the Sunday reconciliation (for creation days in the last 30 days) picks it up.",
+   "gaps": [
+    "How the job learns that its own attempt has hit the 60-minute limit and what mechanism triggers the rollback is not described. It says only that 'its own timer enforces' it. What process or host runs that timer is not stated.",
+    "Who inserts the `failed` status and when. The text says a failure sets `failed`, but also that a started row over 60 minutes old 'counts as failed' without being rewritten. It is not clear how the attempt count is taken in each case. This matters for the retry and page decision.",
+    "How the job tells that this is attempt 3 and should page, versus starting retry 2. It is derived from the count of failed rows, but the page trigger is not tied to a specific step.",
+    "How a manual rerun is started and how it supplies the old `run_date`. The document says this is an open question.",
+    "What hosts the nightly job and the 06:00 check, and how the on-call page reaches a person. Not decided.",
+    "Which of two same-`updated_at` rows wins in the dedupe step. The document says this is not defined.",
+    "Which hash function is used so that Postgres and the warehouse produce identical 64-bit values. Not decided.",
+    "Whether the warehouse can keep the MERGE and the ops writes isolated in one transaction. If not, a shadow-table swap applies, but that flow is not described step by step.",
+    "Whether `orders` has child tables, such as line items, that also need loading. Not stated.",
+    "What exactly happens to staging rows and the `reconcile_result` write when the job dies in the middle of reconciliation. Reconciliation has no retry or time limit, and the document does not say what resumes or restarts it."
+   ],
+   "verdict": "wrong",
+   "notes": "The explanation could not say what enforces the 60-minute limit or what triggers the rollback. The first version only says 'its own timer enforces' it, without naming the process. Fixed: the failure table now says the attempt's process sets a 60-minute deadline at step 1 and aborts the attempt when it passes, whatever step is running.; The explanation could not say who writes the failed status or how the attempt number is taken for a started row older than 60 minutes. The first version mixed 'count of failed rows' with 'counts as failed' and gave no single rule. Fixed: step 1 now gives one counting rule and says a stale started row keeps its status but is counted as failed.; The explanation could not tie the page decision to a step. The first version gave the page only as a failure-table outcome. Fixed: the attempt 1 or 2 and attempt 3 rows now say the job counts failed attempts for run_date, schedules the retry when the count is 1 or 2, and pages on-call when it is 3.; The gaps about the manual rerun entry point, the same-updated_at tie winner, the hash function, the shadow-table flow, child tables and reconciliation resumption are not misreadings. The document already marks them as open questions, so they are left unchanged."
+  },
+  {
+   "text": "Walkthrough: one night's load (a Sunday night that has a failed first attempt, so the retry and reconciliation paths show up too).\n\n1. Trigger. At 02:00 UTC the scheduler starts an attempt. The retry timer (15 min after a failed attempt) and an operator's manual rerun also start attempts. The night's `run_date` is the UTC date of the 02:00 start. It is stored and reused, so retries and the 06:00 check never use the clock to work it out. A manual rerun keeps the original night's `run_date`.\n\n2. Guard check. Before any write, the job reads `ops.run_log` (in the warehouse). If there is a `committed` row for this `run_date`, or a `started` row under 60 minutes old, it stops. Otherwise it inserts a new `started` row with a new `run_id`. It deletes any staging rows left for this `run_date` by earlier attempts. It sets a 60-minute deadline for the attempt. The attempt number is 1 plus the number of failed attempts for that `run_date`. A failed attempt is a row with status `failed`, or a `started` row more than 60 minutes old (which stays `started` but is counted as failed).\n\n3. Read the HWM. The job reads `hwm` from `ops.pipeline_state`. On the very first run it is 1970-01-01, so the whole table is loaded.\n\n4. Set the cutoff. The job reads the current UTC clock, before it queries the replica. This value will become the new HWM if the night commits.\n\n5. Extract. The job reads the app's read replica (read-only) for every `orders` row with `updated_at > hwm - 2h` and `updated_at <= cutoff`. The 2-hour lookback re-reads recent rows to catch late-appearing ones, such as bulk imports (up to 90 minutes lag).\n\n6. Stage. It writes the rows to `staging.stg_orders`, tagged with `run_id` and `run_date`. Dashboards never read this table.\n\n7. Deduplicate. In staging, it keeps one row per `order_id`, the one with the greatest `updated_at`. It does this because MERGE needs one source row per key. Ties with different content: keep one and count a conflict in `run_log`.\n\n8. Merge. It opens one warehouse transaction and runs a MERGE into `analytics.orders` on `order_id`. It updates an existing order only if the incoming `updated_at` is newer. It inserts unseen orders. It leaves everything else alone. It sets `is_deleted = (deleted_at IS NOT NULL)` and `loaded_run_id`. Soft deletes are ordinary updates, and rows are never removed. The guard makes re-runs idempotent.\n\n9. Move the HWM. In the same transaction it sets `hwm = cutoff` (not max `updated_at`) in `ops.pipeline_state` and marks the `run_log` row `committed`.\n\n10. COMMIT. The merge, the HWM and the status commit together or not at all. Dashboards read only `analytics.orders`, so they see the whole old state or the whole new state.\n\n11. Clean staging. It deletes this `run_id`'s staging rows. If that fails, nothing is harmed, and the next start for the same `run_date` removes them.\n\n12. Failure path. If any step before COMMIT, or the COMMIT itself, errors or hits the 60-minute deadline, the attempt's process rolls back the transaction, sets the `run_log` row to `failed`, and leaves the HWM unchanged. The next attempt re-extracts the same window, so nothing is lost. The job then counts failed attempts for the `run_date`. With a count of 1 or 2 it sets the retry timer for 15 minutes later, which goes back to step 1. With a count of 3 it pages on-call. If the COMMIT outcome is unknown, the next start checks `run_log`: a committed row means stop, otherwise the attempt counts as failed. If the whole job dies, no timer is set and nothing retries. A manual rerun is needed.\n\n13. Sunday reconciliation. If `run_date` is a Sunday and the night committed, the same job continues (no time limit, no retry). `night_cutoff` is this attempt's cutoff, stored as `last_success_cutoff`. For each creation day (UTC date of `created_at`) in the last 30 days, it computes the row count and the checksum on both the replica and `analytics.orders`, only for rows with `updated_at <= night_cutoff`, soft-deleted rows included. The checksum is the count plus the wrapping 64-bit sum of a hash of `order_id|updated_at`. If both match, it writes `ok` to `ops.reconcile_result`. If not, it re-extracts that day from the replica, stages it, and runs the same MERGE in the day's own transaction. This does not move the HWM. It then recomputes the count and checksum. If they now match it records `reloaded`. Otherwise it records `unresolved` and posts to #data-alerts. An error on a day also records `unresolved` and posts. If the Sunday night never commits, reconciliation is recorded as `skipped`.\n\n14. 06:00 check. A separate scheduled check, independent of the job, looks in `run_log` for a `committed` row for the stored `run_date`. If there is none, it posts a staleness alert to #data-alerts, even if on-call was already paged. Dashboards refresh at 06:00 regardless and show the last committed night. If the night commits later, the next refresh shows it.",
+   "gaps": [
+    "How a manual rerun is started is not defined (the document says it is an open question), yet it is the only recovery when the job dies.",
+    "What hosts the nightly job and the 06:00 check, and how the on-call page reaches a person, is not stated.",
+    "Which copy wins when two rows for one order have the same updated_at but different content is not defined, so I cannot say what ends up in the warehouse in that case.",
+    "The exact mechanism that enforces the 60-minute deadline and sets the failed status is only described as 'the attempt's process'. What happens to it if the job itself dies is covered, but who detects a dead process in the meantime is not.",
+    "Whether the warehouse can keep the MERGE and the ops writes isolated in one transaction is unknown. If not, the shadow-table swap applies, but the document gives no steps for how the HWM and run_log would then be updated in that variant.",
+    "How the reload of a mismatched creation day is tied to a run_id/run_date in staging and run_log (reload rows are staged, but whether they get run_log rows is not stated)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

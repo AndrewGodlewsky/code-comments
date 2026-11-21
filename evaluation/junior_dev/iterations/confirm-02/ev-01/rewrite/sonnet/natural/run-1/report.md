@@ -1,0 +1,16 @@
+## Review of ev-01 (rewrite, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Replaced the two-sentence intro with a summary that says how checkout works today and why it changes, and how the new flow runs start to finish.
+- Added a Terms section defining broker/topic, consumer group, event, outbox, relay, processed_events, idempotency key, DLQ and partition in one line each. Moved the relay and idempotency-key facts (500 ms, oldest first, mark after ack, at-least-once, decline vs timeout) here from the diagram notes.
+- Added a Business rules section holding the brief's rules (no charge without stock, cancel paths, only Order Service sets status, best-effort email) that the first version only implied.
+- Kept the Decisions table, event reaction table and state table. Trimmed repeated wording in the decision rows, for example the outbox and idempotency explanations.
+- Merged the retry schedule, DLQ, paging and 'nothing else is undone' into one Failure handling paragraph before the second diagram, and cut the repeated introduction to that diagram.
+- Kept both Mermaid diagrams unchanged and the failure table, with the 'provider timeout' and 'dead-lettering' rows shortened to avoid restating the retry paragraph.
+- Renamed 'Trade-offs to confirm' to 'Open questions and trade-offs to confirm' and moved it last, as the skill's layout requires. Content kept intact.
+- Put back the facts that the first version spread around: 202 Accepted, statuses PENDING/CONFIRMED/CANCELLED, one topic keyed by orderId, own database and consumer group per service, the 71 s delay figure.
+
+### Holes
+- None.

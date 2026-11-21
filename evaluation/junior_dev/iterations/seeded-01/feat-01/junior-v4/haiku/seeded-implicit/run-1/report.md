@@ -1,0 +1,37 @@
+## Review of feat-01 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added the filters and columns to the POST, because the job needs the URL's view state and the original plan did not carry it.
+- Added the POST's 202 response with the export id, and the GET endpoints for the export and for the latest export, so the page can poll and can find the export after a reload.
+- Replaced the vague 'prevent duplicate exports' step with the brief's rule: one queued or running export per user and report, enforced by a partial unique index.
+- Named the path threshold as reports.row_count (unfiltered) with 10,000 rows, instead of leaving it undefined.
+- Made the job take only the export id, and re-check report.view at the start of each attempt.
+- Fixed the finish order to complete the upload, then send the email, then set done, so a failed email is retried rather than marked done without an email.
+- Made each export write to a key unique to its export id, so one export cannot overwrite another's file.
+- Stated the retry rules: status stays running between attempts, 3 attempts with 60 s and 300 s waits, no resume, and failed is set only by the final-failure handler.
+- Folded the separate error and cleanup steps into the steps they belong to; cleanup is now a short note, because the lifecycle rule does the work.
+- Added open questions for the filter and threshold behaviour, the missing download link on the done state, the 1,800-second speed budget, the 60-second API limit, nightly rebuilds during export, replica lag, and the failure handler's own failure.
+- The file is longer than the 1.5x guide. The brief asks for four fields (starts, data, state, failure) on every step, so the length is kept to those fields and no more.
+- Step 3: added a re-enqueue of a still-queued export when a later click returns it, to recover from a crash between the insert and the first enqueue (Q15).
+- Step 4: the job now stops on status failed as well as done, because a re-enqueued job may run after a final failure. Stated that a lost permission costs all 3 attempts (Q10).
+- Step 5: each attempt writes its own key, exports/{export_id}/attempt-{n}.csv, so a retry never replaces a file an earlier link points to (Q13).
+- Step 6: records object_key and finished_at on done; states the assumption that send_email raises on failure, and that earlier attempt files stay until the lifecycle rule deletes them (Q12, Q13).
+- Step 7: replaced the vague failure note with what is known and what is unknown about dead-worker detection and the failure handler's own retries (Q11).
+- Step 8: added the text for each status and the Download CSV rule for each status, including that failed allows a new export (Q14).
+- Terms: defined attempt, and that a job gets at most 3 attempts, so the retry steps read plainly.
+- Open questions: added where the queue keeps jobs (Q15), how dead workers are detected (Q11), and whether send_email returns before sending and raises on failure (Q12).
+- Cut the step list's repeated 'what each status shows' prose and the duplicated 'keeps the row on the primary' and 'nothing stored' lines where a step already said it.
+- Merged the owner check and the status check in step 4 into one conditional claim update. The old read-then-write let two jobs both pass the check before either wrote the owner, which broke the 'only the first job does the work' promise. Intent is unchanged.
+- Moved the cleanup item out of the numbered steps into a short note after them, since it is not a job.
+- Defined 'Owner' as a term, because step 4 relied on it without defining it.
+- Shortened the terms to the seven a newcomer needs, each in one line.
+- Merged the throughput question and the 60-second API limit question into one open question.
+- Merged the dead-worker detection question and the question of where the queue keeps its jobs into one open question.
+- Put each step's failure handling in its 'If it fails' line instead of a second failure table, so nothing is said twice.
+- Removed the separate 'Keeps' detail on attempt file naming from step 6, as step 5 already states it.
+
+### Holes
+- Q11: How does the queue find out that a worker died, and how long does it take to notice? Does it wait for the 30-minute timeout? (author: jobs.py says a dead worker fails the attempt, but does not say how the queue detects it or how long detection takes. It does not say whether a dead worker waits for the 30-minute timeout. Step 7 now says the detection time is not stated, and it is listed under open questions.)
+- Q12: What is `send_email(user_id, template, {link})`? Does it send the email itself before returning, or hand it to something else? How does the job know it failed? (author: send_email is named in the brief, but its code is not in the files, so I do not know whether it sends before returning or hands the email to something else, or whether it raises on failure. Step 6 now says the plan assumes it raises, and the question is listed under open questions.)

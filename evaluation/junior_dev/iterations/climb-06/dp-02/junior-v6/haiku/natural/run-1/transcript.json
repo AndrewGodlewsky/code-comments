@@ -1,0 +1,196 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "If the consumer sets the key-value entry (winner) and then crashes before passing the decision on, what happens when it restarts and re-reads that copy? Does it see the key and mark its own winner as duplicate?",
+     "about": "8. Dedup stage, step 1 and 3"
+    },
+    {
+     "id": "2",
+     "text": "When the dedup stage 'passes it on', where does it pass it to? Is there another log or topic that the archive sink and enrichment read from?",
+     "about": "8. Dedup stage, step 3 and 10. Archive sink"
+    },
+    {
+     "id": "3",
+     "text": "Duplicates are dropped at the dedup stage, but step 10 archives duplicates too. What exactly is dropped, and from which path?",
+     "about": "9. Duplicates are dropped here and nowhere else"
+    },
+    {
+     "id": "4",
+     "text": "What is the 'ingest sequence', who assigns it, and in what form (per partition or global)? Replay sorts by it, so what makes it comparable across partitions?",
+     "about": "ingest sequence"
+    },
+    {
+     "id": "5",
+     "text": "How do winners get from the dedup stage to enrichment and then to the loader? Is it a stream, a queue or a batch, and who owns the state if the loader is down or slow?",
+     "about": "12. Enrichment and 13. Loader"
+    },
+    {
+     "id": "6",
+     "text": "How does the loader know day D is closed, and what is the 'write' that arrives late (a delayed winner, an enrichment retry)? What do dashboards do with events_late?",
+     "about": "14. Writes that reach the loader after day D is closed go to events_late"
+    },
+    {
+     "id": "7",
+     "text": "How does the close job decide the archive for D is complete, given archive sink lag? And if the counts don't match, what does it do?",
+     "about": "15. Close job at 02:00 UTC on D+1"
+    },
+    {
+     "id": "8",
+     "text": "Winners in events_late are already in the archive as decision winner. How does the replay use events_late rows, and why read them separately?",
+     "about": "18. Inputs are read-only: archive files and events_late rows"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Yes, it would have marked its own winner as duplicate. Fixed: the stored value now holds the winner's ingest sequence. A re-read copy whose ingest sequence matches the stored one is the same copy, so it gets winner again. Only a different ingest sequence is a duplicate."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The plan did not name it. Now it is a second log topic, the decided topic, holding every copy with its decision. The archive sink and the enrichment stage each read it under their own consumer group. Enrichment reads only winners. The decided topic is partitioned by event_id like the first log, so per-event order holds."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Nothing is dropped from the archive or the decided topic. A duplicate is dropped only from the warehouse path, meaning enrichment and the loader. It is not rejected at receipt. The brief requires both that duplicates are dropped and that every accepted copy is kept for 90 days, so the plan keeps duplicates in the archive and drops them only from events_clean."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The ingest sequence is the copy's log position: its partition number and offset. The log assigns it at append. It is not global. It only needs to be comparable within a partition, because every copy of one event shares one partition, so a winner is always decided within that partition. Replay sorts by partition, then offset, which gives a fixed order. Cross-partition order has no meaning here."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Winners move as records on log topics, not as a batch. Dedup writes to the decided topic. Enrichment reads winners from it and writes enriched winners to a second topic. The loader reads that topic, appends about once a minute, and commits its offset after each successful append. If the loader is down, the topic holds the rows for up to 14 days and a lag alarm fires. Whether a loader restart can add duplicate rows is not yet designed. It is listed as an open question."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The loader checks the clock. Day D is closed once the clock passes 02:00 UTC on D+1. A winner for a closed day goes to events_late. The late write is a winner that reached the loader after close, for example one delayed in the pipeline. Enrichment retries do not write separately, because enrichment runs before the loader. Dashboards read events_clean only, so they do not see events_late until a replay of that day."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The close job waits until the archive sink has committed every hour folder for D and has no lag on copies received before close. Only then does it compare counts. If the counts differ, it writes no closed-day manifest, alerts the operator and retries. It does not guess which side is right. The retry deadline is open."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Replay does not read events_late. Those winners are already in the archive with decision winner, so reading both would count one winner twice and fail the duplicate check. events_late is used only in the close job's count check. The plan changed to match. This is a change to the plan's replay inputs."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What does a dedup consumer do if the key-value store is down, slow, or errors on a call? Does it stop, retry, or guess?",
+     "about": "8. Dedup, step 1 (atomic set-if-absent in the key-value store)"
+    },
+    {
+     "id": "10",
+     "text": "After a replay of D swaps in a new partition, what happens to the rows for D in events_late? Are they left there or removed, and does that affect the close check's count the next time it is run for D?",
+     "about": "14. Late winners and 15. Close check"
+    },
+    {
+     "id": "11",
+     "text": "Why does the replay sort winners by partition and then offset? What uses that order, given that the result is written to a table partition?",
+     "about": "20. Select winners"
+    },
+    {
+     "id": "12",
+     "text": "A duplicate arrives with a received_at on a different day than its winner. Which day does it get in the archive's received_date folder, and does that change what the replay of either day sees?",
+     "about": "8. Dedup, step 2 (duplicate referencing the stored winner)"
+    },
+    {
+     "id": "13",
+     "text": "Where exactly does the loader get its idea of the current time, and what happens to a winner whose received_at is on D but that is processed right around 02:00 UTC on D+1? Can the close job count it twice or miss it?",
+     "about": "13. Load and 14. Late winners"
+    },
+    {
+     "id": "14",
+     "text": "When enrichment fails for an event and writes null fields with enrichment_status set, what later triggers a replay to fill it in? Is that automatic or an operator decision?",
+     "about": "12. Enrich winners"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The consumer does not skip or guess. It retries the same copy with backoff and does not move on to later copies in that partition until the store answers, so order holds. A timeout after a successful set is safe, because the retry finds this copy's ingest sequence and returns winner. A lag alarm fires if the outage lasts. Reason: skipping a copy would lose its decision, and guessing would break the set-if-absent rule. Added to step 8 and to the failure table."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The events_late rows for D stay in place after a replay. The replay writes only partition D of events_clean and does not delete late rows, because the brief does not ask for deletion and a delete would be a new write path. The count check cannot be rerun after a swap: a replay can start only after the closed-day manifest exists (step 17), and that manifest is written only after the count check passes (step 15). So the check always runs before any replay. A late winner is therefore in both tables after a replay, and step 24 now says not to add them together."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The sort gives a fixed row order, so reruns produce the same staging rows in the same order. It does not decide which rows are winners: winners are already unique per event_id, and the duplicate check in step 22.2 covers that. Step 22.4 had an actual problem: the live partition was built by appends in a different order, so an ordered hash would not match. The row-hash check now compares rows as a set, ignoring order. Changed in steps 20 and 22."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "A duplicate goes into the received_date folder of its own received_at, so a duplicate received on D+1 lands in the D+1 folder even when its winner is from day D. The replay of D selects only winners whose received day is D, so that duplicate never appears in D's selection. The replay of D+1 reads it but filters it out, because it is not a winner. Neither replay sees a record from the other day as a winner. Caveat: after the TTL expires, a late copy can become a new winner on another day. Open question 4 now says so. Step 10 now states the folder rule."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The loader reads the NTP-synchronised clock of its host, the same kind of clock the collector uses. The loader decides once per winner, just before its append. A winner received on D and processed after 02:00 UTC on D+1 goes to events_late. The close check counts events_clean plus events_late, so such a winner is neither counted twice nor missed, as long as both tables are read at the check. The real risk was different: the plan did not make the close job wait for the loader, so a slow loader could make the count miss rows and fail. The close job now also waits for loader lag to clear on winners received before close. A double count can still happen only after a loader restart, which is open question 6. Changed in steps 14 and 15."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing triggers it automatically. The plan adds no trigger, and the brief says an operator starts replays. The operator decides, using the enrichment_status counts in events_clean. The close job schedules a replay only for events_late rows, not for failed enrichment. Step 12 and the failure table now say so."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "15",
+     "text": "When the close job schedules a replay of D because events_late has rows, who supplies the reason and the enrichment versions that step 17 requires from an operator, and do the request checks (lock, archive expiry) apply to it too?",
+     "about": "15. Close check and 17. Request"
+    }
+   ],
+   "answers": [
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The brief makes replay an operator action, and step 14 already says nothing replays automatically. The plan said the close job 'schedules a replay' but named no reason or versions, so that was a real gap. Now the close job only records a replay request for D when events_late has rows. It fills in the reason ('late winners in events_late') and the enrichment versions from the current enrichment manifest. An operator confirms or changes them, and nothing starts until then. The step 17 checks (closed-day manifest exists, no replay lock held, archive does not expire before the replay can finish) run at confirmation for close-job requests too, the same as for operator requests, because they guard the data, not who asked."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Send. A client (website, iOS or Android app) sends an HTTPS batch of up to 100 events (body about 4 MB) to the collector. Each event has a client-made event_id, a device_id and a client timestamp. If the client gets a timeout, 429 or 5xx, it resends the same batch with the same event_ids, backing off from 1 s to 5 min. The mobile SDK keeps unacknowledged events in an on-device buffer for up to 7 days, so a retry can come up to 7 days later.\n\n2. Validate. The collector checks each event on its own. It rejects events with no event_id, no device_id, or larger than 32 KB. The response lists each rejection with its index and reason. Rejected events are not stored and the client never retries them. The valid events carry on. If none are valid, the collector still returns 202 listing only rejections, and stores nothing.\n\n3. Stamp. For each accepted copy the collector sets received_at once, from its NTP-synchronised clock. It does not check for duplicates. A resent batch gets the same 202 as the first send.\n\n4. Append. The collector appends each accepted event to the replicated log. The payload is the original bytes plus received_at, batch id and collector id. The log is partitioned by a hash of event_id, so all copies of one event go to the same partition in append order. The log assigns the ingest sequence (partition and offset).\n\n5. Acknowledge. The collector returns 202 only after the log confirms the write with a quorum of replicas. If the append fails or times out it returns 503 for the whole batch and the client retries. A partial append is safe because the retry's duplicates are absorbed by dedup.\n\n6. Dedup. One consumer runs per log partition. For each copy it does an atomic set-if-absent in the key-value store, with key = event_id, value = {winner received_at, ingest sequence}, and TTL 8 days. If the set succeeds, the copy is the winner. If the key exists and the stored ingest sequence equals this copy's, it is a re-read after a crash, so it is the winner again. Otherwise it is a duplicate that references the stored winner. The consumer writes the copy and its decision to the decided topic, and commits its offset only after the decided topic accepts it. If the key-value store fails, it retries the same copy with backoff and does not move on. Later copies in that partition wait, and the lag alarm fires.\n\n7. Archive. The archive sink reads the decided topic (every copy, duplicates too) in its own consumer group. It writes each copy under raw/received_date=YYYY-MM-DD/hour=HH/, using the copy's own received_at day and hour. Each record holds the original bytes unchanged plus a sidecar (received_at, ingest sequence, collector id, batch id, decision, winner reference). Files are written fully and then committed atomically. Each copy is committed once, keyed by its ingest sequence, so a crash re-delivery does not create a second record. A lifecycle rule expires objects 90 days after the received day. If the sink falls behind, an archive-sink lag alarm fires, because the log (14 days) is the only durable copy until the archive has it.\n\n8. Enrich. Enrichment reads only winners from the decided topic. It applies geo-IP and user-agent parsing at the versions in the enrichment manifest. If enrichment fails for an event, the event is still written with null enrichment fields and enrichment_status set. It is never dropped and not replayed automatically. Enriched winners go to the enriched topic. Duplicates never reach enrichment or the loader.\n\n9. Load. About every minute the loader reads enriched winners. Just before appending, it reads its host's NTP-synchronised clock, once per winner. If the winner's day D is not yet closed (clock before 02:00 UTC on D+1), it appends the winner to the events_clean partition for D. If D is already closed, it appends the winner to events_late, keyed by received day. The loader commits its offset only after the append succeeds. If it is down or slow, the topics keep rows for up to 14 days and a lag alarm fires. Dashboards read events_clean only, so late winners are invisible until a replay.\n\n10. Close check. At 02:00 UTC on D+1 the close job starts. It waits until the archive sink has committed all hour folders for D with no lag on copies received before close, and the loader has no lag on winners received before close. Then it counts winners for D in the archive and checks that the count equals the D rows in events_clean plus the D rows in events_late. If it passes, it writes the closed-day manifest. If events_late has rows for D, it also records a replay request for D with the reason \"late winners in events_late\" and the versions from the current enrichment manifest. It does not start a replay. If it fails, it writes no manifest, alerts the operator and retries until the check passes.\n\n11. Replay request. An operator asks to replay day D with a reason and enrichment versions, or confirms or edits the request the close job recorded. Nothing starts on its own. The request is refused, with no changes, if D has no closed-day manifest, if the replay lock for D is held, or if the archive for D would expire (at D+90) before the replay can finish.\n\n12. Replay inputs and compute. The replay reads the archive files for received day D (duplicates and recorded decisions included) as read-only input. It does not read the log, events_late or the key-value store, and it never writes to the key-value store. It runs on a separate, resource-capped compute pool, so live lag is unaffected.\n\n13. Select winners. The replay keeps records with decision winner and received day D and sorts them by ingest sequence (partition, then offset) to get a stable row order. If any event_id appears more than once among them, the replay fails and nothing is swapped.\n\n14. Enrich into staging. The replay enriches the winners with the requested versions and writes them to events_clean_rebuild_D, which dashboards cannot see. Every row records enrichment_version.\n\n15. Validate staging. Every check must pass. The row count equals the winner count. No event_id is duplicated. The schema matches events_clean. For unchanged versions, the row hash (compared as a set) equals the live partition's hash. For changed versions, a sample of rows differs only in the enrichment fields.\n\n16. Swap. The replay atomically replaces partition D of events_clean with the staging rows using the warehouse's single-partition replace. Dashboards see either the old day or the new day. If validation or the swap fails, the live partition is untouched and the failure is reported.\n\n17. Clean up. The replay drops the staging table and writes a replay manifest (day, versions, row counts, times, operator, reason). It changes no key-value, log or consumer state. It leaves the events_late rows in place, so afterwards a late winner is in both tables and the two tables must never be added together. The close check is not run again.\n\n18. Latency monitoring. Canary events with known event_ids are sent every minute. The target is queryable within 5 minutes at p99, with an alert at 3 minutes.",
+   "gaps": [
+    "How the replay lock is acquired and released, and what happens to it if a replay crashes or fails (the document says only that the lock exists).",
+    "What happens to events_clean_rebuild_D after a failed validation or swap (the document marks this as not set), and whether a failed replay can be retried cleanly.",
+    "How the replay estimates whether it can finish before the archive for D expires (the document gives only the D+90 expiry and no duration estimate).",
+    "How enrichment_status values and the enrichment fields are defined, and how an operator finds events that failed enrichment, which the document does not say.",
+    "How the archive sink and the dedup stage decide that a copy is already committed, such as where the commit keys are stored (the document says only 'keyed by ingest sequence').",
+    "Who or what executes the close job and the replay (scheduler, trigger mechanism), and how the operator submits a replay request.",
+    "How the replay's 'unchanged versions' regression comparison is run, including how the live partition hash is computed. For events_late, how the loader keeps the winner's day in step with the winner's received_at.",
+    "Whether the loader's re-append after a crash is handled (open question 6: no idempotent append yet), so the close check might fail with no defined recovery besides an operator alert.",
+    "How long the close job retries before escalating (retry deadline not set).",
+    "How the system behaves under suspected bot traffic (undecided), and whether rejected event payloads are kept (proposed default only)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

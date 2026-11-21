@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"email job\" queue concretely? Is it a database table, and how does the email worker find new jobs and know which ones are unsent?",
+     "about": "INSERT email job / email worker -> mail provider"
+    },
+    {
+     "id": "2",
+     "text": "What does \"normalize email\" do here, and which column of `users` is the lookup done against?",
+     "about": "normalize email, look up user"
+    },
+    {
+     "id": "3",
+     "text": "When the worker marks the token superseded after three failed sends, does that count against the hourly limit, and can the user then request a new link right away? Also, the failure table says the token stays active \"unless the worker marks it superseded\". Does the worker always do it or not?",
+     "about": "final failure: log, mark token superseded, drop job"
+    },
+    {
+     "id": "4",
+     "text": "How does the raw token get from the emailed link to the POST? Is it only the hidden form field, and what is `link(token)` made of (host, path, query)?",
+     "about": "GET /password/reset?token=T renders form (token in hidden field)"
+    },
+    {
+     "id": "5",
+     "text": "What is the \"breached list\" and how is it checked? Is it an external service or a local list, and what is sent to it?",
+     "about": "password >= 12 chars AND not on breached list?"
+    },
+    {
+     "id": "6",
+     "text": "How does the session cookie relate to the `sessions` table? Whose cookie is being cleared, given the user resetting may not be logged in, and why delete sessions at all?",
+     "about": "clear session cookie on this response, redirect 303 to /login"
+    },
+    {
+     "id": "7",
+     "text": "The count includes tokens that were consumed or superseded. If the count is 3 or more, the request is refused. Does a user who just reset their password successfully still get blocked from requesting again within the hour?",
+     "about": "count tokens issued in last hour"
+    },
+    {
+     "id": "8",
+     "text": "What is the \"counted alert\" the worker emits, and where does it go? Who sees it?",
+     "about": "Known gaps: Silent drop after 3 failed sends"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief says only that the API adds a job and an email worker sends it. It does not say whether the queue is a Postgres table or how the worker finds unsent jobs. The same-transaction guarantee in the design holds only if the queue is in Postgres. Added to Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Normalizing means trimming spaces and lowercasing the address, then matching it against users.email, so case variants reach the same account. The column name users.email is assumed, since the brief does not name it. Whether existing stored addresses are lowercase is an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, it still counts. The limit counts issued_at, and superseding does not change issued_at, so a user with 3 links issued in the past hour stays blocked after the worker supersedes the failed link. A user with fewer than 3 can request a new link at once. The worker always supersedes on final failure; the old wording 'unless the worker marks it' was unclear and is fixed. Superseding is kept so a dead link cannot stay usable for 30 minutes."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. The raw token travels in the link's query string to GET /password/reset. The page puts it in a hidden field, and the POST sends it back in the body. The link is https://<app-origin>/password/reset?token=<token>, with the origin from config. I chose base64url without padding because it is URL-safe and 43 characters long."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The brief says only 'must not be on the breached-password list'. I decided the plain password must never go to a third party. The check uses either a local copy of the list or a service that receives only part of a hash. Which of these is used is not decided, and it is an open question. If the list is unavailable, the password is rejected with a retry message and the link is not consumed."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The sessions row is what the API checks on every request. Deleting the user's rows therefore logs out every device, including devices with no cookie at hand. The session cookie is the browser's pointer to its row, so clearing it on the reset response covers the browser that submitted the reset. If that browser had no session, nothing is cleared and the delete still does the work. The cookie's name and format are not in the brief and are an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes. The brief's rule limits reset emails per rolling hour, not active links, so consumed and superseded links count. A user who reset successfully after one email still has two slots. A user who used three in the hour is blocked until the oldest one falls outside the hour. The Data notes now say this."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief does not name an alerting system, a metric, a destination or an owner. The design says only 'counted alert'. Added to Open questions, so nobody assumes a destination."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A user who can't log in opens \"Forgot password?\" and submits their email. The browser sends POST /password/forgot { email }. The API trims and lowercases the email and looks it up in users.email.\n\n2. If no user matches, nothing is written and nothing is queued. The API runs a short path so timing doesn't reveal that, then returns the generic message: \"If an account exists for that address, we've sent a link.\" Every branch returns this same message.\n\n3. If a user matches, the API opens a Postgres transaction. It does SELECT ... FOR UPDATE on that user's row. That serializes concurrent forgot requests for the same account, so two of them can't both pass the limit.\n\n4. Under the lock, it counts password_reset_tokens rows for the user with issued_at in the last hour. Consumed and superseded rows count too. If the count is 3 or more, it commits, creates nothing, sends nothing, and returns the generic message. Any link that is already active stays active.\n\n5. If the count is under 3, it sets superseded_at = now() on every unconsumed, unsuperseded row for the user. That way at most one link is active. It then generates 32 random bytes as the token. It inserts a row holding the SHA-256 hash (token_hash) and expires_at = now() + 30 minutes. In the same transaction it inserts an email job { type: password_reset, token_id, link(token) }. The job holds the raw token, so the queue is treated as secret: don't log payloads, restrict reads, and delete a job once it is sent or dropped. The API commits and returns the generic message.\n\n6. Asynchronously, the email worker picks up the job and sends it through the mail provider. It retries up to 3 times with backoff. On final failure it logs, marks the token superseded so the dead link isn't usable for 30 minutes, drops the job, and emits a counted alert. The user is not told. That token still counts toward the hourly limit.\n\n7. The user gets the email with https://<app-origin>/password/reset?token=<43-char base64url>. Opening it sends GET /password/reset?token=T. The server computes SHA-256(T) and checks for an ACTIVE row (not consumed, not superseded, expires_at > now() by the DB clock). If there isn't one, it shows the \"link has expired\" page. If there is, it renders the form with the token in a hidden field, sending Referrer-Policy: no-referrer. GET never consumes the token, so scanners and prefetchers can't use it up.\n\n8. The user submits the form. POST /password/reset { token, password } hashes the token again and re-checks that it is ACTIVE. If it isn't, the user sees the \"expired, request a new one\" page and nothing changes.\n\n9. Next comes the password rule, checked after the token. The password must be at least 12 characters and not on the breached list. On failure the form is re-shown with an error and the token stays active. The check happens before the transaction and holds no lock. The plain password is never sent to a third party. If the list is unavailable, the form is re-shown with a \"try again\" message, the password is not accepted, and the link is not consumed.\n\n10. If the password is acceptable, the server begins a transaction and does SELECT token row FOR UPDATE. It rechecks ACTIVE. If the token is no longer active (for example a double submit), it rolls back and shows the expired page. Otherwise, in that one transaction it:\n   - updates users.password_hash;\n   - sets consumed_at = now() on the token;\n   - deletes all of the user's sessions rows;\n   - inserts a password_changed email job.\n   \n   It then commits. If any step fails, everything rolls back, the token stays active, and an error page or the form is shown.\n\n11. The response clears the session cookie on this browser, if it had a session, and sends a 303 redirect to /login. There is no automatic login. Deleting the sessions rows logs out every device, because the API checks a sessions row on every request. An old session is rejected afterwards. A request already past the session check at commit time may finish, and that is accepted.\n\n12. The worker sends the confirmation email in the same way, with 3 retries. If it still fails, it logs and drops the job. The reset stands anyway.\n\n13. A scheduled job deletes token rows older than 24 hours.",
+   "gaps": [
+    "How the email worker finds unsent jobs, and whether the queue is a Postgres table. The document says this is an open question, and the same-transaction guarantee depends on it.",
+    "Which breached-password list is used (local copy or partial-hash service), so I can't say how the check in step 9 actually runs.",
+    "What the session cookie is called and what it contains. The document only says the design assumes it identifies the user's sessions row, so I can't say how the cookie maps to a session.",
+    "Whether stored users.email values are already lowercase. If not, the lookup in step 1 needs a case-insensitive match, so I can't be sure the lookup finds the user.",
+    "Where the worker's counted alert goes and who owns it (step 6).",
+    "The document says a short path makes unknown-address timing match, but does not say what that path does."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,31 @@
+## Review of mig-02 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Rewrote the document so it stands alone: added a short intro and a terms list defining engine, usage event log, ledger, shadow store, mismatch and billing period.
+- Labelled every transition in the diagram with who or what triggers it, and put the gate thresholds and the automatic rollback trigger in text next to the diagram.
+- Added a table of what the old and new engine do in each mode, replacing the vague note that shadow and both run both engines.
+- Spelled out the gate numbers (7 days, under 0.1%, 5,000 invoices; 14 days, no unresolved mismatches, Finance sign-off) instead of only 'after 7 days'.
+- Made forward moves explicit as one step at a time, by a person, never automatic.
+- Wrote each rollback step in order with what it does and why, including that catch_up applies only after new_only, and that charges due during the pause are delayed, not dropped.
+- Added a 'Where state lives' section covering billing_mode, comparison_results and the rollback record, and a 'When something fails' section covering charge failures, step retries, unmet gates and the day-35 point of no return.
+- Stated that the 35-day limit applies to manual and automatic rollback, and explained why it matches the usage event log retention.
+- Removed the opening line of component names, which introduced pieces without explaining them. Dropped the unexplained 'rollback is manual or via the monitor' and 'steps are retryable' shorthand in favour of full sentences.
+- Added a one-sentence overview of the mode order and rollback jump before the terms.
+- Rewrote the rollback edge labels in the diagram so each label describes what completes on that arrow; previously they described the next step and read confusingly.
+- Noted in the diagram that catch_up is skipped when there is nothing to reprocess.
+- Moved the rolling_back composite state definition above its uses in the Mermaid source.
+- Made the manual-rollback limit precise: before day 35 in new_only, instead of a vague 'the 35-day limit'.
+- Clarified why catch_up is skipped from shadow and both (the old engine never stopped computing).
+- Fixed the contradiction between 'never skipped' and catch_up being skipped by stating the one exception.
+- Tightened wording in the Terms (shadow store) and state-location sections.
+- Moved the forward/rollback rules into the opening so the model is stated before the terms.
+- Added definitions of 'gate' and 'on-call'.
+- Clarified that decommissioned is not a billing_mode value and that billing_mode stays new_only.
+- Reworded the diagram transition label 'billing_mode = old_only' to 'billing_mode set to old_only' and the catch_up label to say the step is skipped if none.
+- Restructured the Rollback section into manual, automatic and not-a-trigger bullets.
+- Removed the repeated forward-move sentence from after the gates, since it now appears in the opening.
+
+### Holes
+- None.

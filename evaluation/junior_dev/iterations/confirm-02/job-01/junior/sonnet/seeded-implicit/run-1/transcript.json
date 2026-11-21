@@ -1,0 +1,312 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly makes a schedule 'due', and what does a worker write when it creates a run (which fields, which status)?",
+     "about": "Workers poll for due schedules and create runs"
+    },
+    {
+     "id": "2",
+     "text": "After a run is created, how does a worker claim it? Which statuses does a run move through, and which fields change on claim?",
+     "about": "Workers claim runs and execute them, with a lease"
+    },
+    {
+     "id": "3",
+     "text": "What does a worker execute, and how does job_type and payload turn into actual work? Where does that code live?",
+     "about": "JOB_SCHEDULE job_type / payload"
+    },
+    {
+     "id": "4",
+     "text": "How often are heartbeats sent, what do they update, and what happens to the running job if a heartbeat fails or the lease is lost?",
+     "about": "Heartbeats keep the lease alive"
+    },
+    {
+     "id": "5",
+     "text": "When does next_fire_at get advanced, and who does it, in the same transaction as run creation or separately? How does cron_expr plus timezone produce the next time?",
+     "about": "JOB_SCHEDULE next_fire_at"
+    },
+    {
+     "id": "6",
+     "text": "What are the retry limit and backoff values, and how is a retry represented: same run with a new attempt, or a new run? When is attempt_count and RUN_ATTEMPT written?",
+     "about": "Failures retry with backoff, up to the limit"
+    },
+    {
+     "id": "7",
+     "text": "How does the reaper find a dead worker's run, and what does it do to it: requeue, count as an attempt, or fail it?",
+     "about": "A reaper handles dead workers"
+    },
+    {
+     "id": "8",
+     "text": "What does 'per the spec' mean for overlapping and missed runs? Which spec, and what are the actual rules?",
+     "about": "Overlapping and missed runs are handled per the spec"
+    },
+    {
+     "id": "9",
+     "text": "What does 'cancels its pending work' mean for a run already executing, and what status do cancelled runs get?",
+     "about": "Pausing a tenant or disabling a schedule cancels its pending work"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A schedule is due when it is enabled, its tenant is active, and next_fire_at <= now(). The worker locks it with SKIP LOCKED and computes the latest fire time <= now(). It inserts a run with status pending, attempt_count 0 and run_after = now(), or status skipped if the schedule already has an active run. Reason: one transaction plus a unique key gives at most one run per fire time."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Statuses are pending, running, then succeeded, failed, skipped or cancelled. Claim selects a pending run with run_after <= now() using SKIP LOCKED. It sets status running, attempt_count +1, lease_owner and lease_expires_at = now()+2 min, and inserts a run_attempt row. Retry returns the run to pending."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Each worker has a map from job_type to a handler function in its own code. It calls the handler with payload. Reason: workers are identical, so every worker has every handler. The brief does not say where handler code lives in the repo, so the file now says only that it is in the worker program. An unknown job_type counts as a failed attempt."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Every 30 seconds the worker pushes lease_expires_at to now()+2 min, guarded by status running, its own lease_owner and attempt_count. If no row updates, the run was taken over, so the worker stops the handler if it can and writes nothing else. Handlers are idempotent, so partly done work is acceptable. A transient heartbeat error is not treated as a loss; only a zero-row result is."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The poller advances next_fire_at in the same transaction as the run insert, under the schedule row lock. The next time is the first fire time after now(), computed by a cron library from cron_expr read in the IANA timezone. Re-enable and resume recompute it, so no catch-up happens."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "At most 3 attempts. The wait is 1 minute before attempt 2 and 5 minutes before attempt 3, applied via run_after. A retry is the same run set back to pending, not a new run. attempt_count and the run_attempt row are written together at claim time, and the attempt is closed at finish or by the reaper."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The reaper selects running runs with lease_expires_at < now() using SKIP LOCKED. It closes the open attempt as lost, and that attempt counts. It then applies the retry rule: back to pending with backoff, or failed if it was attempt 3. Every worker runs it, so there is no separate reaper process."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The spec is the brief. Overlap rule: if a fire time arrives while the previous run is pending or running, the new run is recorded as skipped. Missed rule: after downtime only the latest missed fire time runs, and older ones are dropped with no history. Both rules are now written in step 1."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Pending runs, including retries waiting for run_after, become cancelled. Running runs are untouched and finish normally. If a running run then fails and the schedule is disabled or the tenant paused, the retry rule sets it to cancelled instead of pending. The file now says this in steps 5 and 7."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Step 4 says to close the attempt and apply the retry rule when the handler errors. Do the run update and the attempt close happen in one transaction, and what if the worker crashes between them?",
+     "about": "4. Finish"
+    },
+    {
+     "id": "11",
+     "text": "When a worker is lost and the reaper requeues the run, what is the old worker's handler doing? Can it still be executing in parallel with the new attempt, and what stops duplicate side effects?",
+     "about": "6. Reaper / Presumed dead"
+    },
+    {
+     "id": "12",
+     "text": "If a handler runs longer than the schedule interval, a new fire time arrives while the run is running. Is that really recorded as skipped, and does next_fire_at still advance normally?",
+     "about": "1. Poll for due schedules / Fire time arrives while a run is active"
+    },
+    {
+     "id": "13",
+     "text": "A run is pending and waiting out its 1 or 5 minute run_after when the next fire time arrives. Is the schedule treated as having an active run, so the new fire is skipped?",
+     "about": "1. Poll for due schedules / Retry rule"
+    },
+    {
+     "id": "14",
+     "text": "How does the worker run the heartbeat and the handler at the same time? Can a stuck or crashed handler stop the heartbeat, and is there any time limit on a handler?",
+     "about": "3. Execute"
+    },
+    {
+     "id": "15",
+     "text": "How does a tenant create, edit, disable or delete a schedule? Does editing cron_expr or timezone recompute next_fire_at, and what happens to existing runs when a schedule is deleted?",
+     "about": "Rules checked when a schedule is saved"
+    },
+    {
+     "id": "16",
+     "text": "The poll computes the latest fire time <= now(). If next_fire_at is far in the past after downtime, how is the dropped older history handled, and can that fire time already have a run row from before?",
+     "about": "Fire time / next_fire_at"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes, the run update and the attempt close are one transaction, so a crash between them cannot happen. A crash before commit leaves both undone, the lease expires and the reaper marks the attempt lost. Added one sentence to step 4."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, the old handler can keep running until its next heartbeat updates no row, at most 30 seconds. Nothing stops the overlap beyond the guarded writes; the brief says handlers are idempotent and repeated partial work is acceptable. The guard only stops the old worker from overwriting the outcome. Added a line in step 3."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Yes. A running run is active, so the new fire time is recorded as skipped, and next_fire_at advances normally in the same transaction. Both are already in step 1; I made the skip case explicit."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. Active means pending or running, and a retry waiting for run_after is pending, so the new fire is recorded as skipped. This follows the brief rule that only one run of a schedule may be in progress. Clarified in step 1."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The heartbeat runs on its own timer beside the handler, so a slow handler does not block it. A crashed process stops both, which is how death is detected. A stuck handler in a live worker keeps heartbeating forever. The brief sets no handler time limit, so I added none and listed it as an open question. Added to step 3."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "The brief does not say how tenants create, edit, disable or delete schedules, so the plan has no API for it. Decided: editing cron_expr or timezone recomputes next_fire_at (added to the save rules). Not known: what deleting a schedule does to its runs and history, since the foreign key would block it. Listed as an open question; until decided, disable instead of delete."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Dropped older fire times get no row and no history entry, as the brief says. The latest fire time normally has no row, because next_fire_at advances in the same transaction as the insert and is always after the last handled fire time. If it somehow had a row, the unique constraint makes the insert fail and the worker does nothing. Added a short note in step 1."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "Step 2 gives no interval for claiming runs. How often does a worker try to claim, and what does it do when it finds nothing?",
+     "about": "2. Claim a run"
+    },
+    {
+     "id": "18",
+     "text": "Can one worker execute several runs at the same time, or only one at a time? Is there any cap on concurrent runs per worker?",
+     "about": "2. Claim a run / 3. Execute"
+    },
+    {
+     "id": "19",
+     "text": "What is the worker_id used for lease_owner and run_attempt? Is it unique for each process start, so a restarted worker is a different id from its dead predecessor?",
+     "about": "JOB_RUN lease_owner / RUN_ATTEMPT worker_id"
+    },
+    {
+     "id": "20",
+     "text": "Is the claim (status running, attempt_count +1, run_attempt insert) really one transaction? What happens to the attempt row if the worker crashes right after claiming but before the handler starts?",
+     "about": "2. Claim a run"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Each worker tries to claim every 5 seconds while it has a free slot, and when it finds nothing it simply waits for the next tick. The brief gives no interval, so 5 seconds is my choice (short enough that a run waits little after its fire time, cheap because the query is indexed). Added to step 2 and listed as our choice in open questions."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "A worker may run several runs at once, up to 4, one per slot, and claims only when a slot is free. The cap stops one worker taking more than it can heartbeat. The brief sets no cap, so 4 is my choice and is listed as such. Added to step 2."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The worker id is a random UUID generated when the process starts, so a restarted worker has a new id and cannot be mistaken for its dead predecessor. This matters because the guarded writes compare lease_owner. Added to the terms."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Yes, the claim (status, attempt_count, lease fields and the run_attempt insert) is one transaction. If the worker crashes after it commits but before the handler starts, the attempt row stays running, the lease expires after 2 minutes, the reaper closes it as lost and it counts as a used attempt. Added to step 2 and the failure table."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "21",
+     "text": "Step 4 says that after success the run is set to succeeded. Once a run is succeeded, what makes the schedule produce the next run? Is it only the poller's next_fire_at, or does finishing do anything to the schedule?",
+     "about": "4. Finish"
+    },
+    {
+     "id": "22",
+     "text": "The poll computes the latest fire time <= now(). If the run for the previous fire time was skipped, or the schedule was edited so next_fire_at moved earlier, how can the computed fire time end up the same as one that already has a run? Is the unique-constraint case really only a race between workers?",
+     "about": "1. Poll for due schedules"
+    },
+    {
+     "id": "23",
+     "text": "When the unique constraint fails during the poll insert, does the whole transaction roll back, including the next_fire_at update? Who then advances next_fire_at in that case?",
+     "about": "1. Poll for due schedules / If the insert fails because of the unique constraint"
+    },
+    {
+     "id": "24",
+     "text": "The reaper and the finish step both apply the retry rule. If a worker finishes just as the reaper takes the run, what happens to the attempt row and to attempt_count? Can the run end up with the attempt closed twice?",
+     "about": "6. Reaper / 4. Finish"
+    },
+    {
+     "id": "25",
+     "text": "When a run is cancelled while running because step 7 leaves running runs alone and then the handler succeeds, what status does the run get? And does a schedule disabled mid-run still show the run as succeeded?",
+     "about": "7. Pause and disable"
+    },
+    {
+     "id": "26",
+     "text": "A run is lost and the retry rule sets it to pending. Is the lease_owner cleared and the attempt_count kept? How does a stale heartbeat from the old worker fail against the new attempt, given the guard uses lease_owner and attempt_count?",
+     "about": "5. Retry rule / 3. Execute"
+    }
+   ],
+   "answers": [
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Finishing does nothing to the schedule. The poller alone creates the next run from next_fire_at, which already advanced when the previous run was created. Added one sentence at the top of How it runs."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "No, normally the computed fire time cannot match an existing run. A skipped run's fire time is already behind next_fire_at, and an edit sets next_fire_at to the first fire time after now(), while every existing run has scheduled_for at or before its creation time. The conflict is only a safety net for a race. I made the insert ON CONFLICT DO NOTHING and said it is a safety net."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "This was a real gap. A plain failed insert would abort the whole transaction and next_fire_at would stay put. Fixed: the insert uses ON CONFLICT DO NOTHING, so the transaction continues and next_fire_at is advanced in the same transaction in every case. Changed step 1."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "Both lock the run row, so one commits first and the other finds no matching row (the finish guard fails, or the reaper's lease check no longer matches). The attempt is closed only by the transaction whose run update touched a row, and only the attempt with outcome running, so it is closed once and attempt_count is not changed again. Clarified in step 4."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "A running run is left alone by pause or disable. If its handler succeeds it is recorded as succeeded, and the history shows succeeded even though the schedule was disabled mid-run. Only a failure turns into cancelled, through the retry rule. Stated in steps 4 and 7."
+    },
+    {
+     "id": "26",
+     "tag": "checked",
+     "text": "Yes: the retry rule clears lease_owner and lease_expires_at and keeps attempt_count. The old worker's heartbeat fails because the run is pending (status guard), or after a new claim because lease_owner differs and attempt_count is higher. Stated in step 5."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup. A migration adds a status column (active or paused) to the existing tenant table, plus three new tables: job_schedule, job_run and run_attempt. Then 3 to 10 identical worker processes are deployed. There is no leader and no scheduler process. Each worker generates a random UUID as its worker id at start. Every worker runs the same loops against Postgres, and Postgres holds all the state. Row locks and unique constraints stop two workers doing the same thing.\n\n2. Saving a schedule, which starts the flow. A tenant defines a schedule with a job type, a JSON payload, a 5-field cron expression and an IANA timezone. On save:\n   - The save locks the tenant row, counts the tenant's schedules and rejects the save if the tenant already has 50. Then it inserts.\n   - It rejects invalid cron, or cron where two consecutive fire times in the next 7 days are less than 5 minutes apart.\n   - It sets next_fire_at to the first fire time after now(). The same rule applies whenever cron_expr or timezone is edited.\n   All time comparisons use the database clock, never a worker's clock.\n\n3. Poll for due schedules. Every worker does this every 10 seconds. In one transaction it selects schedules that are enabled, belong to an active tenant and have next_fire_at <= now(). It uses FOR UPDATE SKIP LOCKED, so each worker locks different schedules. For each locked schedule:\n   - It computes the most recent fire time <= now(). Older missed fire times are dropped, with no row and no history.\n   - If the schedule already has an active run (pending or running, including a retry waiting for its run_after), it inserts a job_run for that fire time with status skipped. Otherwise it inserts a run with status pending, attempt_count 0 and run_after = now().\n   - The insert uses ON CONFLICT DO NOTHING. A duplicate (schedule_id, scheduled_for) is therefore not an error, and there is only ever one run per fire time.\n   - In the same transaction, next_fire_at moves to the first fire time after now(), whether the run was inserted, skipped or a duplicate.\n\n4. Claim a run. Every 5 seconds, a worker with a free slot (up to 4 runs at once) does this. If it finds nothing it waits for the next tick. It selects one pending run with run_after <= now(), whose schedule is enabled and whose tenant is active, using FOR UPDATE SKIP LOCKED. In one transaction it:\n   - sets status to running and adds 1 to attempt_count;\n   - sets lease_owner to its worker id and lease_expires_at to now() + 2 minutes;\n   - inserts a run_attempt with attempt_no equal to attempt_count, its worker id, started_at = now() and outcome running.\n   If the worker crashes after this commits but before the handler starts, the attempt stays running. The lease then expires and the reaper marks the attempt lost, which uses up the attempt.\n\n5. Execute. The worker looks up the handler for job_type and calls it with the payload.\n   - Every worker contains every handler, and handlers are idempotent.\n   - A job_type with no handler counts as a failed attempt.\n   - On a separate timer, every 30 seconds, a heartbeat runs UPDATE job_run SET lease_expires_at = now() + 2 minutes WHERE id, status = 'running', lease_owner = this worker and attempt_count = this attempt.\n   - If the heartbeat updates zero rows, the worker has lost the run. It stops the handler if it can and writes nothing more.\n   - A transient database error on a heartbeat is not a loss. Only a zero-row result is.\n   - Until the worker notices (at most 30 seconds), the old handler may run beside the new attempt. Idempotent handlers make that acceptable.\n   - There is no time limit on a handler. A stuck handler in a live worker keeps its lease.\n\n6. Finish. When the handler returns, the worker updates the run with the same guard as the heartbeat. In the same transaction, and only if that update touched a row, it closes the attempt (the one with this attempt_no and outcome running).\n   - On success, the run and the attempt become succeeded. This holds even if the schedule was disabled or the tenant paused in the meantime.\n   - On error, the attempt is closed as error with an error_message, then the retry rule applies.\n   - If the guarded update touches no row, the run was taken over, so the worker discards its result. Whichever of finish and the reaper commits first wins, and the other finds no matching row, so an attempt is closed exactly once.\n   - A crash before commit leaves everything undone, and the reaper handles it.\n   Finishing does nothing to the schedule. The next run always comes from the poll step and next_fire_at.\n\n7. Retry rule. This is used by finish and by the reaper. attempt_count is never reset.\n   - If the schedule is disabled or the tenant paused, the run becomes cancelled.\n   - Otherwise, if attempt_count is 3, the run becomes failed.\n   - Otherwise the run goes back to pending, lease_owner and lease_expires_at are cleared, and run_after = now() + 1 minute after attempt 1, or now() + 5 minutes after attempt 2.\n   A pending retry is then claimed again by step 4 once run_after passes, which gives the next attempt number. A stale heartbeat from the old worker fails its guard, because the run is no longer running or has a new lease owner and a higher attempt_count.\n\n8. Reaper. Every worker runs it every 30 seconds. It selects running runs with lease_expires_at < now() (presumed dead) using FOR UPDATE SKIP LOCKED. It closes each one's open attempt as lost with the message \"worker presumed dead\". That attempt stays counted. Then it applies the retry rule.\n\n9. Pause and disable. Disabling a schedule or pausing a tenant also sets the affected pending runs to cancelled, including retries waiting for run_after, in the same transaction. Running runs are left alone. A success is recorded as succeeded, and a failure becomes cancelled through the retry rule. Steps 3 and 4 pick nothing new up for them.\n\n10. Re-enable and resume. In one transaction, enabled or status is set back and next_fire_at is set to the first fire time after now() for each affected schedule. Nothing missed during the pause therefore runs.\n\n11. History cleanup. Every worker does this once an hour. It deletes final runs (succeeded, failed, skipped or cancelled) with scheduled_for older than 90 days, in batches. Their attempts are removed by cascade. Tenants see history by joining job_run (fire time, final status) to run_attempt (worker, start and end times, error).\n\n12. Failure summary.\n   - A handler throws or the job_type is unknown: the attempt is closed as error, then the retry rule applies.\n   - A worker dies: the lease expires after 2 minutes, the attempt is marked lost, then the retry rule applies.\n   - A stale worker finishes late, or finish races the reaper: the guarded update touches no row and the result is discarded.\n   - No worker is up through several fire times: only the latest fire time runs on recovery.\n   - A fire time arrives while a run is active: a skipped run is recorded.\n   - The third attempt fails or is lost: the run is failed.",
+   "gaps": [
+    "How tenants create, edit or delete schedules is not described: no API, UI or entry point. Step 2 is therefore only a list of rules, with no trigger I can trace.",
+    "What deleting a schedule does to its runs and history is not decided.",
+    "The retry rule says a run is cancelled if the schedule is disabled or the tenant paused. It does not say whether a run that was already running and then cancelled this way closes its attempt differently. Step 6 only says the attempt is closed as error.",
+    "It does not say how a worker decides which of its 4 slots is free, or how it learns that a handler has returned, beyond the claim step saying it only claims when a slot is free.",
+    "It does not say what the worker does if the handler is stopped or abandoned after a lost heartbeat, for example whether the slot is freed.",
+    "It does not say what the reaper does with a running run whose open attempt is missing or already closed.",
+    "The run_attempt outcome for a handler that errors because of an unknown job_type is not specified beyond 'failed attempt', and the error_message text for it is not given.",
+    "Whether the 'most recent fire time <= now()' computation can produce a fire time that already has a run row (the ON CONFLICT case) is only said to be a safety net. It does not say what happens to the schedule if the computed fire time is not after the previous one.",
+    "The document does not say how the 5-minute minimum spacing rule applies across daylight-saving changes in the schedule's timezone."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

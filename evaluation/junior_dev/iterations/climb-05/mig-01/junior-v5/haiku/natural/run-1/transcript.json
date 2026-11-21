@@ -1,0 +1,267 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"primary\" the instances poll every 2 s, and what does an instance do when a poll fails and its lease runs out? Do reads also stop, or only writes?",
+     "about": "Shared mechanisms: Write fence"
+    },
+    {
+     "id": "2",
+     "text": "In the dual-write step, the Postgres copy happens after the MySQL commit. If the copy fails and the outbox row stays, what exactly picks it up, and how often does it run?",
+     "about": "4. Turn on dual writes / Forward outbox"
+    },
+    {
+     "id": "3",
+     "text": "The outbox worker deletes outbox rows up to the seq it read. How does it avoid deleting a row for a write that landed after it read the primary row?",
+     "about": "Forward outbox (MySQL, users_pg_outbox)"
+    },
+    {
+     "id": "4",
+     "text": "The version rule compares `version`. Where does `version` come from, who increments it, and is it the same column in both stores?",
+     "about": "Version rule (copy(row))"
+    },
+    {
+     "id": "5",
+     "text": "In backfill, what is \"last\" in `WHERE id > last`, and how does the runner know the lease is still its own if it is slow or paused for lag?",
+     "about": "5. Backfill"
+    },
+    {
+     "id": "6",
+     "text": "Step 6 says the outbox must be empty at its start and end. What if normal traffic keeps the outbox non-empty? What does the operator do then?",
+     "about": "6. Full comparison and repair"
+    },
+    {
+     "id": "7",
+     "text": "In step 9, after the mode changes to `pg`, how does an instance know it must write to Postgres, and what happens to a request that was already refused with 503 during the pause? Does the client retry?",
+     "about": "9. Planned switch, steps 1 and 4"
+    },
+    {
+     "id": "8",
+     "text": "What are the \"sampled comparisons\" in step 7: who runs them, on what, and how is a mismatch reported to the operator?",
+     "about": "7. Move reads to Postgres in steps"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The primary is `mysql-core-primary`, where the control row lives. If a poll fails, the instance keeps writing only until its lease runs out 10 s after its last good poll, and then its writes return 503. Only writes stop. Reads are never fenced. The file now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The old text named no worker. The forward worker now runs on every instance every 1 s while dual writes are on, takes up to 500 outbox rows, and retries any row whose Postgres copy failed. A failure leaves the row in place, so the next pass picks it up. The file now says this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The order makes it safe. The worker reads the highest outbox seq for the user first, and only then reads the MySQL row. A write that commits after that read gets a higher seq, so it is not deleted. It is copied on a later pass. The file now states this order."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Checked in user_repository.py and users_table.md. MySQL sets version to 1 on create and adds 1 on each update. Postgres has the same column, and copies keep the incoming value. After the switch, the Postgres write path must add 1 the same way. The file now defines version."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "`last` is migration_state.backfill_last_id: the highest id of the last committed batch, starting at 0. The runner holds a lease with an owner token and a 60 s expiry, renewed before each batch and during lag waits. The checkpoint update is in the same transaction as the rows and applies only if the token still matches. A runner that lost its lease matches nothing, rolls back and stops."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "This exposed a real error. At about 400 writes per second the outbox is almost never empty, so the old rule would never pass. Changed: a row that differs is checked under the per-user lock. If the user has pending outbox rows the check is deferred, otherwise a difference is a mismatch. A pass is clean when it has zero mismatches and no deferred row still differs at the end. If clean passes keep failing, the operator investigates."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Instances apply the mode from their 2 s poll, so after pg is set and applied they write to Postgres. A request refused with 503 was never started, and the brief says clients already retry 503. The retry runs after the switch against the new mode. The file now says this."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The step 7 sampled comparison was undefined. Now the read path samples 1% of its Postgres reads, reads the replica for the same user and compares version and fields. A difference counts only if the user has no pending outbox rows. Each counted mismatch increments users_read_mismatch_total. Any count stops the ramp, and the operator watches that metric and its alert."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The fence polls the control row in MySQL, and an instance's writes stop 10 s after its last good poll. The failure table says that if MySQL goes down after the switch, users see no impact. How do writes keep working if instances cannot poll the control row?",
+     "about": "Write fence / 8. MySQL down after the switch"
+    },
+    {
+     "id": "10",
+     "text": "What does an ordinary user delete do, compared with an erasure? The forward worker does nothing when the MySQL row is gone. So how does the Postgres row for a normally deleted user get removed, and is a tombstone written?",
+     "about": "4. Turn on dual writes: create, update and delete"
+    },
+    {
+     "id": "11",
+     "text": "What is the \"durable erasure work list in MySQL\"? Who puts a request on it, and what does the sweeper do with it each time it runs? Before dual writes are on, do the Postgres tombstone and delete in (a) still run?",
+     "about": "3. Erasure ordering"
+    },
+    {
+     "id": "12",
+     "text": "How do you get 12 s? Please walk through the 2 s poll, the 10 s lease, the 3 s remaining-lease check and the 3 s write deadline to show why none of them can overlap the pause.",
+     "about": "Write fence: 'no write is still running 12 s later'"
+    },
+    {
+     "id": "13",
+     "text": "After the mode is `pg`, do the forward worker and dual writes stop on every instance? What happens to forward outbox rows or in-flight copies on an instance that has not yet applied the new mode?",
+     "about": "9. Planned switch, step 4: mode pg"
+    },
+    {
+     "id": "14",
+     "text": "Reads on the Postgres primary can return an older version while the outbox lags. If a user updates their profile and then reloads, they may see old data. Is that accepted, or does the read path do something about it? Also, how does a read know a user has pending outbox rows when the sampled compare runs?",
+     "about": "7. Move reads to Postgres in steps"
+    },
+    {
+     "id": "15",
+     "text": "After the switch Postgres assigns ids, and reverse copies insert explicit ids into MySQL. What happens in the reverse direction if a copy hits a unique-email conflict, or when a user is deleted or erased after the switch? The open questions say this is not written. What should I assume happens today?",
+     "about": "10. Reverse sync: IDs"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The old failure-table row was wrong. The control row was in MySQL, so after the switch a MySQL outage would stop every lease and fail all writes. That breaks the availability requirement. Changed: from step 9 the control row and the erasure work list move to Postgres, written first to Postgres and then to MySQL with the same epoch. Instances read the store that holds the source of truth. The failure table now says writes continue during a MySQL outage after the switch."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "Checked in user_repository.py: delete is hard-delete and is documented as called only by the GDPR erasure job. There is no ordinary user delete. Changed: removed delete from the dual-write step. Step 4 now covers create and update only, and erasure is in step 3. The forward worker does nothing for a missing MySQL row because erasure has already written the Postgres tombstone and removed the row."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The GDPR erasure job adds one row per user to users_erasure_work in MySQL. The sweeper works through that list on a timer, runs steps (a) and (b) for each row, and marks the row done after (b) commits. Both steps are idempotent, so a crash can be retried. Yes, (a) still runs before dual writes. Backfill copies from the replica, so the Postgres tombstone must exist before backfill can copy an erased user. Changed: added the work list and the sweeper to the terms and to step 3, and stated why (a) runs from step 2."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Walkthrough: call T the moment paused is set in MySQL. An instance that has not yet seen paused last polled before T, so its lease ends before T+10. It starts no write once its lease has under 3 s left, which is before T+7. Each write has a 3 s deadline, so every write ends by T+10. The drain waits to T+12, a 2 s margin. The poll interval does not change this bound. Changed: added the derivation to the write fence section, and made the lease count from when the poll was sent, not when it returned."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The forward worker keeps running during paused so the drain can finish, and it stops when the mode is pg. Under paused no instance writes, so an instance that has not yet applied pg writes nothing. Forward outbox rows cannot appear after the drain is checked, because writes are paused. An in-flight copy that lands after the switch is a no-op under the version rule, because MySQL is final by then. Changed: the forward worker section now says when it runs and when it stops. Step 9 names the same states."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The read path does not check the outbox, so a user who has just written can read an older version until their copy lands. That lag is normally seconds and is bounded by outbox age. I accept it for the ramp because the brief requires reads never to fail and does not require read-your-writes, and a new mechanism would need a decision the brief does not give. The sampled comparison checks users_pg_outbox in MySQL for that user before counting a mismatch. Changed: step 7 now names the outbox check. The failure table has a stale-read row. The read-your-writes question moved to Open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Assume this. A unique-email conflict in a reverse copy means a MySQL row still has the email because that other user's change is still in the reverse outbox. The copy is retried in outbox order and clears when that change lands. If it does not clear, outbox age alerts. For erasure after the switch, the order mirrors the pre-switch rule: the target store gets its tombstone and delete first, then the source. So (a) deletes in MySQL and (b) deletes in Postgres with a reverse-outbox row. A reverse copy then skips the erased user. Rollback copies tombstones too. Changed: step 10 now states the reverse erasure order and the conflict rule. Step 11 checks that every Postgres tombstone exists in MySQL. The open question about reverse deletes is removed because it is now answered."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "What does it mean to write the erasure work list together with mode `pg`? Is it copied from MySQL to Postgres, and what happens to a work row that is half done (Postgres part (a) committed, MySQL part (b) not) at that moment?",
+     "about": "9. Planned switch, step 4: 'together with the erasure work list'"
+    },
+    {
+     "id": "17",
+     "text": "Between the Postgres write and the MySQL write of `pg`, instances read the control row from MySQL (still `paused`). Which store does each instance poll at that point, and how does it find out that it should switch to polling Postgres?",
+     "about": "9. Planned switch, step 4: write mode to Postgres, then MySQL"
+    },
+    {
+     "id": "18",
+     "text": "How do the sweeper and the pause fit together at the switch? Does the sweeper run on every instance or one place, and which store's work list does it read after the switch?",
+     "about": "3. Erasure ordering: 'The sweeper works through the list on a timer'"
+    },
+    {
+     "id": "19",
+     "text": "Does the 200 ms inline copy happen before the user's response is returned? If it times out, is the outbox row left for the forward worker, and does the inline copy delete its own outbox row on success?",
+     "about": "4. Turn on dual writes: one Postgres copy with a 200 ms timeout"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes, it is copied. Step 9.4 says the work list rows are copied from MySQL into Postgres in the same Postgres transaction that writes mode pg, keeping each row's state. A half-done row (part (a) committed, part (b) not) keeps that state. Its remaining part runs after the switch in the reverse order from step 10. That order is safe because part (a) already left the Postgres tombstone and row delete, so the MySQL part only adds the MySQL tombstone, deletes the MySQL row and marks the row done. Both parts are idempotent. The file was unclear, so I added this to step 9.4 and to the work-list term."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Each instance keeps polling MySQL, which still says paused, so it writes nothing. The pg written to Postgres alone leaves every instance paused. An instance switches to polling Postgres only after it sees mode pg in MySQL, the store it was reading. It then applies pg within about 2 s. If the MySQL write fails, the instances stay paused, and the operator retries the MySQL write with the same epoch, as the failure table says. I added this rule to the control-row paragraph and to step 9.4."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The sweeper runs on every instance on a timer. Running it on several instances is safe because both parts are idempotent. It reads the erasure work list of the store that holds the source of truth: MySQL until the switch, Postgres after. Its writes are fenced like any other write, so during the pause they get a 503 and are retried. The 12 s drain means no erasure part is still in flight when pg is set. A row half done at the switch is finished as described in Q16. The file did not say any of this, so I added it to step 3."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Yes, the inline copy runs before the response. The request waits for the copy to finish or time out, up to 200 ms, and then returns. A timeout or failure leaves the outbox row, and the forward worker copies it on its next pass, which is within 1 s. The inline copy does not delete its own outbox row. Only the forward worker deletes rows, after its copy succeeds, using the read-first order. One delete path avoids a second race with the worker. The cost is that each write's outbox row lasts about 1 s, roughly 400 rows at peak. The file did not say this, so I added it to step 4."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "20",
+     "text": "Step 11 writes `paused` to Postgres because instances read the control row there. But in the step 9 failure case, instances are still polling MySQL, which says `paused`. Which store do they read at that moment, and how does the step 11 pause or flip reach them?",
+     "about": "9. Planned switch, If it fails: 'use the rollback in step 11'"
+    },
+    {
+     "id": "21",
+     "text": "After rollback sets mode `mysql`, what turns the forward outbox, the forward worker and the inline Postgres copy back on? Is the `users.dual_write` flag still on, and what happens to the reverse worker and reverse outbox?",
+     "about": "11. Rollback to MySQL, step 4: 'Dual writes resume'"
+    },
+    {
+     "id": "22",
+     "text": "Reads sit at 100% for 72 h or more after the compare pass in step 6. How recent must the clean compare be, and is it re-run during the hold? What if writes have made rows differ since that pass?",
+     "about": "9. Planned switch, Starts: 'the latest full compare was clean'"
+    }
+   ],
+   "answers": [
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "In that case instances read MySQL, which still says paused, so they write nothing. Step 11 does not apply there. The fix is in step 9, which now splits the failure path by which control write has landed. If MySQL does not yet have pg, retry the MySQL write with the same epoch, or abort by writing mysql (epoch+3) to MySQL and then to Postgres. Step 11 applies only after some instance has applied pg from MySQL. Its pause then goes to Postgres, which those instances now read. The file says this in step 9 and in the control-row paragraph."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Rollback does not change the users.dual_write flag, which stays on. Mode mysql sends writes back to MySQL. The forward worker runs again, and each write commits to MySQL with an outbox row and an inline copy. The reverse worker stops when the step 11 drain finishes, and no reverse-outbox rows are written in mode mysql. Step 11.3 copies the erasure work list back to MySQL, so the MySQL sweeper finishes it. The forward worker run conditions are now stated in its own section."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The clean compare in step 6 is not enough, because it ran before reads reached 100%. Step 8 now requires a full compare that runs during the hold, after the latest clock start, and finishes clean. Step 9 requires that compare. Writes since an earlier pass do not fail the compare by themselves. A differing row with pending outbox rows is deferred and rechecked, and only a difference with no outbox rows counts as a mismatch."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Before anything: users live in MySQL 8. All access goes through UserRepository. Reads hit the MySQL replica, writes hit the MySQL primary, and MySQL is the source of truth (its rows win on disagreement). The goal is to move to Postgres 16 (pg-core) without downtime, so that a Postgres failure never fails a user request until the switch.\n\n2. Step 1, schema. The normal migration deploy adds the helper tables to both stores: forward outbox users_pg_outbox, tombstones, erasure work list users_erasure_work, and the control row users_pg_control (mode mysql, epoch 1) in MySQL. Postgres gets users, user_tombstones, pg_outbox and migration_state. Nothing uses them yet. If it fails, drop them and redeploy.\n\n3. Step 2, deploy the code with the flags users.dual_write, users.backfill and users.pg_read_percent set to off, off and 0. From now on every user write also inserts a forward-outbox row in the same MySQL transaction. Each instance reports its build version and users_mode_applied. The state lives in the flags and the MySQL control row.\n\n4. Every instance polls the control row every 2 s, reading the store that holds the source of truth and reading the mode directly (not from the 30 s flag cache). This gives the instance a 10 s lease, counted from when the poll was sent. Before each write the write fence checks that the lease is valid, at least 3 s of it remain, and the mode allows writes. Each write has a 3 s deadline. If the fence refuses, the client gets a retryable 503 (clients already retry 503s). Reads are never fenced. If polls fail, the instance keeps writing until its lease runs out and then returns 503 for writes while reads continue.\n\n5. Step 3, erasure (active from step 2). The GDPR erasure job adds one row per user to users_erasure_work in the store holding the source of truth. A sweeper on every instance works through the rows on a timer, with fenced writes, independent of dual writes. For each row it does (a) under the Postgres per-user lock, insert the Postgres tombstone, delete the Postgres row, commit. Then (b) in one MySQL transaction, insert the MySQL tombstone, delete the MySQL row, write an outbox row, and mark the work row done. Part (b) never starts before part (a) commits. Both parts are idempotent. A row may stop half done after a pause or crash and stays so until the sweeper runs (b). During a pause the writes get 503 and the sweeper retries. If Postgres is down, erasure waits and an alert fires. Tombstones make this safe because every copy checks the tombstone under the same per-user lock.\n\n6. Step 4, dual writes on. An operator sets users.dual_write on, only after every instance reports the flag on and 60 s have passed. A user create or update (mode mysql) now commits to MySQL with its outbox row. Then the app re-reads the MySQL row and tries one Postgres copy with a 200 ms timeout, waiting for it. The copy follows the copy rules: take the Postgres per-user lock (pg_advisory_xact_lock), skip if a tombstone exists, then apply the version rule (insert if the id is missing, replace only if the existing version is lower). Failures or timeouts are logged and counted, never raised, so the request succeeds. The inline path does not delete the outbox row.\n\n7. Forward outbox worker. Every instance runs it every 1 s while mode is paused, or mode is mysql with dual_write on. Each pass reads up to 500 outbox rows oldest first and notes the highest seq per user. It then reads the current MySQL row for each of those users, copies it to Postgres with the copy rules (doing nothing if the MySQL row is gone), and only after the copy succeeds deletes that user's outbox rows up to the noted seq. If a copy fails the row stays and is retried next pass. A write that committed after the first read has a higher seq, so its row survives. Several instances can run at once because copies are idempotent. If Postgres is down, outbox rows pile up, the worker keeps retrying every second, and an outbox-age alert fires.\n\n8. Step 5, backfill. An operator sets users.backfill on, after step 4 has been on everywhere for 60 s and outbox age is under 5 min. One runner holds a lease row in migration_state (owner token, 60 s expiry, renewed before each batch and every 5 s while waiting). It reads the replica in id order (WHERE id > last ORDER BY id LIMIT 2000, starting at 0), waiting if mysql_replica_lag_seconds exceeds 5 s. Each row goes through the copy rules. In the same Postgres transaction it advances migration_state.backfill_last_id. The checkpoint update only matches if the runner's token still holds the lease, otherwise the batch rolls back and the runner stops. It finishes when a batch returns 0 rows (about 19,000 batches). A Postgres error rolls back the batch and is retried with backoff. A crash resumes from the last committed checkpoint, and replays are safe.\n\n9. Step 6, full comparison. Once backfill is done, a job walks ids in chunks of 2,000 and compares a hash of (id, version, email, name, plan, updated_at), skipping ids tombstoned in either store. For differing chunks, under the per-user lock it reads both rows. If the user still has forward-outbox rows it defers the row. Otherwise, if the rows still differ, it repairs Postgres via the copy rules and counts a mismatch. Deferred rows are rechecked at the end. A pass is clean with zero mismatches and no deferred row still differing. The result is recorded in migration_state. Reads do not move until a pass is clean.\n\n10. Step 7, reads move gradually. After a clean pass, an operator raises users.pg_read_percent through 1, 10, 50, 100, holding at each step. flags.enabled_for(..., user_id) decides who reads the Postgres primary. Everyone else reads the MySQL replica. A Postgres error, timeout or missing row falls back to the replica, so reads never fail. The read path does not check the outbox, so a user who just wrote may briefly see an older version. For 1% of Postgres reads, it also reads the replica and compares. On a difference it checks the MySQL outbox for that user, and counts a mismatch (users_read_mismatch_total) only if there are no outbox rows. Any counted mismatch stops the ramp and returns to step 6. Setting the percent to 0 undoes it within 30 s.\n\n11. Step 8, hold at 100% for 72 h. migration_state.reads_100_since is set when 100% is reached. It is cleared and the clock restarts if the percent drops or a mismatch is found. A full compare that started after the latest clock start must finish clean during the hold.\n\n12. Step 9, planned switch (writes paused at most 90 s, target about 30 s). It starts only when the 72 h clock, a clean post-clock compare, outbox age under 5 min, the fenced build, and the reverse worker are all in place. (1) Write paused (epoch+1) to MySQL. Writes now get 503. Wait 12 s. Instances that have not seen paused have leases ending before T+10 and stop starting writes before T+7, and writes last at most 3 s, so every write is finished. (2) Drain the forward outbox to zero. (3) Set the Postgres id sequence to MySQL's AUTO_INCREMENT + 1,000,000. (4) In one Postgres transaction write mode pg (epoch+2) to migration_state and copy the erasure work list rows from MySQL (keeping states). Then write the same mode and epoch to MySQL. Instances poll MySQL, so they stay paused until they see pg there, then apply it within about 2 s and read and write Postgres. Each write takes the Postgres per-user lock, checks the version, and writes the row plus a reverse-outbox row in one commit. Half-done erasure rows only need the rest of (b) in MySQL. (5) Record source_switched_at. A 503'd request was never applied, so client retries hit the new mode. If the drain is still running at 60 s, write mysql (epoch+3) to MySQL and resume. If Postgres has pg but MySQL does not, retry the MySQL write with the same epoch, and abort at 75 s by writing mysql (epoch+3) to MySQL then Postgres. If MySQL already has pg and some instances applied it, use the step 11 rollback, not a plain write.\n\n13. Step 10, after the switch. Writes go to Postgres. The reverse worker (running in mode pg) copies changed rows to MySQL using the same four-step read-first pattern, with the MySQL per-user lock, MySQL tombstone check and version rule. It then deletes the reverse-outbox rows. Reads come from Postgres, with the MySQL replica as a counted stale fallback. Erasure now runs in the reverse order (MySQL part first, then the Postgres transaction). A unique-email conflict is retried in outbox order, and outbox age alerts if it does not clear. If MySQL is down, the reverse outbox grows with no user impact. If Postgres is down, writes return 503.\n\n14. Step 11, rollback (until step 12). Write paused (epoch+1) to Postgres and wait 12 s. Drain the reverse outbox to zero and verify that every Postgres row has a MySQL row at the same version and every Postgres tombstone has a MySQL one. Copy the work list back to MySQL and set MySQL's AUTO_INCREMENT to max(id)+1. Write mysql (epoch+2) to MySQL first, then Postgres. The instances then move to MySQL, and the forward worker resumes with dual_write still on. If this has not been applied by 75 s, abort by writing pg (epoch+3) to Postgres, then MySQL. After it is applied, abort is no longer possible, and a full compare must run before any new switch.\n\n15. Step 12 and 13. After at least 14 days from source_switched_at, with a clean reverse compare and a MySQL snapshot, an operator sets mode pg_only. No pause is needed. The reverse worker drains to zero and stops, and MySQL is no longer written. Rollback is then impossible, and recovery is from the snapshot. A separate approved change in step 13 removes the reverse worker, forward outbox, MySQL tombstones, MySQL fallback and MySQL code paths, updates the lint rule, and drops the MySQL users table.\n\n16. Failure handling summary (from the table). A Postgres outage in dual writes does not affect requests. A failed control-row write changes nothing, and you retry with the same epoch before any other step. MySQL down before the switch fails writes as it does today. After the switch, a MySQL outage does not stop writes but a Postgres outage does.",
+   "gaps": [
+    "The document does not say how a create is assigned its id before the switch (it says only that MySQL assigns ids and no new ids come after step 9), so I cannot follow how a create's id reaches the Postgres copy beyond 'the row is re-read after commit'.",
+    "It does not say what the app does between an instance seeing mode pg and the Postgres id sequence handling creates when the sequence and reverse-copied explicit ids interact, beyond the stated rule that MySQL assigns no new ids.",
+    "It does not define who or what writes the epoch+1 'paused' value and the other control-row writes in the switch and rollback (a human operator or automation script), nor what tooling does the 'check it is empty' verifications.",
+    "It does not say how the sweeper handles the erasure of a user whose Postgres tombstone is made in step 3(a) before the user's Postgres row exists, other than that the delete is idempotent; it also does not say how the MySQL-to-Postgres 'unique-email conflict' retry is ordered in the forward direction."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

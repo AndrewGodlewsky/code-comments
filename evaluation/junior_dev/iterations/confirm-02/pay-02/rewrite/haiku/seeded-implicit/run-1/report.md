@@ -1,0 +1,15 @@
+## Review of pay-02 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short summary and the current system's behaviour (refunds only in the provider dashboard, no refund table) before the steps.
+- Added a terms section defining payment, captured amount, refund, provider, idempotency key, webhook, audit entry and reconciliation job.
+- Turned the 12 flat checklist items into 7 ordered steps. Each step now names its trigger, what it does, what it stores and what happens on failure. Merged the admin form, the endpoint and the amount validation into steps 1 to 3, and the provider call and its error handling into step 4.
+- Kept every stated requirement: captured-only refunds, admin permission, cent amounts, multiple partial refunds, the non-exceeding total under concurrency, failed refunds not counted, the fixed reason list and note, server-only provider calls, the idempotency key, the 10-second timeout, 3 retries on timeout or 5xx, no retry on 4xx with the provider's message shown, the meaning of accepted, signed webhooks that may repeat or arrive out of order, the 24-hour pending limit with a direct status check, one email after success only, order status from succeeded refunds only, and audit entries for every request and status change.
+- Added a single failure table, with the per-step failure notes merged into it, and a rule list that covers facts that apply to every step, so they are stated once.
+- Added the database row lock in step 3 as the simplest way to meet the concurrency requirement, and the idempotency key saved before the first call so retries reuse it. Both follow directly from the brief.
+- Added a decided behaviour for when all retries fail (refund stays pending for reconciliation) and listed it, with the other gaps the brief does not settle, under open questions.
+
+### Holes
+- None.

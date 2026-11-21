@@ -1,0 +1,19 @@
+## Review of feat-02 (rewrite-v5, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Reordered into the skill layout: summary (with how the gateway works today), terms, numbered steps, failure table, diagram, notes, open questions.
+- Replaced the 'Decisions' bullet list with numbered request-flow steps, each stating its trigger, action, data location and failure handling.
+- Added a terms section defining customer, plan, limit, window, counter store (including key format), Lua script and fail open in plain words.
+- Added reasons in short clauses: why Redis is shared, why Lua (atomic, stops two gateways both reading 99), why Redis TIME (gateway clock skew), why key expiry (cleanup), why fixed window, why fail open.
+- Merged the separate Headers, Retry-After, Limit and Fail-open decision bullets into the steps where they happen.
+- Merged the 'Redis failure modes' notes into the failure table and the Notes section.
+- Added a failure table covering 401, backend error, Redis failure, missing Enterprise limit, failover, Key Service outage.
+- Made the missing-Enterprise-limit case explicit in step 3 (warn and skip the check) instead of leaving it only as a deployment note.
+- Cut requirement numbers (e.g. 'requirement 7') so each step stands alone.
+- Cut the diagram's '(count <= limit)' and '(count >= limit)' branch labels and the denied reply's 'seconds left in window' payload, because the gateway computes Retry-After from Redis time; made the diagram and text consistent.
+- Cut the line about the replica being unused and the remark that the late-reply behavior is a design preference beyond one clause; kept the essentials.
+
+### Holes
+- None.

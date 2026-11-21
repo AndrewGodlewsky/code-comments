@@ -1,0 +1,38 @@
+## Review of mig-02 (junior-v7, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a summary, rules-of-thumb paragraph and a Terms section defining controller, usage log, shadow store, ledger, checkpoint, idempotency key and others (Q1, Q3).
+- Added an Advancing bullet saying no freeze on forward moves and how the key protects the handover (Q2).
+- Expanded the both and new_only table rows: old engine reads the same events, not charging does not change computation; checkpoint stays fixed when stopped (Q4, Q5).
+- Rollback step 2 now says resume from the old engine's checkpoint and why from both nothing is needed (Q5, Q6).
+- Rollback step 3 now defines charged versus due-and-uncharged and the unresolved in-flight rule: do not charge, page on-call (Q7).
+- Added checkpoints to state section; noted the controller measures the charge failure rate from payment results (Q1, Q8).
+- Merged the duplicate worker-flag-timing bullet from failures into the Advancing bullet.
+- Added an Open questions section: shadow store location, failure definition and minimum volume, day-35 catch-up, long provider silence (Q3, Q7, Q8); added a forward-move assumption.
+- Terms: the rollout controller now accepts advance and manual rollback requests and refuses unauthorised callers (Q15).
+- Advancing: workers read the flag before each charge; stale workers are stopped by the key check (Q14).
+- Rollback step 1: freeze is a marker in the rollback record that new-engine workers read before each charge (Q13).
+- Rollback step 4: also charges periods held after reconcile, checks the key first, says where the amount comes from, and clears the freeze (Q10, Q11).
+- Rollback record in the state section now includes the frozen marker (Q13).
+- Assumptions: added authorisation assumption (Q15).
+- Open questions: added what makes a period due, and how a mismatch is resolved for Gate B (Q9, Q12).
+- Reordered to the skill's layout: summary, terms, diagram with notes after it, steps, state, failures, assumptions, open questions.
+- Added terms for Gate A and Gate B so the diagram notes and the Advancing and failure text can refer to them once.
+- Moved the nightly comparison definition and its where-it-runs detail into the terms; removed the separate bullet under the table.
+- Merged the 'Advancing' and 'Rollback trigger' handling: manual and automatic start conditions now sit at the top of Rollback steps, and the ignored-duplicate-trigger rule moved there.
+- Moved the explanation of why the freeze uses the rollback record (flag has only four values) into step 1 and trimmed the duplicate in the state section.
+- Merged the post-diagram notes: the gate reset and the rollback-from-shadow skip each appear once; removed the repeated 'every rollback ends in old_only' sentence.
+- Removed the duplicate 'shadow store is never read as truth' line from the state section (it is in the terms and step 4); the Money bullet now only names the ledger.
+- Turned the failure list into a table; folded the 'workers read the flag at different moments' item into the Advancing note, where it belongs.
+- Dropped the repeated 'decommissioning is a separate action' assumption into the committed note.
+- Added from the junior's questions: checkpoint, controller, shadow store and usage log terms; no freeze on forward moves; catch-up uses checkpoint; why no catch-up from both; reconcile outcomes and unresolved handling; hand-over amount source and late-due periods; freeze signal; controller authorisation.
+- Left out as unneeded detail: exact mechanism for resolving mismatches, charge-failure definition and due-period scheduling (kept as open questions only).
+- Checked first version line by line: all brief facts (35-day log, one-cent mismatch, both gates, 2% over 10 minutes, shadow errors never roll back, manual rollback any time within 35 days, gate reset through shadow) are retained.
+
+### Holes
+- Q3: What is the "shadow store" and the "usage log"? Where does each live, and who writes to and reads from them? (author: The usage log is the existing event log (kept 35 days) read by both engines. The shadow store is the separate store written only by the non-charging engine and read only by the nightly comparison. The brief does not say where the shadow store physically lives or what technology it is. Added to open questions, and both defined in the terms.)
+- Q8: Who measures the charge failure rate, from what data, and what counts as a failure? Does the 2% need a minimum number of charges? (author: The brief does not say. I assume the controller computes it from the new engine's charge attempt results, but the definition of a failure (provider errors only, or customer declines too) and whether a minimum number of charges is needed to avoid noise at low volume are not decided. Added to open questions.)
+- Q9: What makes a period become due, and what starts a charge? Is it a schedule at period end, or does an engine charge as usage events arrive? (author: The brief does not say what makes a period due or whether charging runs on a schedule at period end or as events arrive. The model only relies on each period being charged once under its key. Added to open questions.)
+- Q12: How does a mismatch get resolved, who resolves it, and where is that recorded so the gate counter knows? (author: The brief says 'no unresolved mismatches' but not how a mismatch is resolved, by whom, or where that is recorded. I will not invent a mechanism. Added to open questions.)

@@ -1,0 +1,38 @@
+## Review of sync-02 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short glossary up front (tombstone, change_seq, watermark, purge floor, generation) so a reader new to the project can follow the steps.
+- Moved the explanation of purge floor into the glossary and tightened the 'why no changes are missed' paragraph.
+- Added an active_stale flag to sync_state, which the original used (step 10) but never stored. Step 3 and step 10 now check it, so a refused resync is retried and incremental sync is skipped while stale.
+- Removed unused build_started_at and the 'pending' build mark in step 4, which wrote nothing; step 4 now simply stops when off Wi-Fi.
+- Renumbered 8a to its own step 9 and updated all cross-references (retry is now step 12, open question step 13).
+- Made step 3 explicit that a Wi-Fi-available trigger only resumes builds and does not start incremental sync, matching the brief.
+- Simplified steps 5 and 7: the Wi-Fi check before each page now sends the run to step 7, removing the duplicated pause description. Added explicit loop-back and next-step lines in step 6.
+- Step 8 now covers both entry points (just finished downloading, or resuming in catching_up) and states why resync_required can occur there.
+- Step 4 initialises change_cursor_build; step 9 also clears active_stale.
+- Reworded for plain language throughout, split dense bullets, and fixed minor wording (e.g. 'all later changes' in the browse option).
+- Added a three-part lifecycle overview (build, incremental, resync) at the top so the step list has a map.
+- Defined 'run' and 'build generation' in the terms list; they were used without definition.
+- Explained each sync_state field with a short purpose instead of a bare name list.
+- Step 3: replaced the vague 'a previous run ended and needs follow-up' trigger with an explicit description that it is not an automatic retry.
+- Step 4: corrected its start condition, which wrongly cited step 11 (step 11 goes to step 4, and step 8 also discards into it).
+- Step 10: noted that step 3 routes launch and foreground triggers here.
+- Step 11: clarified that the 410 comes from an incremental request (step 10).
+- Step 12: spelled out the three 410/4xx cases, including the catch-up 410 path.
+- Minor wording tightening: 'one run' instead of 'one job', and 'the following page' in step 6.
+- Added a one-paragraph statement of the core idea (record a watermark, download, replay changes) at the top of the overview.
+- Added a roadmap line saying steps 1 to 3 are setup, step 12 is the shared retry rule and step 13 is the open question.
+- Defined 'Trigger' in the terms list and made the Run definition point to it.
+- Simplified the trigger list in step 3 to the three real triggers; replaced the confusing fourth 'a run stopped early' trigger with a plain note that unfinished work waits for the next trigger.
+- Reworded the purge floor definition to say it concerns the changes request's since value.
+- Clarified build_cursor (id of the last saved product, null before the first page) and generation (identified by a number).
+- Added explicit Next lines to step 4 and kept step 6's, so the flow between steps is easier to follow.
+- Changed step 3 and step 5 wording from 'a trigger found' to 'step 3 found' for consistent routing.
+- Step 6 now says up to 500 rows, since the last page can be shorter.
+- Step 11 now says 'each later trigger' instead of 'launch or foreground trigger', matching step 3's routing where a Wi-Fi trigger also reaches step 4.
+- Renamed 'One job at a time' in step 2 to 'One run at a time' to use the defined term.
+
+### Holes
+- None.

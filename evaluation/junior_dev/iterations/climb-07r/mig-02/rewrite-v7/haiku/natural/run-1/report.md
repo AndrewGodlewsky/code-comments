@@ -1,0 +1,18 @@
+## Review of mig-02 (rewrite-v7, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a summary that first says how billing works today (usage event log, ledger, payment provider), then the main flow.
+- Added a terms list for the names a newcomer would not know: billing mode, shadow store, idempotency key, billing period, mismatch, rollout controller, charge ownership record, charge failure rate, on-call.
+- Kept the diagram and its transitions, and changed its labels to match the brief: the 14-day gate and Finance sign-off, and the 35-day wording for new_only.
+- Removed the 'decommission approved' condition from the new_only exit in the diagram. The brief says the old engine may be decommissioned after 35 days in new_only, with no approval step. The text now says that.
+- Added a diagram note that after a rollback a person must set shadow again to restart the rollout.
+- Wrote one section per mode (starts, does, gate to leave, when it goes wrong), so each rule appears once and at the step it applies to. Explicit on-call manual rollback for new_only before day 35 is kept under new_only.
+- Moved the rollback steps into their own section, once, and removed the duplicate that repeated them in the mode notes. Kept the rules that apply to every rollback (no double charge, no dropped charge, gate reset, must pass through shadow again) in one short list.
+- Turned the failure cases into one table, merged the duplicates, and kept every failure rule from the first version.
+- Moved the four assumptions from the first version into open questions, each with the default this draft uses. They are not stated as facts.
+- Checked against the brief: kept the one-step-at-a-time rule, the person-makes-the-move rule, the one-cent mismatch rule, 0.1% and 5,000 invoices, 14 days and Finance sign-off, the 2% over 10 minutes trigger, the 35-day retention and the no-rollback-after-day-35 rule, and the reprocess-before-retention-limit rule. No stated fact was cut.
+
+### Holes
+- None.

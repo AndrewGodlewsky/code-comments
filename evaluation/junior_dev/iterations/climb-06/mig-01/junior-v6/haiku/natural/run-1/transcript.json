@@ -1,0 +1,236 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In step 4, a write commits to MySQL, then applies inline to Postgres. If the inline apply succeeds and the outbox row is deleted, but the relay already picked that same row up, what stops the relay from re-applying an older state over a newer one?",
+     "about": "Step 4: Turn on dual writes (relay drains the outbox)"
+    },
+    {
+     "id": "2",
+     "text": "What is the 'version' column, and who increments it? Is it bumped by the app on every users write, and what is a 'StaleWrite'?",
+     "about": "Design decisions: Every copy obeys the version rule / Step 8 StaleWrite"
+    },
+    {
+     "id": "3",
+     "text": "In step 4, the relay is 'a single leader'. How is the leader chosen, and what happens to the outbox if the leader dies or is slow?",
+     "about": "Step 4: The relay (a single leader, batches of 500 in seq order)"
+    },
+    {
+     "id": "4",
+     "text": "The relay applies a 'delete' outbox op and writes a tombstone. How does an erasure delete reach Postgres if the user's row was never backfilled yet, and how does backfill avoid re-inserting that user?",
+     "about": "Step 6: Erasure handling and tombstones"
+    },
+    {
+     "id": "5",
+     "text": "In the step 10 runbook, what is the 'MySQL-to-Postgres outbox is empty' check actually reading, and how do you know no in-flight write sits in an instance that has not yet seen 'paused'?",
+     "about": "Step 10 (a)-(b): pause and drain"
+    },
+    {
+     "id": "6",
+     "text": "In step 10 (c) and (d), commit point is in MySQL but the Postgres control row is set afterwards. If the process crashes between them, what state are the two control rows in, and how does 'rolling forward' detect and finish it?",
+     "about": "Step 10 (c)/(d): commit point and control rows"
+    },
+    {
+     "id": "7",
+     "text": "After the switch in step 10e, a write goes to Postgres first, then to MySQL inline. What happens to the user's request if the MySQL inline write fails, and who writes to the reverse outbox and when?",
+     "about": "Step 11: Reverse sync and rollback path"
+    },
+    {
+     "id": "8",
+     "text": "In step 8, how does the PG read know it is stale versus fresh, and what does the user see when a stale read leads to a write? Do they get an error they must retry?",
+     "about": "Step 8: Known risk, stale read causing StaleWrite"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The version rule stops it. A copy (inline or relay) replaces a Postgres row only when the incoming version is higher. If inline wrote version N and the relay then picks up the same row, the relay's copy is version N, equal, so it is skipped. If the relay holds an older snapshot (N-1), it is also skipped. The outbox row is deleted by its seq number, not by user id, so the inline path cannot delete a later write's row. Deleting an already-deleted row is a no-op."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "version is an INT column in MySQL. It is set to 1 on insert and the repository adds 1 on each successful UPDATE (version = version + 1). Copies never change it, they only copy it. StaleWrite is raised when an UPDATE matches zero rows because the row's version is no longer the expected one, meaning the caller's read was out of date."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The leader is chosen with a MySQL named lock, GET_LOCK('users_relay'), held on a dedicated connection to the primary. Other instances retry every 5 s (chosen value). If the leader dies, its connection closes and MySQL releases the lock, so the next instance takes it. A slow leader keeps the lock; the outbox-age alert (5 minutes) reports it, and I did not add a takeover rule because the brief does not require one. If two leaders ever overlap, the version rule makes the duplicate copies harmless."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The erasure transaction writes a delete outbox row. The relay or inline path then writes a tombstone and deletes the Postgres row, even if the row was never backfilled. Backfill, relay and sweep copies all take the same per-id advisory lock and check for a tombstone under that lock. So a copy either commits before the tombstone (and the delete then removes it) or sees the tombstone and skips. Backfill reading a stale replica row cannot bring the user back."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The check reads the MySQL outbox table, not a flag. Every outbox row is written in the same transaction as its user write, and it is deleted only after Postgres has the row. So an empty outbox means every MySQL write that committed has reached Postgres. Each instance reports paused only after its in-flight writes finish. A stale instance that has not yet seen the pause could still start a write, so the commit point (c) takes the lock every write takes. Such a write either commits before (c), which makes (c) see a non-empty outbox and retry the drain, or sees sot=pg and gets a 503. The fence therefore holds even if the flag has not propagated."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "If the process crashes after (c) and before (d), MySQL has sot=pg with epoch E+1, and Postgres still has sot=mysql with epoch E. Writes are still paused (mode is paused until (e)), so no write can split the data. Roll-forward means rerunning (d) and (e). I changed (d) to copy the epoch instead of incrementing it, so a rerun is idempotent. Detection is a simple check: MySQL epoch ahead of Postgres, or MySQL pg versus Postgres mysql. A crash here can keep writes paused past 90 s, and I listed that in the open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "After 10e, a write runs in one Postgres transaction. That transaction writes the user row and a reverse outbox row (users_sync_outbox in pg-core). Then the request copies the row to MySQL inline with a 200 ms timeout. If the MySQL copy fails or times out, the request still succeeds and the reverse outbox row remains. The reverse relay (one leader, Postgres advisory lock) copies the rows to MySQL with the version rule and deletes the rows it applied. The rollback drain waits for that outbox to empty before the switch."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The read cannot tell whether it is stale. It has no freshness check, so staleness is bounded only by the outbox lag, which is why the ramp holds until lag is under 1 s at p99. A stale read can make the user's update fail with StaleWrite, because the UPDATE checks the version in MySQL. The user must then retry the action, and the retry reads again. They do not see an error on a plain read. How the caller displays StaleWrite is not in the files, so it is an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How do the flags users_dual_write and users_write_mode relate? Which one decides whether a write does the inline apply to Postgres, and what happens to dual write when the mode is paused or pg?",
+     "about": "Step 4 flag users_dual_write vs. Write mode users_write_mode"
+    },
+    {
+     "id": "10",
+     "text": "Step 1 creates users with id BIGINT PRIMARY KEY, but where is users_id_seq created, and who assigns ids in Postgres before the switch? Do any inserts happen in Postgres other than copies?",
+     "about": "Step 10 (d): setval(users_id_seq ...)"
+    },
+    {
+     "id": "11",
+     "text": "What does 'start the reverse outbox' mean concretely? Does the reverse relay start here, and what is the Postgres control row's check ('fence') doing for writes between (d) and (e), when the mode is still paused?",
+     "about": "Step 10 (d): Then start the reverse outbox"
+    },
+    {
+     "id": "12",
+     "text": "Who runs the GDPR erasure job and does it delete through UserRepository? After step 10e, where does the erasure transaction run and how does it reach MySQL?",
+     "about": "Erasure"
+    },
+    {
+     "id": "13",
+     "text": "If the inline apply times out at 200 ms but actually commits in Postgres later, and the relay or a later write also copies, can the inline apply's late commit overwrite anything newer? Also, does the inline apply take the same Postgres advisory lock and tombstone check as the other copies?",
+     "about": "Step 4 Inline apply: On failure or timeout the request still succeeds"
+    },
+    {
+     "id": "14",
+     "text": "Where is users_reverse_sync introduced and what does it control? Between step 10e and step 13, how does it relate to the inline copy to MySQL and the reverse relay?",
+     "about": "Step 13: flag users_reverse_sync"
+    },
+    {
+     "id": "15",
+     "text": "Once reads are at 100% on Postgres after step 10e, MySQL is no longer the source of truth but reads fall back to the MySQL replica. Is that replica still current from the reverse sync, and what does a user get if the fallback is also stale?",
+     "about": "Step 8: Any error or timeout falls back to the MySQL replica"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The two flags do different jobs. users_write_mode says where a write goes. users_dual_write says whether, in mode mysql, each write also reaches Postgres (inline apply plus relay). The first draft did not state this. I added it to the Terms and to step 4. In mode paused writes get a 503, so nothing is copied. In mode pg the dual-write flag is not used, because Postgres is written first and the reverse sync copies to MySQL. I do not turn the flag off at the switch, so it is still on if the system rolls back to mysql, where it is needed again."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The first draft had no sequence. Checked against the steps: before the switch, the only inserts into users are copies (backfill, relay, inline apply, sweep), and those carry MySQL ids. The other inserts are bookkeeping rows (backfill state, compare runs, tombstones, the control row). I added users_id_seq to step 1, with no default on users.id. Step 10d now sets the default to the sequence, so Postgres can assign ids after the switch. Nothing draws from the sequence before the switch."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Start the reverse outbox meant nothing concrete in the first draft. Now it means: set flag users_reverse_sync on, and start the reverse relay, which takes the Postgres advisory lock users_reverse_relay. The lock name is my choice. Between (d) and (e) no write reaches Postgres. Every instance reports paused before (c), and the mode becomes pg only at (e), so no instance can send a write to Postgres in that window. The Postgres fence is a backstop there. A write that reached the fence while the Postgres control row says sot=pg, but the mode is paused, would be refused by the app first."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Checked in existing/user_repository.py: UserRepository.delete is only called by the GDPR erasure job, and the lint rule makes the repository the only code that writes users. So erasure goes through the repository. After step 10e the same method runs the Postgres erasure transaction (user row, pending reverse upserts, tombstone, reverse delete row). The MySQL copy then deletes the MySQL row and writes the MySQL tombstone. The files do not name the team that owns the job, so that is an open question."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Checked against the version rule and the copy rules. The late commit carries the same or an older version, and the version rule replaces only lower versions, so it cannot overwrite a newer row. If the user was erased in the meantime, the tombstone check under the advisory lock stops it. The inline apply does take the same Postgres advisory lock and tombstone check; the copies list already said so. I made that explicit in step 4 and in the copies section."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "users_reverse_sync was used in step 13 but never introduced. I now define it in the Terms, and it is set on at step 10d. When on, in mode pg, a Postgres write inserts a reverse outbox row, copies the row to MySQL inline, and the reverse relay runs. Step 13 turns it off. Its relation to the inline copy and the relay is that it gates both."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "Not known. The MySQL replica is fed only by the reverse sync (the inline copy and the reverse relay) and by normal replication. After the switch it can therefore be behind by the reverse outbox lag. The files give no bound and no freshness check. A stale fallback read behaves like step 8: a write may get StaleWrite, and the user retries. After the switch the version check runs in Postgres. What the user sees on a stale fallback is not defined. Added as an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "After (c) the MySQL control row says sot='pg', and every MySQL write takes a shared lock on it and gets a 503. The reverse copy and the reverse relay also write to MySQL. Do they skip that fence check? If so, how are they different from a normal repository write?",
+     "about": "Writes after the switch: the inline copy to MySQL, and the MySQL fence"
+    },
+    {
+     "id": "17",
+     "text": "In the rollback, which steps of the step 10 runbook are swapped, and how does the MySQL control row get sot='mysql' and a new epoch? Who stops the reverse relay, and what turns the MySQL outbox and dual-write path back on?",
+     "about": "Step 11: Rollback to MySQL"
+    },
+    {
+     "id": "18",
+     "text": "After the switch Postgres assigns new ids, which are over 1,000,000 above the old maximum. What happens when the reverse copy inserts such a row into MySQL, which has its own AUTO_INCREMENT counter? Does the copy carry the Postgres id?",
+     "about": "Step 11: reverse copy of a Postgres-assigned id into MySQL"
+    },
+    {
+     "id": "19",
+     "text": "What happens if a reverse copy to MySQL fails on the unique email index, for example a new Postgres user takes an email still held by an erased user whose delete has not reached MySQL? Is there a rule like the relay's in step 6?",
+     "about": "Step 6: Email conflict and the reverse direction"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Reverse copies are the one kind of MySQL write allowed while MySQL says sot='pg'. They take the same shared lock on users_migration and check that sot is pg. They do not return a 503. App writes to MySQL run only while sot='mysql'. A reverse copy differs from a repository write in three ways: it does not refuse, it applies the version rule and tombstone check, and it writes no outbox row. Without this exception the reverse sync would be blocked by the fence it sits beside. I wrote this into Writes after the switch."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The rollback is the step 10 runbook with the roles swapped. Reads go to MySQL first. Then the mode is paused, the reverse outbox drains, and Postgres takes the commit point (sot='mysql', epoch+1). MySQL copies that epoch in its step (d), with no increment. The reverse relay stops in that step, when users_reverse_sync goes off and the relay releases users_reverse_relay. users_dual_write stayed on through the switch, so the MySQL outbox and relay resume when the mode returns to mysql. I wrote these as numbered steps in step 11."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The reverse copy carries the Postgres id as given. MySQL assigns no ids in mode pg, so the copied ids cannot collide with new MySQL ids. The sequence starts at the larger maximum plus 1,000,000, so the copied ids are at least 1,000,000 above the old maximum. During rollback step (d), MySQL AUTO_INCREMENT is set past both maxima, so later MySQL ids do not collide with copied ones. I added this to Ids."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Yes, I added the rule. A reverse copy that fails on the unique email index follows the same rule as the sweep, in the other direction. The reverse relay finds the user who holds that email in MySQL, applies that user's pending reverse delete, and retries. If that user still exists in MySQL, the relay records a conflict and alerts. The race is the same as in the other direction, so the handling is the same."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point and the rule everything hangs on. Everything is about the `users` table (about 38M rows). Every read and write goes through `UserRepository`, and a lint rule forbids raw SQL on `users` elsewhere. The plan moves it from MySQL to Postgres in four stages. MySQL stays the source of truth (SoT) until step 10, so a Postgres failure never fails a request. Every copy into Postgres follows the version rule: insert if missing, replace only if the existing `version` is lower, and never overwrite an equal or higher version. A tombstone blocks the id for good.\n\n2. Setup (steps 1-3). The owner approves a change ticket. Postgres gets the schema in `pg-core`: `users`, `users_id_seq`, `users_tombstones`, `users_backfill_state`, `users_compare_runs`, `users_sync_outbox` and the control row `users_migration (sot='mysql', epoch=1)`. MySQL gets an outbox table, its own control row and a tombstone table. Then the code is deployed with all migration flags off. From this deploy on, every write transaction also inserts an outbox row. Rows pile up in the MySQL outbox, which is the state holder here. If a step fails, the document says to drop and recreate the schema or roll back the deploy.\n\n3. A write before the switch (mode `mysql`). A request calls `UserRepository` to create, update or delete a user.\n   - In its own MySQL transaction, the repository takes the shared lock on `users_migration` and reads the control row. If the row says `pg`, the write gets a 503 (the fence).\n   - In the same transaction it writes `users` and inserts an outbox row holding the row's new contents.\n   - It commits.\n   - If `users_dual_write` is on, the inline apply copies the row to Postgres with a 200 ms timeout. It takes the Postgres advisory lock for the id, checks the tombstone, and applies the version rule.\n   - On success it deletes its own outbox row by `seq`.\n   - On failure or timeout the request still succeeds and the row stays in the outbox.\n   - A late inline commit cannot overwrite newer data, because the version rule and the tombstone check stop it.\n\n4. Turning dual writes on (step 4). Someone switches `users_dual_write` on. The gate for step 5 is that `app_flag_value{flag=\"users_dual_write\"}` is 1 and `app_build_info` shows the release version on every instance. Flags are cached per instance and reload every 30 s, so instances can disagree for up to 30 s. The outbox-age alert fires at 5 minutes. If this step fails, the flag is turned off and the outbox keeps growing until it is back on.\n\n5. The relay drains the outbox. One leader at a time holds the MySQL `GET_LOCK` `users_relay` on a dedicated connection. Other instances retry every 5 s.\n   - The leader reads batches of 500 in `seq` order and applies the same copy rules to each row (advisory lock, tombstone check, version rule).\n   - It then deletes the applied rows by `seq`.\n   - If the leader dies, the connection closes and MySQL frees the lock.\n   - If it is merely slow, it keeps the lock and the alert shows it. Nothing takes over.\n   - Repeated copies are harmless.\n   - The document explains that `app.jobs` is not used because of at-least-once delivery, a dead queue that nothing processes, and a 1 s Redis enqueue timeout. So backfill, relay and sweep run as leased workers holding a lock.\n\n6. Erasure before the switch. The GDPR erasure job calls `UserRepository.delete`. In one MySQL transaction it deletes the user, deletes that user's pending `upsert` outbox rows (they hold personal data) and inserts a `delete` outbox row. The relay then writes a tombstone and deletes the Postgres row in one Postgres transaction. A copy that committed first is removed by the delete. A copy that starts later sees the tombstone. This works even if the user was never backfilled.\n\n7. Email conflicts. Emails are unique in each database. If a copy fails on the unique index because an erased user's email was reused, the relay applies that erased user's pending delete and retries. If the holder still exists in MySQL, it records a conflict and alerts. The sweep handles the same case.\n\n8. Backfill (step 5). One leader takes the Postgres advisory lock `users_backfill`. Each batch:\n   - Check `mysql_replica_lag_seconds`. If it is unknown or above 5 s, wait 5 s and check again.\n   - Read up to 2,000 rows from the replica in primary-key order after the cursor.\n   - In one Postgres transaction, apply each row (lock, tombstone check, version rule) and set `cursor_id` in `users_backfill_state`.\n   - Commit, then wait 100 ms.\n   - The cursor commits with the data, so it is never ahead of the data.\n   - After a crash it resumes from the last committed cursor.\n   - On a Postgres error it retries with backoff and the cursor does not move.\n\n9. Sweep and comparison gate (steps 6-7). The sweep runs alongside the backfill and keeps running. It compares chunks of 2,000 ids by a hash fingerprint. For each mismatch it re-reads the MySQL primary and checks the outbox first.\n   - If MySQL is newer or the Postgres row is missing, it copies with the version rule.\n   - If Postgres has a row that MySQL lacks and no outbox row is pending, it deletes the row and writes a tombstone.\n   - If Postgres has a higher version, it alerts and never overwrites.\n   - The gate requires backfill state `done`, an empty outbox and one passed full sweep. It then needs a full run over all ids with zero persistent mismatches. A partial rerun does not count. Progress is recorded in `users_compare_runs`.\n\n10. Moving reads (steps 8-9). `users_read_source` is ramped through 1%, 10%, 50% and 100%. `flags.enabled_for` buckets by user id. Any Postgres read error or timeout falls back to the MySQL replica in the same request. The known risk is a stale Postgres read, which can only make a later write fail with `StaleWrite`, because the version is checked in MySQL. The user must then retry. Each ramp step is held until outbox lag is under 1 s at p99. At 100%, a soak of at least 3 days runs, and any fallback or flag change resets it. Rollback is just setting the flag back to `mysql`.\n\n11. The switch (step 10). This needs an empty outbox, normal replica lag and a clean full comparison within the last 24 hours. The writes-paused budget is 90 s. During the pause every write, including erasure, gets a 503 with `Retry-After`, and clients retry.\n    - (a) Set `users_write_mode=paused` and wait about 30 s until every instance reports `paused`. An instance reports it only after its in-flight writes finish.\n    - (b) Wait for the MySQL outbox to be empty. If that takes 20 s, set the mode back to `mysql` and stop. Nothing has changed.\n    - (c) In one MySQL transaction, take `users_migration` exclusively, confirm the outbox is still empty, set `sot='pg'` and increment `epoch`. If the outbox is not empty, roll back and go to (b). The exclusive lock waits for in-flight writers. Stragglers either commit first, which makes (c) retry, or see `pg` and get a 503.\n    - (d) In Postgres, run `setval(users_id_seq, GREATEST(max ids) + 1000000)` and make the sequence the default for `users.id`. Set the Postgres control row to `sot='pg'` and copy the MySQL epoch. Then turn `users_reverse_sync` on and start the reverse relay under `users_reverse_relay`.\n    - (e) Set `users_write_mode=pg` and wait about 30 s until every instance reports `pg`.\n    - Alert at 75 s. Failure before (c) is handled by setting the mode back. Failure after (c) is handled by rolling forward, rerunning (d) and (e), which is safe because the sequence value comes out the same.\n\n12. A write after the switch (mode `pg`, reverse sync on).\n    - One Postgres transaction checks the Postgres control row says `pg`, updates `users`, and inserts a reverse outbox row.\n    - After the commit, the row is copied to MySQL inline with a 200 ms timeout.\n    - That copy takes the shared lock on MySQL `users_migration` and runs only if MySQL says `pg`. It never returns a 503, and if it finds `mysql` it stops and leaves its row.\n    - It applies the version rule and checks MySQL tombstones in the same transaction, and writes no outbox row.\n    - If the copy fails, the request still succeeds, and the reverse relay copies the rest and deletes the applied rows.\n    - Ids come from the Postgres sequence, and they carry over to MySQL as given.\n    - Erasure now runs in one Postgres transaction: delete the user, delete pending reverse upserts, write a Postgres tombstone, insert a reverse `delete` row. The reverse copy then deletes the MySQL row and writes the MySQL tombstone in one MySQL transaction.\n    - Email conflicts are handled the same way by the reverse relay.\n\n13. Rollback window (steps 11-12). For at least 14 days after 10e, a rollback is the step 10 runbook with the roles swapped.\n    - Set reads to `mysql`.\n    - (a) Pause writes.\n    - (b) Drain the reverse outbox, with the same 20 s limit.\n    - (c) In Postgres, take `users_migration` exclusively, check the reverse outbox is empty, set `sot='mysql'` and increment `epoch`.\n    - (d) In MySQL, set `AUTO_INCREMENT` past both maxima, set the MySQL control row to `mysql` with the Postgres epoch, turn reverse sync off and stop the reverse relay.\n    - (e) Check dual write is on, set the mode to `mysql`, and wait for every instance to report it.\n    - The clock restarts after a rollback or re-promotion.\n\n14. Finish (steps 13-14). After at least 14 days, with an empty reverse outbox and a clean reverse comparison, `users_reverse_sync` goes off. INSERT, UPDATE and DELETE on `core.users` are revoked from the app role, with no pause needed. At least 7 days later, a final backup is taken and the MySQL `users`, outbox and tombstone tables are dropped. If either step fails, re-grant or restore from the backup.",
+   "gaps": [
+    "After the switch, what a reverse copy does when it hits its 200 ms timeout while the MySQL control row still says `mysql` is stated only as stopping and leaving the row. The document does not say how the reverse relay is stopped or prevented from looping before the control row flips.",
+    "Who or what detects a crash after commit point (c) in step 10 or 11 and runs the roll-forward is not defined. The document lists it as an open question, so I cannot say how the paused state ends automatically.",
+    "How the Postgres relay-equivalent finds the MySQL epoch to compare for the 'epoch ahead' detection is not described. Nothing says what process or alert notices the mismatch.",
+    "The document gives no outbox-lag metric, even though steps 4 and 8 depend on one, so how 'lag under 1 s at p99' and the 5-minute alert are measured is unknown.",
+    "Where the soak clock, the 14-day window and the 7-day wait are recorded is not defined, so I cannot say how those timers survive restarts.",
+    "What the sweep does after the switch (direction and behavior) is not defined, so the repair path during steps 10-13 is unknown beyond the reverse relay.",
+    "How callers present `StaleWrite` to the user, and what the 'caller's retry handling' actually is, is not specified.",
+    "How fallback reads behave after the switch is not bounded. The MySQL replica can be behind by the reverse outbox lag, with no freshness check.",
+    "How an instance reports `paused`, `pg` or `mysql` mode to the operator beyond the `app_flag_value` metric is only partly described, and the exact mechanism of an instance finishing its in-flight writes before reporting `paused` is not given.",
+    "How the inline apply and the relay deal with a Postgres row that exists with a higher version than the outbox row (beyond the sweep alerting) is only implied by the version rule. What happens to the outbox row in that case is not stated."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

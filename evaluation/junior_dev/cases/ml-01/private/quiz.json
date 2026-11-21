@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What does the API return when the online feature lookup takes longer than its time limit, or the user has no features?",
+  "key": "It skips the model and returns the daily popular-items list, with the response marked as a fallback.",
+  "why": "This is the main failure path on every request, and it decides what users see when the feature store has problems."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "If the hourly feature materialization keeps failing, what features does the request path use, and when does it stop using them?",
+  "key": "It keeps using the features already in the online store until they are 6 hours old. After that they count as missing, so the request falls back to the popular list.",
+  "why": "A reader needs to know how freshness is bounded and what happens when the batch job is down."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "Can the shadow model's output ever reach a user, and what effect does a shadow failure have on the user's response?",
+  "key": "Never. A shadow failure has no effect on the user's response, neither on its content nor on its latency.",
+  "why": "Isolation is the whole point of shadow, and every other part of the shadow design depends on it."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "Which users' requests get copied to the shadow model?",
+  "key": "10% of users, chosen deterministically from the user ID (a hash of it), so the same user is always in or always out.",
+  "why": "It tells the reader how much traffic shadow sees and that the sample is stable per user rather than per request."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What must be true before a candidate version can become the active version?",
+  "key": "At least 7 days in shadow, an error rate under 0.5%, p99 inference latency under 80 ms, and the ML lead's approval.",
+  "why": "This is the promotion gate. Without it, the reader cannot tell when a switch is allowed."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "Is there a live A/B test step between shadow and the full switch?",
+  "key": "Not decided. It is an open question for Product, and the plan should not assume either answer.",
+  "why": "The reader must know that this part of the rollout is still unsettled rather than designed."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "How does a running API instance learn that the active model version has changed, and how does it start using the new version without a redeploy?",
+  "key": "Each instance polls the registry's `active` alias every 30 s. When the alias changes, the instance downloads the artifact, checks that the required features exist, loads the model and then swaps it in atomically, keeping the old version in memory.",
+  "why": "This is the mechanism behind switching and rollback, and it sets how quickly a change takes effect."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "How does the shadow model get its input features, and why does shadow not add to the user's latency?",
+  "key": "The API reuses the feature vector it already fetched for the active model. After the response has been sent, it publishes {request_id, user_id, features} as a fire-and-forget job to a bounded shadow queue. A separate shadow-worker service runs the candidate, so the user's request never waits on it.",
+  "why": "It explains both how shadow is isolated and why the two models see identical inputs, which makes them comparable."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "What happens when the shadow side cannot keep up with incoming shadow jobs?",
+  "key": "The shadow queue is bounded. When it is full, the API drops the job and increments a shadow-dropped counter. Failed shadow inferences are logged as errors and not retried. The user's request is never blocked.",
+  "why": "This is the failure behaviour that keeps shadow from harming production."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "Where are active and shadow predictions recorded, and how are the two models compared?",
+  "key": "Both are written as rows in a prediction log table in the warehouse (request_id, user_id, model_version, role, items, latency, error, fallback). A daily comparison job joins the rows by request_id and computes the shadow error rate, p99 latency, top-20 overlap, drop rate and days in shadow.",
+  "why": "Promotion decisions come from this data, so the reader needs to know where it lives and how it is joined."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "How is a model version that needs a feature missing from the online store prevented from running?",
+  "key": "Each registry version lists its required feature names. Before loading a version (active or shadow), the API instance or shadow worker checks that list against the feature store's schema. If a feature is missing, it refuses to load the version, keeps the version it already has and raises an alert.",
+  "why": "Without this check, a new model could run on missing features, in shadow or live."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "How is a rollback performed, and what makes it take effect within one minute?",
+  "key": "Someone sets the registry's `active` alias back to the `previous` version. Instances pick up the change at their next 30 s poll, and because each instance keeps the previous version loaded in memory for 24 h, the swap needs no download.",
+  "why": "Rollback is the safety net for the switch, and the reader needs to see why it meets the 1-minute requirement."
+ }
+]

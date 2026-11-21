@@ -1,0 +1,246 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw log\" the collector writes to? Is it a queue or stream, and who reads from it (the archiver, the live processor, or both)?",
+     "about": "Collector writes them to the raw log"
+    },
+    {
+     "id": "2",
+     "text": "What are the \"consumers\" whose lag is monitored, and what happens when lag gets high? Who gets alerted and what do they do?",
+     "about": "Monitoring and alerts on consumer lag"
+    },
+    {
+     "id": "3",
+     "text": "How does the live processor dedup using the KV store? What is stored per event_id, how long is it kept, and what happens if the KV store is down or slow?",
+     "about": "Live processor dedups on event_id using the KV store"
+    },
+    {
+     "id": "4",
+     "text": "What does the collector's validation check, and what happens to events in the reject bucket? Does anyone look at them or reprocess them?",
+     "about": "Collector validates events... Malformed events go to a reject bucket"
+    },
+    {
+     "id": "5",
+     "text": "What happens if the collector cannot write to the raw log, or is down? Does the SDK keep retrying and what does the client get back? Could retries cause duplicates, and is that why dedup exists?",
+     "about": "SDKs retry with backoff"
+    },
+    {
+     "id": "6",
+     "text": "When is the replay job run, and who or what triggers it? What does it read: the archive only, and does it re-run dedup and enrichment?",
+     "about": "Replay job rebuilds a day from the archive"
+    },
+    {
+     "id": "7",
+     "text": "How does the swap into events_clean work for a day partition, and what happens to events the live processor writes to that day while the replay is running?",
+     "about": "swaps it into events_clean"
+    },
+    {
+     "id": "8",
+     "text": "What do the live processor's failures look like: if geo-IP or user agent enrichment fails for an event, or a load into events_clean fails, is the event retried, skipped, or dropped?",
+     "about": "Live processor enriches and loads events_clean"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The raw log is the existing replicated append-only log (Kafka-style, 14-day retention) from the brief. Both the archiver and the live processor read it independently. Added to the plan as its own step."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The consumers are the archiver and the live processor. Who is alerted, the lag threshold and the response are not known. Added to Open questions; the plan states only why lag matters (5-minute goal)."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Key is event_id, expiring after 8 days, because retries can arrive up to 7 days later and the margin avoids edge expiry. The key is recorded after a successful load. If KV is down or slow, the processor stops advancing in the raw log and retries, so events are delayed not lost; the 14-day log retention covers long outages. Cost: a crash between load and recording can let a duplicate through live, which replay removes."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Validation checks event_id present, device_id present and size at most 32 KB (from the brief). Rejected events are listed in the response and stored in the reject bucket for inspection only. Nothing reprocesses them because clients never retry rejected events. Retention of the bucket is unknown and listed as open."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "If the collector cannot write to the raw log it returns 5xx, never 202, since 202 requires durable storage. The SDK retries the same batch with the same event_ids, backing off 1 s to 5 minutes, and the mobile SDK buffers up to 7 days. If the collector is down, the SDK sees a timeout and retries. Yes, retries cause duplicates and that is why dedup on event_id exists."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "An operator triggers it manually for one closed day, after an enrichment fix. It reads the archive only and re-runs dedup and enrichment with private state, not the live KV store. To respect first-copy-wins across midnight it scans the archive back 7 days for earlier copies of the same event_id. I chose this because the archive keeps 90 days and it matches live behaviour."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The warehouse can atomically replace a single day partition, so the job builds the day in a staging table and swaps it in once, so dashboards never see a half-built day. Only closed days (02:00 UTC next day) are replayed, and events belong to a day by received_at, so the live processor has no new events to write to that day; late retries land in the current day's partition. Only live processor backlog beyond the 2-hour slack could conflict, which the lag alert is meant to catch."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Enrichment failure: the event is loaded with empty enrichment fields rather than dropped or blocked, and replay repairs it later. Load failure: the processor retries without advancing in the raw log, so the event is not skipped or dropped. Chosen as the simplest handling that loses nothing."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The replay step says a day closes at 02:00 UTC the next day. Why 02:00 and not midnight, and what exactly is the 2-hour slack for?",
+     "about": "Replay job: A day closes at 02:00 UTC the next day"
+    },
+    {
+     "id": "10",
+     "text": "What is the replay job's own private state? Where does it live, and is it thrown away after each run?",
+     "about": "Replay job: re-runs dedup and enrichment using its own private state"
+    },
+    {
+     "id": "11",
+     "text": "If the replay job fails partway, or fails during the swap, what state is the day partition left in, and what does the operator do next?",
+     "about": "Replay job: writes to a staging table, then atomically replaces the day partition"
+    },
+    {
+     "id": "12",
+     "text": "If one event can never be loaded (the load keeps failing for that event), the processor keeps retrying and does not advance. Does that block every later event behind it? How would anyone find out?",
+     "about": "Live processor: If the KV store or the load fails, it does not advance in the raw log and retries"
+    },
+    {
+     "id": "13",
+     "text": "When the replay replaces a day partition, how does it treat events from that day that the live processor loaded as duplicates, or loaded with empty enrichment? Does the replacement result always match what live would have produced for the dedup part?",
+     "about": "Replay job: atomically replaces that one day partition of events_clean"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Midnight is when the UTC day ends, but events received just before midnight may still be waiting in the raw log. The 2 hours give the live processor time to finish them, so no live write lands in that partition once replay is allowed. It is a margin, not a measured figure; the brief fixes 02:00. If lag exceeds 2 hours the margin fails, which is one reason the lag alert matters."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "It is a temporary set of seen event_ids built from the archive during one run, separate from the live KV store, and thrown away when the run ends. A fresh run rebuilds it from the archive, so nothing is lost. Where it physically lives (memory, temp table, scratch KV namespace) is not decided and is now listed as open."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "If the job fails before the swap, the day partition keeps its old live data and the staging table is discarded. The swap is atomic, so a failure during it leaves either the old or the new day, never a mix. The operator reruns the job; it is safe to rerun because it always rebuilds from the archive. Added as a step."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "As written, yes: a permanently failing event blocks the events behind it in that raw log partition. Detection is only the lag alert, whose owner and threshold are not decided. I have no defended rule for skipping such an event (skipping loses it live, though replay could recover it from the archive). Added to open questions rather than inventing a mechanism."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Replay rebuilds the whole day from the archive, so the new partition has no duplicates that live let through and has full enrichment; the replacement is the authority. For dedup it matches live: first copy received wins, with a 7-day look-back for earlier copies. It can differ from live only when two copies were received at almost the same instant and live read them in a different order than received_at; ties on identical received_at are unspecified and listed as open."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "The live processor reads the raw log and loads into events_clean. Is it one process or several in parallel, and how is the raw log split (what is a 'raw log partition' and what decides which partition an event goes to)?",
+     "about": "Raw log / Live processor"
+    },
+    {
+     "id": "15",
+     "text": "Dedup looks up event_id in the KV store, but the key is only recorded after the load. If two copies of the same event_id are both in the raw log close together, how does the second one get dropped, given the first may not be recorded yet?",
+     "about": "Live processor: Dedup / Record the event_id in the KV store"
+    },
+    {
+     "id": "16",
+     "text": "Does the archiver deduplicate or reorder anything? How are events assigned to hourly files (by received_at hour?), and how does the replay job find all files for a UTC day plus the 7 days before?",
+     "about": "Archiver / Replay job: scans the archive back 7 days"
+    },
+    {
+     "id": "17",
+     "text": "The collector adds received_at. If there are several collector instances, whose clock is it, and can received_at order differ from the order events land in the raw log?",
+     "about": "Collector validates each event, adds received_at"
+    },
+    {
+     "id": "18",
+     "text": "How does the operator know a replay is needed and that the day is closed and the live processor has caught up? Does the job check lag or closed-day status itself, or does the operator just start it?",
+     "about": "Replay job: An operator starts it for one closed UTC day"
+    },
+    {
+     "id": "19",
+     "text": "When replay swaps the day, what happens to a late duplicate or retry that was loaded live into the current day's partition but whose first copy is in the replayed day? Is it also cleaned up?",
+     "about": "Replay job: atomically replaces that one day partition"
+    },
+    {
+     "id": "20",
+     "text": "What does 'within 5 minutes of reaching us' measure: from received_at to appearing in events_clean? And what does a mobile SDK retry after a 202 look like, i.e. when does the client consider an event acknowledged?",
+     "about": "Live path: loads each event within 5 minutes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The raw log is split into partitions, and the collector picks the partition by hashing event_id. The live processor runs one worker per partition, in parallel, and each worker handles its events one at a time in log order. I chose hashing on event_id so every copy of one event_id sits in the same partition, which makes dedup safe without locks. The brief does not fix the partitioning, so this is my choice."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Both copies are in the same partition, and the worker records the first copy's event_id in the KV store before it reads the next event. The second copy is therefore looked up after the first is recorded and is dropped. The only gap is a crash between load and record, which can let one duplicate through live; replay removes it."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The archiver does not deduplicate or reorder. It writes each event to the hourly file for the UTC date and hour of its received_at, so a day is the 24 hourly groups under that date. Replay lists those files for the day and the 7 days before. The 2-hour closing margin also covers an archiver that is slightly behind; the operator checks lag before replaying."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "received_at is the clock of the collector instance that accepted the event. I assume the clocks are NTP-synced, but small skew is possible, so log order can differ slightly from received_at order. That only matters for copies received at almost the same instant, where live (log order) and replay (received_at order) may pick different winners. This is already noted, and ties on identical received_at are an open question."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The operator decides a replay is needed, usually after an enrichment fix, and checks the monitoring lag view that the archiver and live processor are past the end of the day. The job itself only checks that the day is closed (past 02:00 UTC the next day) and refuses otherwise. I kept the job simple. Making the job check lag is listed as an open question."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "Replay of day D rebuilds only day D. A retry received on a later day sits in that day's partition, and live normally drops it because the first copy's key is in the KV store (8-day expiry). If live let one through after a crash, it stays until that later day is replayed, and that replay drops it via its 7-day look-back. So it is cleaned up when its own day is replayed, not when the first copy's day is."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "I read the 5 minutes as the time from received_at to the event being queryable in events_clean, matching the brief's 'reaching us'. A client treats a batch as acknowledged once it gets 202 and then stops resending. A resend after a 202 happens only if the 202 was lost and the client timed out; that creates a duplicate, which dedup handles. Added to the terms."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: a user clicks or opens a screen in the website, iOS app or Android app. The SDK creates an event with a client-made UUID `event_id`, a `device_id` and a client timestamp. It holds the event on the client (state: the SDK's own unacknowledged-event store; on mobile, up to 7 days).\n\n2. The SDK groups up to 100 events into a batch and sends it over HTTPS to the collector. It keeps the event until it gets a 202. If it gets a timeout, 429 or 5xx, it resends the same batch with the same `event_id`s. It backs off exponentially from 1 s up to 5 minutes. A lost 202 therefore creates duplicates. That is normal.\n\n3. A collector instance receives the batch. There may be several instances. For each event it checks validity: `event_id` and `device_id` must be present and the event must be at most 32 KB. Invalid events are rejected one at a time and listed in the response. The rest of the batch is still accepted. Rejected events go to a reject bucket for inspection only, and nothing reprocesses them. Clients never retry rejected events.\n\n4. For each valid event the collector stamps `received_at`, its own clock time. That time fixes the event's UTC day. It then writes the event to the raw log. The partition is chosen by hashing `event_id`, so all copies of one event land in the same partition. The raw log is replicated, append-only and keeps events 14 days.\n\n5. The collector returns 202 only after the whole batch is durably in the raw log. The SDK then stops resending. If the log write fails, the collector returns 5xx and the SDK retries the same batch. If the collector is down, the SDK times out and retries.\n\n6. Two independent readers each read the whole raw log. Reading does not remove events. Log order may differ slightly from `received_at` order, because collector clocks differ and writes race.\n\n7. Archiver path: it copies every accepted event exactly as received, duplicates included, with no dedup and no reordering. It writes them into hourly files in object storage. The file is chosen by the UTC date and hour of `received_at`. A lifecycle rule deletes files after 90 days. If the archiver fails or lags, it resumes where it stopped.\n\n8. Live processor path: there is one worker per raw log partition, running in parallel. Each worker handles events one at a time in log order. For each event it does the following:\n   a. It looks up `event_id` in the KV store. If the id is present, the event is dropped.\n   b. It enriches the event with geo-IP and user-agent data. If enrichment fails, the event continues with empty enrichment fields.\n   c. It loads the event into the `events_clean` partition for the UTC day of `received_at`.\n   d. It records the `event_id` in the KV store with an 8-day expiry.\n   The worker finishes (d) before reading the next event. Because copies share a partition, a later copy is looked up after the first is recorded and is dropped.\n\n9. Live failures: if the KV store or the load fails, the worker stays at its position in the raw log and retries, so events are delayed but not lost. A crash between load and record can let one duplicate through. The goal is for events to be queryable within 5 minutes of `received_at`.\n\n10. Monitoring watches the lag of the archiver and the live processor behind the raw log. It is the only way a stuck live processor would be noticed.\n\n11. Replay, which an operator starts by hand, rebuilds one finished day, usually after an enrichment bug fix. The operator first checks the monitoring lag view to confirm both readers are past the end of that day. The job itself only checks that the day is closed, meaning past 02:00 UTC the next day, and refuses otherwise.\n\n12. The replay job reads only the archive, not the KV store or the raw log. It does the following:\n   a. It lists the 24 hourly file groups for the day and the same for the 7 days before.\n   b. It dedups using its own temporary seen-set. It keeps the copy with the lowest `received_at` and drops later copies. The look-back covers the 7-day retry window.\n   c. It re-runs enrichment with the fixed code.\n   d. It writes only the replayed day's events to a staging table, then atomically swaps that one `events_clean` day partition. Dashboards see either the old day or the new day.\n   The new partition has no live-leaked duplicates and no empty enrichment.\n\n13. Replay failures: if replay fails before the swap, the partition keeps the live data, the staging table is discarded and the operator reruns the job. A failure during the swap leaves either the old or the new day. Rerunning is always safe.\n\n14. Late retries: a retry arriving on a later day sits in that later day's partition. Live normally drops it. A copy that live let through after a crash stays there until that later day is replayed, and the 7-day look-back then drops it.",
+   "gaps": [
+    "What the collector does if some, but not all, events of a batch fail to write to the raw log. The document says only that it returns 5xx if the write fails and that the SDK retries the whole batch. It does not say whether events already written stay in the log.",
+    "How the SDK or the collector handle a 429. The document lists 429 as a retry trigger but never says when the collector returns it.",
+    "How the live processor handles an event that can never be loaded. The document says it retries forever and blocks the partition, and that whether to skip it is undecided.",
+    "Who is alerted on high lag, at what threshold, and what they do. This is undecided, so I cannot say how a stuck processor gets noticed and fixed in practice.",
+    "How replay breaks ties between copies with identical `received_at`. This is undecided, so I cannot say which copy wins.",
+    "Where the replay job keeps its temporary seen-set. This is undecided.",
+    "How the operator starts a replay and which interface they use. The document does not say. It also does not say how the operator learns that a day needs replaying, or how an enrichment bug is detected.",
+    "Whether bot traffic is dropped or kept with a flag. This is undecided, so I cannot say what the live processor does with suspected bots.",
+    "How long the reject bucket is kept. This is undecided.",
+    "How the stored `events_clean` rows are tied to the archive on a replay if a late-arriving event lands in the day after the 2-hour margin, for example if lag exceeds the margin. The document says high lag 'can break' the margin but not what then happens to those events."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

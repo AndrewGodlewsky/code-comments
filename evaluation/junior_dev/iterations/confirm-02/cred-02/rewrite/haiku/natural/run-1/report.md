@@ -1,0 +1,16 @@
+## Review of cred-02 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a short plain-language summary that explains how sign-in works today (password creates the session at once) and what the 2FA step adds.
+- Added a terms list defining every name a newcomer would not know: TOTP, time step, seal, recovery code, pending and active secret, challenge, mfa cookie, atomic update, row lock, enqueue_email.
+- Replaced the transition table with numbered steps. Each step gives its trigger, what it does, which data it writes and what happens on failure, so the failure handling is no longer in a second table that repeats the diagram.
+- Shortened the diagram labels so they name the trigger only. The details now sit in the steps, not in both places. All states and transitions are kept, with the Open state marked as not designed.
+- Split the sign-in flow into its own steps (password, create challenge, submit code, discard), so the atomic update and row-lock details sit where a reader needs them.
+- Made the replay rule, row lock and wrong-entry counting into short design choices with reasons. Merged the repeated 'wrong entry' and rate-limit points into one rules list.
+- Moved the replacement-without-old-factor question into Open questions, as a question for product, rather than leaving it as a silent decision.
+- Kept every stated requirement and number: 6-digit codes, 30-second steps, one step either side, 10 recovery codes shown once, 5 minutes, 5 wrong entries, 401 on bad password, the session-deletion rule, the recovery-code email that does not block sign-in, the no-wait lost-phone setup and the turn-off rule. Did not add any design for the Open path.
+
+### Holes
+- None.

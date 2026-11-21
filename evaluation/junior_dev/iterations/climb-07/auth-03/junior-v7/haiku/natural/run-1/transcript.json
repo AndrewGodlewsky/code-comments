@@ -1,0 +1,175 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In the request flow, the diagram shows the branch for an unknown user and the branch for an existing user. Where does the over-the-limit (count >= 3) path go after ROLLBACK, and does the user get the same 200 response with no email?",
+     "about": "Request flow: count >= 3? --> ROLLBACK"
+    },
+    {
+     "id": "2",
+     "text": "Where does the raw token come from, and who generates it? The diagram shows sha256(raw) being inserted but not where raw is created.",
+     "about": "INSERT password_reset_tokens (token_hash = sha256(raw))"
+    },
+    {
+     "id": "3",
+     "text": "What is the 'email job' and the 'worker'? What queue holds the job, which process sends the mail, and what is the 'mail provider'?",
+     "about": "enqueue email job { to, raw token } / F3"
+    },
+    {
+     "id": "4",
+     "text": "The unknown-email branch skips the transaction and the enqueue. Does it take noticeably less time than the real branch, and is that a concern given 'nothing reveals which branch ran'?",
+     "about": "Same status and body on every branch"
+    },
+    {
+     "id": "5",
+     "text": "In the rate-limit count, do invalidated and used tokens count as issued, as long as created_at is within the hour? Notes say 'rows actually issued'.",
+     "about": "count password_reset_tokens WHERE user_id = ? AND created_at > now() - 1 hour"
+    },
+    {
+     "id": "6",
+     "text": "Section 1 says 'count >= 3' rolls back, while F2 says 'more than 3 issued links'. Is the 4th request blocked, or the 3rd? Which is right?",
+     "about": "F2 and count >= 3 branch"
+    },
+    {
+     "id": "7",
+     "text": "On the POST /password/reset, step 1 reads the token without a lock, then step 3 locks the token. If the token hash is not found in step 1, what happens?",
+     "about": "POST /password/reset step 1"
+    },
+    {
+     "id": "8",
+     "text": "After a successful reset the user is redirected to /login with no session. Why is the user not logged in automatically, and what does 'session cookie cleared' do for the browser that made the reset?",
+     "about": "302 redirect to /login, no session created"
+    },
+    {
+     "id": "9",
+     "text": "What is the 'breached list' used in step 4, and where does it live at runtime? F11 says a local copy, but open decision 1 says the source is undecided. Which one applies today?",
+     "about": "Step 4 and F11"
+    },
+    {
+     "id": "10",
+     "text": "When the worker drops a job after 3 retries and marks the token invalidated_at, does that free up anything for the user, given invalidated tokens still count toward the limit (F3 note)?",
+     "about": "F3 Mail provider keeps failing"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The count >= 3 path does ROLLBACK and then joins the same merge point as the unknown-user branch, so it ends at the same 200 generic message. No token row is written and no email is queued. Section 1 step 4 now states this in words."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The API generates the raw token itself, from 32 bytes of a cryptographic random source, before the transaction starts (step 2). It is generated before the lock so the lock is held for less time. The raw token is encoded as URL-safe text for the link, and only its SHA-256 is stored."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Per the existing system: the API adds a job to the existing email queue. A separate email worker takes the job and sends it through the third-party mail provider. The brief does not say which store holds the queue. Whether it is Postgres is not known, and that matters for open question 4. Terms now define queue, worker and provider."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes, the unknown-account branch is faster, because it skips the transaction and the queue add. The brief's rule covers body, status and headers only, and this design meets that rule. The timing gap is a real leak that the design does not close. I did not add a timing mechanism, since the brief does not require one. It is listed as open question 6 for the owner."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. The count query filters only on user_id and created_at, so used and invalidated rows count as issued, as the notes say. Invalidated rows are not purged until they are older than an hour. Step 4 now states this."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The 4th request is blocked. Three links in the last hour are allowed, and when the count is already 3 the new request is refused (count >= 3). The diagram was right. F2 said 'more than 3 issued links', which was wrong, and it now reads '3 links already issued in the last hour, so this is the 4th request'."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "If no row matches the hash in step (1) on submit, the user gets the expired page and nothing is written. This is the same outcome as an invalid token at load, and the brief says invalid links show the expired page. The rule is now in section 2 step 3."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The brief says 'do not log them in automatically', so no session is created after the reset. The session cookie is cleared because step (7) deleted that device's session row. Clearing the cookie stops the browser from sending a dead cookie. The reason is now given in step 4."
+    },
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "The runtime location is decided: a local copy of the list inside the API server (F11), so there is no live call. The list's source and refresh schedule are not known yet. That is open question 1, which the brief leaves undecided."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "No. Invalidated rows still count toward the 3-per-hour limit, because the count does not filter on invalidated_at. Marking the token on drop does not free a slot. The user can request again only while fewer than 3 links were issued in the last hour. The F3 row now says this."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "On a dropped job (F3), how does the email worker know which password_reset_tokens row to mark invalidated? The job payload is { to, raw token } and the table stores only the hash.",
+     "about": "F3 Mail provider keeps failing / enqueue email job { to, raw token }"
+    },
+    {
+     "id": "12",
+     "text": "What runs the purge of rows older than 1 hour, and how often? Is it an existing scheduled job or something new?",
+     "about": "Section 4 Data, Rules: Purge rows with created_at older than 1 hour"
+    },
+    {
+     "id": "13",
+     "text": "In step 7, if the queue add fails after COMMIT, does the API still return the 200 generic message, and does anything log or alert on it? F4 says the user sees the generic message but does not say what the operators see.",
+     "about": "Section 1 step 7 Commit, then queue the email / F4"
+    },
+    {
+     "id": "14",
+     "text": "On the reset POST, when the password is rejected with a 422 (step 4), how does the form get the token back for the retry, and does the user see the form again with t still in the hidden field?",
+     "about": "Section 2 POST /password/reset step (4) and F7"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The payload now carries the row id: { to, token_id, raw token }. The worker runs UPDATE password_reset_tokens SET invalidated_at = now() WHERE id = token_id on drop. The id is not secret and needs no hash lookup. The raw token still stays out of the table. This is a real gap in the first version, so I fixed the file in step 7, the diagram, the F3 row and the Data section."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "I do not know what runs the 1-hour purge or how often. The brief does not name a scheduler, and I did not check the codebase for an existing scheduled job. The file says a periodic cleanup runs and points to open question 7."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, the API still returns the 200 generic message. Step 8 and the all-branches rule require it, and the user must not learn about the queue failure. The API logs an error with the token_id and emits the same metric as F3, so operators can see it. Nothing is retried. Real fixes stay in open question 4. F4 now says this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The server re-renders the same reset form with the error text and the same t in its hidden field. t stays in the POST body only, so the address bar and logs are unaffected. The user sees the form again and can retry until the link expires. Section 2 step 3 and F7 now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Forgot form posts. The web client sends POST /password/forgot with {email}. The API normalises the email and looks it up in the `users` table (Postgres).\n2. Unknown email. If there is no such user, the API writes nothing, sends nothing, and jumps to step 9.\n3. Make the raw token. The API creates 32 cryptographically random bytes, encodes them as URL-safe text, and keeps them in memory. This happens before the transaction so the lock is held for less time. If it fails, the API returns a server error and nothing has been written.\n4. Lock the user. The API begins a transaction and does SELECT ... FOR UPDATE on the user's `users` row. Parallel forgot requests for that account wait here. This is what keeps the limit at 3 per hour. If the lock fails, it rolls back and returns a server error.\n5. Count and rate-limit. Inside the transaction, the API counts `password_reset_tokens` rows for this user created in the last rolling 60 minutes. Used and invalidated rows count. If the count is 3 or more, it rolls back, writes nothing, and goes to step 9. The earlier unused links stay valid.\n6. Retire old links. The API sets `invalidated_at = now()` on every row of this user where `used_at` and `invalidated_at` are both NULL. A failure rolls back and returns a server error.\n7. Store the new link. The API inserts one row: user_id, token_hash = sha256(raw token), expires_at = now() + 30 min. The table holds only the hash. A failure rolls back and returns a server error. Then it COMMITs.\n8. Queue the email. After commit, the API adds a job {to, token_id, raw token} to the existing email queue. The email worker takes the job off the queue and sends it through the mail provider. The raw token reaches the user only in the emailed link. If the worker fails, it retries 3 times with backoff. Then it logs and drops the job, sets `invalidated_at` on the row identified by token_id, emits a metric, and raises an alert. The user is not told. The dropped row still counts toward the limit. If the queue add itself fails after commit, the API logs the error with token_id and emits the same metric. It does not retry. The row expires on its own after 30 minutes.\n9. Respond. Every branch (unknown user, over limit, success) returns 200 with the same generic message \"If an account exists for that address, we've sent a link\", with the same status, body and headers. Only the failure of the random source, lock, count, retire or store steps gives a server error.\n10. User opens the link. The browser does GET /password/reset?t=<token>. The API computes sha256(t) and looks up the row. If the row exists, `used_at` is NULL, `invalidated_at` is NULL, and `expires_at` is in the future, it shows the \"choose a new password\" form with t in a hidden field. Otherwise it shows \"This link has expired. Request a new one.\" Loading changes no state. The page is sent with Referrer-Policy: no-referrer. After load, the browser removes t from the address bar with history.replaceState. Query strings on these routes are never logged.\n11. User submits the form. The browser sends POST /password/reset with {t, new_password}. t travels only in the body. The API opens a transaction. It first hashes t and finds the user_id without a lock. If no row matches, it shows the expired page and writes nothing.\n12. Lock in a fixed order. The API locks the user row first, then the token row (SELECT ... FOR UPDATE). The same user-first order is used in the forgot flow, so the two cannot deadlock. A double submit waits on the token lock. The API re-checks used_at, invalidated_at and expires_at. If any check fails, it rolls back and shows the expired page. The second of two concurrent submits therefore sees used_at set and gets the expired page, so only one reset can happen per token.\n13. Validate the password. The new password must be at least 12 characters and not on the breached-password list, which is a local copy inside the API server. If it fails, the API rolls back and shows the form again with an error and the same t in the hidden field. The link stays valid until it expires. If the list cannot be loaded, the user sees a form error asking them to retry, and nothing is written.\n14. Write the reset. The API sets `users.password_hash` to argon2id(new_password), sets `used_at = now()` on the token row, and deletes all of the user's rows in `sessions`, including the current device. Because every request checks `sessions`, all devices are logged out at once. It then COMMITs. Any error before COMMIT, including a database error, rolls back, so the password and token are unchanged. The user sees \"Something went wrong, try again.\"\n15. After commit. The API queues a \"your password was changed\" email. If this send fails, the worker retries and drops it as before, but marks no row because the link is already used. The failure is logged and the reset is not rolled back. The API then returns a 302 redirect to /login, creates no session, and clears the session cookie because its session row is gone. The user must log in again with the new password.\n16. Token guessing is handled by the 256-bit token size, and by per-IP rate limits on both endpoints set at the edge.",
+   "gaps": [
+    "The document does not say what happens to a token row whose job was dropped or never queued, beyond it expiring, so I cannot say whether the user has any way to learn the email never arrived other than requesting again.",
+    "It does not say where the email queue stores its jobs (Postgres or not), so I cannot say whether the queue add and the worker's pickup share any transactional guarantee.",
+    "It does not say how the worker looks up the destination address or builds the link URL from the job, such as the base URL or the email template.",
+    "It does not say how the session cookie is tied to a session row, or what the API does on a request whose session row is missing, beyond 'every request checks sessions'.",
+    "It does not say which edge rate limits apply (values per IP) for the two endpoints.",
+    "It does not say how the breached-password list gets onto the API server or how it is refreshed."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

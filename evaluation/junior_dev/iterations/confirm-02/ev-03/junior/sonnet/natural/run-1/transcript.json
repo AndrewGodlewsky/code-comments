@@ -1,0 +1,177 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Step 2 assigns a seq per conversation inside the transaction. How is it assigned so two concurrent sends to the same conversation never get the same seq or skip one?",
+     "about": "2 one transaction: assign seq"
+    },
+    {
+     "id": "2",
+     "text": "Step 4: how does the relay find unsent outbox rows (poll or tail), and what exactly does 'marks them sent' change in the outbox row?",
+     "about": "4 relay polls/tails outbox"
+    },
+    {
+     "id": "3",
+     "text": "Step 8: the worker 'waits up to 5 s' for the ack. Does the worker hold that message while waiting, or does it move on? And how does the ack get from the client back to the worker?",
+     "about": "8 recipient client acks; the worker waits up to 5 s"
+    },
+    {
+     "id": "4",
+     "text": "Step 6: what does the worker do if the Presence Store lookup fails or is slow, or if the presence entry is stale (user gone but TTL not expired)?",
+     "about": "6 for each recipient, looks up presence"
+    },
+    {
+     "id": "5",
+     "text": "In the 5 s timeout case, the gateway closes the user's session and clears presence. What tells the gateway to do that, and does a recipient with several devices lose all of them (one session per user)?",
+     "about": "No ack in 5 s from an online recipient"
+    },
+    {
+     "id": "6",
+     "text": "The inbox holds (conv, seq, msgId) references. On drain, who reads the body from the Message Store, and what happens if the client already saw a later message live? Is the optional 'last seq per conversation' in hello used to skip entries?",
+     "about": "R2 hello / R3 gateway reads the user's inbox"
+    },
+    {
+     "id": "7",
+     "text": "The failure note says that after writing an inbox entry the worker re-checks presence and tells the node to drain. How does the worker tell the node (what channel), and how does it relate to step 10's push, which is sent after the inbox write?",
+     "about": "Presence says offline, but the user just reconnected"
+    },
+    {
+     "id": "8",
+     "text": "The doc says fan-out is at most 199 recipients. What is this limit (group size cap?) and is it enforced somewhere, and how does a worker process the recipients, in parallel or sequentially?",
+     "about": "Fan-out cost per message is at most 199 recipients"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The Message Store keeps one counter row per conversation. Step 2 increments it under a row lock inside the same transaction, so concurrent sends to one conversation serialize and get distinct, consecutive seqs. A rolled-back transaction rolls back the increment, so no gap appears. Added to step 2."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The relay polls for outbox rows with sent_at empty, oldest first. It publishes them and then sets sent_at on each. A tail of the change feed is the alternative only if the store has no local transactions. Polling is the simplest option. Added to step 4 and the state table."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The worker holds the queue message (offset uncommitted) until every recipient is acked or written to the inbox, which keeps per-conversation order. It handles recipients in parallel. The ack path is client to gateway, and the gateway answers the worker's deliver request. Holding a partition for up to 5 s is accepted for simplicity. Added to steps 7 and 8."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "If the presence lookup fails or times out, the worker treats the recipient as offline: inbox entry plus push. This is safe because the inbox is drained on reconnect and the presence re-check covers a user who is actually online. A stale presence entry is covered by the 5 s ack timeout. Added to step 6 and the failures list."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The worker sends a close-session request to the user's gateway node after the timeout. Each gateway node accepts internal requests from workers: deliver, close session, drain. With one device per user for this version there is one session, so nothing else is lost. Multi-device is out of scope. Added to the failures list."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The gateway reads the bodies from the Message Store while draining, using the inbox references. If the client already saw a later message live, it orders by seq and drops duplicates by msgId, and the close-session step makes this rare. The 'last seq' in hello is not used to skip inbox entries, because the inbox is complete. It is used only for the history fallback after 30 days. Changed R2/R3 and the 30-day failure note."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The worker uses the same internal request channel to the gateway node as for deliver, with a drain request. The push in step 10 is independent. It is sent after the inbox write whatever the presence re-check finds. A push to a user who just reconnected is harmless, because push is best effort and affects no stored state."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "199 is the 200-member cap minus the sender. The cap is a fixed requirement in the brief. Where it is enforced (for example, when members are added) is not known and is outside this design, so I listed it as an open question. The worker processes recipients in parallel, which is a decided point, now stated in step 8 and in the guarantees section."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Presence is registered at R1, before the drain finishes. If a worker sees the user online during the drain, does the live deliver go straight to the client while the drain is streaming, and how is order kept between the two?",
+     "about": "RECONNECT R1 / R6 re-reads the inbox until it is empty, then continues live delivery"
+    },
+    {
+     "id": "10",
+     "text": "What happens if the inbox write itself fails (step 9)? Does the worker retry, leave the queue message uncommitted, or skip the recipient?",
+     "about": "9 offline, or no ack in 5 s: write an inbox entry"
+    },
+    {
+     "id": "11",
+     "text": "When a worker waits up to 5 s for the ack, and the client's ack arrives just after the timeout, what does the gateway do with that late ack, and has the inbox entry then already been written?",
+     "about": "8 the gateway pushes it to the client; the client's ack comes back... worker waits up to 5 s"
+    },
+    {
+     "id": "12",
+     "text": "The worker commits the queue message only after every recipient is acked or in the inbox. What happens to a later message in the same conversation while one recipient is slow? Is the whole conversation stalled for up to 5 s?",
+     "about": "Fan-out Queue partition/conv, worker keeps the queue message uncommitted"
+    },
+    {
+     "id": "13",
+     "text": "When the client drops duplicates 'by msgId', does it remember msgIds forever, or for a limited time or count? What if it has forgotten one and gets a redelivery?",
+     "about": "Duplicate suppression: Client remembers the msgIds it has seen"
+    },
+    {
+     "id": "14",
+     "text": "Can there be more than one Outbox Relay running? If so, how do they avoid publishing the same rows, or is a duplicate publish simply accepted?",
+     "about": "4 relay polls/tails outbox"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Presence was registered too early, so I fixed the flow. The gateway now registers presence only after the drain's re-read returns empty (R6). Until then workers see the user as offline and write inbox entries, which the re-reads pick up. Live messages therefore cannot overtake the drain, and no ordering logic is needed between the two."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The worker does not commit the queue message and the queue redelivers it. Inbox writes are idempotent, so reprocessing is safe. No push is sent for that recipient until the write succeeds. This avoids adding a separate retry mechanism."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The inbox entry is already written when the timeout fires, before the session is closed. A late ack is ignored by the gateway because the worker's request has finished. The entry stays in the inbox, and the client gets it again on drain and drops it as a duplicate by msgId."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. The partition is held for up to 5 s while one recipient is slow, so later messages in that conversation wait. I accept this because it keeps per-conversation order simple. The brief sets no latency target that rules it out. I stated it in the guarantees section."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "The brief only says clients drop duplicates by message id. It does not say how long ids are kept, and I have no reason for a retention window. If the client forgets an id and gets a redelivery, the user may see a duplicate. I added this to the open questions."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Only one relay runs in this version. It is restarted if it crashes, and unsent rows wait. Two relays could publish the same conversation out of order, and I do not want to add a lock or lease for this. A duplicate publish after a crash between publish and mark-sent is accepted and dropped by the client."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one message, from Client S sending it to Client R receiving it, and then the offline case.\n\n1. **Sender sends.** Client S makes up a clientMsgId and sends (clientMsgId, conversation, body) to the Send API. The client generated the id so that a retry can reuse it.\n\n2. **The Send API writes one transaction in the Message Store.** The transaction does three things:\n   - It inserts the message, which is unique on (conversation, clientMsgId).\n   - It gets the next seq from a per-conversation counter row. That row is locked while the counter is incremented, so concurrent sends get distinct, gap-free seqs. A rollback undoes the increment.\n   - It inserts an outbox row. The outbox is a table in the same store, and its `sent_at` field starts empty.\n\n   If this is a duplicate send, the store returns the existing msgId and seq and creates no new row or outbox entry. The Message Store holds the state here: the message, the seq and the \"needs fan-out\" marker.\n\n3. **The sender is acked.** After the commit, the Send API returns ack(msgId, seq) to Client S. If the write fails or times out, the sender gets an error and nothing is stored or fanned out. The client then retries with the same clientMsgId. If the Send API crashes after the commit but before the ack, the retry hits the unique key and gets the original ack. The sender's path ends here, and the ack never waits for any recipient.\n\n4. **The relay publishes.** The single Outbox Relay polls for rows with empty `sent_at`, oldest first. It publishes each row to the Fan-out Queue with the conversation id as the key, then sets `sent_at`. If the relay crashes, it is restarted and the unsent rows are still in the outbox. If it crashes between publishing and setting `sent_at`, the row is published twice, and clients drop the duplicate. The queue holds the queue position. It is at-least-once and partitioned by conversation, so each conversation is handled in seq order.\n\n5. **The worker consumes one queue message.** It loads the conversation's current members and removes the sender. Membership is taken as of now, not as of the send. The worker leaves the queue message uncommitted until every recipient is either acked or has an inbox entry. If the worker crashes, the queue redelivers the message, and some recipients may get it twice.\n\n6. **The worker looks up presence for each recipient.** Recipients are handled in parallel. The Presence Store maps user to gateway node. If the lookup fails or times out, the recipient is treated as offline.\n\n7. **Online case: the worker sends a deliver request** to that user's gateway node.\n\n8. **The gateway pushes the message to Client R over its WebSocket.** Client R acks to the gateway, and the gateway answers the worker's request. The worker waits up to 5 seconds. A late ack is ignored, because by then the inbox entry already exists, and the client drops the later duplicate. The client remembers the msgIds it has seen and drops duplicates by msgId. If the ack arrives in time, this recipient is done.\n\n9. **Offline case, or no ack within 5 seconds.**\n   - The worker writes an inbox entry (conv, seq, msgId). It is idempotent on user, conversation and seq. These are references only, and they expire after 30 days.\n   - If the write fails, the worker does not commit the queue message. The queue redelivers it and the whole message is processed again. No push is sent for that recipient until the entry exists.\n   - After a 5-second timeout, the worker also asks that user's gateway node to close the session and clear presence. This stops later messages going out live ahead of the missed one.\n\n10. **After the inbox write, the worker sends a best-effort push** through APNs or FCM. A failure is logged and ignored. Nothing is retried, and nothing stored is touched. The worker also re-checks presence. If the user is now online, it sends that node a drain request. The push goes out either way.\n\n11. **Reconnect (R1 to R6).**\n    - **R1:** Client R opens a WebSocket to any gateway node. The user is not in presence yet.\n    - **R2:** The client says hello, optionally with its last seq per conversation. That is used only for the history fallback.\n    - **R3 and R4:** The gateway reads the user's inbox ordered by (conversation, seq). It loads each body from the Message Store and streams the entries.\n    - **R5:** The client acks each entry and the gateway deletes it. If the drain is interrupted, unacked entries stay and are sent again next time.\n    - **R6:** The gateway re-reads the inbox until a read returns empty. Only then does it register presence and start live delivery. Until then, workers see the user as offline and write inbox entries, which the re-reads pick up. Live messages therefore never overtake the drain. Heartbeats every 10 seconds refresh presence, which expires after 30 seconds.\n    - After 30 days, inbox entries have expired. The client then falls back to reloading history from the Message Store.\n\n12. **Failures across steps.**\n    - If a gateway node dies, presence entries expire within 30 seconds. Deliveries to the dead node time out after 5 seconds and go to the inbox. Clients reconnect to another node and drain.\n    - Stale presence is also covered by the 5-second timeout.\n    - A user who has just reconnected but is seen as offline is covered by the drain re-reads and the worker's re-check.\n    - A slow recipient holds the queue partition for up to 5 seconds, so later messages on that partition wait. The document accepts this.",
+   "gaps": [
+    "Which component generates the msgId returned in the ack, and what it looks like, is not stated. The document says only that the store returns it.",
+    "The document does not say how the worker's deliver request is addressed to a specific gateway node. It also does not say how the gateway matches the client's ack to the worker's pending request. Both are needed to follow step 8.",
+    "The document does not say how the client orders live messages against drained ones across conversations. It says only that the client orders by seq. It also does not say what the client does with a gap, beyond saying that the drain fills it.",
+    "The document does not say what the worker does when a gateway node is reachable but the deliver request returns an error rather than silence. Only the no-ack and timeout cases are described.",
+    "The document says the worker 'asks the node to close the session and clear presence' after a timeout. It does not say what happens if that request itself fails. It also does not say what the client does on being closed, beyond 'reconnects and drains'.",
+    "The document does not say how the worker knows the device's push token, or how a user is linked to a push registration. It says only that a push goes to Client R.",
+    "The document does not say how the relay's polling interval or batch size is set. It also does not say how the single relay's restart is detected or triggered.",
+    "The document does not say how a drain request from the worker (step 10) interacts with a drain already in progress from R3 and R4. It does not say whether presence is registered before or after that drain."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

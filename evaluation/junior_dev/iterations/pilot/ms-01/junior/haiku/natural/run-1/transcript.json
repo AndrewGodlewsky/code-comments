@@ -1,0 +1,417 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The Order service's O1 box says it creates an order and then C1 returns cart lines. How does Order ask Cart for the lines (HTTP or event), and what does Order do if Cart is slow or down?",
+     "about": "O1 --> C1 --> O2 (Cart service C1)"
+    },
+    {
+     "id": "2",
+     "text": "What exactly does Order send to Inventory at I1, and how does Order learn the result (the HTTP response, or an event)? What if the call times out after Inventory may have already reserved?",
+     "about": "I1: Reserve every line in one transaction"
+    },
+    {
+     "id": "3",
+     "text": "How does Order's HTTP call to Payment at O3 relate to P1/P2? Does Order wait for the provider's answer, or does Payment return right away and the result come later by webhook?",
+     "about": "O3: Status AWAITING_PAYMENT, HTTP call asks Payment to charge"
+    },
+    {
+     "id": "4",
+     "text": "How does the result at P4 reach Order? The box says it stores an 'outbox event'. What is the outbox, what publishes from it, and which event does Order receive (DECLINED and SUCCEEDED)?",
+     "about": "P4 and the transactional outbox"
+    },
+    {
+     "id": "5",
+     "text": "The diagram shows P4 going to 'Status DECLINED' and then 'Release reservation'. Who tells Inventory to release: Order by HTTP call or an event? And when is that call retried if it fails?",
+     "about": "O_DEC --> I3"
+    },
+    {
+     "id": "6",
+     "text": "What does Order do while the customer waits? How does the customer's screen learn the outcome (polling, push), and what is the 'Pending page' they see when there is no webhook?",
+     "about": "No webhook / Customer sees confirmation"
+    },
+    {
+     "id": "7",
+     "text": "The reservation lasts 10 minutes but the webhook may take up to 30 minutes and reconciliation starts at 30 minutes. What is meant to happen to the stock hold between minute 10 and the webhook arriving? Is the hold ever extended?",
+     "about": "I1 10 min hold clock vs P9 30 min timer"
+    },
+    {
+     "id": "8",
+     "text": "In the refund path, what do 'N tries', 'backoff' and the P6 retry loop mean in practice? Who triggers the retry (timer, job), and what is the timing? Also what does 'Provider confirmed refund?' do when the provider gives no answer?",
+     "about": "P8: Retry refund with backoff, alert ops after N tries"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Order calls Cart with an HTTP GET (M1) and gets the lines and prices back in one reply. Cart is only read. Order waits up to 2 s per try and tries 3 times. If Cart still does not answer, the order is set to FAILED before anything is reserved, so nothing needs undoing. The cart is unchanged and the customer is asked to try again. The order row already exists from O1, so the failed attempt is recorded. M1 and the FAILED branch are now in the file."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Order sends M2, an HTTP POST with the order id and each line's sku and quantity. The reply is RESERVED or SHORT, with the short skus. If the reply times out, Order repeats the same POST with the same order id, and Inventory returns the same answer for an order id it has already handled. After 3 tries with no answer, Order sets the order to FAILED and queues a release (M6). The release is safe whether or not the reserve happened. If a reserve arrives after its release, Inventory keeps the RELEASED record and refuses to hold stock for that order id."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The call at O3 (M4) is an HTTP POST. It returns 202 once Payment has stored the charge row as PENDING. Payment does not wait for the provider. Payment sends the charge to the provider (M11) from its own retry queue. The provider's answer comes back later by webhook (M10), and Payment then tells Order by event (M5). Order's status stays AWAITING_PAYMENT until that event arrives. Order does not wait on the HTTP call for the outcome."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The outbox is a table in the owning service's own database. The event row is written in the same transaction as the state change (for Payment, the charge update). A relay process reads unsent rows, publishes them to the broker and marks them sent. If the broker is down, rows wait and are retried, so delivery is at least once. Order receives M5: PaymentSucceeded or PaymentDeclined, each with the order id. Order ignores repeats by event id. The diagram and the M5 row now show this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Order tells Inventory with an HTTP POST (M6) to release the order id's reservation. It is not an event, because Order already calls Inventory for reserve and commit, and the release needs an answer. Order puts the call in its retry queue, retries with backoff and does not give up. If Inventory stays unreachable, the reservation expires on its own after 10 minutes, so stock is never held forever. Release is idempotent, so repeating it is safe."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "While the customer waits, the Place order request returns after M1, M2 and M4. Short stock is shown in that reply. Otherwise the reply carries the order id and status AWAITING_PAYMENT. After that the customer's page polls Order every 2 seconds until a final status. The pending page is shown while the status is AWAITING_PAYMENT or PAYMENT_RECEIVED. Polling was chosen for simplicity, and push is not part of this design. How long the pending page can last depends on the provider, which is listed as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Nothing extends the hold. At minute 10 the reservation becomes EXPIRED (by the commit check or the sweeper) and the stock goes back on sale. The payment may still be pending at that point. If it then succeeds, commit is refused and the order is cancelled and refunded in full. This follows the brief: a 10-minute hold, with late success refunded. The 30-minute timer applies only to a missing webhook. 30 minutes after the charge was sent with no webhook, Payment asks the provider. Whether the provider can stay pending past 30 minutes is unknown, and it is now an open question in the file."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Retries are not per-request timers. Payment's retry queue holds each open refund row. A worker checks the queue every minute, takes rows whose next-try time has passed, and calls the provider with the same refund key (M12). The wait starts at 1 minute and doubles up to a 1-hour cap. After the 10th failed try (N = 10), ops is alerted. The row is never deleted, and retries continue. A provider that does not answer (timeout or 5xx) counts as not confirmed, so the row stays open and is retried. If no webhook arrives, the 30-minute reconciliation also queries the provider by refund key. This is the same retry rule as M3 and M6."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What does the provider reply to the M11 HTTP POST itself? Does that reply ever carry the outcome, or is the outcome only ever delivered by the M10 webhook?",
+     "about": "M11 Charge at provider / P2"
+    },
+    {
+     "id": "10",
+     "text": "Who owns and stores this 30 min timer, and what does 'when charge is sent' mean: the first attempt, or the first M11 call the provider accepts? What if M11 keeps failing and sits in the retry queue?",
+     "about": "O3 -.-> P9 (30 min timer starts when charge is sent)"
+    },
+    {
+     "id": "11",
+     "text": "M7 and M8 are broker events sent by Order, but the Order row in the stores table lists a retry queue with M8 and no outbox. How does Order publish M7 and M8? Why is M8 in the retry queue while M7 is not?",
+     "about": "What each service stores: Order (retry queue) vs M7 and M8"
+    },
+    {
+     "id": "12",
+     "text": "How does Order go from handling M5 to having M3 in its retry queue? Are the status change to PAYMENT_RECEIVED, the queue row and the first M3 attempt done together, and who runs the first attempt?",
+     "about": "O_PAID --> O_COMMIT (M3 commit reservation, retried from queue)"
+    },
+    {
+     "id": "13",
+     "text": "If Order repeats M3 for a reservation that is already COMMITTED, what does Inventory reply? And what does Order do if the reply is REFUSED but the reservation is RELEASED rather than expired, for example after a decline?",
+     "about": "I2: M3 commit and its idempotency"
+    },
+    {
+     "id": "14",
+     "text": "When exactly does a refund row become REFUND_FAILED, and what does it do afterwards? Is it the state that the P8 retry works on, and does it go back to REFUND_PENDING when retried?",
+     "about": "P7 / D_REF / REFUND_FAILED"
+    },
+    {
+     "id": "15",
+     "text": "How does Order send the email (which system), and what happens if sending fails or M9 is delivered twice? Does the email send happen in the same step as the REFUNDED status change?",
+     "about": "O_MAIL: Status REFUNDED, email customer"
+    },
+    {
+     "id": "16",
+     "text": "Where does Order get the amount and currency for M4? Is it computed from the frozen order_lines snapshot, and who does that calculation?",
+     "about": "M4 Charge request (order id, amount, currency)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The brief does not say what the provider's immediate reply to M11 contains, so the design does not rely on it. Payment records only that the provider accepted the request, which starts the 30 min timer. The outcome is taken only from the webhook (M10) or the reconciliation query (P9). The M11 row, P2 and the Decisions section now say this."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Payment owns the timer. It is the reconcile_at column on the charge row, set in the same transaction that records provider acceptance of the first M11 call the provider accepts. It is stored in the database, so it survives restarts. The arrow in the diagram now starts at P2, not O3. If M11 keeps failing, no timer runs, the charge stays PENDING, the order waits in AWAITING_PAYMENT, and ops is alerted after 10 tries. The brief gives no timeout for this, so it is an open question."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Checked against the file's own Decisions section, which says every service writes events through an outbox. The Order row of the stores table did not list it, and M8 in the retry queue was wrong. M7 and M8 are events and now go through Order's outbox, like M5 and M9. M8 is removed from the retry queue. Order's retry queue holds M3, M4 and M6."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Order's M5 handler runs in one database transaction: it records the event id as processed, sets status PAYMENT_RECEIVED and writes the M3 queue row, which is due now. The event is acknowledged to the broker only after that commit, so if the commit fails the event is redelivered. The queue worker, which checks every minute, makes the first M3 attempt."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Inventory replies COMMITTED again, with no change, because commit is keyed by order id. Order sends M3 only after PaymentSucceeded, so a RELEASED reservation at commit should not normally happen. If it does, any REFUSED (expired, released or not found) leads to CANCELLED_OUT_OF_STOCK and a full refund. Money is never kept for an order that cannot be filled. The reply reason is now part of M3."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "REFUND_FAILED is set only when the provider says the refund failed, by webhook or by the reconciliation query. A timeout or no answer leaves the row REFUND_PENDING and the queue retries it. The retry is the Payment queue row for M12. When it resends with the same key, the row is set to REFUND_PENDING. The row is never deleted. Whether the provider replays an old failure for the same key is unknown and is an open question."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Order writes an email row to its outbox in the same transaction that sets REFUNDED, and only from CANCELLED_OUT_OF_STOCK. The relay sends it and marks it sent. A repeat M9 is ignored by event id, and a repeat finds the order already REFUNDED, so no second email row is written. The brief does not name the email service, and a crash between sending and marking sent could send the email twice. Both are listed as open questions."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Order computes the total in step O2 from the frozen order_lines snapshot, as the sum of line price times quantity. The currency comes from Cart's M1 reply. Order stores both on the orders row and uses them for M4. M8 and M12 carry the same amount and currency. Tax, shipping and discounts are not in the brief, so the total assumes none. That is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "After P1 replies 202, who makes the first M11 call and when? The Retries section says a queued call's first try is the next minute-check. Does every charge wait up to a minute before it is sent to the provider?",
+     "about": "P1 --> P2 (M11 charge at provider)"
+    },
+    {
+     "id": "18",
+     "text": "The webhook carries a provider event id, type and a charge or refund id. How does Payment find the matching charge row, which is keyed by order id? Is the provider's charge id stored somewhere, and when?",
+     "about": "M10 Provider webhook / P3"
+    },
+    {
+     "id": "19",
+     "text": "What does Order do with a PaymentSucceeded or PaymentDeclined event when the order is not in AWAITING_PAYMENT, for example already FAILED or CANCELLED_OUT_OF_STOCK? And what is the M5 amount used for?",
+     "about": "M5 Payment outcome, Order handling"
+    },
+    {
+     "id": "20",
+     "text": "How does Cart receive M7 from the broker, and what does Cart do if the lines were already removed or changed by the customer in the meantime? Does anything tell Order that Cart processed it?",
+     "about": "M7 Order confirmed, Cart consumption"
+    },
+    {
+     "id": "21",
+     "text": "What runs P9, and how does it find charges or refunds whose reconcile_at has passed? And when the provider answers 'still pending', what is written so that it asks again after another 30 minutes?",
+     "about": "P9 Reconciliation"
+    },
+    {
+     "id": "22",
+     "text": "What does Order do with M9 when the order is not in CANCELLED_OUT_OF_STOCK? And is the REFUND_FAILED state ever shown to Order, or does Order only learn of a refund at M9?",
+     "about": "M9 Refund completed / O_MAIL"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Payment makes the first M11 call right after the P1 commit, not at the next minute check. P1 writes the charge row and the M11 queue row (due now) in one transaction, replies 202 to Order, and sends the charge. Only a failed first try waits for the minute-check worker. The Retries section, the M11 and M12 rows, and the P1 and P2 boxes now say this. Reason: a charge should reach the provider without waiting up to a minute. Correctness does not depend on it, because the 30 min timer starts at provider acceptance."
+    },
+    {
+     "id": "18",
+     "tag": "unknown",
+     "text": "Partly answered. Payment now stores the provider charge id (and refund id) once it is first seen, and matches each webhook by that id, or by an order id (charge) or refund key (refund) that the provider echoes back. The brief does not say whether the webhook echoes the order id, or whether the provider's acceptance reply carries the charge id, so when the provider charge id first becomes known is not known. This is an open question in the file, and an unmatched webhook is an ops case."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The Order M5 handler now checks state and amount in one transaction before it sets PAYMENT_RECEIVED. Normal path: the order is AWAITING_PAYMENT and the M5 amount equals the stored total. Otherwise (PaymentSucceeded for an order in another state, or a wrong amount): record the event id, alert ops, send M8 with the amount Payment charged so the full charge is refunded, and set CANCELLED_OUT_OF_STOCK only if the order was AWAITING_PAYMENT. PaymentDeclined for an order not in AWAITING_PAYMENT: record the event id, alert ops, change nothing. Repeats are ignored by event id. The M5 amount is used for the amount check against orders.total. Reason: money is never kept for an order that is not confirmed, and a mismatch is a real fault. The diagram, M5 and M8 rows, failure table and Decisions are updated. Which status an anomalous AWAITING_PAYMENT order should show is a judgement call, recorded here."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Cart receives M7 from the broker as a consumer. In one transaction it records the event id and deletes the listed lines by line id. Lines added later have other ids and stay. An ordered line changed after Place order is still removed, because the order holds the snapshot. A line already gone matches nothing, so a repeat changes nothing. Cart acks the broker only after its commit, so a Cart failure is redelivered. Nothing tells Order that Cart processed it: Cart does not reply, Order does not wait, and Order's outbox row is done when the broker accepts it. Cart's processed-event ids are added to the Cart storage row. The Cart consumer being stuck is added to the alerts open question."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "The reconciliation job (P9) runs every minute in Payment. It takes charges PENDING and refunds REFUND_PENDING whose reconcile_at has passed; reconcile_at is indexed. It asks the provider by order id (charge) or refund key (refund). Succeeded, declined, refunded or refund-failed answers go through the same conditional update as the webhook, so a webhook and a query apply once. A still-pending answer sets reconcile_at to now plus 30 min, which is what makes it ask again. A not-found answer is treated as not accepted, and it is an open question. The P9 box and the Decisions and open questions sections say this."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "M9 for an order that is not CANCELLED_OUT_OF_STOCK or REFUNDED cannot happen in normal flow, because a refund only exists after M8. Order records the event id, changes no status, sends no email, and alerts ops. A repeat M9 on a REFUNDED order is ignored, as before. Order does not see REFUND_FAILED. It learns of a refund only at M9. The customer sees \"cancelled, refund in progress\" until REFUNDED, and a failed refund is handled by Payment's queue and by ops. This is recorded in the Customer experience and Decisions sections."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "23",
+     "text": "When is a Payment retry queue row finished? If the provider accepted M12 and the row is done, what creates the new row that P8 retries after a refund-failed webhook?",
+     "about": "P8: Retry queue row for M12 / REFUND_FAILED"
+    },
+    {
+     "id": "24",
+     "text": "Where does Order get the cart line ids it sends in M7? Does the M1 reply include them, and are they stored in the order_lines snapshot?",
+     "about": "M7 Order confirmed: ordered line ids"
+    },
+    {
+     "id": "25",
+     "text": "For M3, M4 and M6, how does Order's queue worker mark a row done? What does it do with an M4 row if a PaymentSucceeded or PaymentDeclined has already arrived?",
+     "about": "Retries: Order's retry queue (M3, M4, M6)"
+    },
+    {
+     "id": "26",
+     "text": "After FAILED, M6 is queued. If M6 reaches Inventory and the earlier M2 had not arrived yet, what does a later M2 get back, and does Order see it?",
+     "about": "O_FAIL after M2 no answer: queue M6"
+    },
+    {
+     "id": "27",
+     "text": "Which broker carries the events? How does each consumer (Order, Cart, Payment) subscribe, and what happens to an event that a consumer keeps failing to process?",
+     "about": "Events (M5, M7, M8, M9) through the broker"
+    }
+   ],
+   "answers": [
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "A retry queue row is removed once its call gets its final answer. For M11 and M12 that is the provider accepting the call, and the 30 min timer is set in the same transaction. A REFUND_FAILED webhook is not a new call. In the same transaction that sets REFUND_FAILED (P7), Payment reopens that refund's M12 row with the attempt count plus one and the next try after backoff. P8 then resends it with the same key. The count carries over, so ops is still alerted after 10 failed tries on that refund and a repeated failure cannot loop without an alert. The old wording 'row never deleted' applied to open refunds, and now reads 'kept until a send is accepted'. The Terms, Retries, P2, P6, P7, P8, the failed-refund row and the Decisions now say this."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The M1 reply now includes each cart line's id, sku, quantity, unit price, plus the cart currency. O2 copies the cart line id into order_lines with the rest of the frozen snapshot. M7 names those ids, so Cart deletes exactly the lines that were ordered. The file assumed the line ids before, without saying where Order gets them. M1, M7, the Order and Cart storage rows, C1, and the Cart decision now say this."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "A queue row is removed when its call gets a final answer: M3 on COMMITTED or REFUSED, M6 on RELEASED, and M4 on Payment's 202. Before each M4 try the worker checks the order. If it has left AWAITING_PAYMENT, an outcome has already come back from Payment, so a charge row exists. The M4 row is then removed without a call. Order also commits AWAITING_PAYMENT before it sends M4, so an outcome never reaches an order still in PLACING. If an M4 try were sent anyway, Payment returns the existing charge, so nothing is charged twice. The Retries section and the Decisions now say this."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "M6 can reach Inventory before M2 only when an earlier M2 try was still in flight, because M6 is queued after M2's 3 tries. Inventory now creates a RELEASED record with no stock when M6 finds no record. A later M2 for that order id gets REFUSED with reason RELEASED and reserves nothing. Order does not see that reply. It has already set FAILED and drops any reply that arrives late. If a REFUSED reply reached Order before it gave up, Order treats it as FAILED. The M2 and M6 rows, the Inventory storage row, the failed-branch row and the Decisions now say this."
+    },
+    {
+     "id": "27",
+     "tag": "unknown",
+     "text": "The brief says only 'the shared message broker', so the product, its redelivery settings and its dead-letter support are not known. The decided part is the consumer design. Each consumer has a durable subscription: Order for M5 and M9, Cart for M7, Payment for M8. A consumer acknowledges only after its own commit. A technical failure leaves the message unacknowledged, so the broker redelivers it. After 10 failed deliveries ops is alerted, and the message is not dropped. No dead-letter queue is used, because a message moved there would stop without a retry. A logical anomaly is handled by the handler, which records it and acknowledges, and is not retried. Whether the broker keeps redelivering a message that always fails, and in what order, is unknown. It is now an open question, and the M5, M7, M8 and M9 rows, the Decisions, the failure table and the alerts list name it."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "28",
+     "text": "If Order crashes or restarts after creating the order in PLACING (or after M2 reserved stock) but before it commits AWAITING_PAYMENT, what picks that order up again? Does anything move it out of PLACING?",
+     "about": "O1 Create order, status PLACING / O3 Commit status AWAITING_PAYMENT"
+    },
+    {
+     "id": "29",
+     "text": "Where does the order id come from, and what happens if the customer presses Place order twice (or the request is retried) for the same cart? Is a second order created and reserved against the same stock?",
+     "about": "START Customer presses Place order / O1"
+    },
+    {
+     "id": "30",
+     "text": "When Order sets FAILED after M2 gets no answer, how does the Place order request itself end? Is the customer's reply sent right away while M6 is queued, and does the page then poll a FAILED order?",
+     "about": "I1 -.-> O_FAIL (M2 no answer after 3 tries, queue M6) / E_FAIL"
+    }
+   ],
+   "answers": [
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "Nothing currently moves an order out of PLACING, so the file now has a recovery job. Order runs it every minute and fails any order that has been PLACING for more than 5 minutes. Setting FAILED and writing the M6 release happen in one transaction, so a crash cannot leave one without the other. The M6 release is safe whether or not M2 reserved anything, because Inventory creates a RELEASED record when none exists, and that refuses a late M2 for the same order id. Nothing is charged, because M4 is sent only after AWAITING_PAYMENT is committed, and an order in PLACING has never sent M4. The 5 minutes is far longer than the normal path, which is bounded by the 2 s timeouts and 3 tries of M1 and M2. The threshold itself is my choice and is listed as an open question. The Retries section, the diagram edge from O1, the failure table, the Decisions and the open questions now say this."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "The order id is generated by Order in O1 when it creates the order. A second press does not create a second order. The customer's page creates a checkout token once per press and sends it with Place order. Order stores the token on the order, and it is unique. A repeated token returns the same order's current status and changes nothing. A new token for a cart that already has an open order (PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED) also returns that open order, so Inventory is not asked to reserve twice. A unique index over cart id where status is open makes this hold under concurrent presses. A new order is created only when the cart has no open order. Retrying after DECLINED, SHORT_STOCK or FAILED creates a new order with a new id, as the file already said. The terms, the Place order paragraph of Customer experience, the Order storage row and the Decisions now say this."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "When M2 gives up after 3 tries, Order sets FAILED in the same step, and the Place order reply carries status FAILED now. The M6 release is queued in Order's retry queue in the background, and the reply does not wait for it. The page does not poll after a FAILED reply, because FAILED is a final status. It polls only while the status is pending (PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED). If the reply is lost, the page cannot learn the order id, which is listed as an open question. The Customer experience section, the failure table row for M1 and M2, the diagram edge to E_FAIL and the Decisions now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Customer presses Place order. The customer's page makes a checkout token (once per press) and sends it with the request to Order. Order's orders table holds the state. If the token was seen before, or the cart already has an open order (PLACING, AWAITING_PAYMENT, PAYMENT_RECEIVED), Order just returns that order's current status and makes nothing new. Otherwise Order creates an order in status PLACING with a new order id (O1), storing cart id and token. A unique index on cart id (for open statuses) stops two concurrent presses making two orders.\n\n2. M1 (Order to Cart, HTTP GET, cart id). Cart returns current lines (cart line id, sku, qty, unit price) and currency. This is read only. Timeout is 2 s, 3 tries. If Cart never answers, Order sets FAILED. Nothing was reserved, the cart is untouched, and the Place order reply says FAILED (\"Checkout failed, try again\").\n\n3. O2. Order copies the lines into order_lines (a frozen snapshot with cart line ids) and sets the total (sum of price times qty) and currency on the order.\n\n4. M2 (Order to Inventory, HTTP POST, key = order id). Inventory reserves every line in one transaction and writes reservations as ACTIVE with expires_at = now + 10 min. It replies RESERVED, SHORT (with the short skus), or REFUSED (RELEASED or EXPIRED, if a record for this order id already exists in that state). If there is no answer after 3 tries, Order sets FAILED and queues M6 in the same transaction. Any reply that arrives after Order gave up is dropped. A late M2 is refused by Inventory because the M6 left a RELEASED record.\n\n5. If some line is SHORT, nothing is reserved. Order sets SHORT_STOCK, no payment is asked for, the cart is unchanged, and the reply lists the short items. This is a final status. (The document says a REFUSED reply that reached Order before it gave up is treated as FAILED.)\n\n6. If every line is reserved, Order commits status AWAITING_PAYMENT, and only then sends M4 (Order to Payment, HTTP POST, key = order id). Payment, in one transaction, writes a charge row (PENDING, keyed by order id) and an M11 row in its retry queue, then replies 202 Accepted (P1). Order does not wait for the provider. If M4 gets no answer after 3 inline tries, Order queues M4 in its own retry queue with the same order id and stays AWAITING_PAYMENT. Payment returns the existing charge for a repeat order id, so there is no double charge. The Place order reply then carries the order id and status AWAITING_PAYMENT. Before each queued M4 try, Order checks the order is still AWAITING_PAYMENT. If not, the row is removed without a call.\n\n7. Meanwhile the page polls GET /orders/{id} on Order every 2 s while the status is PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED. It stops at a final status (CONFIRMED, DECLINED, SHORT_STOCK, FAILED, REFUNDED).\n\n8. Payment sends M11 (HTTP POST to the provider, Idempotency-Key = order id) right after the P1 commit. If that fails, the minute-check worker takes over from the retry queue with the same key. After a failed try the wait starts at 1 min and doubles up to 1 hour. Queued calls never give up, and ops is alerted after 10 failed tries. The provider's immediate reply is only an acknowledgment. When the provider accepts, Payment in one transaction stores sent_at and reconcile_at = sent_at + 30 min and removes the queue row. Payment never uses the immediate reply to decide an outcome.\n\n9. The outcome arrives as an M10 webhook (HTTP POST from the provider to Payment), within seconds up to about 30 min, possibly repeated. Payment inserts the provider event id (unique) into webhook_events and matches the charge by provider charge id (if stored) or by the echoed order id. It only returns 200 after its database commit. A duplicate fails the unique insert, nothing happens, and it returns 200. An unmatched webhook is stored as unmatched, ops is alerted, and 200 is returned.\n\n10. If no webhook arrives, the reconciliation job (P9, every minute) finds PENDING charges whose reconcile_at has passed and asks the provider by order id. A final answer goes through the same conditional update as the webhook. If the provider says still pending, reconcile_at moves to now + 30 min.\n\n11. P4. In the same transaction, only if the charge is still PENDING, Payment sets SUCCEEDED or DECLINED and writes an M5 event (PaymentSucceeded or PaymentDeclined, with order id, charge id, amount) to its outbox. A relay publishes outbox rows to the broker and marks them sent, retrying until the broker accepts. Order has a durable subscription and acknowledges only after its own commit, so failures cause redelivery. Ops is alerted after 10 failed deliveries.\n\n12. Declined path. On PaymentDeclined, if the order is in the expected state, Order sets DECLINED and queues M6 (release reservation, key = order id). Inventory turns ACTIVE into RELEASED. The customer is told payment was declined, the cart is unchanged, and a retry makes a new order id. M6 stays in Order's retry queue until Inventory replies RELEASED.\n\n13. Success path. On PaymentSucceeded, in one transaction Order checks the order is AWAITING_PAYMENT and that the M5 amount equals the stored total, records the event id as processed, sets PAYMENT_RECEIVED, and writes an M3 row in its retry queue. The queue worker makes the first M3 attempt on its next minute check. A repeated event id is ignored.\n\n14. M3 (Order to Inventory, commit, key = order id). Inventory accepts only if the reservation is ACTIVE and not past expires_at (it checks the time itself, not relying on the sweeper). It then records stock as sold and the reservation as COMMITTED, and replies COMMITTED. A repeat on a COMMITTED reservation replies COMMITTED again. If there is no answer, Order stays PAYMENT_RECEIVED and keeps retrying from its queue, and ops is alerted after 10 tries. The queue row is removed on COMMITTED or REFUSED.\n\n15. If COMMITTED, Order sets CONFIRMED and writes an M7 OrderConfirmed event to its outbox (carrying the cart line ids from order_lines). Cart consumes M7 in one transaction: it records the event id and deletes only those lines by line id, then acknowledges. This is the only time Cart is changed. Lines added later stay. The customer sees confirmation and the cart is emptied.\n\n16. If M3 is REFUSED (hold lapsed, released, not found), Order sets CANCELLED_OUT_OF_STOCK and writes an M8 event to its outbox. The customer sees \"cancelled, refund in progress\". Payment consumes M8 and creates a refund row REFUND_PENDING (once per order id) plus an M12 queue row due now (P5). It sends M12 (full refund, Idempotency-Key = refund for order id) to the provider. On acceptance it stores reconcile_at = accept + 30 min and removes the row. The refund outcome comes by an M10 refund webhook or by reconciliation by refund key.\n\n17. Refund outcome (P7). Duplicates are dropped by event id, and the update applies unless the refund is already REFUNDED. On success Payment sets REFUNDED and writes an M9 RefundCompleted event to its outbox. Order, on M9 from CANCELLED_OUT_OF_STOCK, in one transaction sets REFUNDED and writes the customer email row to its outbox. The relay sends the email. The customer is refunded in full and emailed.\n\n18. If the provider says the refund failed, Payment sets REFUND_FAILED and in the same transaction reopens the M12 row with the attempt count plus one. After backoff it resends with the same key and sets REFUND_PENDING. Ops is alerted after 10 tries. Order never sees a failed refund, and the customer is not told.\n\n19. Anomalies. A PaymentSucceeded for an order not in AWAITING_PAYMENT, or with a different amount: Order records the event id, alerts ops, sends M8 so the full charged amount is refunded, and sets CANCELLED_OUT_OF_STOCK only if the order was AWAITING_PAYMENT. A PaymentDeclined or M9 for an order in an unexpected state: Order records the event id, alerts ops, and changes nothing. An M6 reply of COMMITTED: Inventory changes nothing and Order alerts ops.\n\n20. Stuck orders. A recovery job in Order runs every minute. An order PLACING for more than 5 min is set to FAILED and its M6 row is written in the same transaction. This is safe because no charge is requested before AWAITING_PAYMENT is committed. Inventory has a sweeper that runs every minute and turns ACTIVE reservations past expires_at into EXPIRED. Stock returns at 10 min at the latest.",
+   "gaps": [
+    "Which message broker is used, and its redelivery, ordering and dead-letter settings, is not stated.",
+    "Where ops alerts go (channel, runbook) is not stated.",
+    "What the provider's immediate acknowledgment reply contains (e.g. whether it carries a provider charge or refund id) is not stated.",
+    "Whether the provider echoes the order id or refund key in webhooks is unknown, so I cannot say for certain how a first webhook is matched to a charge before the provider charge id is stored.",
+    "What the provider answers to a reconciliation query for an order id or refund key it does not know is not stated. The design treats it as 'not accepted'.",
+    "Can the provider still report pending after 30 minutes? Unknown, so the length of the pending page is unbounded.",
+    "What happens if a charge never reaches the provider (M4 or M11 keeps failing) is undecided. There is no timeout, the order waits in AWAITING_PAYMENT while the hold expires, and ops decides.",
+    "Whether the provider returns the old result when a refund is retried with the same Idempotency-Key after a failure is unknown. A retry may need a new key.",
+    "How a stale REFUND_FAILED webhook from an earlier attempt is matched to attempts is not decided.",
+    "Which email service sends the customer email is not named, and the risk of a duplicate email after a crash is not decided.",
+    "Taxes, shipping and discounts are not in the total.",
+    "How a customer who lost the Place order reply finds the order id is not decided.",
+    "The step 6 wording 'Order commits AWAITING_PAYMENT, then M4' does not say what Order does if it crashes between the commit and sending M4. The document says only that Order stays AWAITING_PAYMENT and queues M4 after 3 inline tries, so the crash case is not covered.",
+    "How the M4 retry-queue row is created on Order's side when the inline tries fail, and how the Place order reply is bounded in time, is only partly described.",
+    "The format and contents of the customer email and the exact ops alert mechanism are not described.",
+    "Whether the cart should be locked during checkout, and whether Order should cancel early when the reservation expires instead of waiting for the webhook, are listed as open questions with no decision.",
+    "The document does not say how Order's SHORT reply form is mapped to the Place order response shape beyond 'lists the short items'.",
+    "The document does not say how Inventory decrements or tracks 'stock on hand' on a COMMITTED reservation beyond 'stock sold'."
+   ],
+   "verdict": "wrong",
+   "notes": "Crash gap: the document says M4 is queued only after its 3 inline tries fail, so a crash after the AWAITING_PAYMENT commit and before M4 is sent leaves no queue row and the order waits forever. The explanation could not cover this case. Fix: the M4 queue row is written in the same transaction as the AWAITING_PAYMENT commit, and the worker sends it if the process crashes before the inline try.; REFUSED from M2 is not routed in the flow. The Messages table and Decisions say a REFUSED reply sets FAILED, but the flow diagram sends the M2 reply only to the stock check. Fix: add a dotted branch from Inventory's M2 reply to FAILED, and state it in the M2 row and the Customer experience section.; Reply timing is not stated. The Place order reply can wait for M1, M2 and M4 at up to 3 tries of 2 s each, about 18 s in the worst case. Fix: state this bound in the Customer experience section.; Stock on hand on commit is not stated in the flow. The document says only 'stock sold'. Fix: the commit step reduces stock on hand by the reserved quantity, so the stock is no longer counted as held.; Items the junior could not explain that are already listed as open questions (broker settings, alert channel, provider acknowledgment contents, provider echo of order id or refund key, reconciliation answer for unknown ids, 30-minute pending limit, charge that never reaches the provider, refund retry key behaviour, stale REFUND_FAILED webhooks, email service, taxes and shipping, lost Place order reply, cart locking, early cancel). These are genuine unknowns, not document errors. They stay unchanged in Open questions and are not decided here."
+  },
+  {
+   "text": "Walkthrough of one checkout, following a customer who presses Place order on a cart where stock is fine and payment succeeds. Failure branches are noted at each step.\n\n1. Start. The customer's page makes a checkout token, one per press of Place order, and sends it to Order with the request. Order drives the whole flow. Its state is in its own tables (orders, order_lines, status history, processed event ids, outbox, retry queue).\n\n2. Order looks for an open order. Open means status PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED. If the token was seen before, or the cart already has an open order, Order returns that order's current status and makes no new one. A unique index over cart id (where status is open) enforces this under concurrent presses. Otherwise it creates an order in PLACING with a new order id. That id is the key for Inventory, Payment and the events. Order stores the cart id and the token.\n\n3. M1, Get cart. Order sends an HTTP GET to Cart with the cart id. Cart is read only here and changes nothing. It replies with the current lines (cart line id, sku, qty, unit price) and the currency. Timeout is 2 s, with 3 tries. If there is still no answer, Order sets FAILED. Nothing was reserved and the cart is unchanged. The Place order reply says FAILED and the customer is told to try again.\n\n4. Snapshot (O2). Order copies the lines, with their cart line ids and prices, into order_lines. This snapshot never changes afterwards. It computes total as the sum of price times quantity, and takes the currency from the M1 reply. The order row stores the total and currency.\n\n5. M2, Reserve stock. Order sends an HTTP POST to Inventory with the order id and the lines (sku, qty), keyed by order id. Inventory reserves every line in one transaction. The reservations are ACTIVE with expires_at set to now plus 10 minutes. The reply is one of three.\n   - RESERVED. Go on to step 6.\n   - SHORT, listing the short skus. Nothing is reserved. Order sets SHORT_STOCK, no payment is requested, and the reply lists the short items. The cart is unchanged.\n   - REFUSED, with reason RELEASED or EXPIRED. This happens when Inventory already has a record for that order id in that state.\n   If M2 gets no answer after 3 tries, or is REFUSED, Order sets FAILED and queues M6 (release) in the same transaction. The reply does not wait for the release. Any reply that arrives after Order has given up is dropped.\n   Inventory also runs a sweeper every minute that turns ACTIVE reservations past expires_at into EXPIRED. Commit checks expires_at itself and does not rely on the sweeper.\n\n6. Commit AWAITING_PAYMENT plus the M4 row. In one transaction, Order sets AWAITING_PAYMENT and writes an M4 row (due now) to its retry queue. Only after that commit does it send M4, the charge request. Writing both together means a crash after the commit cannot leave the order without a charge request. In that case the minute-check worker sends M4.\n\n7. M4, Charge request. Order sends an HTTP POST to Payment with order id, amount and currency. Payment creates a charge row (PENDING, key = order id) and an M11 queue row in one transaction. It replies 202 Accepted. Order does not wait for the provider. On the 202 the M4 row is removed. If M4 gets no answer after 3 inline tries, the row stays in Order's retry queue with the same order id and the order stays AWAITING_PAYMENT. Payment returns the existing charge for a repeated order id, so there is no double charge. Before each queued M4 try, Order checks that the order is still AWAITING_PAYMENT. If it has left that status, the row is removed without a call.\n\n8. Place order reply. The request returns after M1, M2 and M4, in about 18 s at worst. The reply always carries the order id and current status, which here is AWAITING_PAYMENT. The page then polls GET /orders/{id} every 2 s, only while the status is PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED. It stops at a final status (CONFIRMED, DECLINED, SHORT_STOCK, FAILED, REFUNDED).\n\n9. M11, Charge at provider. Right after the commit in step 7, Payment POSTs the charge to the provider with Idempotency-Key = order id. The provider's immediate reply is only an acknowledgment. The outcome never comes from that reply. When the provider accepts, Payment stores sent_at and reconcile_at (sent_at plus 30 min) and removes the queue row, in one transaction. If a try fails, the row stays in Payment's retry queue and the minute-check worker retries it with the same key.\n\n10. M10, Webhook. The provider POSTs an outcome to Payment. It can arrive within seconds or up to 30 min later, and it can repeat. In one transaction Payment inserts the provider event id (unique) and matches the charge by the stored provider charge id, or else by the order id the provider echoes back. If the charge is still PENDING, Payment sets SUCCEEDED or DECLINED and writes an M5 event to its outbox. It returns 200 only after the commit. A duplicate fails the insert, nothing happens, and 200 is returned. An unmatched webhook is stored as unmatched, ops is alerted, and 200 is returned.\n\n11. Reconciliation (P9). If no webhook has arrived by reconcile_at, a job running every minute asks the provider for the outcome by order id. The answer goes through the same conditional update as a webhook, so only one of the two applies. If the provider still says pending, reconcile_at is moved forward 30 min.\n\n12. M5, Payment outcome. Payment's outbox relay publishes PaymentSucceeded or PaymentDeclined on the broker, carrying order id, charge id and amount, and marks the row sent. It retries until the broker accepts. Order has its own durable subscription. Order acknowledges a message only after its own commit.\n\n13. Declined path. On PaymentDeclined (and the order is AWAITING_PAYMENT), Order sets DECLINED and queues M6. The customer sees a decline message and the cart is unchanged. A retry makes a new order id.\n\n14. Succeeded path. On PaymentSucceeded, in one transaction Order checks that the order is AWAITING_PAYMENT and that the M5 amount equals the stored total. It records the event id, sets PAYMENT_RECEIVED and writes an M3 row. Repeats of an event id are ignored. If the state or amount is wrong, Order records the event id, alerts ops and sends M8 so the full charged amount is refunded. It sets CANCELLED_OUT_OF_STOCK only if the order was AWAITING_PAYMENT. For a wrong-state PaymentDeclined it only records the event id and alerts ops.\n\n15. M3, Commit reservation. The queue worker (checks every minute) makes the first M3 try, an HTTP POST to Inventory keyed by order id. Inventory accepts only if the reservation is ACTIVE and not past expires_at. It then reduces stock on hand by the reserved qty and marks the reservation COMMITTED. A repeat on a COMMITTED reservation replies COMMITTED. The M3 row is removed on COMMITTED or REFUSED. With no answer, the order stays PAYMENT_RECEIVED and retries, and ops is alerted after 10 tries.\n\n16. Confirmed. On COMMITTED, Order sets CONFIRMED and writes the M7 OrderConfirmed event to its outbox in the same transaction. The relay publishes it. Cart consumes it. In one transaction Cart records the event id and deletes the ordered lines by cart line id, taken from the order_lines snapshot. Lines added later stay. A repeat matches nothing. The next poll shows CONFIRMED and the cart is emptied. This is the only point where Cart is changed.\n\n17. Late success. If M3 is REFUSED for any reason (the hold lapsed, was released, or not found), Order sets CANCELLED_OUT_OF_STOCK and sends M8 through its outbox. The customer sees \"cancelled, refund in progress\".\n\n18. Refund. Payment consumes M8 and creates a refund row (REFUND_PENDING), once per order id, plus an M12 queue row. It sends M12 (full amount, Idempotency-Key = refund for order id) right after the commit. On provider acceptance it sets reconcile_at to accept time plus 30 min and removes the row. The outcome comes by webhook or reconciliation, deduplicated by event id.\n   - Refund succeeded. The refund becomes REFUNDED and an M9 RefundCompleted event goes to the outbox. Order sets REFUNDED and writes the email outbox row in the same transaction, only from CANCELLED_OUT_OF_STOCK. A repeat M9 sends no second email.\n   - Provider says the refund failed. The refund becomes REFUND_FAILED, and the M12 row is reopened with the attempt count plus one. It is resent with the same key after backoff. Ops is alerted after 10 tries. The customer is not told, and no email is sent until the refund is confirmed.\n\n19. Cross-cutting failure rules.\n   - Queued calls (M3, M4, M6, M11, M12) back off from 1 minute, doubling up to a cap of 1 hour. They never give up.\n   - Events wait in the sender's outbox until published.\n   - Ops is alerted after 10 failed tries or deliveries.\n   - A consumer that cannot commit an event leaves it unacknowledged and the broker redelivers it.\n   - A recovery job in Order fails any order that has been PLACING for more than 5 minutes. It writes the M6 row in the same transaction. Inventory creates a RELEASED record if it has none, so a late M2 is refused.\n   - M6 sets an ACTIVE reservation to RELEASED. If the reservation is COMMITTED it replies COMMITTED and Order alerts ops.",
+   "gaps": [
+    "Which message broker is used, and its redelivery, ordering and dead-letter settings, is not stated.",
+    "Where ops alerts go (channel, runbook) is not stated.",
+    "Whether the provider echoes the order id or refund key in webhooks is unknown, and so is whether its acceptance reply carries a provider charge or refund id. Matching an unmatched webhook is therefore unresolved.",
+    "What the provider answers to a reconciliation query for an unknown order id or refund key is unknown. The document only says it is treated as not accepted.",
+    "Whether the provider can still report pending after 30 min is unknown.",
+    "What happens to a charge that never reaches the provider is not decided. No timer runs and the order waits in AWAITING_PAYMENT while its cart cannot start a new order.",
+    "Whether the provider returns the old result when a refund is retried with the same Idempotency-Key after a failure is unknown.",
+    "How a stale REFUND_FAILED webhook from an earlier attempt is matched to attempts is not defined.",
+    "Which email service sends the customer email is not named, and a possible double send after a crash is unresolved.",
+    "Tax, shipping and discounts are not in the total.",
+    "How a customer who lost the Place order reply learns the order id is not decided.",
+    "The document does not say how the minute-check worker and the inline M4 try avoid sending at the same moment. Both rely on Payment returning the existing charge.",
+    "The document does not say how Order maps a RELEASED or EXPIRED REFUSED from M2 to which of its states, beyond FAILED. It also does not say what exactly 'Order checks the order' means for DECLINED events when an order has left AWAITING_PAYMENT beyond recording the event.",
+    "Whether the cart is locked during checkout is not decided. The design does not lock it.",
+    "The document does not say what the M1 reply contains if the cart is empty.",
+    "How Order learns of an M3 REFUSED reason NOT_FOUND differently from the other reasons is not described. All lead to CANCELLED_OUT_OF_STOCK."
+   ],
+   "verdict": "wrong",
+   "notes": "M2 REFUSED mapping: the junior could not tell how Order maps a RELEASED or EXPIRED refusal beyond FAILED. The rule (any REFUSED sets FAILED and queues M6) was stated only in Decisions, so the Messages row now states it.; M3 REFUSED reasons: the junior asked how Order tells NOT_FOUND from the other reasons. The design treats all REFUSED reasons the same, and the Decisions section now says so explicitly.; PaymentDeclined for an order that has left AWAITING_PAYMENT: the junior could not tell what 'Order checks the order' means. The Decisions text now states that the status check runs in the same transaction and that only the event id is recorded.; Overlap of the inline M4 try and the minute-check M4 retry: the junior could not tell how they avoid sending at the same time. The design relies on Payment's order-id key, and this is now stated as a Decision.; Empty cart: the junior noted that the document does not say what M1 returns for an empty cart. This is a real gap, so it is now listed as an open question."
+  },
+  {
+   "text": "1. Customer presses Place order. The customer's page makes a checkout token (once per press) and sends the Place order request to Order. Order is the service that drives checkout. Nothing is said about how the request reaches Order or what the request body holds besides the token.\n\n2. Order (O1) looks for an open order (PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED) for this cart, or one with the same token. If it finds one, it replies with that order's current status and nothing else happens. If not, it creates an order in status PLACING with a new order id (Order makes this id; the id keys Inventory, Payment and the events). State sits in Order's `orders` table (cart id, checkout token, status). A unique index on cart id for open statuses stops two concurrent presses from making two orders.\n\n3. M1: Order sends HTTP GET \"Get cart\" to Cart with the cart id, 2 s timeout, 3 tries. Cart replies with the current lines (cart line id, sku, qty, unit price) and the currency. Cart changes nothing. If there is no answer after 3 tries, Order sets FAILED. Nothing was reserved and the cart is unchanged. No M6 is queued here, because M2 was never sent.\n\n4. O2: Order copies the lines (with cart line ids) and prices into `order_lines`, a frozen snapshot, and computes the total (price times quantity, summed). It stores the total and currency on `orders`.\n\n5. M2: Order sends HTTP POST \"Reserve stock\" to Inventory with the order id and the lines (sku, qty). Inventory reserves every line in one transaction. It writes reservations as ACTIVE with expires_at = now + 10 min. The idempotency key is the order id. Possible replies:\n   - RESERVED, and the flow continues.\n   - SHORT, with the short skus. Nothing is reserved. Order sets SHORT_STOCK and requests no payment. The customer sees the short items and the cart is unchanged.\n   - REFUSED (reason RELEASED or EXPIRED), or no answer after 3 tries. Order sets FAILED and queues M6 (release) in its retry queue, in the same transaction. The customer is told checkout failed and to try again. A reply that arrives after Order gave up is dropped.\n\n6. In the background, Inventory's sweeper runs every minute and turns ACTIVE reservations past expires_at into EXPIRED. The hold is not extended. Commit also checks expires_at itself.\n\n7. When every line is reserved, Order (O3) commits status AWAITING_PAYMENT and an M4 row in its retry queue (due now) in one transaction. Then it sends M4 \"Charge request\" (HTTP POST to Payment: order id, amount, currency) inline. It does not wait for the provider. Payment (P1) stores a charge row PENDING and an M11 queue row in one transaction, then replies 202 Accepted. The Place order reply is then status AWAITING_PAYMENT, with the order id.\n   - The M4 row is removed on the 202. Before each M4 try, Order checks the order is still AWAITING_PAYMENT. If it has left that status it drops the row without calling.\n   - If there is no answer after 3 inline tries, the order stays AWAITING_PAYMENT, the row stays queued, and the reply is the same. Payment returns the existing charge for a repeated order id, so no double charge.\n   - If Order crashes after the commit, the minute-check worker sends M4.\n   - If Order crashes before AWAITING_PAYMENT, or the order is still PLACING after 5 minutes, the recovery job (every minute) sets FAILED and writes the M6 row in one transaction.\n\n8. The page polls GET /orders/{id} every 2 s while the status is pending (PLACING, AWAITING_PAYMENT or PAYMENT_RECEIVED). It stops at a final status (CONFIRMED, DECLINED, SHORT_STOCK, FAILED, REFUNDED).\n\n9. M11: Payment sends the charge to the provider (HTTP POST, Idempotency-Key = order id) right after the P1 commit. The provider's immediate reply is only an acknowledgment. When the provider accepts, Payment stores sent_at and reconcile_at = sent_at + 30 min, and removes the queue row, in one transaction. If the try fails, the row stays in Payment's retry queue. The minute-check worker retries it with the same key. Backoff starts at 1 min and doubles to a 1 h cap. Queued calls never give up. Ops is alerted after 10 failed tries. If the provider never accepts, no timer runs.\n\n10. Outcome arrives by M10 webhook (seconds to 30 min, possibly repeated) or by reconciliation. The webhook handler (P3) inserts the provider event id (unique) into `webhook_events`. It matches the charge by provider charge id, or by the echoed order id. In one transaction, only if the charge is still PENDING, it sets SUCCEEDED or DECLINED and writes an M5 event to Payment's outbox (P4). A duplicate event id fails the insert, so nothing changes and Payment returns 200. Payment returns 200 only after its commit, otherwise the provider resends. An unmatched webhook is stored as unmatched, ops is alerted and 200 is returned.\n\n11. Reconciliation (P9) runs every minute. It takes charges PENDING (or refunds REFUND_PENDING) whose reconcile_at has passed. It asks the provider by order id or refund key and feeds the answer into the same conditional update (P4 or P7). If the provider says still pending, reconcile_at moves to now + 30 min. A charge the provider does not know is treated as not accepted, not declined.\n\n12. M5 (PaymentSucceeded or PaymentDeclined, with order id, charge id and amount) is published by Payment's outbox relay to the broker. The relay retries until the broker accepts. Order has its own durable subscription. It acknowledges only after its own commit. If a technical failure stops the commit, the broker redelivers. Ops is alerted after 10 failed deliveries, and the message is kept.\n\n13. Declined path: for PaymentDeclined with the order in AWAITING_PAYMENT, Order sets DECLINED and queues M6 (release) in one transaction. The customer sees the decline message and the cart is unchanged. A retry is a new press with a new order id.\n\n14. Succeeded path: in one transaction Order checks the status is AWAITING_PAYMENT and that the M5 amount equals the stored total. It records the event id as processed, sets PAYMENT_RECEIVED, and writes an M3 queue row. The customer sees \"payment received, confirming\". The queue worker makes the first M3 try on its next minute-check.\n\n15. M3 \"Commit reservation\" (HTTP POST to Inventory, order id). Inventory accepts only if the reservation is ACTIVE and not past expires_at. Then it reduces stock on hand by the reserved qty and sets COMMITTED. A repeat on a COMMITTED reservation replies COMMITTED. Otherwise it replies REFUSED (EXPIRED, RELEASED or NOT_FOUND). The M3 row is removed on COMMITTED or REFUSED. With no answer, the order stays PAYMENT_RECEIVED and the row retries with backoff, and ops is alerted after 10 tries.\n\n16. Commit accepted: Order sets CONFIRMED and writes an M7 OrderConfirmed event (order id, cart line ids from order_lines) to its outbox, in the same transaction. The relay publishes it to the broker. Cart, the subscriber, in one transaction records the event id and deletes those lines by line id. It acknowledges after the commit. Lines added later stay. A repeat changes nothing. This is the only point where Cart changes. The customer sees the confirmation and the cart is emptied.\n\n17. Commit refused (any reason, treated the same): Order sets CANCELLED_OUT_OF_STOCK and writes M8 (order id, charged amount, currency) to its outbox. Payment consumes M8 and creates a refund row REFUND_PENDING (once per order id) plus an M12 queue row (due now) (P5). It sends M12 to the provider, a full refund with Idempotency-Key = \"refund for order id\". On provider acceptance, reconcile_at = accept + 30 min and the queue row is removed. The customer sees \"cancelled, refund in progress\".\n\n18. Refund outcome arrives by M10 refund webhook or by reconciliation (P7). It applies unless the refund is already REFUNDED.\n   - REFUNDED: Payment writes an M9 RefundCompleted event to its outbox. Order consumes it. In one transaction (only from CANCELLED_OUT_OF_STOCK) it sets REFUNDED and writes the customer email row to its outbox. The relay sends the email. The customer is refunded in full and emailed. A repeat M9 is ignored by event id.\n   - REFUND_FAILED: in the same transaction Payment sets REFUND_FAILED and reopens the M12 row with attempt count + 1. It resends with the same key after backoff and sets REFUND_PENDING again. Ops is alerted after 10 tries. Order never sees the failure, and the customer gets no email and no failure notice.\n\n19. Anomalies. A PaymentSucceeded for an order not in AWAITING_PAYMENT, or with a different amount: record the event id, alert ops, send M8 so the full charge is refunded, and set CANCELLED_OUT_OF_STOCK only if the order was AWAITING_PAYMENT. A PaymentDeclined for an order not in AWAITING_PAYMENT, or an M9 for an order not in CANCELLED_OUT_OF_STOCK or REFUNDED: record the event id, alert ops, change nothing. M6 on a COMMITTED reservation changes nothing, replies COMMITTED, and Order alerts ops.",
+   "gaps": [
+    "How the Place order request travels to Order and what it contains besides the checkout token (endpoint, auth, body) is not stated.",
+    "Which message broker is used, and its redelivery, ordering and dead-letter settings, are unknown.",
+    "Where ops alerts go (channel, runbook) is not decided.",
+    "What the provider's immediate acceptance reply contains (e.g. a provider charge or refund id) is unknown.",
+    "Whether the provider echoes the order id or refund key in webhooks is unknown, so matching a first webhook is uncertain.",
+    "What the provider answers to a reconciliation query for an unknown order id or refund key is unknown, as is whether that is a permanent state.",
+    "Whether the provider can still report a charge or refund as pending after 30 minutes is unknown, so the pending page could last longer.",
+    "No timeout rule exists for a charge that never reaches the provider. The order stays AWAITING_PAYMENT, and the hold expires meanwhile.",
+    "Whether a refund retried with the same Idempotency-Key after failure returns the old failed result is unknown.",
+    "How a FAILED refund webhook from an older attempt is matched to attempts is not decided.",
+    "Which email service sends the customer email is not named, and the risk of a duplicate email after a crash is not decided.",
+    "Tax, shipping and discounts are not in the total.",
+    "An empty cart (M1 returns no lines) is not handled: it is undecided whether Order refuses, fails, or what total and currency it would carry.",
+    "How a customer who lost the Place order reply finds the order id is not decided.",
+    "Whether the cart should be locked during checkout, and whether removing only ordered lines is intended, is unresolved.",
+    "Whether Order should cancel early when the reservation expires is undecided; the design waits for the webhook.",
+    "How the page shows a FAILED refund is not covered (the customer sees nothing, ops is alerted).",
+    "The document does not say how the 'minute-check worker' and the relay processes are deployed or coordinated beyond running every minute, nor how a stuck worker is detected.",
+    "The document gives no description of how the customer is shown the DECLINED/FAILED messages beyond the quoted text, nor how the page learns the order id after the reply."
+   ],
+   "verdict": "wrong",
+   "notes": "The Place order request is not described. The junior could not say how it reaches Order (transport, endpoint, body). The revised document states that the customer's page sends it as an HTTP POST to Order with the cart id and the checkout token, and that the reply carries the order id and status. Authentication is added to the open questions.; The document does not say how the outbox relay and the minute-check workers are deployed or coordinated, or how a stuck worker is detected. The revised document adds this to the open questions.; The junior said the page does not learn the order id after the reply. The document already says the Place order reply always carries the order id. This was a reading gap, not a document gap, and the revised text makes the link explicit in the Customer experience section.; The other items the junior could not explain (broker settings, alert channel, provider reply contents, provider echo of order id or refund key, provider answer for unknown ids, pending after 30 minutes, charge that never reaches the provider, refund retry key, late FAILED webhook, email service, tax and shipping, empty cart, lost reply, cart lock, early cancel) are already listed as open questions. The junior's step-by-step explanation of the flow is otherwise correct, so these stay as open questions and are not changed."
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachbacks"
+}

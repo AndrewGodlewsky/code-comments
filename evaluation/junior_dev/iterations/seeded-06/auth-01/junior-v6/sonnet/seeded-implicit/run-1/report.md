@@ -1,0 +1,29 @@
+## Review of auth-01 (junior-v6, author sonnet, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added the opening paragraph and terms, including why Postgres rather than Redis, so a newcomer knows how the system works.
+- Expanded the diagram to cover lockout (429), bad credentials (401), success, validation failure and logout with no session, as the brief requires.
+- Stated what login_locks and login_failures store and when each is written (Q1, Q2).
+- Defined the sessions columns and that the cookie holds only the session id (Q3).
+- Stated how idle and max timeouts are checked and that each request extends idle time (Q4).
+- Made unknown email identical to wrong password, including counting and the 401 message (Q5).
+- Stated that the incoming session is deleted and a new id issued on login (Q6).
+- Decided DB errors fail closed with a 503 page (Q7).
+- Stated that success clears failures and redirects to /dashboard (Q8).
+- Added cleanup details, a note that counting may overshoot by one under a race, and an open questions section.
+- Added a rule that GET /login is open, never reads the cookie, and shows the form even to signed-in users; added GET /login to the diagram (answers Q11).
+- Made the login-success delete, failure clear and session insert one transaction, with the cookie set only after commit and rollback on failure (answers Q10); marked it in the diagram with a note.
+- Extended the fail-closed 503 rule to logout: session not destroyed, cookie not cleared, user can retry (answers Q9).
+- Added an opening paragraph describing today's system (public pages, server-rendered, two instances, no sticky sessions) and the end-to-end flow, with the reason for Postgres over Redis.
+- Expanded the terms: added bcrypt check with dummy hash, fail closed, lowercase handling; moved the Postgres-vs-Redis reason into the summary.
+- Replaced the loose 'Rules and decisions' list with seven numbered steps (show form, check lock, check password, succeed, check each request, log out, clean up), each stating trigger, action, data, and failure behavior.
+- Merged the repeated rules (unknown email same as wrong password, 429 same for any email, per-email lockout, transaction on success) into the steps where they apply.
+- Merged failure handling into one 'what happens when things fail' section, including the logout 503 reason and the accepted concurrent-failure race.
+- Kept every stated fact: 5 fails / 10 min, 15 min lock, 30 min idle, 12 h max, cookie flags, 401/429/503 codes, /dashboard redirect, cleanup every 5 minutes, other sessions untouched, GET /login never reads cookie.
+- Kept the Mermaid diagram unchanged; put summary and terms before it and steps after it.
+- Kept the open questions section at the end; no rollout section was added because the plan contains none.
+
+### Holes
+- None.

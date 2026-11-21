@@ -1,0 +1,25 @@
+## Review of infra-02 (junior, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Terms: added what deploy.sh canary does to the cluster (separate deployment, 2 pods, 10 percent of traffic, shared database), answering Q1.
+- Terms: stated that no pipeline step checks migration compatibility with the previous image, answering Q2.
+- Terms: defined how newer than and ancestor are decided (git merge-base --is-ancestor on a full-history checkout, fail closed on an unknown current_tag), answering Q3.
+- Approval decision: said who can approve instead, that nobody is notified automatically, and what happens if the author is the only approver, answering Q4.
+- Rollback decisions: added that after a successful production deploy a human runs rollback production using previous_tag, answering Q5.
+- Several-merges decisions: added that a waiting run does not inspect the failed holder and does its own superseded check, and that canary-off runs before the lock is released, answering Q7.
+- Canary decision and diagram: made canary-off an always-run cleanup job that survives cancellation, and reworded the Failure end box so that stop the other jobs does not cancel cleanup, answering Q8.
+- Holes: added unknown smoke content, unchecked migration compatibility, manual rollback bypassing the production lock, and the assumption that CI can run cleanup on cancel.
+- Replaced the 'How to read this' bullet list with a two-sentence summary (how it works today, the main flow, why) followed by a Terms section.
+- Added terms for deploy.sh commands, CI lock, approval job, superseded, and window; the superseded definition now holds the git ancestor rule and fail-closed behaviour once.
+- Moved the superseded rule out of the decisions into the terms, so the decisions only say where it applies and why.
+- Merged the migration-check hole into the migrations term and the open questions, and merged the repeated 'rollback restores image only' statements into the term plus the diagram.
+- Added the Prometheus query text from environments.md to the canary measurement decision, so the numbers and query are stated once.
+- Moved the post-production-deploy rollback note out of the rollback decisions to sit under the steps table, where the flow ends.
+- Moved 're-run restarts at build' from the holes to the several-merges decisions; added the full-history checkout assumption to open questions.
+- Kept the diagram and steps table unchanged apart from a pointer fix ('see rollback rules'); renamed 'Holes and assumptions' to 'Open questions' and put it last.
+- Cut repeated explanations of the window start-only rule and of lock scope; no requirement, limit or number from the first version was dropped.
+
+### Holes
+- Q6: Staging and production are separate environments, but the document says the smoke tests and canary watch are the only checks. What does `make smoke` check, and what makes it pass or fail? (author: environments.md only says `make smoke ENV=staging` takes about 3 min and hits the staging URL. What it asserts is not known. I assume a non-zero exit code is a failure. The document never claims smoke and the canary watch are the only checks. Listed as a hole.)

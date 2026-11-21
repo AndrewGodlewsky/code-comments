@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL outbox row, inserted in the same MySQL transaction as the write, records that Postgres is behind. It lives in the MySQL `users_outbox` table, so it survives an app crash after the commit. The repairer works through the outbox, reads the current row from the source primary, runs the guarded copy to Postgres, and deletes the outbox row once the copy succeeds.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Every copy and erase takes the same per-id lock (`pg_advisory_xact_lock(id)` in Postgres, a locking read on the tombstone key in MySQL). The guarded copy checks for a tombstone under that lock and skips if one exists, while the erase writes the tombstone and deletes the row in one transaction. So an in-flight copy either finishes before the erase and is then deleted, or runs after it and sees the tombstone and skips.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is kept as `backfill_last_id` in `users_migration_state` on the MySQL primary, along with the lease. It is advanced only after the Postgres batch transaction has committed, so a crash in between re-reads and re-copies that batch, which is safe because the copy is idempotent. The backfill stops when a batch comes back empty (it then marks the backfill complete) or when the worker loses its lease.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The verifier walks both tables in primary-key order with a merge join, comparing id, email, name, plan, version and updated_at, and also finds Postgres rows with no MySQL row. Each mismatch is rechecked against the MySQL primary once its outbox rows are gone; if it still differs, the verifier inserts an outbox row so the repairer fixes it, and a tombstoned id found in Postgres is removed. A mismatch that repeats after the recheck is recorded in `users_verify_mismatch` and blocks the next gate, but does not stop the verifier.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each store has one control row that every write reads under a shared lock held until its commit, and the pause takes the exclusive lock on the old source's row, so it waits for in-flight writes. Writes are accepted only when their own store's control row names that store as source, is not paused, and has the instance's cached epoch. Step 5 then fences the old source by changing its source and epoch, so a stale instance is refused. If the switch runs long, it aborts by unpausing the old source before step 4 (the drain is capped at 45 s), and after step 4 it always rolls forward.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Before the switch MySQL's AUTO_INCREMENT assigns ids. After any change of source, step 3 of procedure S sets the new source's identity sequence (or AUTO_INCREMENT) above the largest id in either store plus 1,000,000, and mirrored rows keep their original explicit ids. Collisions after a rollback are prevented by checking that MySQL's AUTO_INCREMENT is above the largest id before the unpause in step 6, because InnoDB advances it only on explicit inserts. The 1,000,000-id margin is an assumption.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch, the repairer copies each Postgres outbox row into MySQL through the guarded copy, and the verifier keeps comparing the MySQL mirror with the source, so MySQL stays complete enough to roll back. A rollback is procedure S with Postgres as the old source and MySQL as the new source. It requires the mirror backlog to be drained, a clean pass after the switch less than 24 h old, and MySQL reachable, and the reads flag is moved to MySQL first; a drain that exceeds 45 s aborts before step 4. The option ends when step 11 sets `mirror = off`, which may happen no earlier than 14 days after `source_changed_at`.",
+  "decided": true
+ }
+}

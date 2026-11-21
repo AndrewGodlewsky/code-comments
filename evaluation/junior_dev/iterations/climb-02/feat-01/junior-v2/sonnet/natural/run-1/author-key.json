@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Status is kept in a new `report_exports` table on the primary database (queued, running, done, failed), and reads go to the primary. The page learns of changes by polling `GET /api/reports/{report_id}/exports/latest` every 5 seconds while the state is queued or running, and it also fetches the state when the page loads. That is how a user who reopens the page later sees it, since state never lives in the browser.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The job streams the report. It reads 5,000 rows at a time from the replica using keyset paging, appends the CSV text to an in-memory buffer, and uploads each 8 MiB part with multipart upload when the buffer fills. It then frees the buffer. Memory stays at a few tens of MB. At about 115 parts, the 900 MB report is far below the 10,000-part limit. The final `complete_multipart` publishes the file.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Nothing is visible at the key until `complete_multipart`, so partial data is never downloadable. On an exception the handler makes a best-effort `abort_multipart`. If the worker dies or times out, the unfinished upload is discarded by the bucket's 24-hour rule. The queue keeps no progress, so the next attempt restarts from the beginning: it starts a new multipart upload and the first row, and it overwrites the same object key on completion.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The filters and column order are copied from the click into the `filters` and `cols` columns of the `report_exports` row, which is created in the same primary-database transaction. The job payload carries only the `export_id`, which keeps it far below the 64 KB limit. The handler loads the filters and columns from the row, so every retry uses the same view.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A partial unique index on `report_exports (user_id, report_id) WHERE status IN ('queued','running')` enforces it in the database. If two requests insert at the same moment, one insert wins and the other hits the unique violation. The loser reads and returns the existing active export instead of starting a second one. Step 4 first marks stale active rows as failed, so a dead export does not block the user forever.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "The file must first be fully published: `complete_multipart` has succeeded and the row is marked `done` with `completed_at`. The email then goes out, and `email_sent_at` is set only if the email is sent. If the queue runs the handler again, it loads the row. A `failed` row means it returns and does nothing. A `done` row means it skips the rebuild and only sends the email if `email_sent_at` is empty, so there is no second file and normally no second email. The one exception is a worker dying between sending the email and saving `email_sent_at`, which I accept as a possible duplicate email.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The small path builds the whole CSV in memory before sending anything, so a failure partway produces no truncated download. A replica error or timeout returns a 500 and the user can click again. No job, export row, or stored file exists, so there is nothing to clean up.",
+  "decided": true
+ }
+}

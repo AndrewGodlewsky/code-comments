@@ -1,0 +1,17 @@
+## Review of auth-02 (simplify-only, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Merged the 'Interpretations and assumptions' section into the places they affect: the retry count into runtime startup, overlapping keys into step 1 and open question 2, pod identity into the terms, and environments into open question 4.
+- Moved the rollback rules into one failure-and-rollback table, and removed the separate Rollback section.
+- Removed the restated failure cases in step 6 that duplicated the startup rule. Step 6 now refers to the startup rule once.
+- Merged the four local-development steps into four short lines, kept in their own section apart from rollout.
+- Cut the loaded_at field from the secret cache, since no step uses it.
+- Merged readiness and liveness into one runtime item, and shortened the refresh and redaction items without changing their rules.
+- Gave every rollout step the same four parts: starts, does, state, and if it fails.
+- Added a short terms section so a newcomer knows secret store, version id, secret cache, workload identity, revoke and grace period.
+- Kept intent unchanged: no rotation cadence chosen, the 60-second grace period still marked as the author's choice, and no new locking, retry queue or takeover mechanism added.
+
+### Holes
+- None.

@@ -1,0 +1,76 @@
+{
+ "label": "act-t-sqlite-haiku-desc",
+ "model": "haiku",
+ "hooks": false,
+ "wall_s": 57.1,
+ "cost_usd": 0.013651090000000003,
+ "junior_cost_usd": 0.0,
+ "num_turns": 11,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-uj8yl1oy\\project\\docs\\plans\\sqlite-migration.md",
+  "artifact_hash": "031872edb666da8d0f0f467e4c938d313d7a7c81de8c03afabd1f9d752f9fb85",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The plan is written at `docs/plans/sqlite-migration.md`. No code was changed.\n\nThe junior-dev review did not really run. `ask` returned \"NO MORE QUESTIONS\" straight away, and `teachback` printed \"(activation run: the junior is stubbed)\". So nothing checked whether a fresh reader can follow the plan. I did not mark it as correct, because that would record a pass that never happened. The review state is in `.junior-dev/sqlite-migration-0296745a`.\n\n**What the code shows**\n- `data/orders.json` is read and rewritten whole in `src/app.py:26-29`. Ids come from `len(orders) + 1`, and the file is truncated before each write.\n- The file currently holds `[]`, so there are zero orders today. The plan still has to hold for a file that grows before cutover.\n- `src/app.py` has no HTTP handler, although the README describes `POST /orders`. The concurrency model is unknown, so the plan assumes concurrent requests.\n\n**How orders can be lost today**\n1. Two concurrent requests can get the same id, and the second write overwrites the first.\n2. `charge()` runs before the order is written. A crash in between takes money with no record.\n3. A crash during `write_text` can leave invalid JSON.\n\n**What the plan proposes**\n- A SQLite schema with `orders` and `order_items` tables that keep the original ids.\n- A `pending` → `placed`/`failed` status flow, so every charge has a record.\n- A backup, a validating dry run, an import in one transaction, and a round-trip check against the original file.\n- An export script and a tested rollback, since orders placed after cutover exist only in the database.\n- Tests that do not exist yet.\n\n**Decisions for you** (also in section 9 of the plan)\n- Accept a short stop at cutover.\n- Accept the new `status` column, which records failed attempts too.\n- Whether to store the charged amount. The JSON does not have it.\n- Whether stock moves into the database. It is still in memory and resets on restart.\n- Whether `pending` orders are refunded automatically or reviewed by hand. `payments.py` has no refund function.\n- How long to keep `orders.json` and the backups.\n- Where the `POST /orders` handler lives.\n\nTo get a real teach-back, the junior-dev tool needs its junior enabled, and then the review can be rerun on this file.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/sqlite-migration.md": "# Plan: move orders from `data/orders.json` to SQLite\n\nStatus: proposed. No code has been changed yet.\n\n## 1. Goal and non-goals\n\n**Goal:** orders are stored in a SQLite database. Every order that exists in `data/orders.json` at cutover is present in the database, with the same `id`, `customer`, `items` and `payment`. No order is lost, duplicated or silently rewritten, including during the cutover and if the change has to be rolled back.\n\n**Non-goals (this change):**\n- Moving stock levels (`STOCK` in `src/app.py`) into the database. Stock is still in memory and resets on restart. This is a separate problem and is flagged in section 9.\n- Adding an HTTP layer, authentication or a migration framework.\n- Deleting `orders.json`. It stays on disk as the pre-migration snapshot.\n\n## 2. Current state (facts from the code)\n\n| Where | What it does |\n|---|---|\n| `src/app.py:8` | `ORDERS` is `data/orders.json`, resolved from the package path. |\n| `src/app.py:26` | `place_order` reads the whole file with `json.loads(ORDERS.read_text())`. |\n| `src/app.py:27` | The new order's id is `len(orders) + 1`. Ids are derived from list length, not stored. |\n| `src/app.py:29` | The whole file is rewritten with `write_text`. The write truncates first, so a crash mid-write leaves a partial file. |\n| `src/payments.py:6` | `charge()` has no refund function. |\n| `README.md` | Says \"It needs no database\" and \"Orders are kept in `data/orders.json`\". Both become false. |\n\nCurrent data: `data/orders.json` contains `[]` (0 orders). The plan still has to work for a file that has grown by cutover, because the file may get orders before the migration runs.\n\nOther observations:\n- `src/app.py` has no HTTP handler and no `__main__` block, although the README says `python -m src.app` serves `POST /orders`. The concurrency model (single-threaded or threaded server) is therefore unknown. This plan assumes concurrent requests are possible.\n- The repo is not a git repository and has no tests.\n\n## 3. How orders can be lost today (and what the migration must fix)\n\n1. **Lost update on concurrent requests.** Two requests read the file, both compute the same id, and the second write overwrites the first. The first customer is charged and gets a receipt for an order that no longer exists. SQLite transactions fix this.\n2. **Charged but not recorded.** `charge()` runs at line 21, and the order is written at line 29. A crash, exception or full disk in between takes the customer's money with no record. Section 5 changes the order of operations to fix this.\n3. **Corrupted file on crash.** `write_text` truncates the file before writing. A crash leaves invalid JSON, and every later `json.loads` raises. SQLite's journal makes each commit atomic.\n4. **Ids can collide later.** `len + 1` is only unique while nothing is ever removed. The database uses an `INTEGER PRIMARY KEY`, so ids are never reused.\n\n## 4. Target schema\n\n```sql\nCREATE TABLE orders (\n  id          INTEGER PRIMARY KEY,   -- preserved from JSON for migrated rows\n  customer    TEXT NOT NULL,\n  payment_id  TEXT NOT NULL,\n  status      TEXT NOT NULL CHECK (status IN ('pending', 'placed', 'failed')),\n  created_at  TEXT                   -- NULL for migrated rows (the JSON has no timestamp)\n);\n\nCREATE TABLE order_items (\n  order_id  INTEGER NOT NULL REFERENCES orders(id),\n  name      TEXT NOT NULL,\n  qty       INTEGER NOT NULL CHECK (qty > 0),\n  PRIMARY KEY (order_id, name)\n);\n```\n\n- Every migrated row gets `status = 'placed'`, because the JSON only ever contains placed orders.\n- `created_at` is left NULL for migrated rows. The migration must not invent timestamps.\n- Connections use `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode = WAL`.\n- The database file is `data/shopfront.db`. It is added to `.gitignore` and is never committed.\n- The stdlib `sqlite3` module is used. No new dependency.\n\n## 5. Code changes (described, not yet made)\n\n**`place_order` becomes:**\n1. Check stock (unchanged).\n2. In a transaction, insert the order with `status = 'pending'` and its items. Take the id from SQLite, so concurrent requests get unique ids.\n3. Call `charge()`.\n4. If the charge fails, set `status = 'failed'` and return \"payment failed\".\n5. If the charge succeeds, store `payment_id` and set `status = 'placed'` in a transaction.\n6. Decrement in-memory stock only after the order is `placed`.\n\nIf the process dies between steps 3 and 5, the row stays `pending` with no payment id recorded. A startup check lists `pending` rows and flags them for manual review. Nothing is silently lost, and nothing is charged without a record. Step 5 must record the payment id before any other step can fail, so a `pending` row with a payment id is treated as \"charged, not yet confirmed\".\n\n**Load and save helpers** (`src/app.py`): the JSON read and write are replaced by database reads and writes. `ORDERS` is removed or pointed at the new database path.\n\n**`payments.py`:** no change for this migration. A refund function is needed only if the user wants automatic reversal of a `pending` order that was charged (see section 9).\n\n**`README.md`:** update the \"no database\" sentence and the storage location.\n\n## 6. Migration runbook\n\nRun once, at cutover, while the service is stopped.\n\n1. **Stop the service.** Confirm no process is running `python -m src.app`. Orders placed during the migration would otherwise be missed.\n2. **Back up.** Copy `data/orders.json` to `data/backups/orders-<UTC timestamp>.json`. Record its SHA-256 in the migration log. Keep the backup until sign-off in section 9.\n3. **Validate (dry run).** The migration script reads the JSON and checks:\n   - the top level is a list;\n   - each entry has exactly the keys `id`, `customer`, `items`, `payment`;\n   - `id` is an int, unique, and the ids form `1..N` with no gaps (a gap or duplicate means a lost update already happened: stop and report it, do not guess);\n   - `customer` is a non-empty string;\n   - `payment` is a non-empty string;\n   - `items` is a non-empty dict of item name to positive int, and each name is in `PRICES`.\n   The dry run prints the order count and the list of any rejected entries. It writes nothing.\n4. **Import.** If validation passes, the script creates `data/shopfront.db` with the schema above and inserts all orders and items in one transaction, with the original ids. It refuses to run if the database already exists and has rows. It never overwrites data.\n5. **Verify.** The script exports the database back to JSON in canonical form (sorted by id, items sorted by name) and compares it with the canonical form of the original file. The two must be identical. It also checks row counts in both tables and the total quantity per order. Any mismatch aborts and the database file is deleted.\n6. **Cut over.** Deploy the code change and start the service. Place one test order against a separate test database first, then against production, and confirm that it appears with the next id.\n7. **Keep the JSON.** Leave `data/orders.json` where it is, unchanged. The app no longer reads it.\n\n## 7. Rollback\n\nRollback is needed if the new code misbehaves after cutover. Orders placed after cutover exist only in the database, so a plain code revert would lose them.\n\n- The export-to-JSON script (the same canonical export used in step 5) must be written and tested before cutover. It recreates `data/orders.json` from the database.\n- Rollback steps: stop the service, run the export to a new file, check it against the database counts, revert the code, restart. The original `orders.json` backup stays untouched in `data/backups/`.\n- Rollback is tested on a copy of the database before the real cutover.\n\n## 8. Tests (none exist today)\n\nAdd a test suite using a temporary database file for each test.\n\n- A placed order is stored with `status = 'placed'` and the expected items and payment id.\n- An out-of-stock order writes nothing.\n- A failed charge leaves a `failed` row and no stock change.\n- After migrated data exists, the next order gets `max(id) + 1`.\n- Concurrent placements (threads) produce unique ids and no lost rows.\n- Migration of a fixture file with 0, 1 and several orders round-trips to identical canonical JSON.\n- Migration rejects: duplicate ids, gaps in ids, unknown item names, non-list JSON, a non-empty existing database.\n- A simulated crash between charge and placement leaves a `pending` row with its payment id, and the startup check reports it.\n\n## 9. Decisions needed from the user\n\n1. **Downtime.** The plan assumes a short stop at cutover. A zero-downtime dual-write is possible but more complex, and is not recommended for a service this size.\n2. **Order state machine.** Section 5 adds a `status` column and a `pending` state. This changes what `place_order` stores for failed attempts (they are now recorded as `failed`). Confirm this is acceptable.\n3. **Charged amount.** The JSON does not store the amount charged, and the current price table cannot reconstruct historical totals. Proposal: store `total_cents` for orders placed after cutover and leave it out of migrated rows. Confirm.\n4. **Stock.** Keep stock in memory (out of scope), or move it into the database? If it stays in memory, stock resets on every restart, which can oversell.\n5. **Pending orders.** Should a `pending` row with a payment id be refunded automatically, or reviewed by hand? A refund needs a function that `payments.py` does not have.\n6. **Retention.** How long to keep `data/orders.json` and `data/backups/` before deleting them. Proposal: until the first week after cutover is clean.\n7. **HTTP entry point.** Where is the `POST /orders` handler? Its threading model decides how much the concurrency fix matters and how the startup check runs.\n\n## 10. Order of work\n\n1. Answer section 9.\n2. Write the export script and the migration script, with the validation and verification in section 6.\n3. Write the tests in section 8. Migration and export must pass them.\n4. Change `place_order` and the README.\n5. Run the full migration on a copy of the current data, then the rollback on a copy.\n6. Cut over during a planned stop.\n"
+ },
+ "tool_names": [
+  "Bash",
+  "Grep",
+  "Bash",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-sqlite",
+ "kind": "trigger",
+ "prompt": "We want to move orders from data/orders.json to SQLite without losing orders. Write the migration plan to docs/plans/sqlite-migration.md. Do not change any code."
+}

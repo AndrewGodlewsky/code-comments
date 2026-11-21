@@ -1,0 +1,109 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is the cookie value the browser sends: the raw token, with the server hashing it before lookup? Where is the raw token ever stored besides the browser?",
+     "about": "D1 / session ID and Cookie"
+    },
+    {
+     "id": "2",
+     "text": "In a failed-login case, is the 5-failure count taken before or after the current attempt is inserted? Does the 5th wrong password get a 401 and only the 6th attempt get a 429?",
+     "about": "Login: count login_failures / 5 or more failures"
+    },
+    {
+     "id": "3",
+     "text": "What is the exact lockout rule when the count is 5 or more? How does the app use the 5th-newest failed_at to decide locked or not locked, and what does the user see when the lockout has passed but old rows still sit in the 10-minute window?",
+     "about": "D2 lockout / Lockout notes"
+    },
+    {
+     "id": "4",
+     "text": "What does the login page response for 401 or 429 look like, and does the 429 tell the user how long to wait?",
+     "about": "POST /login 429 and 401 branches"
+    },
+    {
+     "id": "5",
+     "text": "On a protected request with zero rows, the diagram says DELETE the session by hash (best effort). How does that fit with D3's UPDATE returning nothing for 'missing, unknown or expired'? What if that DELETE itself fails?",
+     "about": "Protected request / no row branch and D4 Lazy cleanup"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'middleware' that wraps every route: what does it do with the user_id returned, and how does the route handler get it? Is the UPDATE run on every request including static assets?",
+     "about": "Protected routes / Protected request"
+    },
+    {
+     "id": "7",
+     "text": "What happens if the DB fails mid-transaction on a successful login (after bcrypt passes)? Is it 503 with rollback, and does the user's old session stay?",
+     "about": "Login success / BEGIN ... COMMIT and D5"
+    },
+    {
+     "id": "8",
+     "text": "What triggers the scheduled sweep job, and what happens if it fails or no instance runs it?",
+     "about": "D4 Sweep"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Yes. The cookie holds the raw token. The server hashes it with SHA-256 on every request and looks up the hash. The raw token exists only in the browser and briefly in the memory of the handling request; the database stores only the hash. Reason: a leaked DB or backup cannot be replayed as cookies. D1 now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The check happens before the current attempt is recorded. The 5th wrong password gets 401 and inserts the 5th failure; the 6th attempt gets 429. This matches rule 3 ('once an email has 5 failed attempts, refuse logins'). D2 now states it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Your question exposed a bug in my original rule. Using the 5th-newest row as the lockout start was wrong, and a 10-minute count would stop reporting a lockout before the 15 minutes ended. New rule: read the newest 5 rows from the last 25 minutes. Locked if there are 5, the newest and 5th-newest are at most 10 minutes apart, and now is before newest + 15 minutes. After the lockout passes the user simply gets a normal password check; any new failure is more than 10 minutes after the 5th-newest, so the old rows cannot re-lock the email. Rewritten in D2 and in the diagram."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Both re-show the login page. 401: 'Invalid email or password'. 429: 'Too many failed attempts. Try again later.' No countdown or Retry-After; reason: simpler, and a precise time adds nothing the requirements need. Added under Responses."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Zero rows covers missing, unknown and expired. The extra DELETE only matters for the expired case; it is conditioned on the row actually being expired so it can never remove a session another request just renewed. For missing or unknown it deletes nothing. If it fails, the error is logged and ignored, the user is still redirected to /login, and the sweep removes the row later. Clarified in D4 and the diagram."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The middleware runs D3's UPDATE for each protected request and stores the returned user_id on the request context; handlers read the user from there. Static assets are served without the check, provided they hold nothing user-specific. That is my reading of 'every page'; it is recorded under Open questions. Added to Protected routes."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes. The transaction rolls back and the user gets 503 per D5. No new session exists, the old session row stays because its delete was rolled back, the cookie is kept, and the failure rows are not cleared. Reason: the transaction is atomic by design. Added to D5 and the COMMIT step."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Every instance runs an in-process timer, at startup and every 15 minutes; there is no external scheduler. Concurrent runs are harmless because the deletes are idempotent. If a run fails it is logged and the next run retries. If none runs, tables grow but correctness is unaffected, since D3 rejects expired sessions and D2 looks back only 25 minutes. No alerting is defined; that is listed under Open questions. D4 rewritten (the old 'whichever instance gets there first' wording was misleading)."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point: A user submits the login form. The browser sends POST /login with email, password, and possibly an old `sid` cookie. Any app instance can take it. The load balancer needs no sticky routing, because state lives in Postgres, which both instances share.\n\n2. The app lowercases the email. This normalized email is the key for the failure counts.\n\n3. Lockout check, before the password is looked at. The app reads the newest 5 `login_failures` rows for that email from the last 25 minutes. The email is locked only if there are 5 rows, the newest and 5th-newest are at most 10 minutes apart, and `now()` is less than 15 minutes after the newest `failed_at`. The table is keyed by the submitted email, so an unknown email is counted and locked the same way as a real one.\n   - If the database errors: 503 with a generic \"Something went wrong, please try again\" page. The error is logged. No failure is recorded and access is not granted.\n   - If locked: 429. The login page is shown again with \"Too many failed attempts. Try again later.\" There is no countdown. The password is never checked and `users` is never read. No row is inserted. The lock ends by itself 15 minutes after the newest failure.\n\n4. Not locked: the app does `SELECT id, password_hash FROM users WHERE email = ...`. The result is a user row or nothing.\n\n5. The app runs a bcrypt compare. If there is no user, it compares against a fixed dummy hash, so timing doesn't reveal whether the account exists.\n\n6. Bad credentials (unknown email or wrong password): the app inserts a `login_failures` row (email, now), then returns 401 with the login page and \"Invalid email or password\". The body is identical for both causes. The insert happens before the response. The 5th wrong password still gets 401 and records the 5th row. The next attempt gets 429.\n\n7. Password matches: the app generates a 32-byte random token from a CSPRNG, base64url-encoded, and computes its SHA-256 hex hash. Only the hash is stored. The raw token goes in the cookie.\n\n8. The app opens one transaction:\n   - If the request carried an old cookie, it deletes that session row (hash of the old cookie), whether or not the session was valid. This prevents session fixation.\n   - It inserts a new `sessions` row: id = hash, user_id, created_at and last_seen_at = now, expires_at = now + 12h.\n   - It deletes all `login_failures` rows for that email.\n   - It commits.\n   - If the database fails during this, the transaction rolls back and the user gets 503. No new session exists, the old session row stays, and the failure rows are not cleared.\n\n9. The app responds 302 to /dashboard with `Set-Cookie: sid=<raw token>; HttpOnly; Secure; SameSite=Lax; Path=/`. There is no Domain and no expiry, so it is a host-only session cookie. The server is the authority on lifetime.\n\n10. Protected request: the browser sends GET /dashboard with the cookie. Middleware wraps every page route except GET /login and POST /login. It hashes the cookie value with SHA-256 and runs one UPDATE. It sets `last_seen_at = now()` where the id matches the hash, `expires_at > now()`, and `last_seen_at` is within the last 30 minutes. It does `RETURNING user_id`. Checking and renewing happen in one statement, so the two instances cannot race. All times use the database clock. Idle time restarts on each request. The 12-hour cap never moves.\n\n11. Outcomes of the check:\n   - A row is returned: `user_id` goes on the request context and the handler reads the user from it. The response is 200 with that user's page.\n   - Zero rows (missing, unknown or expired are treated the same): the app makes a best-effort `DELETE` of that session row if it is expired. A failure of that delete is logged and ignored. The app then returns 302 to /login and clears the cookie (same attributes, `Max-Age=0`).\n   - Database error: 503 generic page. The cookie is kept and there is no redirect, so a brief database blip doesn't sign everyone out.\n\n12. Logout: POST /logout. If a cookie is present, the app deletes the session row by hash. On a storage error it logs the error and carries on. It always returns 302 to /login with the cookie cleared. With no cookie it skips the delete and responds the same way. If the delete failed, the session still dies at its normal expiry and the sweep removes it. SameSite=Lax is the CSRF protection for this POST, and no separate token is used.\n\n13. Background cleanup: each instance runs a timer at startup and then every 15 minutes. It deletes expired or idle sessions and `login_failures` rows older than 25 minutes. Running on two instances at once is harmless. A failed run is logged and retried next time. Correctness never depends on cleanup. If the sweep doesn't run, the tables only grow.\n\n14. Static assets skip the session check and must contain nothing user-specific.",
+   "gaps": [
+    "Where the 401 and 429 responses carry the cookie state is not stated. It does not say what happens to a stale old cookie on 401 or 429 (cleared or left).",
+    "The document does not say how the app reads the cookie at the start of POST /login when it carries an old cookie that is invalid, beyond 'delete that session row'. It also does not say how the request is shown to be 'carrying' one for the dashboard redirect case.",
+    "What happens when a user who already has a valid session visits GET /login is not described.",
+    "What GET /login does or returns, and what the login form posts to or contains, is not described. Only POST /login is detailed.",
+    "The document does not say what the 302 to /login does about where the user was going (no return-to-page behavior is mentioned).",
+    "It does not say how the `users` table is defined (columns, how the email is stored or lowercased there) beyond `id`, `email` and `password_hash` being referenced.",
+    "It does not say what the 503 case in the lockout check means for the cookie on POST /login, or whether the old session is touched."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

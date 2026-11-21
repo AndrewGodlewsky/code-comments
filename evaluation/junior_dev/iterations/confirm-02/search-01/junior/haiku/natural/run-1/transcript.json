@@ -1,0 +1,208 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Debezium reads the replication slot. What is Debezium here, where does it run, and how does it know the slot exists and which table to watch?",
+     "about": "Debezium connector reads the slot"
+    },
+    {
+     "id": "2",
+     "text": "The decision node says 'op is d, or status is not active'. What are the possible values of op and status, and why does a non-active product get deleted from the index rather than indexed?",
+     "about": "op is d, or status is not active?"
+    },
+    {
+     "id": "3",
+     "text": "What is 'the store' that holds the stored version and enforces 'at least stored'? Is it the search index itself, and does it do the compare on each write?",
+     "about": "write applies only if version is at least stored"
+    },
+    {
+     "id": "4",
+     "text": "What exactly is the alias 'products'? Who reads it, and what does 'atomic swap' mean for a search request that arrives during the swap?",
+     "about": "Atomic alias swap on products"
+    },
+    {
+     "id": "5",
+     "text": "What are 'control records', where are they stored, and who reads them to decide the rebuild state?",
+     "about": "Operator starts rebuild / control record"
+    },
+    {
+     "id": "6",
+     "text": "The cutover says 'start products-live from offsets 20 min before that stop'. How does that run: who does it, what is cron currently doing, and how are those offsets picked? Why 20 minutes?",
+     "about": "One-time cutover from cron"
+    },
+    {
+     "id": "7",
+     "text": "The gate says 'lag under 5 s'. For the rebuild consumer replaying seven days of events, how is lag measured, and why would it fall under 5 s only after catching up?",
+     "about": "Gate: snapshot done, lag under 5 s"
+    },
+    {
+     "id": "8",
+     "text": "After the swap, products-live keeps writing products_v3 and products-rebuild-v4 writes products_v4. Are both consumers reading the same topic at the same time? What happens to products-live's offsets and the live group's role afterward?",
+     "about": "products-live keeps writing products_v3 for 48 h"
+    },
+    {
+     "id": "9",
+     "text": "When a bulk request has a mix of results (some ok, some failing transiently), how does the consumer decide what to retry and what to ack, and how does 'never skip ahead' work with the contiguous offset commit?",
+     "about": "Commit Kafka offset per partition"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Debezium is the CDC connector already installed for this catalog. It reads replication slot search_slot, which Postgres keeps for it, and it sees table products through publication catalog_search (existing/schema.sql, existing/search-setup.md). The brief does not say which host runs it, and it is not yet pointed at the catalog: it feeds a test topic until the cutover."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "op is c (create), u (update) or d (delete). status is draft, active or archived (CHECK constraint in schema.sql). Non-active rows are removed from the index because the schema rule says only active rows may appear in search. The current cron does the same (existing/indexer_cron.py, else branch)."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The store is the search cluster that holds the index (products_v3 now, products_v4 during a rebuild). It keeps a version per document and does the compare on every write, per existing/search-setup.md. A write with a lower version than the stored one is refused as a version conflict."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "products is an alias: a name that points at one index (products_v3 now). The search API queries only the alias. The swap changes the pointer in one request, so a query lands on the old index or the new one, never neither (search-setup.md). A request arriving during the swap goes to one of the two. Neither is half built, because writes go to index names and the alias moves only at the switch."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "The brief does not define control records, does not say where they are stored, and does not say who reads them. The draft introduced the term. The brief does require the diagram to show where progress is stored, and that is not decided. Added as an open question."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Today cron runs every 15 min, reads products rows with updated_at after its last run, and writes products_v3 directly with no version. The plan stops cron after its last run, then starts products-live from the Kafka offsets at the timestamp 20 min before that stop. 20 min is chosen because cron can be up to 15 min behind, so 20 min covers one full cron cycle of changes it may not have written. Replayed older events are rejected by the version rule only where the stored document has a version, so the cron-written documents are a gap. Who runs the cutover is not stated. Added as an open question."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Lag is now minus the commit time of the last event applied, using the Kafka record timestamp (an assumption, already flagged). While the rebuild consumer replays seven days of old events, the last applied event is hours old, so lag is large. It falls under 5 s only when the consumer reaches the live end of the topic, where new events arrive as they commit. That is why the gate waits for catch-up."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Yes. Both groups read the same topic at the same time. Kafka tracks offsets per consumer group, so each group sees every event and keeps its own position. The rebuild does not touch products-live's offsets. After the swap, products-live keeps writing v3 for 48 h, so rollback loses nothing. Then it stops and v3 is deleted. products-rebuild-v4 becomes the live group and serves v4. The brief does not say whether the rebuild group keeps this name after the switch."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Per item: ok is acked; version conflict is counted and acked; invalid goes to the DLQ, is acked, and raises an alert; a transient failure is not acked and is retried after backoff. The offset commit moves only to the highest offset where every earlier event in the partition is acked. Never skip ahead means the commit never passes an unacked event. Later events in the same partition may already be written. On a restart they are replayed, and the version rule makes that harmless."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "The Debezium connector is not pointed at the catalog yet and feeds a test topic. Which step repoints it to catalog.products, and does that happen before the cutover from cron or as part of it?",
+     "about": "One-time cutover from cron / Debezium connector reads the slot"
+    },
+    {
+     "id": "11",
+     "text": "Where does the consumer's index-or-delete logic get 'status' from for a delete event, where 'after' is empty? How does it know which document id to delete?",
+     "about": "op is d, or status is not active?"
+    },
+    {
+     "id": "12",
+     "text": "Cron writes documents with no version. When the replay then writes a versioned doc over one, what does the store do, and what is the actual risk you call a gap?",
+     "about": "One-time cutover from cron"
+    },
+    {
+     "id": "13",
+     "text": "The snapshot writes every document with version S. A live event for a row arrives later with an LSN above S. Why is its LSN guaranteed to be comparable to S, and what if a row changed between S and when the snapshot reader reads it?",
+     "about": "Snapshot version S / Bulk write to products_v4 with version S"
+    },
+    {
+     "id": "14",
+     "text": "The rebuild replays from offsets recorded after the slot is streaming. Why is the replay start offset recorded before the snapshot opens, and how does that guarantee no event between S and the replay start is missed?",
+     "about": "Record replay start offset per partition"
+    },
+    {
+     "id": "15",
+     "text": "When the DLQ write fails and is treated as transient, the flow goes to backoff. What gets retried: the DLQ write, the whole bulk, or just that item? And does the partition stay paused until the DLQ works?",
+     "about": "DLQ write fails, treated as transient"
+    },
+    {
+     "id": "16",
+     "text": "The SLO says 95% of changes searchable within 5 s. How is that share computed from the metrics listed (event-to-ack time, consumer lag), and over what time window?",
+     "about": "Share of changes searchable within 5 s at or above 95%?"
+    },
+    {
+     "id": "17",
+     "text": "After an ops slot drop at 50 GB, the rebuild creates a new slot. Who decides to start that rebuild, and what happens to changes committed between the drop and the new slot being created?",
+     "about": "Ops drop search_slot to protect primary / Full rebuild is the only way back"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The brief does not name the step, and search-setup.md says the connector is not yet pointed at the catalog. The plan now has that step, and it comes before the cutover, not as part of it. The replay from 20 minutes before the cron stop needs connector events from that time already in the topic, so the connector must be running on the catalog at least 20 minutes before the cron stop. Who does the repoint is not stated."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "For op d the status is not read. A delete always removes the document, using id, which is a top-level field in every event (search-setup.md event shape; after is null for d). status is read only from after on c and u events. The decision label now says so."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "The brief and search-setup.md do not say what the store does when a versioned write hits a document that was written without a version. The earlier claim that the version rule protects against older replays was not verified, so the file no longer states it. The risk: a replayed older event (committed before cron's write) can overwrite the newer state cron wrote, and the stale value stays until the product changes again. Added as an open question."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "The LSNs are comparable because S and each commit_lsn are WAL positions on catalog-primary, so they order directly. For a row that changes after S: the snapshot shows the row as it was when the snapshot started, and a change committed after that has an LSN above S and applies on top. Not verified: a commit whose WAL record lies below S but which only becomes visible after the snapshot starts may be missing from the snapshot, and its event is then stale under the version rule. Added as an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The replay start is recorded before the snapshot opens so that every commit after S comes later in each partition than the recorded offset. A commit after S happens after the recording, so its event is written to Kafka after that offset. Commits below S are already in the snapshot, and their events are stale and counted, so missing them does no harm. No event with an LSN at or above S is missed."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Only the DLQ write is retried, not the bulk and not the item again in the index, because the index has already refused that document. The partition stays paused and its offset does not move until the DLQ accepts the item, because acking without a DLQ record would drop the event. The diagram and the failure notes now say so."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The share is the number of changes acked within 5 s of their commit time, divided by the number of changes committed in the same window. Commit time is the Kafka record timestamp (an existing assumption). Consumer lag is not per change, so it is only an early warning. A DLQ'd change never becomes searchable, so it counts as a miss. The window is not in the brief and is an open question."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The operator decides, because the plan makes the rebuild a manual trigger; the brief is silent on who decides. Changes committed between the drop and the new slot's creation are not streamed, but they are committed before S, because S is read after the slot exists. The snapshot therefore holds them. Changes after the slot is created are streamed, so no commit after S is missed."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup (live path). Sellers or apps commit changes to the `products` table on `catalog-primary`. The document says the Debezium connector reads Postgres's WAL through the replication slot `search_slot`. It watches `products` through the publication `catalog_search`. The slot holds the WAL, so a connector outage loses nothing.\n2. Debezium turns each committed row change into one Kafka event. The event has `op` (c, u or d), `id`, `after` (the new row) and `commit_lsn` (the WAL position of the commit). The event goes to topic `catalog.products`. That topic has 12 partitions keyed by product id, so all changes to one product stay in order in one partition. The topic keeps data for 7 days. Kafka holds the events.\n3. The indexer service reads as consumer group `products-live`. It polls a partition and takes a batch of up to 200 events or 200 ms. It does not commit offsets at this point. Kafka stores the offsets per group and per partition.\n4. For each event, the indexer parses `commit_lsn` (hex `X/Y`) as `(X << 32) + Y` into an unsigned 64-bit integer. That number is the document's version. It is compared as a number, never as text.\n5. The indexer picks the action. If `op` is `d`, or `after.status` is not `active`, it deletes the document by `id` with that version. For a delete, `id` is a top-level field because `after` is null. Deleting a missing document counts as success. Otherwise it indexes the document by `id` with that version. The fields are sku, title, description and price (cents divided by 100). Only active rows should be searchable.\n6. The indexer sends the batch as one bulk write to the index `products_v3`, named directly and not through the alias. The index store holds the documents. A write with a lower version than the stored one is refused as a version conflict. Equal versions are accepted.\n7. The indexer reads the result for each item:\n   - OK: the item is acked.\n   - Version conflict: the event is stale. It is counted and acked, and it is not an error.\n   - Invalid document: the event, the error, the partition and the offset are written to the DLQ topic `catalog.products.dlq`. An alert fires, the item is acked, and processing carries on. If the DLQ write fails, the indexer backs off and retries only the DLQ write. It does not call the index again for that item. The partition stays paused until the DLQ accepts the write.\n   - Timeout, 5xx or throttling: the indexer backs off 1 s, 2 s, 4 s and so on, capped at 60 s. It pauses that partition, retries the failed items and never skips ahead.\n8. The indexer commits the offset per partition, but only up to the last contiguous acked event. After a crash, later events that were already written are replayed. The version rule makes that harmless. Then the loop returns to polling.\n9. Monitoring runs all the time. Metrics cover event-to-ack time, consumer lag, stale count and DLQ count. The SLO is that at least 95 percent of changes are searchable (acked) within 5 s of commit. If it is missed, an alert fires. A DLQ event counts as a miss. Every minute the plan measures retained WAL on `search_slot` as `pg_wal_lsn_diff` of the current LSN and `restart_lsn`. At 20 GB or more it alerts. At 50 GB or more, ops drop `search_slot` to protect the primary. That stops the connector and live sync, and only a full rebuild can recover.\n10. Rebuild trigger. An operator starts a rebuild manually, for a new mapping or after data loss. A control record is created (state `starting`, candidate `products_v4`). The rebuild writes only to `products_v4` and never to the alias.\n11. The connector must be streaming from a slot that exists before the snapshot LSN S is read. If ops dropped the slot, the operator creates a new one first. The operator creates `products_v4` with the new mapping, not attached to the alias. The operator records the replay start offset per partition in the control record. This happens before the snapshot opens.\n12. The operator opens a repeatable-read transaction on `catalog-primary`. Its first statement reads the current WAL LSN, which is S. S goes in the control record. The snapshot reads active rows by id in keyset pages of 1000, at about 5000 rows/s, or about 2.5 hours. Each page is bulk written to `products_v4` with version S. It uses the same retry and DLQ rules. After each page the last id is checkpointed in the control record, for monitoring only. The snapshot holds back vacuum on the primary for the whole run, and the DBA has approved that. When no rows are left, the snapshot closes and the control record shows `snapshot_done` with a row count.\n13. At the same time, the group `products-rebuild-v4` reads the topic from the recorded replay offsets. It applies every event under the same version, retry and DLQ rules. Events below S lose to the snapshot's version and are counted as stale. Events at or above S apply on top. `products-live` keeps running and its offsets are untouched.\n14. The gate has three conditions. The snapshot is done. Lag is under 5 s, which only happens once the rebuild group reaches the live end of the topic. The `products_v4` document count is within 0.5 percent of the active row count (about 200,000 documents at 40 million rows). If the gate fails, the rebuild keeps consuming and re-checks, alerts if it does not converge, and does not switch.\n15. When the gate passes, one atomic alias request removes `products_v3` from `products` and adds `products_v4`. The search API queries only the alias, so search flips with no half-built state. `products-rebuild-v4` becomes the live group.\n16. `products-live` keeps writing `products_v3` for 48 hours. Rollback is swapping the alias back, and no change made after the switch is lost. After 48 hours, `products-live` is stopped and `products_v3` is deleted. A rollback caveat applies. `products_v3` may hold documents for rows that were hard-deleted before the switch, from the cron era.\n17. Rebuild failures. If the replay offsets are older than the 7-day retention, the replay cannot start. The operator drops `products_v4` and takes a new snapshot. If the snapshot reader crashes, the snapshot cannot resume. The `products_v4` contents are dropped, the control record is reset, and a new DBA-approved snapshot is needed.\n18. One-time cutover from the old cron job (not part of normal running). Step 0 points the connector at `catalog-primary`, slot `search_slot` and topic `catalog.products`, at least 20 minutes before step 1. Step 1 stops cron after its last run. Step 2 starts `products-live` from the Kafka offsets at the timestamp 20 minutes before that stop.",
+   "gaps": [
+    "Where the control record is stored and who or what reads it to decide the rebuild's state. The document leaves this as an open question, so I cannot say how the rebuild moves between steps.",
+    "Who runs the cutover and who repoints the connector in step 0. The document says the brief does not say.",
+    "What the index store does when a versioned write replaces a cron-written document that has no version. The document says this is unverified, so I cannot say what happens when a replayed event meets cron-era data at cutover.",
+    "How the snapshot step is triggered in practice. The document says the operator starts the rebuild and the snapshot needs DBA approval, but it does not say who runs the snapshot reader or how it is launched.",
+    "What exactly detects 'the consumer reached the live end of the topic' and how lag is measured. Lag depends on the Kafka record timestamp being Debezium's source commit time, and that is unconfirmed.",
+    "Whether a commit whose WAL position is below S but becomes visible after the snapshot starts is missing from the snapshot. The document says this is unverified, so I cannot say whether the rebuild can lose such a row.",
+    "Whether `products-rebuild-v4` keeps its name after the switch, and how it is treated as the 'live group' (renamed, or kept under the old name).",
+    "The SLO measurement window. The document does not state it.",
+    "How a DLQ'd event is repaired and replayed. The document says this is manual and not covered."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,37 @@
+## Review of ev-02 (junior, author haiku, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Terms: added one-line definitions for each name a newcomer would not know (outbox, relay, domain-events, worker, visibility timeout, ack, lease, lease_token, fencing, SKIP LOCKED, idempotent, HMAC, libs/secrets.decrypt, disable intent, applier) and the queue limits (256 KB, 15 min delay, 30 s visibility).
+- Q4/Q5: stated where the worker keeps lease_token, what a long send does, and that a stale worker drops its result while its sent request still counts at the receiver.
+- Q7: added a decrypt-failure path (no request, attempt counted, last_error decrypt_failed, retried on the normal schedule), with the key left as an open question.
+- Q8: added a core-DB read-failure path at Load (no request, attempt counted, row retried), and recorded the outage risk as an open question.
+- Q9: stated which status counts as active, what a 410 and a dashboard disable each do, and that the dashboard API sets status while the applier sets it on a 410.
+- Q10: described the applier as a loop every worker runs, retried on each pass until the UPDATE succeeds, with applied_at set on zero-row updates too.
+- Q11: added the sweep step for attempt-8 rows with expired leases (lost_on_final_attempt), which the first diagram did not show, and added it to the diagram and failure table.
+- Q12: stated that replay applies only to dead rows, sets attempt to 0, and that the next claim makes attempt 1 so the row gets 8 attempts.
+- Restructured into summary, terms, where state lives, diagram, numbered steps, one failure table and one open-questions list. Each fact now appears once, the lease rule and the waits included. Kept every brief requirement: matching, signing, timeouts, outcomes, waits, 8 attempts, 14-day retention, guarantees, storage limits, and the decisions on 3xx, caching, retention and ordering.
+- Diagram: simplified labels, added the sweep, the decrypt and read failure branches, and the replay path. Kept it a Mermaid flowchart with the notes after it.
+- Claim now sets next_attempt_at to the lease end, so a leased row is not due. The due rule is one condition, which answers Q13 and Q14.
+- Sweep condition now reads next_attempt_at in the past (lease ended), matching the claim rule.
+- Every applied outcome write clears lease_token and lease_until. The 410 transaction clears leases on the other pending rows, so in-flight writes are dropped. This fixes a real overwrite bug found under Q17.
+- Steps 6 and 7 now name the outcome write in step 8 and its wait, fenced on lease_token (Q15).
+- Step 6 now states which fields Load reads, that it reads on every attempt with no cache, and why (Q18). Match lists the fields it reads.
+- Step 1 says what log and alert mean and that the bad body is not stored (Q19).
+- Failure table: added the failed-write-after-2xx case (Q16), the slow attempt-8 write (Q20), and waiting rows after a dashboard disable (Customer disables case).
+- Terms: added Dead, Sweep and Replay; sharpened Lease and Fencing.
+- Mermaid flow updated to match: claim sets next_attempt_at, the 410 node clears leases, the sweep edge reads lease ended.
+- Open questions: added the crash-retry wait and the bad-message alert destination. Removed the no-cache question, which is now decided in step 6.
+- Kept every fixed requirement, limit and number from the brief and first version: 10 s timeout, 8 attempts, waits of 30 s, 2 min, 10 min, 30 min, 1 h, 3 h and 6 h, 60 s lease, 30 s visibility, 15 min queue delay cap, 256 KB message cap, 14-day retention, 5-minute receiver window, and the 410 and other-4xx rules.
+- Kept every row of the first version's failure table, including the crash-on-attempt-8 sweep, outcome-write-after-2xx, slow-write and fenced-410 cases. Merged the two separate 'Load' and 'Decrypt' failure branches into one retryable rule in the outcome step, and stated each once.
+- Kept all 12 steps and the applier, sweep, replay and purge behaviour. Each step now names its trigger, what it does, which data it uses, and what it does on failure. Removed cross-references such as 'step 8' so each step reads on its own.
+- Added a plain summary, and a terms list that defines attempt, claim, lease, pending, backoff, worker, the two databases and SKIP LOCKED, which the first version used without defining.
+- Rewrote the Mermaid diagram with plainer node labels. It keeps every path from the first version, including the sweep, the disable-intent branch and the replay loop back to claim. Dotted arrows mark the timer and crash paths.
+- Cut repetition: the matching rule, the fencing rule and the 'stale worker' explanation each appear in one place. The 410 lease-clearing rule is now stated once, in the outcome step, and the failure table refers to it only by its result.
+- Moved the 'Why Postgres schedules retries' rationale and the state list to a section right after the diagram, as the layout rule requires, and gathered the always-true guarantees into one short list.
+- Gathered the 3xx, matching, cache, retention and ordering choices into one Decisions section, and kept the open questions exactly as the first version had them.
+- No design was changed. No holes were resolved by invention: the alert destination, the key for libs/secrets.decrypt, the secret delivery, the Admin API auth and the instance count all remain open questions.
+
+### Holes
+- None.

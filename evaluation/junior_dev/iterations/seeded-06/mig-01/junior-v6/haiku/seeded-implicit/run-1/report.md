@@ -1,0 +1,64 @@
+## Review of mig-01 (junior-v6, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Rewrote the whole plan: a summary of how MySQL works today and the migration, a terms list, how the system runs, a rollout checklist with trigger, change, state and failure for each step, a failure table and open questions.
+- Defined `users.write_mode` values, including a new `paused` value, and wrote one switch procedure that is used for both the planned switch and rollback, with a pause budget of about 75 seconds (Q1, Q8).
+- Defined `user_tombstones` and `pending` in both databases, and the rule that each change writes its `pending` row in the same transaction (Q2).
+- Merged the separate sweepers from the first version into one sweeper on a 30 second timer, with no dead-letter state (Q3).
+- Used the `pending` table instead of the job system for copies, because jobs that fail five times go to `jobs:dead`, which nothing processes.
+- Defined the comparer's clean pass, the 5 minute re-check that ignores in-flight writes, and the repair rules, including the case where the target version is higher (Q4).
+- Added a per-user-id lock to copies and erasures, so a copy cannot interleave with an erasure of the same user.
+- Backfill: added the replica lag check, a batch transaction that moves progress with the rows, and a restart rule (Q5, Q6).
+- Moved `backfill_progress` to Postgres only; the first version created it in both databases.
+- Ramp: set the unit to users, bucketed by id, added a fallback to the MySQL replica on a Postgres read error or missing row, and named the watch signals and their new metrics (Q7).
+- Set the sequence restart value and its reason (Q8).
+- Added explicit rollback instructions and the rule that rollback loses no write until step 10. A rollback restarts the 14 day clock.
+- Step 10 (`postgres_only`) has no write pause, because Postgres stays the source of truth.
+- Added the erasure job's 503 handling, the failure table and the open questions, including the dead-letter risk and the unrecorded 3 and 14 day dates.
+- The file is well over the 1.5x length aim. The brief requires a trigger, a change, a state location and a failure rule for every step, so the extra length is needed.
+- Write modes: postgres_only now says it writes no pending rows and that rollback to MySQL ends once any instance runs it (Q16).
+- Terms: pending row now holds a change_id written with each change, and is deleted only if that change_id is unchanged (Q10).
+- Terms: lock per user id note kept; no change beyond the pending definition.
+- Dual-write step 1 and 2: the transaction writes a pending row with a new change_id. The copy takes the currently committed row, not the version this write made, and the pending delete checks change_id (Q10, Q11).
+- Added erasure walk-through after the dual-write steps: delete call, one MySQL transaction, then tombstone and delete in Postgres (Q14).
+- Added version handling for postgres_primary: the version check and bump run in Postgres from the copied value; rollback copies the version back (Q9).
+- The copy section: added that a unique email conflict fails the copy, never changes the other row, and is retried by the sweeper (Q13).
+- Sweeper: pending delete only when change_id is unchanged (Q10).
+- Switch procedure: an operator runs the steps by hand; pending is checked with a row count; the operator sets the old mode back at 45 seconds; an instance that does not show the new value within 30 seconds is restarted (Q12, Q15).
+- Rollout step 10: added the mixed-state note on postgres_only and postgres_primary instances (Q16).
+- Failure table: added the unique-email conflict row and the erasure copy-failure row; the stale-flag row now says the operator restarts the instance (Q13, Q14, Q15).
+- Open questions: added that nothing alerts when an instance stays on the old mode or paused (Q15).
+- Reads: after the switch, a Postgres miss no longer falls back to the MySQL replica, because MySQL may still hold an erased user. Reads use Postgres once it is the source. The replica fallback after the switch is kept only for Postgres errors, and it is an open question.
+- Switch step 3: added a 5 second wait after every instance shows paused, tied to the 5 second write timeout, and the rule that a zero pending count stays zero.
+- Lock per user id: now always a Postgres advisory lock on pg-core, held for every copy in either direction and for each backfill row. Previously it lived in whichever database was the source, which left cross-database locking unclear.
+- Sweeper: one job on each worker. Each pass tries the id lock without waiting and skips busy ids. It drains both pending tables and does not use Redis.
+- IDs: the Postgres id column has no default until the switch. Step 4 now applies in both directions and covers ids that exist only as tombstones.
+- Rollback: added a step after switch step 5 that sets users.read_from_pg to 0, so reads use the MySQL replica again.
+- Erasure: added a section on delete during a pause. It returns 503, the job retries it, the job counts the erasure as done only on success, and a repeated delete is safe.
+- Step 8 notes that the MySQL pending table is empty and stays empty. Step 11 now also drops the MySQL pending and user_tombstones tables.
+- Added a 5 second write timeout, which the switch and the in-flight bound depend on.
+- Failure table: added rows for the id lock timeout, a Postgres miss before and after the switch, and a repair that finds a higher target version. Renamed the sequence row to cover the id counter in both directions.
+- Open questions: added the post-switch replica fallback risk and the 5 second write timeout to the list of first-choice numbers.
+- Added a short 'Rules that must hold' list after the summary, so every fixed requirement from the brief (dual writes, version rule, deletes, backfill, reads, availability, rollback) is visible in one place.
+- Rewrote the summary as one paragraph that says how the system works today (reads from the replica, MySQL assigns ids and version), then how the main flow runs from start to finish, and why it is shaped that way.
+- Expanded the terms so each is defined in one plain line: primary and replica, version, StaleWrite, advisory lock, Retryable 503, erasure job, sweeper, comparer, id counter, app_flag_value, job system and the dead-letter list. Removed the 'copy' sub-definitions that repeated the rules.
+- Moved the lock's reason into the write step: it keeps inserts, erasures and tombstone checks from interleaving, which the version rule does not cover.
+- Dual-write flow is now three numbered steps (commit to MySQL, copy under the lock, failure handling) with what starts each one and where its state lives.
+- Merged the erasure walk-through into its own short section with three steps. The tombstone's purpose is stated in the step where it applies.
+- The comparer's repair now reads 'repaired with the copy rules', because the copy rules already cover the erasure case. This removes the separate repair description.
+- Switch procedure keeps all five steps, the 5 second wait, the one-zero-reading rule, the 45 second limit and the 75 second budget. Each clause now gives its reason. The rollback read-flag reset is kept.
+- IDs section keeps the planned-switch and rollback counter rules and the version rule for rollback. It is now grouped under bullets with the reason stated first.
+- Reads section keeps the before-switch and after-switch rules. The fallback reasons are stated in the same paragraph.
+- Rollout checklist uses the brief's checklist format. Each step has Starts, Changes, State and If it fails, in that order.
+- Step 6 starting condition is stated as 'zero confirmed mismatches'. The ramp unit is explained as users, not requests, in the step where it applies.
+- Step 7 failure wording changed from 'the 3 days start again from the next day at 100%' to 'the 3-day count restarts once reads are back at 100%'. This states the same rule with less ambiguity. The plan's behavior is unchanged.
+- Step 8 failure wording now says 'if steps 2 or 3 do not finish within 45 seconds' to match the switch procedure, instead of 'a timeout before the sequence reset'.
+- Renamed the first version's `pg_only` to `postgres_only` everywhere so it matches the write-mode name.
+- Failure table keeps every row. The 'setting the flag again does not help' point is stated in the row for the instance that has not refreshed the flag.
+- Open questions keep all nine items, including the first-choice numbers list, unchanged in substance.
+- Did not cut any stated fact. The first version's checklist items (create tables, deploy, dual writes, backfill with 2k batches and replica lag, comparer until clean, ramp 1/10/50/100 with 3 days at 100%, freeze and sequence restart, 14 days of sync, pg_only switch then backup and drop) are all present as rollout steps 1 to 11.
+
+### Holes
+- None.

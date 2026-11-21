@@ -1,0 +1,191 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is \"the store\"? Which product is it, and how does orders-api authenticate to it?",
+     "about": "2. Create secrets in the store"
+    },
+    {
+     "id": "2",
+     "text": "What do \"Access policies\" for orders-api-prod, security on-call and engineers allow each of them to do (read, write, rotate)?",
+     "about": "1. Access policies"
+    },
+    {
+     "id": "3",
+     "text": "How does the app decide whether it is prod or dev, and how does that choose between orders-api/prod/* and orders-api/dev/*?",
+     "about": "7. make run: APP_ENV=dev"
+    },
+    {
+     "id": "4",
+     "text": "When does load() run, and what happens if it still fails after the retries? Does the app refuse to start?",
+     "about": "3. app/secrets.py load()"
+    },
+    {
+     "id": "5",
+     "text": "What does the 5-min refresh do? If a refresh fails, does get(name) return the last good value, an error, or nothing?",
+     "about": "3. 5-min refresh"
+    },
+    {
+     "id": "6",
+     "text": "How do the clients use secrets.get()? Do they call it on every request, or read it once when they are built?",
+     "about": "4. Switch PaymentsClient / EmailClient / GeocodingClient to secrets.get()"
+    },
+    {
+     "id": "7",
+     "text": "What is in secret_versions, and who reads /healthz and what do they do with it?",
+     "about": "5. /healthz: add secret_versions"
+    },
+    {
+     "id": "8",
+     "text": "What exactly does the CI check for api_key look for, and what happens when it finds a match?",
+     "about": "6. CI check for api_key"
+    },
+    {
+     "id": "9",
+     "text": "Step 2 stores the current key values and step 9 rotates them. Why store the old keys first? And what are the exact rollback steps if step 8 fails, given step 6 already deleted the keys from config/app.yaml?",
+     "about": "9. Rotate the three keys / 10. Update rollback notes"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "unknown",
+     "text": "The brief says \"our managed secret store\" but does not name the product, and does not say how orders-api authenticates to it. The plan assumes the prod pods run as service identity orders-api-prod. Listed under Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Per the brief: orders-api-prod has read-only access to orders-api/prod/* and nothing else. Only the security on-call can write prod secrets. Engineers must not be able to read prod values. The brief does not say what engineers may do with dev secrets, and it does not say who may rotate keys, so the plan grants neither. Listed under Open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The app reads APP_ENV. The prod deploy sets APP_ENV=prod and make run sets APP_ENV=dev. The path is orders-api/<APP_ENV>/<name>. If APP_ENV is unset or unknown, the app refuses to start, so it can never fall back to the wrong environment. I chose an explicit setting over inferring from the host name, because an explicit setting cannot silently read the wrong path."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Per the brief: load() runs at process start, before the app reports ready. It retries 3 times, 2 seconds apart. If it still fails, the process exits with a non-zero code. The app does refuse to start. The pod never becomes ready, so the rollout halts and the old pods keep serving."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Per the brief: refresh() runs every 5 minutes. If a refresh fails, get(name) keeps returning the last good value, and the refresh logs a warning. get(name) returns an error only if no value was ever loaded, which cannot happen once start-up has succeeded."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Each client calls secrets.get(name) on every request and no longer copies the key into a field at construction. This way a refreshed key is used by the next request, with no restart. The cost is one in-memory lookup per request."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "secret_versions maps each secret name to the version id that the pod is using, for example payments_api_key to its version id. The readiness probe only checks for HTTP 200, so the versions do not affect readiness. The operator reads /healthz on each pod in step 8, and confirms every pod shows the new version ids before any old key is revoked."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The CI check searches config/app.yaml for the text api_key. Any match fails the build with a non-zero exit. It prints the matching line number only, never the line itself, so the check cannot leak a value into CI logs."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Step 2 stores the current keys as version 1, so the app can switch to the store without any key changing. No customer request fails, and the store path is proven before any key is rotated. Rotation happens later, in steps 7 to 9. The old keys stay valid until step 9, which keeps rollback possible until then. If the deploy step (now step 6) fails, the rollout halts and old pods keep serving, so no rollback is needed. If the new image misbehaves after pods have moved, redeploy the last image built before this change. Its config still has the keys, and they are still valid because step 9 has not run. After step 9, do not roll back to a pre-migration image, since its keys are revoked. Fix forward, or roll back to a post-migration image, which reads the store."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "When load() or refresh() reads a name, how does it pick which version: always the newest one, or a specific version id? How does the pod learn a new version was written in step 7?",
+     "about": "Runtime: Every 5 minutes. refresh() / 7. Rotate at providers"
+    },
+    {
+     "id": "11",
+     "text": "In step 7, who actually writes the new key versions to orders-api/prod/*, given only the security on-call can write prod secrets? Who creates the new key at each provider?",
+     "about": "7. Rotate at providers"
+    },
+    {
+     "id": "12",
+     "text": "How does the person doing the checks reach /healthz on every pod, and how do they know they have seen all pods and none are missing?",
+     "about": "8. Confirm every pod"
+    },
+    {
+     "id": "13",
+     "text": "If a provider rejects the new key after a pod has refreshed to it (the key is bad, but the old one still works), what happens to requests and how do you go back?",
+     "about": "7. Rotate at providers"
+    },
+    {
+     "id": "14",
+     "text": "In step 6, what does the pod's readiness check wait for, and how do you tell the rollout has halted rather than just being slow?",
+     "about": "6. Deploy and verify"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Pods read the latest version of each name, at start-up and at every refresh. The brief says a re-read picks up a new version, which only works if the read returns the newest one. The plan does not pin version ids. A pod learns of a new version at its next refresh, within 5 minutes. Whether the store returns the latest version by default is listed under Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The brief says only the security on-call can write prod secrets, so step 7 has them write the new versions (checked). The brief does not say who creates the new key at each provider, so that is unknown. Listed under Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The operator lists the pods in the cluster (4 replicas per deploy.md), reads /healthz on each, and checks that every pod shows the new ids. A missing or unreachable pod blocks revoke. How the operator reaches each pod is not in the brief, so it is listed under Open questions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Step 7 checks each new key at the provider before it goes into the store, so a rejected key should never reach a pod. If a bad key reaches pods anyway, the on-call writes the previous value back as the latest version, and pods pick it up at the next refresh. The old key still works until step 9. Requests that used the bad key fail until that refresh. The brief says no customer request may fail, so this is a real hole. A fallback to the old key would close it, but the brief does not ask for that mechanism, so it is listed under Open questions."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The readiness probe waits for /healthz to return 200. The plan now says /healthz returns 200 only after load() succeeds, and load() runs before the server listens. A pod with no keys never listens, so it never passes readiness. A halted rollout shows a new pod that stays not ready while all old pods keep running. A slow one becomes ready in time. The wait limit is not in the brief, so it is listed under Open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Set access (trigger: plan approved). The service identity `orders-api-prod` is given read access to `orders-api/prod/*` only, held in the secret store's access policies. Only the security on-call can write prod secrets, and engineers cannot read prod values. If this fails, nothing has moved, so fix the policy and retry.\n\n2. Store the current keys (trigger: step 1 done). The three live prod keys (payments, email, geocoding) are written to the store as version 1 under `orders-api/prod/`. Sandbox keys go under `orders-api/dev/`. Each write creates a new version with its own id, and the store encrypts it with a per-environment KMS key. State lives in the store. Nothing reads the store yet, so a failure leaves the app unchanged and you retry.\n\n3. Build the reader (trigger: a code change in `app/secrets.py`). The code adds `load()`, `refresh()` and `get(name)`. Each provider client calls `get(name)` on every request, and `/healthz` gains `secret_versions`. State is the code and then process memory. If it fails, the change is not merged and nothing deploys.\n\n4. Remove keys from the repo (trigger: step 3 merged). The `api_key` lines are deleted from `config/app.yaml`. A CI check fails the build if `api_key` appears in that file. The prod deploy sets `APP_ENV=prod` and `make run` sets `APP_ENV=dev`. State is git. If it fails, CI blocks the merge.\n\n5. Write rollback notes (trigger: step 4 ready). The rollback rules are added to `deploy.md`, which lives in git. If this is missing, do not deploy.\n\n6. Deploy and verify (trigger: merge to `main`, then the CI image build). This is a rolling deploy with `maxUnavailable: 0`. Here is what one new pod does at start-up:\n   - `load()` runs before the HTTP server listens. It reads the latest version of the three keys at `orders-api/<APP_ENV>/<name>`.\n   - If the store is unreachable, it retries 3 times, 2 seconds apart. If it still fails, the process exits non-zero and the pod never becomes ready. Old pods keep serving and the rollout halts. You then check the rollout status and that pod's logs, fix, and redeploy.\n   - If `APP_ENV` is unset or unknown, the app refuses to start.\n   - On success the server starts, and `/healthz` returns 200 together with `secret_versions` (name to version id held by the pod).\n   - Key values live only in process memory. They never go to disk, environment variables or logs.\n   - Once the rollout completes, check `/healthz` on every pod. All three names should show version 1. State lives in the pods and the log service.\n\n7. Steady-state behaviour of a running pod (this runs independently of the rollout). Every request calls `get(name)`, which returns the in-memory value. Every 5 minutes `refresh()` reads the latest version of each key. On success it replaces the in-memory value and logs the new version id, and the next request uses it with no restart. On failure it keeps the last good value and logs a warning that never contains a key value.\n\n8. Rotate at providers (trigger: step 6 verified). This is done for each provider.\n   - A new key is created at the provider, and the old key stays valid.\n   - The new key is checked at the provider before it goes into the store.\n   - The security on-call writes the new key to the store as a new version.\n   - If creation or the check fails, the store is not written, no pod gets the new key and the app keeps working.\n   - If the store write fails, the store still holds version 1, nothing is revoked and the app keeps working.\n   - State is the store (old and new versions) and the provider.\n\n9. Confirm every pod (trigger: the step 8 writes). Wait 10 minutes so each pod has refreshed at least twice. The operator then lists the pods in the cluster (4 expected) and reads `/healthz` on each. Every pod must show the new version id for all three names. If a pod is missing, unreachable or shows an old id, do not revoke. Investigate first. Nothing is stored, because the check reads `/healthz` live.\n\n10. Revoke old keys (trigger: step 9 confirmed on all pods). Each old key is revoked at its provider. If revocation fails, the old key stays valid and you retry. This is the point of no return for rollback.\n\n11. Rollback.\n   - Before revocation, redeploy the last pre-change image. Its `config/app.yaml` still has keys that are still valid.\n   - After revocation, never use a pre-migration image. Fix forward, or roll back to a post-migration image.\n   - A failed rollout needs no rollback.\n   - If a bad key reaches pods, the security on-call writes the previous version's value back as the latest version. Pods pick it up within 5 minutes, and requests fail until then. The old key still works until revocation.",
+   "gaps": [
+    "How `orders-api` authenticates to the secret store, and which product the store is. This stops me explaining how `load()` actually gets permission to read.",
+    "How the operator reaches `/healthz` on each pod. The confirm step depends on it.",
+    "How long the rollout waits before it counts as halted. I can't say when a pod is slow versus stuck.",
+    "Whether the store returns the latest version by default when the app reads a name. The document says the app 'always reads' the latest version but doesn't say how it does that.",
+    "Who creates the new key at each provider, and how a new key is checked at the provider before it goes into the store. Step 8 (rotate) depends on both.",
+    "Whether providers allow an old key and a new key to be valid at the same time. The rotation flow assumes yes, but the document is unsure.",
+    "How the step 9 'confirm every pod' check connects to the rotation. The new version id is read from `/healthz`, but the document doesn't say where the operator gets the expected new id."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 9 (confirm every pod): the junior could not say where the expected new version id comes from, so the check cannot be followed. Fixed by stating in step 8 that each store write returns its version id, and in step 9 that the check compares each pod's /healthz against those returned ids. The open question about authenticating to the store and the question of how the operator reaches /healthz are already listed under Open questions, so they are not misreadings."
+  },
+  {
+   "text": "1. Access is set up first. The plan is approved, and that starts it. The store's access policies give `orders-api-prod` read access to `orders-api/prod/*` only. Only the security on-call can write prod secrets, and engineers cannot read prod values. State lives in the store's access policies. If this fails, nothing has moved, so you fix the policy and retry.\n\n2. The current keys go into the store. Step 1 being done starts this. The three live prod keys (payments, email, geocoding) are written as version 1 under `orders-api/prod/`. The sandbox keys are written under `orders-api/dev/`. The store holds the state, and each write creates a new version with its own id. If this fails, nothing reads the store yet, so the app is unchanged and you retry.\n\n3. The reader is built. A code change in `app/secrets.py` starts this. The reader has three parts.\n   - `load()` runs at start-up.\n   - `refresh()` runs every 5 minutes.\n   - `get(name)` runs on every request.\n   Each provider client calls `get(name)`, and it returns the value held in process memory. `/healthz` gains a `secret_versions` field. The state is the code, then process memory at run time. If this fails, the change is not merged and nothing deploys.\n\n4. The keys come out of the repo. Step 3 being merged starts this. The `api_key` lines are deleted from `config/app.yaml`. A CI check is added that fails the build if `api_key` appears in that file. The prod deploy sets `APP_ENV=prod`, and `make run` sets `APP_ENV=dev`. The state is in git. If this fails, CI blocks the merge, so nothing deploys.\n\n5. Rollback notes are written. Step 4 being ready starts this. The rollback rules are added to `deploy.md`, and the state is in git. If the notes are missing, you do not deploy.\n\n6. Deploy and verify. A merge to `main` starts this, followed by the CI image build. This is a rolling deploy with `maxUnavailable: 0`. Each new pod starts like this:\n   - `load()` runs before the HTTP server listens.\n   - It reads the latest version of the three keys at `orders-api/<APP_ENV>/<name>`.\n   - If the store is unreachable, it retries 3 times, 2 seconds apart.\n   - If it still fails, the process exits non-zero, the server never starts, and the pod never becomes ready.\n   - If `APP_ENV` is unset or unknown, the app refuses to start.\n   - Once `load()` succeeds, `/healthz` returns 200 with `secret_versions`, mapping each name to the version id the pod holds.\n   After the deploy, someone checks `/healthz` on every pod and expects version 1 for all three names. The state is in the pods and the log service. If a pod fails to load, the rollout halts and the old pods keep serving. You check the rollout status and that pod's logs, then fix and redeploy. A slow rollout still becomes ready within the wait limit.\n\n7. Keys are rotated at the providers. Step 6 being verified starts this. For each provider:\n   - A new key is created at the provider, and the old key stays valid.\n   - The new key is checked at the provider before it goes into the store.\n   - The security on-call writes the new key to the store as a new version. The write returns that version's id, and you keep the three ids for step 9.\n   State is in the store (old and new versions) and at the provider. If key creation or the check fails, the store is not written and the app keeps working. If the store write fails, the store still holds version 1, nothing is revoked, and the app keeps working.\n\n8. Every pod is confirmed. The step 7 writes start this.\n   - Wait 10 minutes, so each pod refreshes at least twice.\n   - The operator lists the pods (4 are expected) and reads `/healthz` on each.\n   - Every pod must show, for all three names, the version id that step 7 returned.\n   Meanwhile, every 5 minutes each pod's `refresh()` reads the latest version of each key. On success it replaces the in-memory value and logs the new version id. On failure it keeps the last good value and logs a warning that contains no key value. A refreshed key is used by the next request, with no restart. Key values live only in memory, never on disk, in environment variables or in logs. No state is kept for the check itself, because it reads `/healthz` live and compares it with the step 7 ids. If a pod is missing, unreachable or shows an old id, do not revoke. Investigate first. The old keys stay valid meanwhile.\n\n9. Old keys are revoked. Step 8 being confirmed on every pod starts this. Each old key is revoked at its provider, and the provider holds the state. If this fails, the old key stays valid and you retry. This is the point of no return for rollback.\n\n10. Rollback rules cover problems at each stage.\n    - Before step 9, redeploy the last image built before this change. It still has the keys in `config/app.yaml`, and those keys are still valid.\n    - After step 9, do not use any pre-migration image, because its keys are revoked. Fix forward, or roll back to a post-migration image.\n    - A failed rollout in step 6 needs no rollback.\n    - If a bad new key reaches pods, the security on-call writes the previous version's value back as the latest version. Pods pick it up at their next refresh, within 5 minutes. Requests that used the bad key fail until then.",
+   "gaps": [
+    "Which product the secret store is, and how orders-api authenticates to it, is not stated. This stops me explaining how load() and refresh() actually reach the store.",
+    "How the operator reaches /healthz on each pod is not stated. This stops me explaining the verification in steps 6 and 8.",
+    "How long the rollout waits before it counts as halted is not stated. This stops me explaining step 6 failure detection.",
+    "The document does not say whether the store returns the latest version by default when the app reads a name. This stops me explaining how load() and refresh() get the latest version.",
+    "Who creates the new key at each provider, and who may rotate keys, is not stated. This stops me explaining who starts step 7.",
+    "How a new key is checked at each provider before it goes into the store is not stated. This stops me explaining the check in step 7.",
+    "Whether a provider allows the old and new key to be valid at the same time is not stated, although step 7 assumes it. This stops me confirming the app keeps working during rotation.",
+    "Whether sandbox keys exist at each provider for dev use is not stated. This stops me explaining step 2 for the dev keys."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

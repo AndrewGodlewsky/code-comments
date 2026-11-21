@@ -1,0 +1,266 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is Debezium doing to Postgres here, and what is the \"slot\" you mention? What does a Kafka message on catalog.products contain (the whole row, or just what changed)?",
+     "about": "Postgres --> Debezium --> Kafka catalog.products; Watch WAL growth on the slot"
+    },
+    {
+     "id": "2",
+     "text": "What does the indexer do with an insert, an update and a delete? How does it handle \"Only active products are indexed\" when a product goes from active to inactive?",
+     "about": "Indexer / Only active products are indexed"
+    },
+    {
+     "id": "3",
+     "text": "What is commit_lsn, and how is it used as the version? What happens when an older event arrives after a newer one for the same product?",
+     "about": "Versions come from commit_lsn"
+    },
+    {
+     "id": "4",
+     "text": "When does a document go to the DLQ, and what is in the message? Who looks at the DLQ, and how does a document get back into the index after it is fixed?",
+     "about": "IX -.-> DLQ / bad docs go to the DLQ"
+    },
+    {
+     "id": "5",
+     "text": "What happens if the indexer or the search index is down or slow for a while? What do the retries with backoff do, and what happens to Kafka offsets and to the WAL meanwhile?",
+     "about": "Retries with backoff on errors"
+    },
+    {
+     "id": "6",
+     "text": "In the reindex, what is the snapshot backfill: where does it read from, and what writes into products_v4? What reads Kafka into v4 (the dotted line), and from which offset?",
+     "about": "Reindex job --> products_v4; K -.-> V4"
+    },
+    {
+     "id": "7",
+     "text": "How do you decide v4 is \"ready\" to swap? Who runs the alias swap, and how does the search API see it? What happens to writes from the indexer to v3 and v4 around the swap?",
+     "about": "Alias swap / swap the alias when ready"
+    },
+    {
+     "id": "8",
+     "text": "Why keep v3 for 48 h, and what is the rollback step if v4 turns out to be bad? Would v3 still receive updates during that time?",
+     "about": "keep v3 for 48 h"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Debezium reads Postgres's WAL (the log of committed changes) through the replication slot search_slot. The slot is a bookmark that makes Postgres keep the WAL until it has been read. Each message carries the whole row in `after` for an insert or update, and null for a delete. It does not carry only the changed columns, and it carries no old values."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "An insert or update with status active indexes the full row. An insert or update with status draft or archived deletes the document from the index, because only active rows may be searched. Active-to-inactive arrives as an update, so the same rule removes the document. A delete removes the document. All three use version = commit_lsn. Deleting a document that is not there counts as done."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "commit_lsn is the WAL position of the transaction that committed the change. Larger means committed later (search-setup.md). It is used as the document version: the store applies a write only if its version is at least the stored one. An older event arriving after a newer one is refused as a version conflict, and the indexer counts it as stale and moves on. Changes to one product share a partition, so conflicts mostly come from replays."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A document goes to the DLQ only when the index refuses it as invalid, never on a transient error. The DLQ message holds the original event and the store's error. An alert is raised and indexing continues. The brief does not say who reads the DLQ or fixes documents, so that is unknown (see Open questions). Decided: after a fix, the message is replayed through the indexer, and the version rule keeps the replay safe."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "For timeouts, 5xx or throttling, the indexer retries the same documents, waiting 1 s, 2 s, 4 s and so on, capped at 60 s. It never skips ahead, so its offsets stop at the failing batch and the Kafka backlog grows (the topic keeps 7 days). The WAL does not grow from an indexer outage, because Debezium keeps writing to Kafka. The WAL grows only when Debezium is stopped or cannot publish."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The backfill reads active rows by id from one repeatable-read snapshot on catalog-primary, at up to 5,000 rows/s, and writes them into products_v4 with version S. S is the WAL position read in the same transaction. The dotted line is group-v4: a second indexer that reads catalog.products from the offsets recorded just before the snapshot, and applies changes to products_v4 with commit_lsn as the version. Overlap with the snapshot is harmless, because older writes are refused. Recording the offsets slightly early is safe for the same reason."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Ready means both gates pass: products_v4 is less than 5 s behind, and its document count is within 0.5% of the active rows in products. The reindex job checks the gates and runs the switch itself, as one atomic alias move. The search API uses v4 from its next query. The plan has no manual step; that is my choice, because the gates are measurable. Each index has its own consumer group and offsets, so the switch does not interrupt either group, and no change is lost."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The brief sets 48 hours and gives the reason: to switch back without losing any change made in the meantime. I did not find a reason for 48 hours in particular, so that number comes from the brief. Rollback moves the alias back to products_v3 in one atomic step. Yes, v3 still receives every change during the 48 hours, because group-v3 keeps running."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The backfill writes each row with version = S, but a live event after S has commit_lsn larger than S. If a row is deleted or made inactive after S, is the delete event always applied after the backfill wrote it? What if the backfill writes that row later than the delete event was applied?",
+     "about": "Backfill: version = S, and Catch-up from recorded offsets, version = commit_lsn"
+    },
+    {
+     "id": "10",
+     "text": "Step 9 says the offsets are recorded just before the snapshot starts. How does the job make sure no change committed between recording the offsets and the snapshot is missed, and where do the recorded offsets and S get stored?",
+     "about": "Step 9, Start the snapshot"
+    },
+    {
+     "id": "11",
+     "text": "What does Debezium do on the very first start with the slot: does it emit the existing rows, or only changes after the slot was created? Where does group-v3 start reading at the first switch?",
+     "about": "Rollout / Debezium CDC connector / group-v3"
+    },
+    {
+     "id": "12",
+     "text": "When the cron is stopped and group-v3 started at the first switch, what offsets does group-v3 start from, and how does it get the changes to products_v3 that happened before it started?",
+     "about": "Rollout: At the first switch, stop the cron and start group-v3"
+    },
+    {
+     "id": "13",
+     "text": "How does the job measure 'less than 5 seconds behind' when no new events arrive for a while? Does an idle topic look like lag?",
+     "about": "Step 12, Gate check: lag is the time since the newest event applied"
+    },
+    {
+     "id": "14",
+     "text": "The count gate compares products_v4 document count to active rows. Since group-v4 also deletes inactive products, how can the count be off, and what does the job do if the backfill is finished but the count stays outside 0.5 percent?",
+     "about": "Step 12, Gate check / A gate does not pass"
+    },
+    {
+     "id": "15",
+     "text": "How do events from a transaction that touches several products get split across partitions, and does the indexer apply the whole transaction together or each row on its own?",
+     "about": "Topic catalog.products, 12 partitions, keyed by product id"
+    },
+    {
+     "id": "16",
+     "text": "If the reindex job crashes and restarts with a new snapshot from the last saved id, what version does it write with, the old S or a new one? Which offsets does group-v4 use meanwhile?",
+     "about": "Reindex job crashes, or its snapshot ends"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "unknown",
+     "text": "Not known. The backfill writes a row with version S. A delete or deactivation after S has a larger commit_lsn. If the delete is applied first, the backfill write is accepted only if the store still remembers the deleted version, and the brief does not say whether it does. If the store forgets, a deleted product can come back. The file now requires confirming this before a rebuild starts, and it stays an open question."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Offsets are recorded first, then the snapshot opens. Anything committed before the snapshot is in the snapshot. Anything committed after the offsets are recorded has an event after them, so catch-up reads it. Offsets, S and the last id are saved in the job's progress record. The brief names no store for that record, so it is an open question."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Debezium's own initial snapshot must be turned off, because the rebuild's snapshot covers existing rows. Then events cover only changes after the slot's position, as the rollout now says. Whether the connector is configured that way today is not known, so that is an open question."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "At the first switch, group-v3 starts from the offsets saved in step 9, the same as group-v4. It gets no changes from before those offsets. Changes between the cron's last run and those offsets may be missing from products_v3. That is an open question, and the plan adds no fix for it."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Lag is zero when the group has read to the end of every partition, so an idle topic reads zero. Otherwise, lag is the age of the oldest committed change not yet applied. The definition is now in the Terms."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The count can be off because of documents refused as invalid (they are in the DLQ and missing from v4), writes still in flight, and deleted rows that came back (see Q9). The 0.5% tolerance absorbs small gaps. If the backfill is finished and the count stays off, the job does not switch, alerts an operator, and search stays on products_v3. The brief gives no further step, so the cause must be found by hand."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Debezium writes one event per row, keyed by product id, so one transaction's rows spread across partitions. All of them carry the same commit_lsn. The indexer applies each event on its own, with no transaction grouping, because the brief gives no multi-document write. So for a few seconds search can show some products of a transaction updated and others not. This is accepted because each product's document is independent. It is now in the notes."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "A restarted job takes a new snapshot and a new S, and writes its rows with the new S. Rows written before the crash keep the old S. This is safe, because catch-up covers every change after the earliest saved offsets, and the version rule refuses older writes. Group-v4 is a separate consumer group. It keeps reading from its own committed offsets, which are never ahead of what it has applied, so it does not re-read from step 9."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "Step 11 says the backfill write is refused if a newer change was already applied, but what happens to a row that is deleted in Postgres after S and whose delete event group-v4 has not yet applied when the backfill writes it? Is it removed once the delete event is applied later?",
+     "about": "Step 11, Catch-up, in parallel"
+    },
+    {
+     "id": "18",
+     "text": "Step 10 backfills 'active rows' only. If a product is active at S and the backfill writes it with version S, but its earlier events (before S) are also replayed by group-v4 from the saved offsets, can an old event with commit_lsn below S be refused while a stale 'draft' delete is applied? In short: what do events with commit_lsn less than S do to a backfilled document?",
+     "about": "Step 9 and Step 11, version = S vs version = commit_lsn"
+    },
+    {
+     "id": "19",
+     "text": "What is the 'job progress record' and what process owns it? When the operator restarts the reindex job, how does the job know it is a restart rather than a new rebuild, and what happens to a half-filled products_v4?",
+     "about": "Reindex job crashes, or its snapshot ends / Job progress record"
+    },
+    {
+     "id": "20",
+     "text": "The cron currently writes products_v3 without versions. Between now and the first switch, who keeps products_v3 up to date, and what happens to the cron's data if a versioned write from group-v3 meets a document the cron wrote earlier?",
+     "about": "Rollout, At the first switch, stop the cron and start group-v3"
+    },
+    {
+     "id": "21",
+     "text": "In step 13, how does the job run the switch and how does it make sure group-v3 and group-v4 are both still healthy at that moment? Is the gate checked once at the moment of switching, or could lag or count change between the check and the move?",
+     "about": "Step 13, Switch"
+    },
+    {
+     "id": "22",
+     "text": "How is the 'active row count' for the count gate taken from the primary, and how does the job know the count of documents in products_v4 is comparable, given that some documents are in the DLQ and writes are still arriving?",
+     "about": "Step 12, Gate check"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "checked",
+     "text": "Checked against the version rule in search-setup.md. If the delete is applied after the backfill write, the delete's version (commit_lsn) is higher than S, so it is accepted and removes the document. If the delete is applied before the backfill write, the backfill write is accepted only if the store still keeps the deleted version. That ordering is Q9 and stays unknown."
+    },
+    {
+     "id": "18",
+     "tag": "checked",
+     "text": "Checked against the version rule. A backfilled document holds version S. An older event with commit_lsn below S is refused as a version conflict, so a stale draft or delete does not remove it, and the snapshot's newer state stands. If the stale delete runs before the backfill write, it removes nothing, and the backfill write at version S is accepted and restores the row. Step 11 now spells out these outcomes."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The reindex job owns the progress record: it writes S, the saved offsets and the last id, and reads them back. A restart is recognised by the record: if one exists for products_v4, the job does not create the index again and takes a new snapshot and S (step 8). A half-filled products_v4 is harmless, because it is not aliased, and rows written earlier keep their older S until a restart rewrites them. The brief names no store for the record, so where it is kept stays unknown (see Open questions)."
+    },
+    {
+     "id": "20",
+     "tag": "unknown",
+     "text": "Until the first switch, the cron is the only writer of products_v3, and group-v3 does not run before then, so no versioned write meets its documents (rollout updated). What the store does when the first versioned write lands on a document the cron wrote without a version is not known, because the brief does not say how the store treats unversioned documents. That is already listed in Open questions."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "The gates are checked just before the alias move, and the move follows at once; the job does not re-check. Lag or count may change between check and move, and that is safe: the move is atomic, and group-v4 keeps applying every change to products_v4 after it. Group-v3 is not a gate, because the switch does not depend on it, but it must keep running for 48 hours so that rollback works (step 13 updated)."
+    },
+    {
+     "id": "22",
+     "tag": "unknown",
+     "text": "The brief names no cheap way to take a live active row count from the primary. A count read inside the snapshot is right only at S, because changes after S move the primary and products_v4 but not that count, so it cannot be compared to products_v4 directly. The DLQ size is countable, so the DLQ gap is known. How to take the live count, and whether the 0.5% gap still holds after a long catch-up, is not known (Open questions updated)."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger (live sync): a `products` row on `catalog-primary` is inserted, updated or hard-deleted and the transaction commits. The change goes into the WAL, the primary's log of committed changes. Postgres keeps the WAL for the replication slot `search_slot` until Debezium has read past it. The state holder here is the WAL and the slot bookmark on the primary.\n\n2. Debezium reads the WAL through `search_slot`. It writes one event per row change to the Kafka topic `catalog.products`, keyed by product id. Each event has `op` (c, u or d), `id`, `after` (the whole row, or null on delete) and `commit_lsn`, the WAL position of the committing transaction. Keying by id puts all changes to one product in the same partition, in commit order. The topic has 12 partitions and keeps events for 7 days. Kafka now holds the state.\n\n3. Trigger: new events in the topic. The consumer group `group-v3` reads batches from each partition in order. Its saved offsets are kept in Kafka.\n\n4. For each event the indexer decides the write. A `c` or `u` event with status `active` becomes \"index the full row\" with version = `commit_lsn`. A `c` or `u` event with status `draft` or `archived` becomes \"delete the document\" with version = `commit_lsn`. A `d` event becomes \"delete the document\" with version = `commit_lsn`. Only active rows may be in search.\n\n5. The indexer bulk-writes the batch to `products_v3` by index name, not by the alias. Writing by name keeps `products_v3` current after the alias moves, which rollback needs. The search store applies each write only if its version is at least the stored version. Otherwise it returns a version conflict for that document.\n\n6. Outcomes of the bulk write:\n   - Version conflict means the change is stale. It is counted, treated as settled, and not retried.\n   - A transient error (timeout, 5xx, throttling) means the same documents are retried after 1 s, then 2 s, 4 s and so on, capped at 60 s. The indexer never skips ahead. Its offsets stop moving and the topic backlog grows until the index recovers.\n   - A document refused as invalid goes to the DLQ topic `catalog.products.dlq` with its error. An alert is raised and processing carries on. Offsets commit after the DLQ write is acknowledged.\n\n7. Once every document in the batch is settled, the indexer commits its offsets to Kafka. A crash before that makes it restart from the last committed offset and replay the unsettled events. This is safe because the same version gives the same result. The target is that 95% of committed changes are searchable within 5 seconds of commit.\n\n8. The search API queries the alias `products`. Before any switch the alias points at `products_v3`. A moved alias is atomic, so a query always reaches one index.\n\n9. Watching the WAL (continuous): an alert fires at 20 GB of WAL retained for `search_slot`. At 50 GB ops drop the slot, and after that only a full rebuild recovers. If Debezium or Kafka is down, the WAL grows. If only the indexer is down, the WAL does not grow, but the topic backlog does. If the backlog outlasts the 7 days of retention, a full rebuild is needed.\n\n10. Rebuild trigger: an operator starts the reindex job, for example for a new mapping or after data loss. The job creates an empty `products_v4` with the new mapping, and nothing points at it. If a progress record for `products_v4` already exists, this is a restart. The job does not create the index again and goes straight to step 11 with a new snapshot.\n\n11. The snapshot, in a fixed order. First the job records the topic offsets for all 12 partitions. Then it opens one repeatable-read snapshot on `catalog-primary` and reads S, a WAL position, in the same transaction. Offsets and S go into the progress record. This order closes the gap. A change committed before the snapshot is in the snapshot. A change committed after the offsets were recorded has an event after them. Any overlap is harmless because older writes are refused.\n\n12. Backfill. The job reads active rows in id order from the snapshot at up to 5,000 rows/s (about 2.5 hours budgeted) and writes each to `products_v4` with version = S. After each batch it saves the last id read to the progress record.\n\n13. Catch-up runs in parallel. `group-v4` starts from the offsets saved in step 11 and applies every event with the rules of steps 4 to 7, using version = `commit_lsn`. It writes to `products_v4`, and it keeps running after the backfill. The version rule settles collisions with the backfill:\n   - An event after S that is applied first has a version above S, so the backfill write of that row is refused and the newer change stands.\n   - A delete applied after the backfill write removes the document.\n   - An event with commit_lsn below S is refused on a backfilled row. If such a delete runs before the backfill write, it removes nothing and the backfill write is accepted.\n   - A row deleted or made inactive after S, whose delete lands before the backfill writes that row, only stays deleted if the store still remembers the deleted version. The document says this is unknown.\n   - After a restart `group-v4` resumes from its own committed offsets, not from the step 11 offsets.\n\n14. Gate check, repeated until both pass. Lag of `group-v4` must be under 5 seconds. The `products_v4` document count must be within 0.5% of the active row count in `products` on the primary. If neither passes, both groups keep running and nothing switches. The count can be off because of DLQ documents, in-flight writes, or deleted rows that came back. If the backfill is done and the count stays outside 0.5%, an operator is alerted to find the cause by hand.\n\n15. Switch. When both gates pass, the job moves the alias `products` from `products_v3` to `products_v4` in one atomic step. It checks the gates just before the move and not again. That is safe because each group has applied every change to its own index and `group-v4` keeps applying changes after the move. The search API uses the new index from its next query. `group-v3` keeps writing `products_v3`.\n\n16. Job crash or snapshot ending during the rebuild. Search still uses `products_v3`, and `products_v4` is not aliased. On restart the job takes a new snapshot and a new S, and resumes the backfill after the last saved id. Rows already written keep their older S version.\n\n17. Rollback within 48 hours. If `products_v4` is bad, the alias moves back to `products_v3` in one atomic step. It is complete because `group-v3` kept it current.\n\n18. After 48 hours, `group-v3` is stopped and `products_v3` is deleted.\n\n19. First-time rollout (a one-off). The cron job keeps serving `products_v3` until the first switch, and `group-v3` does not run before then. At the first switch the cron is stopped and `group-v3` is started from the offsets saved in step 11. After that the cron is retired. The cron writes without versions, so it must never run alongside an indexer writing `products_v3`.",
+   "gaps": [
+    "Where the progress record (offsets, S, last backfilled id) is stored is not stated. The job writes and reads it, so I cannot say which component holds that state.",
+    "How a commit position written as text (for example 0/16B3748) becomes a numeric version the store can compare is not stated. Every versioned write depends on it, in steps 4, 5, 12 and 13.",
+    "Whether the store remembers a deleted document's version, and for how long, is unknown. So I cannot say what happens when a backfill write meets a row that was deleted after S and whose delete was applied first (step 13).",
+    "How the live count of active rows on the primary is taken for the count gate is not stated. The document does not define which rows count as active for that gate or how to read the count cheaply. I cannot explain how the gate in step 14 is actually evaluated.",
+    "Who reads the DLQ, fixes the documents and replays them is not stated, so I cannot say how an invalid document gets back into the index.",
+    "How a document that was in the DLQ, or one written by the cron without a version, interacts with versioned writes is not covered. This matters for the first switch and for rollback completeness.",
+    "How changes between the cron's last run and the first switch get into `products_v3` is unknown. This affects whether a rollback after the first switch is complete.",
+    "Whether the connector currently takes an initial snapshot is unknown. Such a snapshot would emit a read operation that the decision rules in step 4 do not cover.",
+    "How the reindex job learns that the lag of `group-v4` is under 5 seconds is not stated. The lag is defined, but the document does not say who measures it or where it is read.",
+    "How a restarted job knows whether the crash was a restart rather than a first run is stated only as 'a progress record exists'. It is unclear what the job does with the recorded offsets and S when it takes a new snapshot. It is also unclear whether it overwrites them, since `group-v4` ignores the old offsets after a restart."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

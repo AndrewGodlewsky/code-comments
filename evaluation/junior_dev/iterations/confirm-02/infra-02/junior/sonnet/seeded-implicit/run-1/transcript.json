@@ -1,0 +1,203 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What starts the pipeline: a push to main, a merged PR, a tag? And what does \"PR checks stay as they are\" mean for this flow?",
+     "about": "PR checks stay as they are"
+    },
+    {
+     "id": "2",
+     "text": "What does a failure in unit_tests or integration_tests do? Does the run stop, and who is told?",
+     "about": "unit_tests / integration_tests --> staging"
+    },
+    {
+     "id": "3",
+     "text": "How does the integration test retry work: how many attempts, and what is retried (a test or the whole job)?",
+     "about": "Integration tests have a retry"
+    },
+    {
+     "id": "4",
+     "text": "What are the staging and production locks, who takes them, and what happens to a run that finds the lock held?",
+     "about": "Staging and production locks"
+    },
+    {
+     "id": "5",
+     "text": "What exactly does deploy.sh do in each mode (staging, canary, production, canary-off, rollback), and where does it get the image SHA?",
+     "about": "deploy.sh"
+    },
+    {
+     "id": "6",
+     "text": "What do smoke_tests check, and what happens if they fail after staging is already deployed?",
+     "about": "staging --> smoke_tests"
+    },
+    {
+     "id": "7",
+     "text": "What happens when the 72h approval times out or someone rejects it? Is the run failed, and is staging left in place?",
+     "about": "Approval by release-approvers, 72h timeout"
+    },
+    {
+     "id": "8",
+     "text": "During the canary, what share of traffic does it get, and what happens if the 5xx rate exceeds 1% or Prometheus is unreachable? Does canary-off run automatically?",
+     "about": "Canary is watched for 15 min on the Prometheus 5xx rate, 1% threshold"
+    },
+    {
+     "id": "9",
+     "text": "What does \"Older runs get superseded\" mean: are older runs cancelled, and what if one is mid-production rollout or waiting for approval?",
+     "about": "Older runs get superseded"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The pipeline starts on a merge to main (a push to main). Tags and pull requests do not start it. Pull requests keep today's behaviour from environments.md: build the image and run unit tests, with no push and no deploy. I have spelled this out in the diagram and in step 1."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Yes, the run stops. The brief says a test failure ends the run and that failures are announced in #deploys, so #deploys is told. Unit tests have no retry. Integration tests fail the run only after the retry fails too. Nothing is deployed."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Two attempts in total: the first run plus one automatic retry, as the brief requires. The whole integration job is retried, not a single test. I chose this because job-level retry needs nothing from the test runner, and each attempt gets a fresh Postgres container. Only integration tests get the retry, because of the known flaky test."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "They are named CI locks, which environments.md says CI supports. A run takes the staging lock before step 3 and releases it after the smoke tests. It takes the production lock after approval and inside the window, and holds it until the final canary-off or a failure. The brief requires only one production deploy at a time. I added the staging lock myself because two staging deploys at once would corrupt the SSM tags. A run that finds a lock held waits in line, then passes the stale-run checkpoint again."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Taken from the header and body of deploy.sh. staging/production: migrate, set the image, wait for the rollout, then write previous_tag and current_tag. canary: migrate, run the tag on 2 canary pods (10% of traffic), no SSM write. canary-off: scale the canary to 0. rollback: set the image back to previous_tag, write current_tag, and leave the schema alone. The tag is the merged commit's SHA, which CI passes in as the argument. The image was built and pushed in step 1 with the same tag."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Smoke tests are `make smoke ENV=staging`, about 3 min, against the staging URL. If they fail, the pipeline runs `deploy.sh rollback staging` and ends the run, as the brief says. Rollback is image only and goes back to previous_tag. The schema stays migrated, which is safe because every migration must work with the previous image."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "On expiry the run ends and the expiry is announced in #deploys. Nothing goes to production, as the brief requires. Staging is left on the new tag, because nothing in the brief or in deploy.sh restores it, and the next run overwrites it. A rejection fails the run and is announced, with staging left in the same way. I chose to leave staging alone because a rollback that nobody asked for would add a mechanism the brief does not require."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The canary gets 10% of traffic on 2 pods, from environments.md. If the 5xx ratio goes above 1% at any reading, canary-off runs automatically and the run fails, as the brief says. I read the ratio every 30 s. If Prometheus cannot be queried, I treat that the same way (canary-off and fail). This is the safe choice, because an unwatched canary must not go on to production. No traffic means no value, which counts as not above 1%. The 30 s interval and the unreachable-Prometheus rule are my own choices."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Superseded means cancelled at the next checkpoint when a newer run exists, so only the newest commit goes forward. A run before the staging deploy is stale once any newer run starts. A run between staging and production, including one waiting for approval, is stale once a newer run passes its smoke tests. Once a run holds the production lock it is never cancelled, so a run in the middle of a production rollout always finishes. I chose this to prevent an older tag from replacing a newer one in production. The cost is that an approval given to a run that later goes stale is lost, and the newer run needs its own approval."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Step 3 says the staging lock is taken before deploy.sh staging. Where exactly is the stale-run checkpoint relative to taking the lock? Does a run that waited in line get checked again after it gets the lock?",
+     "about": "3 Take staging lock / Several merges at once"
+    },
+    {
+     "id": "11",
+     "text": "In step 4, if smoke tests fail and rollback staging runs, what does it do when previous_tag was just overwritten by this run's deploy? Is previous_tag the tag before this run's deploy?",
+     "about": "4 Smoke tests on staging / deploy.sh rollback staging"
+    },
+    {
+     "id": "12",
+     "text": "What does 'wait for window' mean mechanically? Does the run poll the clock, and what if approval comes on Friday night? Does the run sit holding anything meanwhile?",
+     "about": "6 Wait for window, then take production lock"
+    },
+    {
+     "id": "13",
+     "text": "How does a run know a 'newer run exists' or that a newer run 'passed its smoke tests'? Where is that recorded and who checks it?",
+     "about": "Several merges at once"
+    },
+    {
+     "id": "14",
+     "text": "In step 7, canary migrates the production database. If the canary then fails the watch, what happens to production traffic and to the migration? Why is a migration run before the canary is proven?",
+     "about": "7 deploy.sh canary SHA"
+    },
+    {
+     "id": "15",
+     "text": "In step 9, deploy.sh production migrates again and rolls the stable deployment while the canary is still running. Is it a problem that both run at once, and does the 300 s rollout wait apply?",
+     "about": "9 deploy.sh production SHA"
+    },
+    {
+     "id": "16",
+     "text": "When the run fails at step 9 and canary-off runs, who is told that a person must check the stable deployment? Is that in the #deploys message?",
+     "about": "What happens on failure / Open questions"
+    },
+    {
+     "id": "17",
+     "text": "If a failure happens while the run waits for the production lock or the runner dies mid-run, what releases the locks? Does the 'Run fails' step always execute?",
+     "about": "Run fails / Lock"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The stale check happens on arrival at step 3 and again right after the lock is taken, so a run that waited in line is checked again before it deploys. A run that waited could otherwise put an older tag on staging. I added this to step 3."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes. deploy.sh staging reads CURRENT before the rollout, then writes previous_tag = CURRENT and current_tag = new tag. So previous_tag is the tag staging ran before this run's deploy, and rollback staging returns to it. I added a clause to step 4 and the terms."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The run checks the clock every minute until inside the window. It holds nothing while waiting, because the production lock is taken only after the window opens. An approval on Friday night waits until Monday 09:00 UTC. After taking the lock it checks the window again and releases the lock if it closed. The one-minute poll is my choice; any short interval works."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "I decided that a newer run means a run for a later commit on main, and that each run asks CI for the list of runs and their step status at its checkpoints. The newer run also cancels older waiting runs when its smoke tests pass. I do not know whether CI offers a run list with step status or run cancellation. environments.md does not say. I added this to the open questions."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "If the canary fails the watch, canary-off runs. All production traffic goes to the stable deployment, which never changed. The migration stays applied, because there is no undo, and that is safe because every migration must work with the previous image. The migration runs before the canary is proven because deploy.sh canary does it and the canary pods need the new schema to start. I added this to step 7 and step 8."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Not a problem. deploy.sh production runs migrate up again, which is a no-op since the canary already applied it. The canary runs the same tag, so both serve the same code. The 300 s rollout timeout applies only to the stable deployment's rollout. I added this to step 9."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The pipeline posts the message, so I decided that the #deploys failure message for step 9 says a person must check the stable deployment. It was not in the file before. I added it to step 9, the diagram and the failure table. Who the person is stays an open question."
+    },
+    {
+     "id": "17",
+     "tag": "unknown",
+     "text": "I decided that the Run fails step is a cleanup step that CI runs on any failure or cancellation, and a run waiting for a lock or the window holds no production lock, so there is nothing to release. I do not know what CI does with a lock when the runner itself dies. environments.md says nothing. I added this to the open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one merge to main (commit SHA) through the pipeline.\n\n1. Trigger. A push to `main` (a merge) starts a run. The tag is the commit SHA, and it is the only version the pipeline passes around. Pull requests and tags don't start a run. A PR only builds and unit-tests, with no push, no deploy and no announcement.\n\n2. Build. CI builds the image once and pushes `registry.internal/shop-api:<SHA>` to the registry. Nothing is rebuilt later. If the build fails, the run fails. Every failure does three things: it posts to #deploys, it releases any lock the run holds, and it stops the run. A CI cleanup step does this on any failure or cancellation. A migration that already ran stays applied.\n\n3. Tests. After the build, unit tests (`make test-unit`, about 4 min) and integration tests (`make test-integration`, about 12 min, with a Postgres service container) run in parallel, and both must pass. Unit tests get no retry. Integration tests retry the whole job once, with a fresh Postgres container, because one test is known to be flaky. The run fails only if both integration attempts fail.\n\n4. Staging lock and stale check. The run takes the staging lock, which protects the staging SSM tags. If another run holds it, this run waits in line. Once it holds the lock, it does the stale check. A run is stale if a newer run exists, and before this step that means any newer run has started. A stale run is cancelled and not announced. A cancelled run is recorded in CI only, because it is not a failure.\n\n5. Staging deploy. The run calls `deploy.sh staging <SHA>`. deploy.sh migrates the database and rolls the stable `shop-api` deployment to the tag. It waits up to 300 s for the rollout. After the rollout succeeds, it writes SSM `current_tag` (the new tag) and `previous_tag` (the old current). SSM is the only record of what each environment runs. If deploy.sh fails, the run fails. No rollback runs, because the tags weren't written and rollback would go to the wrong tag.\n\n6. Smoke tests. While still holding the staging lock, the run executes `make smoke ENV=staging` (about 3 min). Then it releases the lock. If the tests fail, it runs `deploy.sh rollback staging`, which sets staging back to `previous_tag` (image only, and the schema stays), and then fails the run. If they pass, this run cancels any older run that is between step 3 and step 6 (the document's step numbers).\n\n7. Approval. The run waits for a `release-approvers` member to approve. Staging stays on the new tag while it waits. After approval, the pipeline compares the recorded approver (CI records who and when) with the commit author, and fails the run if they are the same. A rejection fails the run and leaves staging as it is. If nobody approves within 72 h, the run expires, announces the expiry and ends. Nothing goes to production and staging stays on that tag. While waiting, the run becomes stale and is cancelled if a newer run passes its smoke tests, even if the approval was already given. The newer run needs its own approval.\n\n8. Window wait. After approval, the run checks the clock every minute until it is inside the deployment window (Monday to Thursday, 09:00 to 15:00 UTC). It holds no lock while waiting. The 72 h limit does not apply here, so the wait has no limit of its own, except that a newer run can make this run stale.\n\n9. Production lock. The run takes the production lock and waits in line if needed. Once it holds the lock, it repeats the stale check and the window check. If it is stale, it is cancelled. If the window has closed, it releases the lock and goes back to waiting for the next window. Once it holds the lock and passes both checks, it is never cancelled. The lock is held until the finish step or a failure, so only one production deploy runs at a time.\n\n10. Canary. The run calls `deploy.sh canary <SHA>`. This is the start of the production deploy for window purposes. It migrates the production database, which canary and stable share. Then it runs the tag on `shop-api-canary` with 2 pods, and the load balancer sends those pods 10% of traffic. It makes no SSM write, so the canary is never recorded anywhere. The migration runs first because the canary needs the new schema to start. That is safe because every migration is forward-only and works with the previous image, which stable still runs. If deploy.sh fails, the run calls `deploy.sh canary-off` and fails.\n\n11. Watch. For 15 minutes after the canary rollout succeeds, the run reads the Prometheus canary 5xx ratio every 30 s. If any reading is above 1%, or Prometheus can't be queried, it runs `deploy.sh canary-off` (canary scaled to 0, all traffic back on stable) and fails the run. If the canary got no traffic, the ratio has no value and counts as not above 1%.\n\n12. Production deploy. If the watch is clean, the run calls `deploy.sh production <SHA>`. This rolls the stable deployment and writes the production SSM tags. The canary keeps running during this, which is harmless: it runs the same tag, the second migration is a no-op, and the 300 s wait applies to stable only. If it fails, the run calls `deploy.sh canary-off` and fails. It does not run `rollback production`, because the tags weren't written. The #deploys failure message says a person must check the stable deployment.\n\n13. Finish. The run calls `deploy.sh canary-off`, releases the production lock and announces success in #deploys. If this canary-off fails, it is announced as a failure.",
+   "gaps": [
+    "Who checks a partly rolled stable deployment after a failed `deploy.sh production`, and how, is not decided (the document says so explicitly). So I can't say how production gets back to a known state.",
+    "I can't explain how the run is cancelled mid-flight. The document does not say whether CI lets one run cancel another or offers a run list with step status, and it says this is unknown. Staleness and the step 6 cancellation depend on both.",
+    "I can't say what happens to a lock if the runner dies mid-run. The document says it is unknown whether CI frees it, and that someone must release it by hand if not.",
+    "I can't say whether CI can stop the commit author from approving. The document only says the pipeline checks it afterwards, so a bad approval is caught late rather than blocked."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

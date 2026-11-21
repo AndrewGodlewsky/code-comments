@@ -1,0 +1,26 @@
+{
+ "q5": {
+  "answer": "Dedup state lives in the key-value store, keyed by `event_id`, with value `partition:offset` of the winning copy, written by an atomic set-if-absent. Entries expire via per-key TTL of 8 days (7-day client retry window plus 5 minutes backoff, with margin). The archive indexes also hold (event_id, partition, offset) but are not the live state.",
+  "decided": true
+ },
+ "q6": {
+  "answer": "I did not design a deliberate degraded mode for an unreachable KV store. The collector keeps accepting and logging events and the archiver keeps saving them, since neither depends on KV. The live processor cannot dedup and would stall or retry from its last committed offset, so freshness suffers. The plan only covers KV data loss (live briefly admits duplicates, then re-seed keys from archive indexes and replay affected days). Whether the processor should block or admit events unchecked during an outage was not decided.",
+  "decided": false
+ },
+ "q7": {
+  "answer": "No events are lost because offsets are committed only after the load, so a crash re-reads the batch from the last committed offset. No double-counting because dedup is idempotent (the KV set-if-absent treats a key already holding this event's own `partition:offset` as the winner) and the warehouse load is idempotent by `event_id` (merge or insert-if-absent). The reprocessed batch therefore adds no duplicate rows.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Replay reads only the raw archive in object storage (the envelopes plus the per-day `(event_id, partition, offset)` indexes and manifest), never the log or the live KV. Rebuilt rows are written to a separate staging table such as `events_clean_staging_<D>_<run id>`, which dashboards do not query. They become visible only through the warehouse's atomic single-partition replace.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "It reads the archive indexes for D-8 through D, plus the first two hours of D+1, and keeps a copy stamped D only if it has the lowest log offset for its `event_id` in its log partition. If an earlier copy exists in D or in an earlier day, within the 8-day lookback, the copy is dropped. So an event first received on an earlier day is excluded from D. It never touches the live KV dedup store.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The live partition for D is untouched, because all work happens in staging and the swap is atomic. A failure before the swap leaves only a leftover staging table and possibly a lock. The lock lease expires if the job died, and the operator drops the staging table and reruns. A failed swap also leaves the old partition in place. If a bad replay was swapped in successfully, the operator replays again with the previous enrichment version.",
+  "decided": true
+ }
+}

@@ -1,0 +1,28 @@
+## Review of feat-02 (junior-v7, author haiku, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Sequence diagram: the Redis call line now says the plan limit is passed with the customer ID.
+- Decision 1: the Lua script builds the window key from Redis TIME, so instances agree on the window.
+- Decision 3: the gateway passes the plan limit as an argument; the script returns count and Retry-After on a denied reply.
+- Decision 4: the gateway copies Retry-After from the script's denied reply into the 429.
+- Decision 6: no retry; the gateway fails open immediately after the first error or timeout.
+- Open items: Enterprise item now states that Enterprise requests are unlimited until a value is configured and must be settled first.
+- Open items: added Key Service failure and backend timeout as unknowns from the junior's questions.
+- Added a two-part summary that says how the gateway works today before describing the new budget check.
+- Added a terms section defining API key, customer, plan, gateway, Key Service, counter store, Lua script, fixed window, epoch minute, Redis TIME, TTL and Retry-After, since a newcomer would not know them.
+- Turned the decisions into numbered steps in order, each saying what starts it, what it does, what keeps its data and what happens on failure (step 7 is the fail-open branch).
+- Added a failure table covering the 401, 429, store-error, backend-500, Key Service and backend-timeout cases.
+- Merged repeated statements: the 401 no-counter rule, the 429-no-budget rule and the backend-500-still-counts rule each appear once, in the step where they apply. Removed the cross-references such as requirement and decision numbers.
+- Kept the Lua script's limit-as-argument rule (Q3) and the script's use of Redis TIME for the window key and Retry-After (Q5). Kept Remaining at 0 for the last slot and Retry-After copied from the script reply (Q6). Kept the no-retry rule on store failure (Q7).
+- Stated that Enterprise requests are not rate-limited until a value is set, as a decided gap, and kept it in the open questions (Q4).
+- Added Key Service failure, not-found caching and backend timeout as open questions, since the existing system does not define them (Q1, Q2, Q8). No handling was invented for them.
+- Kept all eight fixed requirements, the 100-per-minute Standard limit, the open Enterprise value, the 50 ms deadline, the sliding-window future note, the 5-minute cache staleness, and the 120 s TTL.
+- Kept the Mermaid sequence diagram in its diagram form and updated its Enterprise note to say the value is not set yet. Moved deployment-only items (Redis failover) to open questions so they stay apart from how the system runs.
+- Length is about 1.4 times the first version: the added terms, step structure and failure table account for the growth.
+
+### Holes
+- Q1: When the 5-minute cache misses and the Key Service is slow or down, what does the gateway do with the request? (author: The brief and this document do not say what the gateway does when the Key Service is slow or down on a cache miss. I did not invent a rule. It is now an open item.)
+- Q2: Does the gateway cache a 'not found' answer from the Key Service, or only valid keys? (author: The existing system only says the gateway caches the Key Service answer for 5 minutes. It does not say whether a not-found answer is cached. It is now an open item.)
+- Q8: If the backend is slow or times out, does the gateway have its own timeout and what does the client receive? (author: The brief and this document do not give a backend timeout, or say what the client receives on a backend timeout. The only fixed fact is that a request which already passed the check still counts (decision 7). It is now an open item.)

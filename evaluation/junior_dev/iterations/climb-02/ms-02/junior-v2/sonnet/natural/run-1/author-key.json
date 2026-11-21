@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Business code calls enqueue_notification, which inserts a pending row in the monolith notifications table inside its transaction. If that type is routed to the service, the relay (polling every 1 s) selects pending rows with FOR UPDATE SKIP LOCKED, publishes them to notifications.requested, waits for the broker's store confirmation, then marks them handed_off and commits. The monolith's part is done at handed_off. It only later records sent/failed when the result consumer applies the service's result, and a reconciler republishes handed_off rows with no result after 60 min.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The per-type flag notifications.route.<type> (monolith or service) decides, and it is read by the old worker and the relay on every poll, with no caching. It decides only where pending rows go, and it is decided at the moment a poller claims the row. Once a row is handed_off the service owns it and the flag no longer matters. The only skew is the platform's 10 s propagation, and row locks plus the status='pending' re-check keep the two from taking the same row.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Three layers. The service table has the notification id as primary key and the consumer inserts with ON CONFLICT DO NOTHING, so a redelivered message creates no second row. Every worker update is guarded by status='pending' and its own lease. MailRelay is always called with idempotency_key = notification id, so even a repeat send within 24 h is dropped and returns success.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The consumer inserts the row and commits, then acks, and it never sends inline. Sending is done later by a separate worker from the table. If the service crashes after commit but before ack, the broker redelivers after 30 s and the insert hits the primary key conflict, so it just acks (and republishes the result if the row is already terminal). If it crashes before commit, nothing is stored, no ack, and redelivery inserts normally.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "In the service's own database, in its notifications table (attempts, next_attempt_at, lease_until, status). The service's worker acts on it, polling every 1 s, claiming rows with FOR UPDATE SKIP LOCKED and a 60 s lease. It applies today's policy: 5 attempts, backoff 1/2/4/8 min, then failed with page_pending and a pager loop calling alerts.page_oncall. The monolith row only shows handed_off until the result arrives.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Flipping the flag back affects only rows still pending, which the old worker then sends. Rows already handed_off stay with the service, which finishes them (send, retry, fail, page) and publishes results, and the result consumer updates the monolith row. The old worker never touches handed_off rows, so each row has one owner and nothing is lost or re-sent. The service must stay up until handed_off for that type reaches 0. The one ambiguous case, a relay crash after broker confirmation but before the mark, is covered by the shared idempotency key.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The notifications.requested message carries {id, type, user_id, email, payload, created_at, schema_version}, self-contained because the service cannot read the monolith DB. The email content (subject and body) is produced in the service, which renders the template from type and payload. The monolith does not render for service-routed types, and the service has copies of the templates validated by golden-output tests.",
+  "decided": true
+ }
+}

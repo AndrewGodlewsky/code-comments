@@ -1,0 +1,241 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where does the customer's payment method come from, and what does the customer see on screen between pressing Place order and the webhook, which can take up to 30 minutes?",
+     "about": "ORD5 Status AWAITING_PAYMENT / PAY2 Charge provider"
+    },
+    {
+     "id": "2",
+     "text": "How do PaymentSucceeded, PaymentDeclined and OrderConfirmed travel between services? What is the broker, and what is the outbox that Payment and Order store?",
+     "about": "PAY5 publish PaymentSucceeded / ORD8 publish OrderConfirmed / outbox"
+    },
+    {
+     "id": "3",
+     "text": "How does Order know which reservation to claim or release? Where is the reservation id kept after Inventory returns it?",
+     "about": "INV3 reservation id returned -> ORD5 / ORD7 claim"
+    },
+    {
+     "id": "4",
+     "text": "What exactly counts as an 'open checkout' on a cart, and which statuses make it open or closed? How does the retry after FAILED_SHORT_STOCK or FAILED_PAYMENT avoid being treated as the existing order?",
+     "about": "ORD1 Look for an open checkout on this cart"
+    },
+    {
+     "id": "5",
+     "text": "If a service crashes or a call times out midway (for example Order created the order but the reserve call got no answer, or Payment charged but Order never heard), what picks the order back up? Who retries?",
+     "about": "ORD2 / ORD3 / ORD5 calls between services"
+    },
+    {
+     "id": "6",
+     "text": "The chart says the charge is requested synchronously via POST /charges, but the result only arrives by webhook. What does POST /charges return to Order, and what does Order do with it?",
+     "about": "ORD5 -> PAY1 POST /charges"
+    },
+    {
+     "id": "7",
+     "text": "When the claim is refused and Order cancels with a refund, what happens to the reservation and held stock? Also, what if the claim call itself fails or times out, rather than returning short?",
+     "about": "INV7 Claim refused / ORD9 CANCELLED_OUT_OF_STOCK"
+    },
+    {
+     "id": "8",
+     "text": "What happens when the watchdog polls and the provider says the charge is still pending, or has no record of it? Does the order stay in AWAITING_PAYMENT, and for how long?",
+     "about": "PAY6 Watchdog: poll provider for charge status"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The screen shows the order as Awaiting payment, read from Order's own status. No call to Payment is needed for it. Payment's 202 reply starts the wait, and the page refreshes when the outcome arrives. How card details are captured is not in the brief and is not known. It is left out of the flow, and it is listed under Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Events go over the shared message broker named in the brief. The brief does not name the product, which is not known and not needed here. The outbox is a table in each service's own database. The event row is written in the same transaction as the state change, and a relay publishes it to the broker. A crash between saving and publishing therefore cannot lose the event or announce one that was not saved. The file now defines outbox and says PaymentSucceeded, PaymentDeclined and OrderConfirmed go through it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Inventory returns the reservation id in its reply to POST /reservations. Order saves it on its order row and uses it for release and claim. Inventory needs no other key for these calls. The file now says Order saves the id."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "An open order is one in PENDING_STOCK or AWAITING_PAYMENT. CONFIRMED, FAILED_SHORT_STOCK, FAILED_PAYMENT and CANCELLED_OUT_OF_STOCK are closed. A retry after a closed status finds no open order, so it creates a new order with a new id and key. An open order still in PENDING_STOCK is not returned as-is, because its reserve call may never have been answered. The retry resends reserve on that order instead. The file now defines open order and this rule."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Order retries its own calls with the same order id until it gets an answer. Each call is safe to repeat, and Order never cancels or refunds on a timeout. If the reserve reply is lost, the order stays PENDING_STOCK, and the customer's next Place order resends it. Any hold Inventory made is freed by the 10-minute sweeper. If the charge reply is lost, Payment's unique payment row makes the resend safe. If Payment charged and Order never heard, the provider's webhook reaches Payment, which publishes through its outbox. Order consumes the event. The file now has a retries section that says this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "POST /charges returns 202 PENDING once the provider has accepted the charge request. If the provider call fails before it is accepted, Payment returns an error and Order resends with the same key. Order saves PENDING and waits for the webhook. It does nothing else, because the outcome only comes by webhook. The reply only confirms that the request was accepted. The chart now shows the 202 edge back to Order."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A refused claim only happens after the hold has expired and the re-reserve in the same transaction has failed. Inventory writes nothing in that transaction, and the reservation is already EXPIRED. Nothing is held for the order, so there is nothing to release. A claim that gets no answer is resent with the same reservation id. Claim is idempotent, so a CLAIMED reservation returns CLAIMED. Order does not refund on a timeout. How long Order keeps retrying before it alerts ops is not known, and it is listed under Open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "If the provider still says pending, the order stays AWAITING_PAYMENT. The watchdog polls again every 5 minutes. The hold has already lapsed at 10 minutes, so the order holds no stock. If the provider has no record of the charge, Payment treats it as declined and publishes PaymentDeclined. Order then releases the hold, which is a no-op if it has expired. The reason is that no record means no charge was taken under that key. The brief sets no time limit on pending, so the duration is not known and is listed under Open questions. Whether a missing record means no charge will follow needs confirming with the provider, which is decision 7."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Reserve is idempotent on the order id, so a resend should return the same reservation. Why then does the notes say a hold from a lost reply is only freed by the sweeper? Does the resend reuse that hold or make a new one?",
+     "about": "Retries and lost replies / ORD3 reserve"
+    },
+    {
+     "id": "10",
+     "text": "What triggers Order to resend a charge that returned an error, or a claim with no answer? Is it a background job, a timer, or the customer pressing Place order again? How often, and what status does the order show meanwhile?",
+     "about": "Retries and lost replies / ORD5 charge call fails"
+    },
+    {
+     "id": "11",
+     "text": "When Order receives PaymentSucceeded or PaymentDeclined, how does it find the order, and what does it do if that order is already in a closed status, for example FAILED_PAYMENT after the watchdog's 'no record' decision?",
+     "about": "PAY5 -> ORD6 / ORD7 (Order consuming PaymentSucceeded or PaymentDeclined)"
+    },
+    {
+     "id": "12",
+     "text": "The emails are sent by Order at CONFIRMED and CANCELLED_OUT_OF_STOCK. Are they sent in the same transaction or through the outbox, and what happens if sending fails or Order crashes right after setting the status?",
+     "about": "ORD8 Status CONFIRMED / ORD9 CANCELLED_OUT_OF_STOCK email"
+    },
+    {
+     "id": "13",
+     "text": "How does Order's refund request to Payment get repeated safely, and how does Order learn the refund finished? Does the order status change when the refund succeeds or fails?",
+     "about": "ORD9 CANCELLED_OUT_OF_STOCK -> PAY7 POST /refunds"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes, the resend reuses the hold. Reserve is keyed on the order id. If the order already has a HELD or CLAIMED reservation, Inventory returns that reservation id and makes no second hold. The earlier note was wrong to say only the sweeper frees a lost-reply hold; the sweeper is the backstop for an order that stops retrying. If the old reservation is EXPIRED or RELEASED, Inventory checks the lines again and may make a new hold or return short items, and Order saves the id from the latest reply. The file now says this at the Lost replies step and in the flowchart (INV0)."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "A background job in Order, the retry job, runs every minute. It resends any reserve, charge or claim call that has no answer yet, with the same order id key, and stops for that call once it gets an answer. Place order also sends the reserve call once more if the order is still PENDING_STOCK. The status while retrying: PENDING_STOCK (customer sees Checking stock) during reserve retries; AWAITING_PAYMENT (customer sees Awaiting payment) during charge and claim retries. A minute is chosen because the hold lasts 10 minutes, so a lost reply is resent well before the hold could lapse. Trigger: the retry job is the main trigger, not the customer. How long it keeps retrying before ops is alerted is not in the brief, so it is under Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The event carries the order id, and Order finds the order by it. Order acts on PaymentSucceeded or PaymentDeclined only when the order is AWAITING_PAYMENT; for any other status it acknowledges and changes nothing. For the case you named, FAILED_PAYMENT after a no-record decline: Order ignores a later success. This exposed a real gap: a charge that succeeds after a no-record decline would have kept the money with no order. The plan now says Payment never flips a DECLINED payment to SUCCEEDED. It records LATE_SUCCESS and refunds the full amount through its refund step. The customer email for that case is not decided, so it is under Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Order writes each email to its own outbox in the same transaction as the status change, the same way events are written. A mailer job in Order sends the row and retries until the send succeeds. If Order crashes right after setting the status, the row survives and is sent later. If the send fails, the row stays and is retried. The one gap: if Order crashes after sending but before marking the row sent, the customer can get a duplicate email. That is accepted and stated in the file. Previously the email was sent directly, which could be lost on a crash."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Order no longer calls POST /refunds. In the same transaction that sets CANCELLED_OUT_OF_STOCK, it writes an OrderCancelledOutOfStock event to its outbox. Payment consumes that event and runs the refund. A repeated event finds the existing refund row, which is keyed on the order id, so the refund is not repeated. This is needed because a crash between setting the status and calling Payment would lose the refund. Order does not learn when the refund finishes or fails. The status stays CANCELLED_OUT_OF_STOCK. Payment owns refund state, and a REFUND_FAILED row goes to ops."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "The retry job is defined as resending reserve, charge or claim calls, but the Declined payment note says it also keeps resending the release call. Does the retry job resend release too? How does it know a release is still unanswered?",
+     "about": "Retry job / Declined payment (release call)"
+    },
+    {
+     "id": "15",
+     "text": "The event id is recorded before the signature is verified. What happens if the signature is invalid? Is the event id still kept, so that a later genuine event with that id would be treated as a duplicate?",
+     "about": "PAY5 Record event id, verify signature"
+    },
+    {
+     "id": "16",
+     "text": "When the guarded update and the outbox row are written, who tells Order if the update does not apply, for example because the payment is not PENDING? Does Order ever hear about those events?",
+     "about": "PAY5C Guarded update to SUCCEEDED or DECLINED / outbox"
+    },
+    {
+     "id": "17",
+     "text": "Order works from a snapshot of the cart lines. If the customer edits the cart while the order is open, what does OrderConfirmed empty: the whole cart, or only the lines that were ordered?",
+     "about": "ORD2 Create order / CART2 On OrderConfirmed: empty cart"
+    },
+    {
+     "id": "18",
+     "text": "How does the customer's page find out the outcome and refresh itself? Does it poll Order, or does Order push something? And what does the customer see for a charge that stays pending for hours?",
+     "about": "Happy path: customer's page shows Awaiting payment"
+    },
+    {
+     "id": "19",
+     "text": "What identifies the cart for the open-order lookup, and what stops two Place order requests arriving at the same moment from both finding no open order and creating two orders?",
+     "about": "ORD1 Look for an open order on this cart"
+    },
+    {
+     "id": "20",
+     "text": "For a no-record decline, Order releases the hold and shows 'Payment declined'. If the customer then presses Place order again and pays, and the first charge later succeeds as LATE_SUCCESS, is the first charge refunded separately from the second order's payment? How are the two kept apart?",
+     "about": "ORD6 Status FAILED_PAYMENT / PAY5D LATE_SUCCESS"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No, the retry job does not resend release, and the earlier text was wrong to say it did. Release is one call. If it gets no answer, Order does not track it, and the sweeper frees the hold within 10 minutes, which meets the brief's rule that unclaimed stock goes back on sale. The retry job now covers only reserve, charge and claim, the calls where a missing answer leaves an order open. The flowchart and the Declined payment note say this."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "That was an error. Payment now checks the signature before it records the event id. An event with an invalid signature is rejected and nothing is stored, so a forged event cannot block a genuine event with the same id. Only a valid event id is recorded. The flowchart and the Duplicate webhooks note show this order."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Order does not hear about an event that changes nothing. Each applied change to a payment writes one outbox row, and Order is told by that row. An event that does not apply (a repeat, success on a SUCCEEDED payment, or a decline on a DECLINED payment) writes no row. Order was already told by the change that set the payment's state. Order acts only in AWAITING_PAYMENT, so a missed notice about an ignored event cannot leave Order wrong. The Duplicate webhooks note now says this."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The brief says the cart is emptied but does not say whether every line goes. The design removes only the lines the order contains, and only where quantity and price still match the snapshot. Lines added or changed after Place order stay, so a late edit is not lost. In the normal case the cart still ends empty. CART2 and the Cart edits note say this, and decision 8 asks the business to confirm it."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The customer's page asks Order for the order's status every 10 seconds while the order is open, and stops once it is closed. Order pushes nothing, and the page never calls Payment. A charge that stays pending for hours keeps the page on Awaiting payment. The brief gives no limit on how long a charge may stay pending, so what happens after hours is not known and is listed under Open questions."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "The cart id identifies the cart, and POST /orders carries it. The orders table has a unique rule that allows one open order per cart, so two requests at the same moment cannot both create one. The request that loses gets the existing open order. This assumes Order's database supports a unique index on cart id that applies only to open statuses. If it does not, Order must lock the cart's row before its check. ORD2 and the Racing Place orders note say this."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "They are kept apart. The first and second orders have different order ids, payment rows and charge keys, so they are two separate charges at the provider. Payment's refund for the first order is keyed on the first order's id and names the charge id on the first order's payment row, so it cannot touch the second charge. The second order's payment is not refunded because of the first. The Refund note now says the refund names that charge id."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one checkout, following the document only.\n\n1. **Start.** The customer presses Place order. Cart reads its own cart lines and prices (nothing in Cart changes) and sends POST /orders to Order. The request carries the cart id, the lines and the prices.\n\n2. **Open-order check.** Order looks in its `orders` table for an open order on this cart. Open means PENDING_STOCK or AWAITING_PAYMENT. There are three outcomes.\n   - An open order in AWAITING_PAYMENT: Order returns that order. No new hold or charge is made.\n   - An open order still in PENDING_STOCK: Order sends the reserve call again straight away.\n   - No open order: Order goes to step 3.\n   A unique rule on cart id, which applies only while the status is open, stops two simultaneous requests from both creating an order. The loser is rejected by that rule, looks up the existing order and follows the open-order outcomes above.\n\n3. **Create the order.** Order writes an order with status PENDING_STOCK. It also writes a snapshot of the lines and prices in `order_lines`, and a row in `order_status_history`. The customer's page shows \"Checking stock\". The page asks Order for the status every 10 seconds while the order is open and stops once it is closed. Order never pushes updates, and the page never calls Payment.\n\n4. **Reserve stock.** Order calls POST /reservations on Inventory for all lines, with the order id as the idempotency key.\n   - If the order already has a HELD or CLAIMED reservation, Inventory returns that reservation id and makes no new hold.\n   - Otherwise, in one transaction, Inventory checks that every line has enough free stock. If any line is short, it writes nothing and returns 409 with the short items. Order then sets FAILED_SHORT_STOCK and shows the short items. There is no hold and no charge, the cart is unchanged, and the customer can retry.\n   - If all lines are free, Inventory creates a HELD reservation that expires in 10 minutes. It updates `reservations`, `reservation_lines` and the held counts, and returns the reservation id.\n   Order saves the reservation id on the order. If the reply is lost, the retry job (step 10) resends the call with the same key.\n\n5. **Ask Payment to charge.** Order sets AWAITING_PAYMENT (\"Awaiting payment\") and calls POST /charges on Payment with the order id as the key. Payment inserts a payment row as PENDING. The row is unique on order id, so a repeat returns the same payment. Payment then charges the provider with Idempotency-Key set to the order id and answers Order with 202 PENDING. Order then waits for an event. If the charge fails before the provider accepts it, Payment returns an error and the retry job resends it.\n\n6. **Provider outcome.** The provider reports the result by webhook, which can take up to 30 minutes and may repeat. Payment handles each webhook like this.\n   - It checks the signature first. An invalid one gets a 401 and nothing is stored.\n   - It checks whether the event id is already in `webhook_events`. A repeat gets a 200 and nothing changes. A racing repeat fails the unique constraint and is treated the same way.\n   - A new event id is recorded.\n   - Payment looks at the current payment status. If it is PENDING, Payment does a guarded update to SUCCEEDED or DECLINED and writes an outbox row in the same transaction. If it is already SUCCEEDED, or the event says declined for a payment that is not PENDING, the event is ignored with no state change.\n   - If the payment was DECLINED and a success arrives, Payment sets LATE_SUCCESS and refunds (step 9).\n   A background relay publishes the outbox row to the broker as PaymentSucceeded or PaymentDeclined.\n\n7. **Declined branch.** Order consumes PaymentDeclined. Order acts only if the order is AWAITING_PAYMENT. For any other status it acknowledges the event and changes nothing. The order moves to FAILED_PAYMENT and Order makes one release call to Inventory. Inventory sets the reservation to RELEASED and the stock goes back on sale. The release is not retried. If it gets no answer, the sweeper frees the hold within 10 minutes. The customer is told the payment was declined and the cart is unchanged. If they press Place order again, that creates a new order with a new key.\n\n8. **Success branch.** Order consumes PaymentSucceeded, again only if the order is AWAITING_PAYMENT. It calls POST /reservations/id/claim on Inventory.\n   - If the reservation is still HELD, Inventory sets it to CLAIMED and the held stock becomes sold.\n   - If it has expired or been swept, Inventory tries once to re-reserve and claim the same lines in one transaction. If that works, the order is confirmed. If it does not, Inventory writes nothing and returns the short items. Order then sets CANCELLED_OUT_OF_STOCK. In the same transaction it writes an OrderCancelledOutOfStock event and a cancellation email row to its outbox. Payment consumes that event and refunds (step 9).\n   - After a successful claim, Order sets CONFIRMED. In the same transaction it writes an OrderConfirmed event and a confirmation email row to its outbox. A mailer job sends the email and retries until the send succeeds. After a crash the row survives and is sent later. A crash between sending and marking the row sent can cause one duplicate email.\n   Cart consumes OrderConfirmed. It is idempotent on order id. It removes the ordered lines whose quantity and price still match the snapshot. Lines added or changed after Place order stay in the cart. If the broker is slow, the cart may briefly show stale items. A claim on an already CLAIMED reservation returns CLAIMED, so a claim retry is safe.\n\n9. **Refund.** This runs in Payment and starts from either the OrderCancelledOutOfStock event or LATE_SUCCESS. Payment first saves a refund row REFUND_PENDING, keyed on order id, so a crash cannot lose the intent and a repeat event starts nothing new. It then calls the provider to refund the full amount against the charge id stored on that order's own payment row. If the refund succeeds, the row becomes SUCCEEDED. The order stays cancelled and the customer has the cancellation email. If it fails, Payment retries with backoff under the same key. After the last attempt the row becomes REFUND_FAILED and an ops alert is raised. The row stays open until someone resolves it. Order is not told about refunds.\n\n10. **Retry job and timeouts.** Order runs one job every minute. It resends any reserve, charge or claim call that has no answer yet, with the same order id key, until an answer comes back. The status does not change while it retries. A timeout is never treated as a result, so Order never cancels or refunds because of one.\n\n11. **Watchdog.** If a payment is still PENDING at 35 minutes, Payment's watchdog polls the provider.\n   - If the charge is still pending, the order stays AWAITING_PAYMENT and the watchdog polls again in 5 minutes.\n   - If the provider has no record of the charge, Payment treats it as DECLINED and publishes PaymentDeclined (step 7).\n   - A poll result gets a synthetic event id, the charge id plus the status, and joins the normal path at the event id check (step 6). It has no signature to check.\n   - If a success arrives later on a DECLINED payment, it becomes LATE_SUCCESS and is refunded. Order is already closed, so it does nothing.\n\n12. **Sweeper.** Every minute Inventory's sweeper marks any HELD reservation past `expires_at` as EXPIRED and puts the held stock back on sale.",
+   "gaps": [
+    "How the customer's payment details are captured and passed to the provider. The document says it does not cover this, and without it I cannot explain how the charge in step 5 actually reaches the provider with payment details.",
+    "What the customer sees, and whether anything is shown, when a charge succeeds after a no-record decline. The document lists this as an open question.",
+    "What the customer's page shows for CANCELLED_OUT_OF_STOCK and for the other closed statuses. The document names the status labels only for PENDING_STOCK and AWAITING_PAYMENT, and says nothing about how the page gets the short items or the 'Payment declined' message from Order's status.",
+    "What Order does if the retry job never gets an answer to a reserve, charge or claim. The document sets no limit and no ops alert, so I cannot say how that ends.",
+    "How a charge that stays pending for a very long time ends. The document sets no limit and says only that the order waits for the provider."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

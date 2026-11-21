@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "When the caller's transaction commits. enqueue_notification inserts a pending row inside that transaction, so the row exists only if the caller commits.",
+  "q2": "It redelivers the message if not acknowledged within 30 s, possibly to another consumer.",
+  "q3": "Five attempts total. Waits of 1, 2, 4 and 8 minutes before attempts 2 to 5. Then the row is marked failed and on-call is paged.",
+  "q4": "One type at a time: shipping_update, then order_confirmed (at least 3 days later), then password_reset. Last one needs a passing order_confirmed p99 gate over 3+ days and the payload decision.",
+  "q5": "The notification id, sent as the idempotency key. MailRelay drops a repeat send with that key accepted within 24 hours and returns success.",
+  "q6": "The publisher commits a handover (route=service), then publishes to notifications.v1 with message id = notification id, and sets published_at after broker confirmation. Status stays pending until the outcome event arrives.",
+  "q7": "The committed claim decides, not the flag. Monolith worker or publisher claims with FOR UPDATE SKIP LOCKED, and the claim commit (handover for service) sets route. The flag only decides which side tries first.",
+  "q8": "The service inbox insert uses ON CONFLICT DO NOTHING on notification_id, so the duplicate is absorbed. A terminal row is never sent again; its outcome is only re-emitted if missing.",
+  "q9": "After the inbox insert commits and before sending, the service acks. If it crashes before the ack, the redelivery hits the unique key and is acked.",
+  "q10": "In the service inbox table (attempts, next_attempt_at, claimed_at, status). The service worker polls for due rows and acts on them.",
+  "q11": "Already handed-off rows stay on the service and are sent there, not recalled or re-sent. The flag change only affects route-NULL rows not yet handed off.",
+  "q12": "Each message carries the row's id, type, user id, email and payload. The email content is produced by the service, rendering from payload at send time."
+ },
+ "sonnet": {
+  "q1": "When `enqueue_notification(tx, ...)` inserts a `pending` row in the monolith `notifications` table inside the caller's transaction. It exists only if the caller's transaction commits.",
+  "q2": "The broker redelivers it, possibly to another consumer, if not acked within 30 s (at-least-once delivery).",
+  "q3": "5 attempts total, waiting 1, 2, 4 and 8 minutes before attempts 2 to 5. After the fifth failure the row is `failed` and on-call is paged.",
+  "q4": "One type at a time: shipping_update (step 6), soak at least 3 days (step 7), then order_confirmed (step 8, at least 3 days after shipping_update passed its gate), then password_reset (step 10). Before password_reset moves, step 9 must pass: over the full order_confirmed bake (at least 3 days), p99 enqueue-to-MailRelay-accept is under 60 s with a sufficient sample count. The payload decision (reset tokens) must also be made before step 10.",
+  "q5": "The `idempotency_key`, equal to the notification id (row.id). If MailRelay already accepted a send with that key in the last 24 hours, it drops the new send and returns success.",
+  "q6": "The publisher does a handover (sets route = service, handed_off_at, commits), then publishes the row to `notifications.v1` with message id = notification id, and sets `published_at` after broker confirmation. The service inserts it into its inbox and acks. The document does not clearly say when the monolith considers its part done; the monolith row stays `pending` until the outcome event arrives, and republish continues until an outcome arrives (up to 7 days).",
+  "q7": "Whichever side commits its claim first (`FOR UPDATE SKIP LOCKED`) decides, recorded in the row's `route`. The route flag only decides which side tries first: the monolith worker claims route=monolith rows, or NULL rows when the flag is `monolith`. The publisher claims route-NULL rows only when the flag is `service`. The decision is made at the moment of the committed claim (the handover commit for the service).",
+  "q8": "The inbox insert uses `notification_id` as primary key with `ON CONFLICT DO NOTHING`, so the duplicate is absorbed and acked. For a terminal row, the service re-emits the outcome if missing, then acks, and never sends again. MailRelay also drops repeats with the same key within 24 hours.",
+  "q9": "It acks only after the inbox insert has committed, before any send. If it crashes after the insert but before the ack, the broker redelivers, the unique key conflicts, and the message is acked.",
+  "q10": "In the service database `inbox` table (attempts, next_attempt_at, claimed_at, status, etc.). The service worker acts on it, claiming due `queued` rows and `sending` rows with expired leases.",
+  "q11": "Rows already handed off stay on the service and are sent there, not recalled and not re-sent. Handed-off rows not yet published are still published. Rows not yet claimed by the service continue in the broker and inbox and finish on the service. If the service is down they wait and are paged by age. Only new route-NULL rows go back to the monolith.",
+  "q12": "The row's id, type, user id, email and payload travel on `notifications.v1`. The email content is rendered in the service worker from the payload at send time, using the ported templates."
+ }
+}

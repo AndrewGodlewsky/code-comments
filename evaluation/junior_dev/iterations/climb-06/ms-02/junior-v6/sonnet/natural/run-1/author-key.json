@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The monolith's enqueue_notification inserts a pending row in the monolith notifications table inside the caller's transaction. A forwarder thread (polling every 1 s) publishes pending rows of service-routed types to notifications.requested, waits for the broker's storage confirmation, then sets status='forwarded' and commits. At that point the monolith's part is done; it only later copies the service's result (sent/failed, attempts) into the row.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The monolith decides, using the per-type flag notif.route.<type> (monolith or service). The old worker reads the flags at the start of each batch and skips service-routed types; the forwarder re-checks the flag after taking the row lock. The effective decision is made per row at the moment the row lock is taken, and the row's status (pending vs forwarded) records it. The service never reads the flag.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The service's own notifications table has the notification id as primary key, and the consumer does INSERT ... ON CONFLICT (id) DO NOTHING, so a redelivered message is a no-op. Rows are kept at least 30 days. Separately, every send passes the notification id as MailRelay's idempotency_key, so even a repeated send within 24 h is dropped by MailRelay. For an id with a terminal result, the service republishes the stored result rather than re-sending.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The service acks only after committing the insert of the row into its own DB, and it acks before and independently of sending (the sender loop sends later from the stored row). If it crashes before the commit, there is no ack and the broker redelivers. If it crashes after commit but before the ack, the redelivery hits the conflict, is a no-op, and gets acked. If it crashes mid-send, the lock is released and the row is retried with the same key, which MailRelay drops if the first send was accepted.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The retry state lives in the service's own notifications table (attempts, next_attempt_at), copied from the message when the row is inserted so rows with existing retry state keep their remaining attempts. The service's sender loop acts on it: it claims only rows whose next_attempt_at is due, applies the 1/2/4/8-minute backoff, marks the row failed after attempt 5, and a separate pager loop pages on-call for failed rows. The monolith copy only gets the final outcome and attempts.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Rows already forwarded stay with the service; the flag flip does not recall them. The old worker only picks pending rows, and a forwarded row is never sent by the monolith, so the service finishes them and publishes results that the monolith copies back. Rows still pending (not yet forwarded) are sent by the old worker once the flag reads monolith. Nothing is lost or re-sent, and the idempotency key backs this up. The one exception is the residual risk of a lost broker confirmation followed by a rollback, where only the key (24 h window) prevents a duplicate.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Each notification travels as a notifications.requested message with id, type, user_id, email, payload, created_at, attempts and next_attempt_at. The email content is produced in the service: template rendering moves there, and the service renders subject and body from type and payload at send time (the monolith sends no rendered content for service-routed types).",
+  "decided": true
+ }
+}

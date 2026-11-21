@@ -1,0 +1,173 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "How does the server decide a report is 'small' versus 'large'? What is the cutoff and what is measured?",
+     "about": "3. Small reports / 4. Large reports"
+    },
+    {
+     "id": "2",
+     "text": "What does the POST return for a large report, and how does the page learn the export id to poll?",
+     "about": "4. Large reports: create an export record and enqueue a report_export job"
+    },
+    {
+     "id": "3",
+     "text": "What columns does the report_exports table have, and which of them holds the status and the file location?",
+     "about": "1. Add a report_exports table"
+    },
+    {
+     "id": "4",
+     "text": "What does the 'usual permission check' do here, and does the job or the signed link check access again later?",
+     "about": "2. POST endpoint with the usual permission check"
+    },
+    {
+     "id": "5",
+     "text": "What does 'prevent duplicate exports' mean here: same user and report clicking twice, or anyone exporting the same report? What happens to the second request?",
+     "about": "7. Prevent duplicate exports"
+    },
+    {
+     "id": "6",
+     "text": "How does the page poll: which endpoint, how often, and when does it stop?",
+     "about": "6. Page: show the export status and poll for updates"
+    },
+    {
+     "id": "7",
+     "text": "Which job queue is used, and how many retries with what delay? When a job retries, does it restart the CSV from the beginning?",
+     "about": "8. rely on the job queue's retries"
+    },
+    {
+     "id": "8",
+     "text": "When is status set to running and failed, and who sends the failure email: after the final retry only, or each failure?",
+     "about": "8. send a failure email at the end"
+    },
+    {
+     "id": "9",
+     "text": "What is send_email, and how long is the signed link valid? Does the bucket lifecycle rule delete the file after the same time?",
+     "about": "5. email a signed link with send_email / 9. bucket lifecycle rule"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The cutoff is reports.row_count, the total unfiltered number of rows in the report. 10,000 or fewer takes the small path; more takes the large path. Filters do not change the choice, and the count is rewritten nightly, so it can be a day old."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "For a large report, POST returns 202 with the export id and status, or the existing row if one is already queued or running. The page does not need the id from the POST: it calls GET /api/reports/{report_id}/exports/latest on load and while polling, and gets the id there. Reason: one read endpoint covers reloads and polling."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Columns: id, report_id, user_id, status, query, job_id, object_key, created_at, finished_at. status holds queued, running, done or failed. object_key holds the file location in the exports bucket. query stores the export's own filters and column order, not page state, because the job needs them and the job payload is kept to the export id only."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The check is the page's: report.view on the report's workspace, 403 otherwise. Neither the job nor the signed link checks access again. The job runs for the user who asked, and the link needs no login, so anyone holding it can download for 24 hours. The brief sets no other rule; this is an open question."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It means the same user and the same report, not anyone. A second click while one is queued or running returns that row with 202 and starts no job. The partial unique index in step 1 stops two simultaneous clicks from both inserting. Known gap: filters are not part of the check, so the returned export may have other filters. Listed as an open question."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The page calls GET /api/reports/{report_id}/exports/latest on load, then every 5 seconds while the status is queued or running. It stops when the status is done or failed. The 5-second interval is my choice; the brief names none."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The existing job queue (jobs.py): 3 attempts in total, waiting 60 s before attempt 2 and 300 s before attempt 3, a 30-minute attempt timeout, and at-least-once delivery. Yes, each attempt restarts the CSV from row 1, because the queue keeps no progress. A rerun replaces the same key when it completes."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "running is set at the start of every attempt. failed is set, and the failure email sent, only by on_final_failure after the third failure. Errors on earlier attempts abort the upload and send nothing. Reason: the user gets one failure email, not three."
+    },
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "send_email(user_id, template, params) is the existing email helper. The signed link is valid for 24 hours (86,400 s, the maximum). The lifecycle rule deletes files 7 days after creation, so no, not the same time: the file outlives the link by about 6 days. The template names are not in the brief or the files, so they are listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "If a job that already finished (row is done, email sent) is delivered again, what does the job do? Step a sets the row to running, and the document does not say whether it checks the status first.",
+     "about": "5. Job attempt: build the file / Attempt (delivery is at least once)"
+    },
+    {
+     "id": "11",
+     "text": "When a user clicks again after their earlier export is done or failed, does that insert a new report_exports row? Does GET exports/latest then return the new row?",
+     "about": "4. Large path: queue the export / 7. Page status"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes, the job stops. Step 4 now loads the row first, and if the row is already done or failed, the job returns without doing anything. Reason: the queue is at-least-once, so a finished job can be delivered again, and without this check it would rebuild the file and send the success email a second time. Known gap: if the worker dies after step f sets done but before the email is sent, the rerun stops and no email goes out. Listed under open questions. Sending the email before setting done would fix that but could send a duplicate instead, so I did not change the order."
+    },
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "Yes, a new row is inserted. The partial unique index covers only queued and running rows, so a click after a done or failed export is not blocked. The new row has its own id, so its file key (exports/{report_id}/{export_id}.csv) does not overwrite the old file. GET exports/latest returns the most recent row by created_at, so after the new click it returns the new queued row. Step 3 and step 6 now say this."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "12",
+     "text": "If the API dies after inserting the queued row but before the job is enqueued, what happens to that row, and can the user click again given the unique index?",
+     "about": "3. Large path: queue the export"
+    },
+    {
+     "id": "13",
+     "text": "If the job's final failure hook on_final_failure itself fails or never runs, what does the row show and what can the user do?",
+     "about": "5. Retries and final failure"
+    }
+   ],
+   "answers": [
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Yes. The row stays queued with no job id, because the insert happens before the enqueue. The unique index covers queued rows, so every later click for that report returns this stuck row and starts no job. The user cannot start a new export of that report. The plan has no rule that clears such a row, and the brief sets none, so I did not add a new mechanism. It is listed in open questions and in the failure table."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "jobs.py says on_final_failure is called once after the last attempt. It does not say whether a raised error in the hook is retried, or what happens if the worker dies before the call. If the hook never runs, the row stays running, no failure email goes out, and the unique index blocks new clicks for that report. I do not know which of these happens. It is listed in open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The user clicks Download CSV on the reports page. The page sends POST /api/reports/{report_id}/exports with the filters and column order taken from the page URL (the only place the page keeps them). The API checks report.view on the report's workspace. If missing, it returns 403 and nothing starts.\n\n2. The API reads reports.row_count (the whole-report row total, ignoring filters, rewritten nightly so up to a day old). If it is 10,000 or fewer it takes the small path; otherwise the large path.\n\n3. Small path: the API reads the read replica in pages of 500 rows using keyset paging (rows with row_id greater than the last seen, in row_id order). It streams the rows back as the HTTP response, with a header row first and columns in URL order. No state is stored and no job runs. It must finish inside the API's 60-second limit. If the stream breaks, the user has a partial file and clicks again. The flow ends here.\n\n4. Large path, insert: the API inserts a report_exports row with status queued, storing the query (filters and column order) on the row, not in the job payload.\n - If the partial unique index rejects the insert (the user already has a queued or running export for this report, including two simultaneous clicks), the API returns the existing row with 202 and starts no job.\n - Otherwise it enqueues a report_export job whose payload is only the export id, saves the job id on the row, and returns 202 with export id and status.\n - If enqueueing fails, the row is marked failed, an error is returned, and the user can click again.\n - A click after an earlier export is done or failed inserts a new row with a new id and new file key; the old file is not overwritten.\n\n5. The queue runs the job on a worker (512 MB memory, one attempt at a time). The attempt loads the export row by id and reads the query from it. If the row is already done or failed, it stops (this handles redelivery, so no rebuild and no second email).\n\n6. Otherwise the attempt starts from scratch every time, since the queue keeps no progress. It sets the row to running, starts a multipart upload to exports/{report_id}/{export_id}.csv (nothing visible yet), then reads the replica in 500-row keyset pages from the first row. It writes CSV (same header and column order as the small path) into one buffer of about 8 MB; when full it uploads it as a part, so only one buffer is in memory. Then it completes the upload, at which point the file appears at the key (replacing any existing file, so reruns are safe). Then it sets the row to done with object_key and finished_at, and calls send_email with the success template and a 24-hour signed link.\n\n7. Failure inside an attempt: if building/uploading (parts b to e) raises an error, the job aborts the upload and re-raises, so the queue retries. A timeout (30 minutes) or worker death leaves the unfinished upload in place until the bucket's lifecycle rule discards it after 24 hours. The row stays running through retries. The queue waits 60 s before attempt 2 and 300 s before attempt 3, max 3 attempts. No email on earlier failures. After the third failure the queue calls on_final_failure once, which sets the row to failed and sends the failure email.\n\n8. Meanwhile the page calls GET /api/reports/{report_id}/exports/latest on load (so a returning user sees state). The API checks report.view (403 otherwise) and returns the user's latest export of that report by created_at, with id and status. The page shows queued/running/done/failed and re-polls every 5 seconds while queued or running, stopping at done or failed. When done, the response includes a fresh 24-hour signed link so the user can download (anyone with the link can download without login). A new click creates a new row, which becomes the latest.\n\n9. Cleanup: no code deletes files; the bucket lifecycle rule deletes files 7 days after creation.",
+   "gaps": [
+    "The document does not say how the small-path response reaches the user as a download (headers, file name, how the page triggers a browser save). It only says the response is the CSV.",
+    "It does not say what the page does with the 202 response after the click, such as whether it starts polling immediately or what it shows. Step 6 only says the page polls on load and while queued or running.",
+    "It does not say how the 'latest' endpoint behaves when the user has no export for that report (empty result, 404 or something else).",
+    "It does not say what 'failed' looks like on the page beyond the status, such as whether any error detail is shown.",
+    "It does not say which key the signed link is made for when there are several exports, or how a new link is generated (that it points at object_key is implied but not stated).",
+    "It does not say what the queue does in 'queued' state if the job never runs, other than the open question about a missing job id; no timeout or recovery is described.",
+    "It does not say how the small path decides the 10,000 threshold against filtered data. The choice uses the unfiltered, possibly day-old row_count, and the document does not say what happens if a filtered large report or a stale count lands on the wrong path."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,1 @@
+You are a software engineer. Do the task in the brief below: write the plan or diagram it asks for, in the format it asks for. Use only the brief and the files shown with it. Use no tools. Put the whole document in the `artifact` field, exactly as it should be saved, and nothing else.

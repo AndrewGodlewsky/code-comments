@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The record is the MySQL `users_pg_outbox` row, written in the same transaction as the user's write. The inline copy and the forward worker (every 1 s, up to 500 rows) copy from MySQL to Postgres, and a row is deleted only after its copy succeeds. If the app dies after the MySQL commit, the outbox row is already there and the worker copies it. Step 6's full compare is the backstop for anything that still differs.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Every copy takes the per-user lock, checks the tombstone for that id, and only then applies the version rule. Erasure part (a) writes the Postgres tombstone and deletes the row under that same lock. A copy that read the row before the delete finds the tombstone when it gets the lock and skips. A copy that starts later also finds it.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is `migration_state.backfill_last_id` in Postgres, the highest id of the last committed batch, starting at 0. Each batch is `WHERE id > last ORDER BY id LIMIT 2000`, and the checkpoint is updated in the same Postgres transaction as the copied rows, so the two stay consistent. A 60 s lease with an owner token guards the runner, and a runner that lost its lease matches nothing and stops. The backfill stops when a batch returns 0 rows, about 19,000 batches.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Step 6's full compare finds differences. It walks ids in chunks of 2,000, compares a hash of the row fields, and skips tombstoned ids. For each differing row, under the per-user lock, it defers the row if the user has forward-outbox rows, and otherwise repairs Postgres through the copy rules and counts a mismatch. Deferred rows are rechecked at the end of the pass, and a pass is clean only when it has zero mismatches. The sampled read check in step 7 only counts mismatches and does not repair; after the switch, a daily sampled compare runs against the reverse direction.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Only one control row is polled at a time, and a mode change is written first to the store the instances are moving to and then to the other store with the same epoch. Instances keep polling the old store until they see the new mode there, so a `pg` written only to Postgres leaves them paused. The switch starts with a `paused` write and a 12 s drain before anything is written as `pg`. If the switch runs long before any instance has applied `pg`, the abort writes `mysql` with epoch+3 to MySQL then Postgres. After any instance has applied `pg`, the plan uses the step 11 rollback instead.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "After the switch, Postgres assigns new user ids from its sequence, which is set at step 9.3 to MySQL's AUTO_INCREMENT plus 1,000,000. MySQL assigns no new ids, and reverse copies insert explicit ids that push MySQL's counter forward. On rollback, step 11.3 sets MySQL's AUTO_INCREMENT to max(id)+1 so MySQL cannot reuse an id Postgres already used. I did not write how the Postgres sequence is reset if a second switch happens after a rollback, so that part is open.",
+  "decided": false
+ },
+ "q12": {
+  "answer": "After the switch, the reverse worker copies every Postgres change to MySQL through the reverse outbox, under the MySQL per-user lock with the tombstone check and the version rule. Erasures run in reverse order (MySQL first, then Postgres with a reverse-outbox row), and a daily sampled compare checks the stores. Rollback (step 11) pauses writes in Postgres, drains the reverse outbox, checks that every row and tombstone exists in MySQL, copies the erasure work list back, sets AUTO_INCREMENT, and flips the mode to `mysql` with a new epoch. If that flip is not applied by 75 s it aborts back to `pg`. The rollback option ends at step 12, `pg_only`, which may start no sooner than 14 days after `source_switched_at`, and after it rollback is impossible.",
+  "decided": true
+ }
+}

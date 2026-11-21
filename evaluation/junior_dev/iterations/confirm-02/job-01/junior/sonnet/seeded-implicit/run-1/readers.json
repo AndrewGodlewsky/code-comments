@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Only the latest fire time runs. Older missed fire times are dropped, with no run row and no history entry.",
+  "q2": "A run is inserted for that fire time with status skipped, because the schedule already has an active run.",
+  "q3": "Up to 3 attempts. Retry waits 1 minute after attempt 1 and 5 minutes after attempt 2. After the third failure the run is failed.",
+  "q4": "After its lease expires, 2 minutes after the last heartbeat. The reaper marks the attempt lost, and that uses up an attempt.",
+  "q5": "Pending runs, including retries waiting for run_after, become cancelled. Running runs finish: success is succeeded, failure is cancelled. After resume, next_fire_at is set to the first fire time after now, so missed fire times do not run.",
+  "q6": "The row lock (FOR UPDATE SKIP LOCKED) plus the unique constraint on (schedule_id, scheduled_for), so only one run row can exist for that fire time.",
+  "q7": "In the next_fire_at column of job_schedule. It is set on create, on cron or timezone edit, after each poll handles it, and on re-enable or resume.",
+  "q8": "It selects one pending run with run_after <= now() using FOR UPDATE SKIP LOCKED, then in one transaction sets it running with its lease owner and a new attempt.",
+  "q9": "In job_run's lease_owner and lease_expires_at columns. Heartbeats every 30 seconds push lease_expires_at forward. The reaper, every 30 seconds, finds running runs whose lease has expired.",
+  "q10": "In job_run.run_after. Retry sets it to now() plus 1 or 5 minutes. The claim step picks up pending runs once run_after <= now().",
+  "q11": "Once per fire time: a job_run row, unique per schedule and scheduled_for. Once per execution try: a run_attempt row.",
+  "q12": "Its guarded UPDATE (status running, same lease_owner and attempt_count) touches no row, so the stale result is discarded and the attempt is closed only once."
+ },
+ "sonnet": {
+  "q1": "Only the latest fire time runs. On recovery, the poll finds the schedule due, computes the most recent fire time <= now(), and drops the older missed ones (no run row, no history). It inserts one pending run for that fire time, and next_fire_at moves to the first fire time after now().",
+  "q2": "If the schedule already has an active run (pending or running, including a retry waiting for run_after), the poll inserts a run for that fire time with status 'skipped'. next_fire_at still advances.",
+  "q3": "At most 3 attempts. After attempt 1 fails, the wait is 1 minute (run_after = now() + 1 minute). After attempt 2 fails, the wait is 5 minutes. If attempt 3 fails, the run is set to 'failed' (final). If the schedule is disabled or the tenant paused, the run becomes 'cancelled' instead.",
+  "q4": "The lease (heartbeat every 30s, 2 minutes long) expires 2 minutes after the last heartbeat. The reaper (every 30s) then marks the attempt 'lost' and applies the retry rule. Another worker can claim the run once it is back to pending and run_after (now()+1 min after attempt 1, or +5 min after attempt 2) has passed. Yes, a lost attempt stays counted and uses up an attempt. If it was attempt 3, the run is failed.",
+  "q5": "Pausing sets the tenant's pending runs (including retries waiting for run_after) to 'cancelled' in the same transaction. The running run is left alone: if it succeeds it is recorded 'succeeded'; if it fails, the retry rule makes it 'cancelled'. Steps 1 and 2 pick nothing new up while paused. On resume, next_fire_at for each affected schedule is set to the first fire time after now(), so fire times during the pause never run.",
+  "q6": "The poll selects schedules with FOR UPDATE SKIP LOCKED, so only one worker locks the schedule. The unique constraint on job_run (schedule_id, scheduled_for) with INSERT ... ON CONFLICT DO NOTHING is a safety net, and next_fire_at advances in the same transaction. The partial unique index allowing one active run per schedule is another safety net.",
+  "q7": "In the job_schedule.next_fire_at column. It is advanced in the poll transaction to the first fire time after now() (whether the run was inserted, skipped or a duplicate). It is also set on create, when cron_expr or timezone is edited, and on re-enable or resume. Finishing a run does not change it.",
+  "q8": "The worker selects one pending run (run_after <= now(), schedule enabled, tenant active) with FOR UPDATE SKIP LOCKED. In one transaction it sets status 'running', increments attempt_count, sets lease_owner to its worker id and lease_expires_at = now() + 2 minutes, and inserts a run_attempt.",
+  "q9": "In job_run.lease_expires_at (with lease_owner), pushed forward by the worker's heartbeat every 30 seconds. The reaper, running every 30 seconds in every worker, notices it is stale: running runs with lease_expires_at < now().",
+  "q10": "In job_run.run_after: the run goes back to pending with run_after = now() + 1 minute (after attempt 1) or + 5 minutes (after attempt 2). The retry starts when a worker's 5-second claim step selects the pending run with run_after <= now() and claims it as a new attempt.",
+  "q11": "Once per fire time: a job_run row (unique on schedule_id + scheduled_for). Once per execution try: a run_attempt row (attempt_no unique with run_id, up to 3 per run).",
+  "q12": "The finish update has the guard WHERE id = ? AND status = 'running' AND lease_owner = ? AND attempt_count = ?. After takeover the run is no longer running under that owner and attempt_count, so the update touches no row. The worker then discards its result, and the attempt is closed only if the update touched a row."
+ }
+}

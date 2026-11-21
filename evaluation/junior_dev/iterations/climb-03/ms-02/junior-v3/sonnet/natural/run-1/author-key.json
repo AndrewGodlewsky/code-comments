@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The caller's enqueue inserts a pending row in the monolith notifications table (the outbox). If the type's flag is service, a monolith relay publishes it to the broker as notifications.requested, waits for the publisher confirmation, then sets the row to handed_off and commits. The monolith's part is done at that point, though it later copies the service's result event onto the row (sent or failed). The reconciler republishes rows stuck in handed_off for over 30 minutes.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Two components decide it, from the flag notifications.route.<type>. The relay picks up pending rows of service types, and the old worker skips them. The decision is made per row when it is still pending, each poll (relay about every 1 s, flag changes seen within 10 s). Once the row is handed_off, ownership sits in the row status rather than the flag, and the old worker never sends a handed_off row.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Two layers. First, the service's consumer does INSERT ... ON CONFLICT (id) DO NOTHING on the notification id (primary key), so a duplicate message is a no-op and is acked. Second, every send passes the id as MailRelay's idempotency_key, so even a repeated send within 24 hours is dropped by MailRelay.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The service acks only after the insert transaction commits, so it stores before acking and sends later via the sender loop, not in the consumer. If it crashes before the commit, the message is unacked, the broker redelivers after 30 s, and the insert happens then. If it crashes after the commit but before the ack, the redelivery's insert is a no-op and it is then acked. If it crashes during sending, the row is still due and is re-sent with the same key, which MailRelay drops.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "In the service database's svc_notifications row (attempts, next_attempt_at, status, paged, result_published). The service's sender acts on it: it selects due pending rows, increments attempts, schedules backoff of 1/2/4/8 minutes, and marks failed on the fifth failure. The pager then pages on-call. The monolith row only holds handed_off and the final status copied from the result event.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Rows already handed_off stay with the service, which keeps running and finishes them. The flag flip only affects new pending rows, which go to the old worker within about 10 s. The result consumer still copies results back, and the service must stay deployed. Nothing is re-sent, because ownership is in the row status and both sides use the same idempotency key. If the service is dead, the reconciler alert fires and an operator may manually reset specific rows to pending, which is safe within 24 hours due to the MailRelay key.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "The notifications.requested message carries schema_version, id, type, user_id, email, payload, created_at, attempts and next_attempt_at. The email content is produced inside the service, which renders the template (all three templates ship in the service) just before calling MailRelay. The monolith sends no rendered subject or body.",
+  "decided": true
+ }
+}

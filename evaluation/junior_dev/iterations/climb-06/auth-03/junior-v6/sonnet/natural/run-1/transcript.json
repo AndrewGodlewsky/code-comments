@@ -1,0 +1,186 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does 'normalise email' do here, and why does it matter for the lookup?",
+     "about": "A. REQUEST FLOW, normalise email"
+    },
+    {
+     "id": "2",
+     "text": "What is the `sessions` table, and what exactly does the API check on each request? What happens to a logged-in device whose row is deleted?",
+     "about": "Sessions / DELETE FROM sessions WHERE user_id=?"
+    },
+    {
+     "id": "3",
+     "text": "Who builds link(token) and what does it look like? Does it point at the client or the API, and is the raw token the only secret in it?",
+     "about": "enqueue job {to, link(token)}"
+    },
+    {
+     "id": "4",
+     "text": "What is the email queue and worker? Is it an existing system, and what does 'retry x3 w/ backoff' mean in practice (timing, who retries)?",
+     "about": "Email queue -> worker -> mail provider"
+    },
+    {
+     "id": "5",
+     "text": "In the POST step, how does the token get from the form back to the server, and why is the GET check needed at all if POST re-checks?",
+     "about": "B. LINK-CLICK FLOW, 'choose a new password' form"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'breached list', where does it live, and what does the check call (local file, external service)?",
+     "about": "pw on breached list?"
+    },
+    {
+     "id": "7",
+     "text": "When a user requests a new link and an old unused one exists, the old one is killed. What does the user see if they click the old link afterwards, and does a rate-limited request also kill the old link?",
+     "about": "UPDATE password_resets SET consumed_at=now() (kills earlier unused link)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Trim whitespace and lowercase the address before the lookup, so spelling variants find the same account. I chose this as the usual minimal rule. I have not verified how users.email is stored today, so I added an open question: if it is not already lowercase, compare case-insensitively."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "From the brief: sessions has one row per logged-in device, and the API checks it on every request. Deleting a row means that device's next request is rejected, so it is logged out immediately. The brief does not give the exact lookup key (for example a session id in a cookie), and the design does not need it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The API builds the link when it enqueues the job: a configured client base URL plus /reset-password?token=T. It points at the web client page, which then calls the API. The raw token is the only secret in it. The link is now defined in the terms."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Yes, it is existing. The API adds a job, the email worker sends it through the third-party mail provider, and the worker does the retrying, up to 3 times with backoff, then logs and drops the job. The exact delays are not stated in the brief, so I listed them as unknown in Open questions. The design does not depend on them."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The form page carries the token in a hidden field, and the browser sends it back in the POST body. The GET check is only for user experience, so a dead link is shown before the user types a password. The POST check, inside the transaction under FOR UPDATE, is the real enforcement. The brief requires both checks."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "The brief says only 'the breached-password list' and does not say where it lives or whether it is a local file or an external service. I did not invent one. I added an open question. The design only needs a yes/no check and fails closed (reject with 'try again shortly', token untouched) if the check is unavailable."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Clicking the old link afterwards shows the 'this link has expired, request a new one' page, on both GET and POST, because the older row was marked consumed_at. A rate-limited request does not kill the old link: it rolls back before the invalidate step, so the earlier live link stays live. I made this explicit in the diagram and notes."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "8",
+     "text": "The row is committed before the job is enqueued. Where does the raw token live between generating it and building the link, and what exactly does the job contain?",
+     "about": "A. REQUEST FLOW, enqueue job after COMMIT"
+    },
+    {
+     "id": "9",
+     "text": "Is the 200 response sent after the enqueue, or before? Does the client wait for the database work?",
+     "about": "A. REQUEST FLOW, user not found? / Same response everywhere"
+    },
+    {
+     "id": "10",
+     "text": "The link points at the web client page, but the GET in the diagram goes to the API server and returns a form or expired page. Which one serves the page the user sees, the client or the API?",
+     "about": "B. LINK-CLICK FLOW, GET /reset-password?token=T"
+    },
+    {
+     "id": "11",
+     "text": "What does hash(pw) use to hash the password, and is it the same method login uses to check passwords?",
+     "about": "B. LINK-CLICK FLOW, hash(pw)"
+    },
+    {
+     "id": "12",
+     "text": "These two checks run before BEGIN and before the token is re-checked. If the token is already dead, which does the user see first, a 422 or the expired page?",
+     "about": "B. LINK-CLICK FLOW, length(pw) < 12 and breached list checks"
+    },
+    {
+     "id": "13",
+     "text": "A user hits the limit but the earlier email never arrived or the link has expired. How long until they can request again, and what does the user see while blocked?",
+     "about": "Rate limit, 3 per rolling hour"
+    },
+    {
+     "id": "14",
+     "text": "If enqueue fails, the row exists and the old link was already killed. Is the user left with no working link until they re-request?",
+     "about": "C. FAILURE PATHS, Enqueue fails after COMMIT"
+    },
+    {
+     "id": "15",
+     "text": "After the redirect to /login, how does the user log in again, and can the reset be used by someone who only has access to the email?",
+     "about": "Sessions, DELETE FROM sessions WHERE user_id=?"
+    }
+   ],
+   "answers": [
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The raw token exists only in API server memory, from generation until the job is built. Only its SHA-256 hash is stored. The job is {to, link}, where link contains the token. The queue job is the one unavoidable place the token travels. Added to the terms and diagram."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The 200 is sent after the enqueue call returns. Enqueue only adds a job, so the client waits for the database work and the enqueue but never for the mail send. I chose this because it is the simplest ordering and keeps the response independent of the mail provider. Stated in the diagram and notes."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The web client serves the page the user sees. The link points at the client. On load, the client page calls the API to check the token. The API answers valid or invalid and the client shows the form or the expired page. The diagram was wrong to suggest the API returns pages, so I fixed it. The exact endpoint URL is not decided, listed in Open questions."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The brief does not say which algorithm login uses. The design requires hash(pw) to be the same function login verifies against, otherwise the user could not log in after reset. I did not name an algorithm. Added to Open questions."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The user sees the 422 first, because the length and breached-list checks run before the transaction. After fixing the password they see the expired page. I kept this because it is harmless and keeps the transaction short; the brief does not fix the order. Noted under Password rules."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The rolling window means they can request again when the oldest of the 3 rows is more than an hour old, so the wait is at most one hour. While blocked they see the same generic message, with no hint of the limit. The brief requires the generic message. A user with an expired link could wait up to about half an hour after expiry. Added to the rate-limit notes."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes. If enqueue fails after COMMIT, the old link was already killed and the new one was never emailed, so the user has no working link until they re-request, which counts toward the 3/hour. I accepted this rather than add a retry mechanism, since the brief wants only what is needed. Made explicit in the failure paths."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The user logs in at /login with the new password. They are not logged in automatically, as the brief requires. Yes, anyone with access to the mailbox can reset the password; that is inherent to email reset. The defences are the 30-minute single-use link, the logout of all devices and the 'your password was changed' email. Added to the notes."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I will follow one user, Bob, through a password reset. He starts by requesting the link, then clicks it and sets a new password.\n\n**Part A: requesting the link**\n\n1. Bob can't log in. On the \"Forgot password?\" page he types \"Bob@X.com \" (note the trailing space). The web client sends `POST /forgot-password {email}` to the API server.\n\n2. The API normalises the email by trimming spaces and lowercasing it, so it becomes \"bob@x.com\". It then runs a SELECT on `users` in Postgres to find the account. If no user is found, nothing is stored and nothing is queued. The API still returns the same generic 200 message, \"If an account exists for that address, we've sent a link.\" This is so nobody can learn which addresses have accounts.\n\n3. If the user exists, the API opens a transaction (BEGIN) and runs `SELECT ... FOR UPDATE` on the user's row. This is a Postgres row lock. Other requests for the same account wait until this one commits or rolls back, so parallel requests are handled one at a time.\n\n4. Inside the transaction the API counts `password_resets` rows for this user with `created_at` in the last hour. This count is the rate limit, and there is no separate counter. If the count is 3 or more, the API does ROLLBACK. No link is made, no email is sent, and the user's older live link is untouched. The API still returns the same generic 200.\n\n5. If the count is under 3, the API generates a token of 32 random bytes. The token is held only in the API server's memory. It marks any of the user's earlier unused reset rows as consumed (`consumed_at=now()`), which kills the earlier link. It then inserts a new reset row with `user_id`, `sha256(token)`, `created_at=now()` and `expires_at=now()+30min`. Only the hash is stored. Then it COMMITs.\n\n6. After the commit, the API adds a job `{to, link}` to the existing email queue. The link is `https://<client base URL>/reset-password?token=T`, so the raw token is inside the link. The API does not wait for the email to be sent. Once the enqueue call returns, it sends Bob the generic 200 message.\n\n7. The email worker takes the job and sends it through the third-party mail provider. If the send fails, the worker retries up to 3 times with backoff. If it still fails, it logs the failure (recording the `password_resets.id`, not the job body) and drops the job. Nobody is notified. In that case the link stays valid until it expires or is replaced, and Bob can request again, within the 3/hour limit.\n\n8. Failure case: if the enqueue itself fails after the COMMIT, the row exists but no email goes out. The earlier link has already been killed, so Bob has no working link. The API still returns the generic 200 and logs the error. Bob can re-request, and that request counts toward the 3/hour limit.\n\n**Part B: clicking the link**\n\n9. Bob opens the emailed link. It points at the web client's page, not at the API. The page should be served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, which keep the token out of Referer headers and caches. The page reads the token T from the URL.\n\n10. On load, the page asks the API to check T. The API computes h = sha256(T) and looks up the reset row by `token_hash`. If the row is missing, `consumed_at` is set, or `expires_at <= now()`, the API answers \"invalid\". The client then shows the \"this link has expired, request a new one\" page. Otherwise the API answers \"valid\" and the client shows the \"choose a new password\" form. This first check is only for user experience, so that Bob learns a link is dead before he types a password. The token stays in the page and is not logged.\n\n11. Bob submits a new password. The client sends `POST /reset-password {token, new_password}`.\n\n12. The API computes h again, then checks the password before opening any transaction. If the password is shorter than 12 characters, it returns 422 \"too short\". If the password is on the breached-password list, it returns 422 \"choose another\". In both cases the link stays usable until it expires. If the breached-list check is down, the API fails closed. It rejects with \"try again shortly\" and leaves the token untouched.\n\n13. The API then opens a transaction (BEGIN). It selects the reset row by hash with `FOR UPDATE`. This second check is the real enforcement. If the row is missing, consumed or expired, the API rolls back and the client shows the \"expired\" page.\n\n14. If the row is live, then in the same transaction the API does the following:\n   - It sets `users.password_hash = hash(pw)`.\n   - It sets the reset row's `consumed_at = now()`.\n   - It deletes every `sessions` row for the user.\n\n   Because the API looks up the caller's session row on every request, deleting those rows logs out every device at once, including the one doing the reset. Then it COMMITs. Putting all three in one transaction means they cannot get out of step.\n\n15. After the commit, the API enqueues a \"your password was changed\" email. This goes through the same queue and worker as in Part A. It is enqueued only after the commit, so a queue problem never rolls back a successful reset. If that email fails, the reset still stands, and the failure is logged and dropped as in step 7.\n\n16. The API responds with `302 /login`. No session is created, so Bob is not logged in automatically. He logs in with the new password.\n\n17. Concurrency: if Bob submits twice or uses two tabs, the row lock means the first commit wins. The second request sees `consumed_at` set and gets the expired page. A replaced link is handled the same way, because \"replaced\" is also recorded as `consumed_at`.\n\n**Housekeeping**\n\n18. Reset rows are kept after use or expiry, because the rate-limit count depends on them. A periodic job prunes rows older than about a day.\n\n19. A blocked user (3 requests in the last hour) can get a new link once the oldest of the 3 rows is over an hour old.",
+   "gaps": [
+    "Which password hashing algorithm hash(pw) uses is not stated, beyond 'same as login'.",
+    "Where the breached-password list lives (local file or external service) is not stated. Only that the check returns yes/no.",
+    "Whether users.email is already stored lowercase and trimmed is not stated, so I can't say how the lookup in step 2 actually matches.",
+    "The exact URL of the API's token-check endpoint is not given, so I can't name the call the page makes in step 10.",
+    "The worker's exact backoff delays are not given. The document says only 'up to 3 retries with backoff'.",
+    "How a logged-in client learns it has been logged out is not described. The document only says the next request is rejected because its session row is gone.",
+    "How the client page calls the API (the transport and what exactly is sent for the check) is not specified. The document says only that the page asks the API and the API answers valid or invalid."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,107 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the callback does GETDEL and cookie check, the document says the record is consumed 'whatever the outcome'. If the cookie matches but the user then hits Back and retries, they just start over, right? Where does a user who sees the 400 error page go next?",
+     "about": "Error page 400"
+    },
+    {
+     "id": "2",
+     "text": "The login button is a POST to /auth/google/login. What is the 'checked next path' check, and is a CSRF token needed there as on Settings?",
+     "about": "Login page button POST /auth/google/login"
+    },
+    {
+     "id": "3",
+     "text": "In link mode, the Settings user is already logged in. After the callback, how does the callback know the current session's user? Is it read from the sid cookie, and does SameSite=Lax on the sid cookie still let it arrive on a redirect from Google?",
+     "about": "mode is link AND current session user differs from saved user_id"
+    },
+    {
+     "id": "4",
+     "text": "In login mode, when a google_identities row exists for the sub, the user is signed in immediately. What if that user's row in users no longer exists or the account is otherwise disabled? Is there any other check before start_session?",
+     "about": "google_identities row for this sub? yes"
+    },
+    {
+     "id": "5",
+     "text": "On the Confirm with password page, how does the POST /login/google/confirm know which user's password to check? Does the user type an email, or is it taken from the pending record's user_id?",
+     "about": "POST /login/google/confirm"
+    },
+    {
+     "id": "6",
+     "text": "The confirm loop on a wrong password shows the page again and goes back to P. Is there also a path where the pending cookie is deleted on success only, and what happens to the oidc_flow cookie, which the callback is said to delete, versus OK, which also deletes it?",
+     "about": "OK start_session ... delete oidc_flow and oidc_pending cookies"
+    },
+    {
+     "id": "7",
+     "text": "In the create-new-user branch, what happens to the 'unique violation on email, user appeared meanwhile' loop: it goes back to D4 and then likely to the confirm-password path. Is that the 're-run once' rule, and what is refused if it conflicts again?",
+     "about": "D5 One DB transaction ... unique violation on email"
+    },
+    {
+     "id": "8",
+     "text": "What are 'Google-created users' able to do after signup, such as change email or set a password? The document says Forgot password is the way; does that email go to the stored Google email, and does it need email_verified_at set?",
+     "about": "Unlink Google / POST /forgot"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Yes. The attempt record is consumed, so Back and retry cannot reuse it; the user just starts a new attempt. The 400 page now has a link to the login page, which is where they go next. Added to the flowchart and the failure table."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The next path is accepted only if it starts with a single / (not //) and has no backslash or scheme; this is stated under Decisions. No CSRF token on the login-page start: it needs no session and changes nothing, and the state plus the oidc_flow cookie bind the callback to the starting browser. Settings link and confirm are state-changing for a known user, so they keep CSRF. Stated in the file."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the callback reads the sid cookie and loads the session's user. SameSite=Lax cookies are sent on top-level GET navigations, and the redirect back from Google is one, so the sid arrives. I did not test this in a browser; it is standard Lax behaviour. Noted on the callback node."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Checked against schema.sql: google_identities.user_id has a foreign key with ON DELETE CASCADE, so a link cannot outlive its user, and users has no disabled flag. So there is no other check before start_session. Stated in the Background section. locked_until is deliberately ignored, see Decisions."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The account is the user_id in the pending record, found through the oidc_pending cookie. The user types only the password, never an email. This prevents confirming against a different account. Added to the confirm node."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The callback clears oidc_flow on every outcome, so I removed oidc_flow from the OK node to stop saying it twice. oidc_pending is cleared on success; on lock or expiry the record is gone or expires, and a stale cookie finds no record. The table now says this."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Yes, that is the re-run-once rule. On an email violation the flow goes back to D4, which now finds the user and takes the confirm-password path. A sub violation goes back to D1. If it conflicts a second time, the user sees the error page, with nothing created. The edges now say re-run once and the failure table says what is shown."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Per auth_flow.md, POST /forgot emails the stored address and using the link sets password_hash and marks the email verified, so it needs no prior email_verified_at (and a Google-created user has it set anyway). The stored email for a Google user is the verified Google email at creation. Whether the app lets users change email is not in the existing files, so I do not know; added under Open questions. Added the reset detail to Schema change."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a new visitor clicks \"Sign in with Google\" on the login page, and Google's email matches an existing password user.\n\n1. The user clicks the Login page button, which sends POST /auth/google/login. This needs no session and no CSRF token. The server saves mode=login and a checked `next` path. `next` is accepted only if it starts with a single `/` and has no backslash or scheme.\n\n2. The server runs `begin_flow`. It makes a random `state`, `nonce` and PKCE verifier. It stores an attempt record in Redis under `oidc:state:<sha256(state)>` with a 10 minute TTL. The record holds the nonce, verifier, mode, user_id (link mode only) and `next`. It sets an `oidc_flow` cookie containing the raw `state` (HttpOnly, Secure, Lax, 10 min). It then redirects the browser to Google with an S256 challenge and scope `openid email profile`. The document also says to rate-limit this endpoint in Redis, \"the same way existing limits work\".\n\n3. The user signs in and consents at Google. Google redirects the browser to GET /auth/google/callback. This is a top-level redirect, so the Lax `sid` cookie arrives. The callback always clears the `oidc_flow` cookie.\n\n4. The server checks that the `oidc_flow` cookie equals the `state` param. It also does an atomic Redis GETDEL on the record. If either check fails (unknown, expired, used or foreign), it shows a 400 error page with a link to the login page. Nothing changes and Google is not contacted. If both pass, the record is now deleted, so each attempt works only once.\n\n5. In link mode, the server checks that the current session user matches the saved user_id. A missing session or a different user gives the same error page. This does not apply to our login-mode request.\n\n6. If Google sent an `error` param or no code (for example the user pressed Cancel), the server redirects to the origin (login page or Settings) with a neutral \"not completed\" message. Nothing changes.\n\n7. Otherwise the server makes a back-channel POST to Google's token endpoint with the code and code_verifier, using a short timeout. It validates the ID token: signature, iss, aud, exp, and nonce equal to the saved nonce. On any failure (network error, timeout, invalid_grant, bad token), the user is redirected to the origin with \"could not finish with Google, try again, or use email and password\". The code is never retried and nothing is created or linked.\n\n8. On success the server reads only `sub`, `email` and `email_verified`, and lowercases the email. All tokens are discarded and none are stored.\n\n9. In login mode, the server looks for a `google_identities` row for this `sub`. If one exists, it is the same account even if the Google email has changed, and the flow goes to step 14.\n\n10. If there is no row, `email_verified` must be true. If it is false, the login page refuses and points to email and password. Nothing is created.\n\n11. The server looks up a `users` row by the lowercased email. If none exists, one DB transaction inserts a user with `password_hash` NULL and `email_verified_at` = now, plus a `google_identities` row. A unique violation on email re-runs the decision once from step 11. A unique violation on `sub` re-runs once from step 9. Otherwise it goes to step 14. If the re-run still conflicts, the error page is shown.\n\n12. In our scenario the user exists. If that user already has a Google link (necessarily a different Google account, since this `sub` was not found), the login page refuses with \"that account uses a different Google account\". There is no password prompt.\n\n13. If the user has no Google link, the server stores a pending link in Redis under `oidc:pending:<sha256(token)>`. It holds `sub`, `user_id` and `next`, with a 10 minute TTL. It sets an `oidc_pending` cookie holding the token (HttpOnly, Secure, Lax). It shows a \"Confirm with password\" page. The stored email is not changed. The user then submits their password and a CSRF token to POST /login/google/confirm. No email is typed, because the account is the user_id in the pending record.\n   - If the cookie maps to no live record, the user sees \"took too long, start again\" on the login page.\n   - If `locked_until` is in the future, the pending record is deleted, \"Account temporarily locked\" is shown, and the password is not checked.\n   - If bcrypt does not match, `failed_logins` goes up by 1. At 5, `locked_until` is set to now + 15 min, `failed_logins` resets to 0, the pending record is deleted and \"locked\" is shown. Below 5, the pending record stays with the same TTL and the page shows \"incorrect password\" again.\n   - If the password is right, `failed_logins` is reset to 0. The server GETDELs the pending record and inserts the `google_identities` row. If the record is already gone, the user sees the \"took too long\" message. A unique violation on `sub` or `user_id` gives the \"different Google account\" refusal. Otherwise it goes to step 14.\n\n14. Success calls `start_session(user_id)`. This deletes the old `sessions` row if a `sid` cookie came in, inserts a new row, and sets the `sid` cookie. It redirects to the saved `next` if that is a relative path (re-checked the same way), otherwise to /home. The `oidc_pending` cookie is deleted if present. Google sign-in does not reset `failed_logins`, and a linked Google sign-in ignores `locked_until`.\n\nOther flows:\n- Link from Settings: POST /settings/google/link needs a session and a CSRF token. If the user already has a link, nothing starts. Otherwise the same `begin_flow` runs with mode=link and user_id. After the callback:\n  - A `sub` linked to this user gives \"already linked\".\n  - A `sub` linked to another user is refused.\n  - If the user has some other link, it is refused with \"unlink first\".\n  - Otherwise `google_identities` is inserted. No password is asked, emails need not match, and the session is unchanged.\n  - A unique violation is treated as \"linked elsewhere\".\n- Unlink: POST /settings/google/unlink needs a session and CSRF. If `password_hash` is not NULL, the row is deleted. If it is NULL, the unlink is refused and the user is told to set a password via POST /forgot.\n- Password login for a NULL hash is treated as a wrong password, with a dummy bcrypt compare.",
+   "gaps": [
+    "What the Settings flow does once the link succeeds or fails is only partly stated: how the callback gets back to Settings, and what the flow does with `next` in link mode, are not specified beyond 'always returns to Account Settings'.",
+    "Which Redis operation or check enforces the rate limit on the two start endpoints, and what the limits and the user-visible result are, is not given (only 'add a Redis rate limit ... same way existing limits work').",
+    "How the confirm step (POST /login/google/confirm) validates the CSRF token when the user has no session yet is not explained, so I don't know where the CSRF token comes from for that page.",
+    "The document does not say what happens when the redirect-to-origin messages or error pages are rendered with regard to the `oidc_pending` cookie on a failed confirmation (for example whether it is cleared on lock), beyond 'cleared on success'.",
+    "It does not say what the callback does about `locked_until` for a user found via an existing link beyond the decision note, nor whether the 'Account temporarily locked' message applies to Google login of a locked account (it says it ignores the lock)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,30 @@
+## Review of ms-02 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Expanded the thin outline into the per-step plan the brief asks for: each of the 8 steps now states what starts it, what data moves, where state lives, and what happens on a crash, broker outage, MailRelay outage, or redelivery.
+- Added a short 'How the pieces fit' section defining the monolith table, the route column, the outbox relay, the service, and MailRelay's idempotency key, and naming the three duplicate-prevention layers, so a reader new to the project can follow.
+- Made the mechanism concrete: route is set once at enqueue from the flag, the worker filters on route='monolith', the relay publishes by row route and marks rows handed_off, the consumer inserts with ON CONFLICT DO NOTHING and acknowledges after commit, and the sender commits per row with the key.
+- Replaced the vague 'Retries: same policy' and 'Rollback is a flag flip' notes with the actual policy and an explicit numbered rollback procedure, including the 24-hour limit on resetting rows.
+- Added cutover timing and gates to steps 5-8 (3-day holds, p99 under 60 s on order_confirmed, 7 days before removing the old worker) and the precondition that all instances run the new worker query before any flag is turned on.
+- Replaced 'Dedupe on notification id' and the one-line monitoring note with specific mechanisms and named metrics, and added an end-to-end smoke test in step 4.
+- Defined MailRelay and the outbox pattern in one line each so an outsider can follow
+- Stated the broker's at-least-once and 30 s redelivery behavior up front, where the reader first needs it
+- Clarified that the monolith never touches the service database either
+- Replaced the vague 'first, with no dependencies' start condition in step 1 with 'immediately'
+- Explained why the old worker ignores handed_off rows (its query selects only pending monolith rows) instead of stating it as a separate rule
+- Reworded the relay's flag independence as selecting by stored route, not the current flag
+- Replaced step 5's inline list of metrics with a pointer to the single watch list
+- Clarified rollback item 5 as 24 hours from the row's first send and why
+- Reworded step 8's failure note to say why the old worker stays deployable through steps 1 to 7
+- Fixed list formatting in step 7 and trimmed minor wordiness elsewhere
+- Reworded the outbox explanation to say the notifications table itself is the outbox, and added that the broker confirms storage to publishers.
+- Step 4 smoke test now says rows are inserted with route='service' explicitly.
+- Step 7 replaced the vague 'if the relay or service is slow, roll this type back first' with a concrete trigger (an alert fires and the delay does not clear) and a pointer to Rollback.
+- Rollback item 5 now names the exact reset (route='monolith' and status='pending'), scoped as an exceptional case.
+- Step 5 cross-reference now points to 'Rollback' by its section name in quotes.
+- Minor wording tightening throughout; structure, order and all facts preserved.
+
+### Holes
+- None.

@@ -1,0 +1,197 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The 02:00 cutoff is the window end, but the load may start at 02:00 and the diagram says nothing about late-start. If a retry runs at 02:30, is the window end still 02:00, and what does the extract do with rows updated between 02:00 and 02:30?",
+     "about": "Read HWM and set window (start = HWM minus 2h, end = 02:00 cutoff)"
+    },
+    {
+     "id": "2",
+     "text": "What exactly is the run_date, and how does a retry or the 06:00 check know which night it belongs to? Is it the UTC date of the 02:00 trigger?",
+     "about": "06:00 staleness check / run log run_date"
+    },
+    {
+     "id": "3",
+     "text": "If attempt 3 fails and on-call is paged, what happens next? Does anything run the night again, and what does the next night's load do about the missed night?",
+     "about": "Failure and retry: ATTEMPTS decision and PAGE"
+    },
+    {
+     "id": "4",
+     "text": "The 06:00 staleness check says 'night not committed'. What does the 'recovery note' mean here, and which component posts it? It appears in the text but not in the diagram.",
+     "about": "06:00 staleness check"
+    },
+    {
+     "id": "5",
+     "text": "Who or what drops the staging table when the failure happens before the transaction opens, for example when Extract fails? ROLLBACK is shown for those steps, but there is no transaction yet.",
+     "about": "Failure handling: ROLL and stg.orders_run_attempt"
+    },
+    {
+     "id": "6",
+     "text": "What if an attempt crashes hard (process dies) and never writes a FAILED row, leaving a STARTED row only? Does the retry counter and retry chain still proceed?",
+     "about": "etl_state.orders_run_log (one row per attempt, STARTED/FAILED/SUCCEEDED)"
+    },
+    {
+     "id": "7",
+     "text": "The dashboard refreshes at 06:00 on its own. If the night commits at 06:10 after retries, when do dashboards pick it up?",
+     "about": "Dashboards (06:00 UTC refresh) and COMMIT"
+    },
+    {
+     "id": "8",
+     "text": "The Sunday reconciliation compares replica and warehouse by creation day, but extraction uses updated_at. How can an old order's update be missed by the nightly job in the first place, given the 2h lookback and 90 minute visibility claim?",
+     "about": "Sunday reconciliation / Why nothing is lost"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The brief fixes the window for the night. window_end is the 02:00 cutoff, set once and stored in the run log, so a retry at 02:30 still ends at 02:00. The extract excludes rows updated after the cutoff even when they are visible, so rows updated between 02:00 and 02:30 are taken by the next night. The file now says this in the Window section and in step 2."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "run_date is the UTC date of the 02:00 trigger. I chose it because it ties every attempt, the retry count and the 06:00 check to one night. The 06:00 check on run_date looks at the same night, four hours after its trigger. Added to Terms."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Nothing reruns the night automatically after attempt 3 fails, and the HWM stays put. The next night's window starts 2 hours before that same HWM, so it includes the missed night's changes and loads them. On-call can rerun the missed night by hand using its stored window, which cannot move the HWM backwards. Added as its own section."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The attempt that commits posts the recovery note when the commit is after 06:00 UTC on run_date. A commit after 06:00 means the staleness alert already fired, so the note closes it. The recovery note is now step 6 and a node in the diagram."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Extract, land and dedupe run outside any transaction, so there is nothing to roll back. Those failures go straight to FAILED, and the attempt drops its own staging table. The MERGE, HWM and COMMIT failures roll back first, then go to the same FAILED step. Staging is dropped on every end state, success or failure."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Each attempt has one run-log row. The scheduler writes it as STARTED before the attempt begins, and the attempt changes it to SUCCEEDED or FAILED. A dead process writes no result, so the scheduler marks that STARTED row FAILED before the next attempt, and the chain continues. SUCCEEDED is written inside the commit transaction, so a crash leaves either a committed night or nothing. If the scheduler itself stops, the 06:00 check is the backstop. Covered in the failure table."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The brief fixes the dashboard refresh at 06:00 UTC and says dashboards read committed data. A commit at 06:10 is therefore not shown until the next refresh, which is the following day at 06:00. Whether to refresh on commit is not in the brief, so it is listed as an open question."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "updated_at is stamped at write time, so an update to an old order carries a recent updated_at and falls in a window. A row updated at U is visible within 90 minutes of U. If U is at least 2 hours before a cutoff, that night's extract takes it. If U is in the last 2 hours before a cutoff, the next night takes it, since its window starts 2 hours before the same cutoff. A row is missed only when it is still invisible at the next night's extract, which needs lag beyond the 90-minute bound. The reconciliation catches these, but only for creation days in the last 30 days, so that limit is an open question. Explained in Why nothing is lost."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Which process actually runs the extract, land, dedupe and merge steps, and which one runs the 'failure handler' that writes FAILED? Is it the scheduler itself or a separate worker the scheduler launches?",
+     "about": "One load attempt / Failure handler (FAILROW)"
+    },
+    {
+     "id": "10",
+     "text": "When an attempt's process dies, nothing drops its staging table. Who cleans it up, and does a leftover table cause trouble when a later attempt for the same night starts?",
+     "about": "Attempt process dies with no result / Staging"
+    },
+    {
+     "id": "11",
+     "text": "Where exactly is the window stored for a night? The text says it is in that night's run-log row, but there is one row per attempt. How does attempt 2 find attempt 1's window?",
+     "about": "Start: reuse the stored window, or set it once"
+    },
+    {
+     "id": "12",
+     "text": "Does a manual rerun by on-call create a new run-log row and count as a 4th attempt? What stops a manual rerun from racing with a scheduled retry for the same night?",
+     "about": "When a night fails for good / Attempt"
+    },
+    {
+     "id": "13",
+     "text": "When the scheduler checks the run log before a retry and sees a STARTED row from a still-running attempt (not a dead one), what does it do? How does it tell a dead attempt from a slow one?",
+     "about": "Attempt process dies with no result / CRASH"
+    },
+    {
+     "id": "14",
+     "text": "What does 'visible' mean in 'a row updated at U is visible within 90 minutes'? Visible where, and what is the 90 minutes made of?",
+     "about": "Why nothing is lost"
+    },
+    {
+     "id": "15",
+     "text": "The HWM is set to window_end only if higher. After a failed night, the next night's window starts 2 hours before the old HWM. After that night commits, what is the HWM, and does the HWM ever reflect the missed night in between?",
+     "about": "Set HWM to window_end, only if higher"
+    },
+    {
+     "id": "16",
+     "text": "If the Sunday night job is still retrying at 06:00 or later, how long does reconciliation wait? Can it run at the same time as the Monday 02:00 load?",
+     "about": "SUNTRIG: Sunday, after the night job is terminal"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The scheduler starts one attempt process for each attempt. That process runs extract, land, dedupe and merge, and it also runs the failure handler: when it catches an error, it writes FAILED with the error and exits. The scheduler writes FAILED itself only when a process exits with no result, which is the crash case. I split it this way so a failed attempt records its own error, and the scheduler acts only when there is no record. The Terms section now defines the attempt process."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The scheduler drops it. When it marks a dead attempt's STARTED row FAILED, it also drops stg.orders_run_attempt_<run_date>_<attempt> for that attempt. A leftover table cannot collide with a later attempt, because each attempt number has its own staging name. The scheduler also waits for each process to exit before it starts a retry, so the dead table is handled before the next attempt begins."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The brief says the window is stored in the night's run-log row, but the log has one row per attempt. I now store the window on every attempt's row. Attempt 1 sets it from the HWM. Each later attempt copies it from the previous attempt's row for the same run_date. The Window section and step 1 say this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. A manual rerun gets a new row with the next attempt number, and that number names its staging table. It does not count among the three scheduled attempts, because the brief limits the retry chain, not on-call. The race is small: on-call reruns only after the page, when attempt 3 has failed and no scheduled attempt is still running for that night. Step 1 also blocks a start if a STARTED or SUCCEEDED row exists for run_date."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "In normal operation the scheduler never sees a STARTED row from a running attempt. It starts each retry only after the previous attempt process has exited, because it started that process and waits for it. A dead attempt is one whose process has exited with no result. The one gap is a scheduler that restarts and loses track of its process. The brief does not say how it would tell a live attempt from a dead one, so that is listed as an open question."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Visible means a committed row that the replica returns to an extract query. The 90 minutes comes from the brief: a bulk-import transaction can stay open up to 90 minutes, so a row written at U is committed by U plus 90 minutes at most. Then replication copies it to the replica. The 90 minutes cover only that open-transaction delay, not replica lag. The Why nothing is lost section now says so."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "During a failed night the HWM stays at its old value, so it does not reflect the missed night. It moves only to a committed window_end. When the next night commits, its window starts 2 hours before the old HWM, so it includes the missed night's changes. The HWM then moves to that night's cutoff, which is higher. The HWM reflects the missed night only from that commit on. The When a night fails for good section now says this."
+    },
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "The reconciliation waits for the Sunday night job to reach a terminal state, with no time limit, because the brief sets none and I did not add one. Attempts are at most three, 15 minutes apart, so it usually starts well before Monday 02:00. The brief does not bound extract or reconciliation time, though, so the two can overlap if the reconciliation is slow. Data stays correct because both write through the same guarded merge. Whether the warehouse allows two MERGEs into dw.orders at once is unknown, and it is an open question in the file."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one normal night, then the failure branches.\n\n1. 02:00 UTC trigger (scheduler). The scheduler starts attempt 1 for run_date, the UTC date of that trigger. Before doing anything it reads the run log (`etl_state.orders_run_log`) for that run_date. If a SUCCEEDED row exists it stops. If a STARTED row exists it will not start a second attempt.\n2. Writing the window and STARTED row (scheduler). For attempt 1 it reads the HWM from `etl_state.orders_watermark`. The window starts at HWM minus 2 hours (not included) and ends at the cutoff, 02:00 UTC (included). The scheduler inserts a STARTED row with attempt number 1 and the window into the run log. The run log is where the window and attempt state live. If this insert fails, it pages on-call and does not start the attempt. Then it starts the attempt process and waits for it to exit.\n3. Extract (attempt process). The process reads the replica's `orders` table in a single snapshot. It takes rows whose `updated_at` falls inside the window. Soft-deleted orders are included because a delete is a write. Nothing is stored here. The rows go straight to the next step.\n4. Land and dedupe (attempt process). It writes the rows into the staging table `stg.orders_run_attempt_<run_date>_<attempt>` in the warehouse. It then keeps one row per `order_id`, the one with the greatest `updated_at`, and sets `is_deleted = (deleted_at IS NOT NULL)`. The dedupe is needed because MERGE rejects duplicate source keys. Staging holds the data until the attempt ends.\n5. Merge and commit (attempt process). It opens one warehouse transaction. It runs a MERGE from staging into `dw.orders` on `order_id`. A matched row is updated only if the staged `updated_at` is greater. An unmatched row is inserted. Older copies therefore never overwrite newer rows, rerunning a window changes nothing, and rows are never removed. Next it sets the HWM to the window end, only if that is higher, and sets this attempt's run-log row to SUCCEEDED. Then it COMMITs. The rows, the HWM and the SUCCEEDED row become visible together. This commit is the only moment dashboards can see the new data.\n6. Recovery note (attempt process). If the commit happened after 06:00 UTC on run_date, it posts a recovery note to #data-alerts, which closes the staleness alert. A failed post does not undo the commit.\n7. Cleanup. Staging is dropped whenever an attempt ends, whether it succeeded or failed. The process exits.\n8. 06:00 staleness check and dashboards. A separate check looks for a SUCCEEDED row for run_date. If there is none, it posts a staleness alert to #data-alerts. The alert does not block dashboards or retries. Dashboards refresh at 06:00 UTC and read only committed `dw.orders`. A night that commits after 06:00 appears at the next day's 06:00 refresh.\n9. Failure before the transaction (extract, land or dedupe). Nothing needs rolling back. The attempt process writes FAILED with the error to the run log row, drops staging and exits.\n10. Failure inside the transaction (MERGE, HWM update or COMMIT returns an error). The process issues ROLLBACK, so nothing reaches `dw.orders` and the HWM stays put. It then writes FAILED, drops staging and exits.\n11. Process dies with no result. The scheduler marks the STARTED row FAILED and drops that attempt's staging table. The database ends the dead session's transaction. If COMMIT had already succeeded, the row is SUCCEEDED and the scheduler leaves it alone.\n12. Unknown commit result (for example the connection drops). The retry checks the run log first. If SUCCEEDED exists, it stops. Otherwise it reruns the same window, and if the first commit did land, the rerun changes nothing.\n13. Retry. After a failed attempt the scheduler counts the run-log attempts for run_date. If fewer than 3 have failed, it waits 15 minutes after the process exited and goes back to step 1. The retry writes a new STARTED row and copies the window from the previous attempt's row. It never recomputes the window from the current HWM, so a retry at 02:30 still ends at 02:00. Rows updated after the cutoff are left for the next night.\n14. Attempt 3 fails. The scheduler pages on-call. Nothing reruns the night automatically, and the HWM does not move. The next night starts from the same HWM, so its window reaches back far enough to include the missed changes and is longer than usual. Until a later night commits, `dw.orders` lacks those changes. On-call can run the missed night by hand. The rerun uses the stored window for that run_date and gets the next attempt number. It starts only if the run log has no SUCCEEDED or STARTED row for run_date, and it cannot move the HWM backwards.\n15. Sunday reconciliation. When a Sunday run_date's night job reaches a terminal state (committed or failed for good), reconciliation starts. It goes through each creation day (UTC date of `created_at`) in the last 30 days. For each day it compares the row count and an md5-based checksum of `(order_id, updated_at in UTC microseconds)` on the replica and in the warehouse, with deleted rows included. If they differ, it reloads that day from the replica by `created_at` in one transaction with the same merge rule, then compares again. If they still differ, it posts a reconciliation alert and moves on without looping. Results are written to `etl_state.orders_recon_result`. It does not touch the HWM.\n16. Why nothing is lost. `updated_at` is set on every write, so an update to an old order lands in a recent window. A row written within 2 hours before a cutoff may be missed that night, but the next night's window starts 2 hours before that same cutoff, so it picks the row up. The 90-minute bulk-import allowance plus replica lag under 30 minutes keeps earlier rows inside their own night. Rows still missed are caught by the Sunday reconciliation, but only for orders created in the last 30 days.",
+   "gaps": [
+    "How the scheduler actually decides that an attempt process 'exited with no result' versus still running, and how the 'wait for exit' is detected, is not specified (and a restarted scheduler cannot tell a running attempt from a dead one, which the document itself lists as open).",
+    "What the 06:00 staleness check does when the run_date's attempts are still in progress is only partly clear, since it just looks for a SUCCEEDED row. The document does not say how 'attempts so far' is obtained beyond the run log.",
+    "How a manual rerun by on-call is triggered (command, tool, who writes the STARTED row) is not described, only its conditions.",
+    "What triggers or schedules the 'next night' window when the HWM did not advance is described, but how the very first HWM is set is left open (manual backfill undecided).",
+    "Whether the 15-minute wait applies from process exit when the exit is a dead process (marking FAILED first) is implied but the exact ordering and timing is not stated.",
+    "How the Sunday reconciliation is started (what component detects that the Sunday night job is terminal) is not stated beyond 'after the night job is terminal'.",
+    "What a page to on-call contains or how it is delivered is not described.",
+    "How dashboards refresh mechanically (what job runs at 06:00) is not described, only that they read committed dw.orders."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

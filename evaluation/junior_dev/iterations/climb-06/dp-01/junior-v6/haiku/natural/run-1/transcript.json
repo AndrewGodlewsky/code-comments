@@ -1,0 +1,256 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Step 1 says 'take pipeline lock'. What exactly is the lock, who else competes for it, and what does a second attempt do when it can't get it?",
+     "about": "1. Take pipeline lock, log attempt as running"
+    },
+    {
+     "id": "2",
+     "text": "What is the 'attempt timeout' and how does a hung attempt actually get cut and its lock released, so the next attempt can run?",
+     "about": "Failure, retry and alerts / error or timeout"
+    },
+    {
+     "id": "3",
+     "text": "Step 4 reads from hwm minus 2h. Why 2 hours, and how does re-reading old rows not create duplicates in orders_current?",
+     "about": "4. Extract orders with updated_at after hwm minus 2h and up to cutoff"
+    },
+    {
+     "id": "4",
+     "text": "What is the cutoff, concretely, and why is it read from the replica rather than using the current time? What does the pipeline do when the replica is far behind?",
+     "about": "3. Read cutoff from replica (pg_last_xact_replay_timestamp)"
+    },
+    {
+     "id": "5",
+     "text": "In step 5, what does 'bulk load' do and how does the extract get from the replica into the warehouse staging table? What tool or process runs this?",
+     "about": "5. Bulk load extract into staging"
+    },
+    {
+     "id": "6",
+     "text": "When validation in step 6 fails, does the whole attempt fail and retry, or is anything partially loaded? Who sees the failure?",
+     "about": "6. Validate"
+    },
+    {
+     "id": "7",
+     "text": "If the three attempts all fail, what happens the next night? Does the next run pick up from the old hwm, and does anyone need to do anything manually?",
+     "about": "Page on-call with run id and error"
+    },
+    {
+     "id": "8",
+     "text": "How does the watchdog know a commit happened 'since 02:00' for tonight, and what does the staleness alert follow-up look like when a late load commits after 06:00?",
+     "about": "Committed run for tonight at 06:00?"
+    },
+    {
+     "id": "9",
+     "text": "What do the dashboards refresh from, and what happens at 06:00 if the load is still running or has failed? Do analysts see yesterday's data?",
+     "about": "Dashboard views over orders_current"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The lock is one row in etl_lock that holds the run id of the attempt allowed to load. Competitors are the 02:00 run, retries and manual reruns. Step 1 takes it with a committed write. If another attempt holds it, this attempt waits, checking once a minute, until the lock is free or its own attempt timeout passes. A timeout while waiting counts as a failed attempt. The lock is cleared at commit or in the failure path. I chose a plain row with no expiry rule because the brief does not require one. A stuck lock is cleared by on-call."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The attempt timeout is a hard limit the scheduler enforces on each attempt. When it passes, the scheduler stops the attempt. The open warehouse transaction rolls back, staging is dropped, the run log row is marked failed, and the lock is cleared for that run id. If the failure path cannot run, the lock stays. Later attempts then wait and fail, and on-call clears the row. The timeout length is not set yet, and it is in open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The 2 hours covers the 90-minute gap between a bulk row's updated_at and its visibility, plus margin. Re-reading old rows creates no duplicates. orders_current is keyed on order_id, so the merge matches the existing row. It updates only when the incoming updated_at is strictly newer. A re-read row has the same updated_at, so nothing changes. Staging also keeps one row per order_id."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The cutoff is the commit time of the last transaction the replica has applied, from pg_last_xact_replay_timestamp(). It shows how far the replica has caught up, so every commit at or before it is visible there. The wall clock can run ahead of the replica, so a row committed but not yet replayed could be skipped. If the replica is far behind, the cutoff is old, the window moves less, and the run does not wait. A null cutoff fails the attempt."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "The ETL job runs the extract (step 4) and the bulk load (step 5). It reads rows from the replica and passes them in batches to the warehouse's bulk-load facility, which writes into stg_orders_RUN_ID. The brief names neither the warehouse nor a bulk-load tool, so the exact tool and file format are not known. They are listed in open questions."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "A validation failure fails the whole attempt. Staging is separate and is dropped. The merge and the watermark were not committed, so nothing reached orders_current or hwm. The failure is written to etl_run_log with its error and counts toward the three attempts. Nobody is paged until the third failure. Retries cover the same window."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "After three failures, on-call is paged. hwm does not move, so the next night's 02:00 run starts from the same hwm and its window covers the missed period. That run needs no manual step. On-call should find the cause and may rerun manually through the same entry point and lock. The Sunday reconciliation waits for the next committed load."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The watchdog reads etl_watermark.committed_at and checks whether it is at or after 02:00 UTC tonight. committed_at is written inside the commit transaction, so it appears only after a commit. For a commit after 06:00, the job itself posts a follow-up to #data-alerts once it has committed. The follow-up names the night, the commit time, and says dashboards show the data from the next 06:00 refresh. No new state is needed: the job compares its own commit time with 06:00 UTC."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Dashboard views read orders_current, which changes only at a commit. The 06:00 refresh therefore reads the last committed state. If tonight's load is still running or has failed, analysts see the previous night's committed load, which is yesterday's data. After several failed nights, they see older data. Nothing half-loaded is visible."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "The replica's orders table has one row per order. How can the extract contain several rows with the same order_id, so that step 7 has to pick the newest?",
+     "about": "7. Keep newest row per order_id"
+    },
+    {
+     "id": "11",
+     "text": "When does the warehouse transaction open? Is it at the start of step 8, or earlier? Is staging written inside it or outside it?",
+     "about": "8. Merge into orders_current / 9. Commit"
+    },
+    {
+     "id": "12",
+     "text": "Where is the count of failed attempts for a night kept, and what defines 'a night' for it? Is it read from etl_run_log? Does a manual rerun count toward the three?",
+     "about": "Failed attempts so far is below 3?"
+    },
+    {
+     "id": "13",
+     "text": "Does the reconciliation reload take the pipeline lock? What happens if it overlaps with a nightly load or a retry that writes to orders_current?",
+     "about": "Weekly reconciliation"
+    },
+    {
+     "id": "14",
+     "text": "On the very first run there is no hwm. How does the full extract get loaded: through the same steps 3 to 9 in one attempt, and what is hwm set to afterwards?",
+     "about": "2. Read hwm from etl_watermark"
+    },
+    {
+     "id": "15",
+     "text": "If the host dies mid-attempt, who or what starts the retry timer and logs the attempt as failed? The failure path did not run, so how does the pipeline know to retry?",
+     "about": "Third failed attempt / Failure path cannot run"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "A single read of the replica's orders table returns one row per order_id, so one query cannot return the same order twice. Duplicates can still reach the staging table if the extract is read in batches and a row changes between two batches. Step 7 keeps the newest row per order_id, and it is needed anyway, because a merge fails when two source rows match one target row. I changed step 4 to say that the extract is read in batches and that a row can come back twice."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The warehouse transaction opens at the start of step 8 and ends at the COMMIT in step 9. Steps 1 to 7 run before it. The lock and run-log writes in step 1 and the staging writes in step 5 are committed on their own, outside the transaction. So a failed validation has nothing to roll back except the staging table. The step 7 dedupe runs first inside step 8, as the source of the merge. Staging is dropped after COMMIT."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The count is kept in etl_run_log, which has one row per attempt and a night column. A night is the UTC date of its 02:00 scheduled start. Retries copy the night of the failed attempt. A manual rerun names its night and defaults to the latest 02:00 start. A failed manual rerun counts toward the count for its night. The page fires at the third failure. A manual rerun after the page is allowed, and if it fails, on-call is paged again. I added the night column and these rules to the plan."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes. The reconciliation writes orders_current, so each day it reloads takes the same pipeline lock, and it releases the lock at that day's commit. This means it cannot overlap a nightly load or a retry. It starts after the Sunday load commits, so that night's attempts are finished. If it cannot get the lock within the attempt timeout, it stops, the remaining days wait for the next Sunday, and it alerts #data-alerts. The brief does not say what should happen here, so this is my decision."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Yes. The first run is one attempt through steps 1 to 9. With no hwm, the window starts at the configured start date with no lookback and ends at the cutoff. Step 9 then sets hwm to the cutoff, the same as on any night. The start date is not set yet, so it stays in open questions. The first extract may run longer than an ordinary night, so the attempt timeout has to allow for it."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The retry timer belongs to the scheduler, not to the job. The scheduler starts each attempt and waits for it to end. If the host dies, the scheduler sees no end and treats the attempt as timed out. It records the attempt as failed and starts the retry 15 minutes later. The lock stays set, because the job's failure path could not run. Later attempts wait for it, time out and fail, and on-call clears the lock row by hand. If the warehouse cannot be reached, the failed row cannot be written, so the count can be short by one. That is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "If the scheduler stops an attempt and writes failed to its run log row while that attempt is actually inside step 9, can the COMMIT still go through? What does the run log row say then?",
+     "about": "Retry and counting / scheduler stops the attempt at the attempt timeout"
+    },
+    {
+     "id": "17",
+     "text": "What does 'the scheduler stops the attempt' mean concretely? How does it make sure the stopped job can no longer write to the warehouse before the retry starts?",
+     "about": "Retry and counting / scheduler stops the attempt"
+    },
+    {
+     "id": "18",
+     "text": "If a manual rerun names a night that already has a committed load, what does it do? Does it load a window from the current hwm, and does it write a new run log row for that night?",
+     "about": "Manual rerun, names the night"
+    },
+    {
+     "id": "19",
+     "text": "The watchdog checks committed_at at or after 02:00 tonight. Could a manual rerun or a late retry for a different night make that check pass wrongly, or does committed_at only reflect tonight's load?",
+     "about": "Committed run for tonight at 06:00?"
+    },
+    {
+     "id": "20",
+     "text": "When a retry waits for the lock in step 1, who normally holds it, and does the wait time count against the same attempt timeout as the load itself?",
+     "about": "1. Take lock, log attempt as running"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "No. Step 9 marks the run log row committed only if it still says running, in the same transaction that finishes the merge and moves the hwm. The scheduler's failed write is also conditional on the row saying running. The database lets only one of the two win. If the COMMIT wins, the row says committed, so the scheduler counts no failure and starts no retry. If the scheduler's failed write wins, step 9's status update matches no row, so the whole commit rolls back. The hwm does not move, and the row says failed, never committed. I added this rule to step 9 and a new section, Stopping an attempt that times out."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Stopping means four steps, in this order: (1) the scheduler sets the run log row to failed, only where it still says running; (2) it stops the job process and ends the job's warehouse sessions, which rolls back any open transaction; (3) it clears the lock where holder equals this run id; (4) it waits 15 minutes and starts the retry. The stopped job cannot merge or move the hwm once step 1 has recorded failed, because its commit is refused. Its staging writes use its old run id, which the retry does not use, and staging is dropped. If the host is unreachable so steps 2 and 3 cannot run, the lock stays, as in the host-dies case."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "A manual rerun runs the same way as any attempt. It does not reload the named night. Its window starts at the current hwm (hwm minus 2 hours, up to the cutoff), so it re-reads the overlap, and the merge leaves unchanged rows alone. A rerun for a night that already committed is allowed, because re-running must do no harm. The naming only sets which night its failures count toward. It writes its own new etl_run_log row with kind night, the night it names and its own run id. I stated these rules in a new Manual reruns section, because the first version did not say them."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "No, the first version could let it pass wrongly. The watchdog read etl_watermark.committed_at, which any commit sets, including a rerun for an earlier night that commits after 02:00 today. I changed the check: the watchdog now looks for a committed etl_run_log row with kind night and night equal to tonight. committed_at stays in etl_watermark as information, but the watchdog no longer uses it. A rerun that names tonight and commits does count, which is correct, because that is tonight's night."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The holder is usually another attempt that is still running: the 02:00 run during a manual rerun, an overlapping retry, or the reconciliation. A scheduled retry normally finds the lock free, because the failed attempt released it. Yes, the wait counts toward the same attempt timeout. The timeout starts at step 1, so the scheduler keeps one clock per attempt. A wait that times out is a failed attempt and counts toward the three, as the plan already said. I also changed step 1 so that it writes the running run log row before it tries the lock. A waiting attempt then has a row the scheduler can mark failed."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one ordinary night, using the 02:00 UTC scheduled run.\n\n1. **Start.** The scheduler starts an attempt at 02:00 UTC. Retries and manual reruns use the same entry point. The night is the UTC date of the 02:00 start. Each attempt gets a unique run id.\n\n2. **Take the lock and log the attempt (step 1).** The job writes its run id into the single row of `etl_lock` in the warehouse. The write commits at once. If another attempt holds the lock, it waits and checks once a minute. If the attempt timeout passes while it waits, it counts as failed. It also writes an `etl_run_log` row with status `running`, the night and the run id, committed at once. This keeps a record even if the attempt dies later.\n\n3. **Read the hwm (step 2).** The job reads `hwm` from `etl_watermark` in the warehouse. The hwm is the cutoff of the last committed night. The job holds it in memory for this attempt only. On the very first run there is no hwm, and the window starts at a configured start date with no lookback. If the read fails, the attempt fails.\n\n4. **Read the cutoff (step 3).** The job asks the replica for `pg_last_xact_replay_timestamp()`, the commit time of the last transaction the replica has applied. This is the cutoff, the upper bound of the window. The document uses it instead of the wall clock because the wall clock can run ahead of the replica and skip rows. A null value fails the attempt.\n\n5. **Extract (step 4).** The job reads from the replica, in batches, the rows whose `updated_at` is after (hwm minus 2 hours) and no later than the cutoff. The batches are ordered by `updated_at`, then `order_id`. The 2-hour lookback is there because bulk-imported rows can become visible up to 90 minutes after their `updated_at`. The same order can appear twice, either because it changed between batches or because an earlier night already loaded it. Both cases are handled later. Nothing is written to the app database. An error fails the attempt.\n\n6. **Stage (step 5).** Each batch is bulk-loaded into a temporary warehouse table, `stg_orders_RUN_ID`. These writes commit on their own, outside the main warehouse transaction. Staging holds the whole extract so validation can reject a bad extract before `orders_current` is touched. An error fails the attempt.\n\n7. **Validate (step 6).** After the last batch is staged, the job checks that `order_id` and `updated_at` are never null. It also checks that the staged row count equals the extracted row count. A failed check fails the attempt before any merge, so `orders_current` and the hwm are untouched.\n\n8. **Keep the newest row per order (step 7).** This is the first part of the warehouse transaction, which opens at step 8. For each `order_id` the job keeps the row with the highest `updated_at`. If two rows tie, a row hash decides, so the choice is deterministic. If a tie has different content, an anomaly is logged in `etl_run_log`. This is needed because a merge fails when two source rows match one target row. If it errors, the transaction rolls back.\n\n9. **Merge (step 8).** The job upserts the staged rows into `orders_current`, keyed on `order_id`. A matching row is updated only if the incoming `updated_at` is strictly newer. `is_deleted` is set from `deleted_at IS NOT NULL`. A row not already there is inserted. A soft delete is a write that bumps `updated_at`, so it follows the same rule and the row stays, flagged. Re-reading old rows is therefore harmless, and an old bulk-imported version cannot overwrite a newer one. The data is uncommitted until step 10. An error rolls the transaction back.\n\n10. **Commit (step 9).** In the same warehouse transaction, the job finishes the merge and sets `hwm = cutoff` and `committed_at`. It also sets `last_committed_run_id`, marks the run-log row `committed`, clears the lock for this run id, and COMMITs. Because it is one transaction, the hwm moves only with the data it covers. After the COMMIT, staging is dropped. If the commit happens after 06:00 UTC, the job posts a late-commit follow-up to #data-alerts. The follow-up names the night and commit time and says dashboards show the data from the next 06:00 refresh. If the COMMIT itself fails, the transaction rolls back and the attempt fails.\n\n11. **Dashboards and the watchdog.** At 06:00 UTC the dashboard views over `orders_current` refresh. They see committed data only, so analysts see all of a night or none of it. If the load is still running or has failed, they see the previous committed night. Also at 06:00, a separate watchdog job reads `etl_watermark.committed_at`. If there is no commit at or after 02:00 that day, it posts a staleness alert to #data-alerts.\n\n12. **What happens on failure.** Any error, failed validation or attempt timeout in steps 1 to 9 fails the attempt.\n   - The scheduler stops a timed-out attempt.\n   - The open transaction rolls back and staging is dropped.\n   - The run log row is marked `failed` with the error.\n   - The lock is released for that run id, if the host is alive.\n   - The scheduler starts a retry 15 minutes after the failure is recorded. The retry starts from the same hwm, so it covers the same window and leaves no gap.\n   - The number of `failed` rows in `etl_run_log` for the same night is the count. Below three means retry. The third failure pages on-call with the run id and error, and the hwm does not move. A manual rerun is allowed after the page, goes through the same entry point and lock, and pages again if it fails.\n   - If the host dies, the scheduler sees no end and treats the attempt as timed out and failed. The lock stays set, so later attempts wait for it, time out and fail. On-call clears the lock row by hand after the third failure.\n   - If the warehouse is unreachable when the failure is recorded, the failed row cannot be written. The attempt is not counted, but the retry still starts.\n   - If a night is missed, the next night's window starts from the same hwm and covers the missed period.\n\n13. **Weekly reconciliation.** It starts after Sunday night's load commits. Call the hwm that load committed `H`. It does not move the hwm. If the Sunday load does not commit, it waits for the next successful load.\n   - For each of the last 30 complete UTC creation days (by `created_at`), it computes a count and checksum over `order_id|updated_at` on the replica, for rows with `updated_at <= H`.\n   - It computes the same on the warehouse, limited to the order_ids the replica returned. The checksum is the sum, modulo 2^64, of a 64-bit hash of each string.\n   - If they match, it moves to the next day. If not, it takes the pipeline lock, reloads that day's rows with the same merge (which never deletes), and releases the lock at that day's commit.\n   - It then compares again. If the day still differs, it alerts #data-alerts and makes no more automatic reloads.\n   - If it cannot get the lock within the attempt timeout, it stops. That day and later days wait for the next Sunday, and it alerts #data-alerts.\n\nI could not tell how the lock is acquired atomically, and I could not say what the attempt timeout is. I also could not say how the scheduler gets its end signal or how retries find the night. The list below covers these and the other gaps.",
+   "gaps": [
+    "The length of the attempt timeout is not set, so I cannot say how long an attempt or a lock wait can last.",
+    "How taking the lock works when another attempt already holds it. The document says the lock is a single row written and committed at once, but not how the check and the write are made atomic, so I cannot explain how two attempts are kept from both taking it.",
+    "How the scheduler learns that an attempt has ended, failed or succeeded, and how it knows the night for a retry or manual rerun. The document says it 'waits for it to end' and that retries 'copy the night', without saying how this information reaches it.",
+    "How the Sunday reconciliation is started and tracked. The document gives the trigger as 'after that Sunday night's load commits' but not what starts it or how it learns the load committed. It also does not say where its own 'reconciliation log' lives.",
+    "What the first-run window start date is. It is the configured start date and is not set, and I do not know how the first run is recognised beyond there being no hwm.",
+    "How the 'Warehouse unreachable' failure is detected or reported to a person. The table says 'On-call (see Open questions)' but nothing tells me how on-call finds out, so I cannot explain what happens next in that case."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 1 (take the lock): the plan says the lock 'stops two attempts from loading at once' but does not say the take-lock write is conditional. The explanation could not say how two attempts are kept from both taking the lock, so the core exclusion guarantee is unexplained. Fixed by stating the lock as a single conditional write that sets the holder only where it is empty.; Scheduler and retries: the plan does not say how the scheduler learns that an attempt has ended (committed or failed), or which night a retry or manual rerun belongs to. The explanation could not say how this information reaches the scheduler. Fixed by stating that the scheduler reads the attempt's run log row, and that the night is stored with the retry.; Weekly reconciliation: the failure table refers to 'the reconciliation log', which the plan never defines. The trigger is also unstated: the plan does not say how the scheduler learns that Sunday night's load committed, so the explanation could not say what starts the reconciliation or where its log lives. Fixed by defining the reconciliation log as kind 'reconcile' rows in etl_run_log, and stating the trigger.; Warehouse unreachable: the failure table hands this case to 'On-call (see Open questions)' with no handling decided. The explanation could not follow the failure path to its end. Fixed by stating what the scheduler does and naming the unresolved on-call notification as an open question in plain words."
+  },
+  {
+   "text": "1. Trigger. The scheduler starts an attempt at 02:00 UTC. A retry or a manual rerun uses the same entry point. The attempt gets a unique run id and a \"night\" (the UTC date of the 02:00 start; a retry copies the failed attempt's night; a manual rerun names one). The scheduler starts one timeout clock for the attempt.\n\n2. Log and lock (step 1 of the load). The job first writes a row in etl_run_log (kind night, status running, night, run id) and commits it at once, so an attempt that waits or dies is still visible. Then it runs a conditional write on the single etl_lock row: set holder = my run id only where holder is empty. If one row changed, it has the lock. If none changed, another attempt holds it, so it retries the same write every minute. The wait counts toward the attempt timeout. State is in the warehouse (etl_run_log, etl_lock).\n\n3. Read the hwm. The job reads hwm from etl_watermark (the cutoff of the last committed night) and holds it in memory. If this read fails, the attempt fails. The first-ever run has no hwm and starts from a configured start date with no lookback.\n\n4. Read the cutoff. The job asks the replica for pg_last_xact_replay_timestamp(). That value is the upper bound of the window. It is used instead of the wall clock so rows committed but not yet replayed are not skipped. A null result fails the attempt.\n\n5. Extract. The job reads from the replica, in batches ordered by updated_at then order_id, the rows with updated_at after (hwm minus 2 hours) and up to the cutoff. The 2-hour overlap exists because bulk imports can make rows visible up to 90 minutes late. Some rows are read twice, which is safe. The same order can appear in two batches if it changed in between. The replica is only read, never written.\n\n6. Stage. Each batch is passed to a warehouse bulk-load facility and written into stg_orders_RUN_ID, a per-attempt temporary table. These writes commit on their own, outside the later merge transaction. Failure fails the attempt.\n\n7. Validate. When the last batch is staged, the job checks that order_id and updated_at are not null and that the staged count equals the extracted count. Failure fails the attempt before anything touches orders_current or the hwm.\n\n8. Dedupe, then merge. Opening the warehouse transaction, the job first keeps the row with the highest updated_at per order_id. A tie is broken by a row hash. A tie with different content logs an anomaly in etl_run_log. Then it merges into orders_current on order_id: update a matched row only when the incoming updated_at is strictly newer (is_deleted is set from deleted_at not null), and insert unmatched rows. Soft deletes are just writes that bump updated_at, so the row stays and is flagged. Old or repeated rows therefore change nothing. These changes are uncommitted. An error here rolls back the transaction.\n\n9. Commit. In the same transaction the job sets hwm = cutoff, committed_at and last_committed_run_id, and marks its run log row committed only if the row still says running. It then clears the lock holder only where holder equals its run id, and commits. Data, hwm, log and lock release therefore land together. If the log row was already set to failed, no row changes, the transaction rolls back and the attempt fails. After a good commit staging is dropped. If the commit is after 06:00 UTC, the job posts a follow-up to #data-alerts naming the night and commit time.\n\n10. Failure and retry. On an error, a failed validation or a timeout, the attempt rolls back, drops staging, marks its run log row failed with the error if still running, and releases the lock if the host is alive. For a timeout or dead host the scheduler does this in order: mark the row failed (conditional on running), stop the job and end its warehouse sessions (which rolls back an open transaction), clear the lock for that run id, wait 15 minutes, retry. The database lets only one of \"commit\" and \"mark failed\" win, so a timed-out job can never move the hwm. The failed count is the number of failed night rows for that night. Below 3, the scheduler retries 15 minutes later from the same hwm, so the same window is covered. The third failure pages on-call with run id and error. The hwm does not move. A later good night starts from the same hwm and covers the missed period. A manual rerun is allowed after a page, through the same entry point and lock.\n\n11. Dashboards and watchdog. Dashboard views over orders_current refresh at 06:00 and see only committed data, so analysts see all of a night or none of it. At 06:00 a separate watchdog job looks in etl_run_log for a committed night row for tonight. If none exists, it posts a staleness alert to #data-alerts.\n\n12. Weekly reconciliation. After Sunday night's load commits (H = that load's hwm), for each of the last 30 complete UTC creation days it computes count and a checksum of order_id|updated_at for rows with updated_at at or before H on the replica, and the same on the warehouse limited to the order_ids the replica returned. If they match it moves on. If not, it takes the lock with the same conditional write, reloads that day from the replica using the same merge (upsert, no deletes), releases at commit, and compares again. If the day still differs, it alerts #data-alerts and does no more automatic reloads. If it cannot get the lock within the attempt timeout, it stops and alerts. Each day gets a reconcile row in etl_run_log.",
+   "gaps": [
+    "The attempt timeout length is not set. It matters for how long a waiting attempt or a long load can run.",
+    "Which bulk-load tool and format step 5 uses is not stated. That affects how the extract actually reaches the staging table.",
+    "The document never says which component runs the job process or what language it is written in. It does not say what the scheduler does between 'starts an attempt' and the job running.",
+    "The document does not say how the job learns of or handles the run id and night passed in by the scheduler. It does not say how the job process is invoked or what 'host' means.",
+    "The document does not say how the scheduler sees that an attempt has ended, other than reading the run log row. It does not say how often it polls.",
+    "It is not stated how the watchdog or scheduler define 'tonight' precisely when the load commits after midnight UTC. The night is defined as the UTC date of the 02:00 start, so that case is probably fine, but this is not spelled out for the watchdog.",
+    "For the reconciliation, the document does not say how the scheduler starts it after a Sunday commit. It does not say whether the job runs inside the same attempt timeout or its own."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

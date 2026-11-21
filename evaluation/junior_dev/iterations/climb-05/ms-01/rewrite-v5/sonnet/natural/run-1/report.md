@@ -1,0 +1,17 @@
+## Review of ms-01 (rewrite-v5, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a opening summary paragraph covering how checkout works, the flow start to finish, and why it is shaped that way; it replaces the 'How to read this' bullets
+- Added a Terms section defining service, HTTP call, event, broker, outbox, duplicate-safe consumer, reservation, claim, provider, idempotency key and webhook in one line each; removed jargon like 'orchestrated saga'
+- Removed node codes (O1, I4, P10 etc.) from diagram labels and from prose so no step sends the reader to look up a code; node ids remain internal to the Mermaid source
+- Merged the step table, the separate 'Failure branches' list and the decision notes into numbered steps in time order, each with trigger, action, data owner and failure handling
+- Folded the five-item failure list into one compact failure table; removed repeated text about refund retries, duplicate webhooks and declined retries that appeared in both table and list
+- Added a short line on step 1 and step 3 failure (Cart unavailable, provider call fails) since the main flow lacked them
+- Moved the expiry timer to its own line after the steps, as it is not triggered by the checkout flow
+- Merged Decisions to confirm into a closing Open questions section; kept the lapsed-hold, 30-minute reconciler, email sender and status page items
+- Kept the diagram, tables of stored data and all intent unchanged
+
+### Holes
+- None.

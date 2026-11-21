@@ -1,0 +1,122 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The login sequence deletes the old session, sets the new session key, then deletes the fails key. If one of these Redis calls fails partway, what does the user get and what state is left behind?",
+     "about": "Login: A->>R: SET sess key ... TTL 30 min"
+    },
+    {
+     "id": "2",
+     "text": "The session record holds user_id, created_at and absolute_expires_at. How does a protected page know who the user is? Does the app load the user from Postgres on each request, or only use user_id from Redis?",
+     "about": "Session record (server side only) / Request for a protected page"
+    },
+    {
+     "id": "3",
+     "text": "The TTL is min(30 min, time left). On login the TTL is 30 min, which could be more than 12 h left? No. So when does the 'time left' branch actually apply, and is the 12 h cap reached only after many requests near the end?",
+     "about": "Expiry: two layers"
+    },
+    {
+     "id": "4",
+     "text": "The Lua script trims, adds, counts and sets the lock. In the sequence, who tells the app to return 401 versus 429 on the 5th failure? The diagram says count returned and 401 for it. Does the app read the lock after the script?",
+     "about": "Failure counting: sliding 10-minute window"
+    },
+    {
+     "id": "5",
+     "text": "On a protected page, what does the middleware do if Redis errors during the EXPIRE or the DEL after expiry check? The sequence does not show 503 for those steps.",
+     "about": "Protected request: a Redis error returns 503"
+    },
+    {
+     "id": "6",
+     "text": "What happens on a Postgres error at the SELECT, or a Redis error at the EXISTS lock check? Is the 503 returned before anything else runs, as the Storage failure policy says?",
+     "about": "Login: A->>D: SELECT id, password_hash"
+    },
+    {
+     "id": "7",
+     "text": "The logout sequence always returns 303 with the cookie cleared, but the Storage failure policy says a failed DEL returns 503 and keeps the cookie. Which is the real behavior, and does logout need a valid session to be accepted?",
+     "about": "Logout"
+    },
+    {
+     "id": "8",
+     "text": "What are the 'app' and the 'brief' here? Is the app a single codebase with two running instances, and who is the reviewer who decides on Redis?",
+     "about": "Decision needed from the reviewer: approve Redis"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The three success-path Redis writes (delete old session, set new session, delete fails key) now run as one MULTI/EXEC transaction, so all apply or none do. If it errors, the user gets 503, no cookie, and no state changes. If the connection drops after Redis applied it, the new session exists with no cookie and expires by TTL. Reason: this avoids a half-done login where the old session is gone and no new cookie reaches the browser."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The session record holds only user_id, and the protected-page check reads only Redis. Postgres is not read on each request. A page that needs a name or email loads it by user_id. Trade-off: a disabled user keeps access until the session expires, which is already listed as an open question."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "On login the TTL is 30 minutes because absolute expiry is 12 hours away. The time-left branch applies only after 11.5 hours, when time left drops below 30 minutes. It then shortens the TTL so the key expires exactly at 12 hours. A request at 11 h 50 min sets a 10-minute TTL. The document now states this in the protected-page step."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The Lua script returns only the count. The app returns 401 for the failed attempt whatever the count. The script itself sets the lock at count 5. The app does not read the lock after the script. The next attempt fails at the EXISTS lock check and gets 429. The document now says this in login step 6."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Any Redis error on a protected request (GET, EXPIRE or the DEL after expiry) returns 503, keeps the cookie and serves no page. If the DEL in the expiry branch fails, the expired record remains, but the time check denies access on every request until it is removed. Both cases are in the failure table."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Yes. The lock check runs first, so a Redis error there returns 503 before the user read. The user read runs before any password check or counter change, so a Postgres error there returns 503 and changes nothing. Both are in the sequence and the failure table."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The logout sequence now has the 503 branch for a failed DEL, and the reply is 303 with the cookie cleared only on success. Logout does not need a valid session: with no cookie it returns 303 cleared, and with a cookie whose key is gone it also returns 303. Reason: the storage failure policy says the app must not report a sign-out while the server session may still exist."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The app is one codebase, the team-scheduling web app, run as two identical instances behind a load balancer. The brief is the list of requirements the user wrote, and the document now calls it requirements. The requirements do not name the reviewer who decides on Redis. That is recorded as an open question, not guessed."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Login step 2 asks Redis only whether the lock key exists (EXISTS returns 0 or 1). How does the app learn the lock's remaining time for Retry-After? Is it a second call, and what if that call fails or the lock expires between the two calls?",
+     "about": "Login step 2: Check the lock / Retry-After set to the lock's remaining time"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The app does not make a second call. Login step 2 now sends one PTTL on the lock key instead of EXISTS. PTTL returns -2 when the lock is absent, and otherwise the milliseconds left, so the same reply gives both the lock state and the Retry-After value (rounded up to whole seconds). This removes the race where the lock expires between two calls, and a Redis error on that single call still returns 503 with nothing changed. Reason: one call answers both questions, so the step needs no second read."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one user through the whole flow: they sign in, view the dashboard, and sign out.\n\n1. **The browser asks for a protected page.** The user opens `/dashboard` with no `sid` cookie. A middleware runs on every route. Only `/login` and its static files (CSS, images) are public. With no `sid` cookie, the app returns 302 to `/login` and does not read Redis. The state held so far is none: the browser has no cookie and the app has no session.\n\n2. **The browser sends the login form.** `GET /login` always shows the form. The user then sends `POST /login` with an email and a password. One of the two identical app copies handles it; the load balancer may pick either. That is why state lives in Redis and not in one copy's memory.\n\n3. **The app normalizes the email.** It trims and lowercases the email. It then hashes the email with SHA-256 to build two Redis key names, `lock:<hash>` and `fails:<hash>`. No storage is touched yet.\n\n4. **The app checks the lock.** It sends one PTTL command for the `lock:` key.\n   - A result of -2 means no lock, so the login continues.\n   - A positive number means the email is locked. The app returns 429 with `Retry-After` set to those milliseconds rounded up to whole seconds. It stops there, with no database read and no password check.\n   - A Redis error returns 503 \"Sign-in is unavailable right now. Try again in a few minutes.\" Nothing changes and no password is checked.\n\n5. **The app reads the user from Postgres.** It selects `id` and `password_hash` from `users` where the email matches. If there is no row, it uses a fixed dummy hash. A Postgres error returns the same 503 and changes no counter.\n\n6. **The app checks the password with bcrypt.** It hashes the attempt and compares. For an unknown email it still runs bcrypt against the dummy hash at the same cost, so timing does not reveal whether the account exists. The flow then splits on the result.\n\n7. **The password matches.**\n   - The app generates a new session ID: 32 random bytes, base64url encoded, 43 characters.\n   - It runs one Redis MULTI/EXEC transaction with three parts. It deletes the old `sess:` key if the browser sent a `sid` cookie. It sets a new `sess:<SHA-256 of the new ID>` key with a 30-minute TTL. The value holds `user_id`, `created_at` and `absolute_expires_at` (created_at plus 12 hours). It deletes the `fails:` key, which clears the failure count. All three apply or none do.\n   - On success the app returns 303 to `/dashboard` with `Set-Cookie: sid=<new ID>`. The cookie is `HttpOnly; Secure; SameSite=Lax; Path=/` with no Max-Age, so the browser drops it when it closes. A new ID is issued at every login, which blocks session fixation.\n   - If the transaction fails, the app returns the same 503 with no cookie. If the connection drops after Redis applied the transaction, a session exists but nobody holds its ID, and it expires by TTL.\n\n8. **The password is wrong, or there is no such user.**\n   - The app runs one Lua script in Redis. The script removes `fails:` entries older than 10 minutes, adds this attempt, and counts what is left. If the count is 5, the same script sets the `lock:` key with a 15-minute TTL and deletes the `fails:` key. The script returns only the count.\n   - The app returns 401 \"Invalid email or password\", the same for an unknown email and a wrong password, whatever the count. It does not read the lock afterwards.\n   - The lock takes effect on the next attempt, which gets 429 at step 4. After the lock expires, the count starts from zero.\n   - If the script fails, the app returns the same 503. The attempt is not counted, and the error is logged.\n\n9. **The browser follows the 303 and asks for `/dashboard` with the cookie.** The middleware sees a `sid` cookie. The app hashes it and reads `sess:<hash>` from Redis.\n   - If the key is missing, the app returns 302 to `/login` and clears the cookie. An unknown session and an expired one get the same reply.\n   - If Redis errors, the app returns 503 with a short message and keeps the cookie. It sends no redirect and no page.\n\n10. **The app checks absolute expiry.** It compares the current UTC time with `absolute_expires_at`. If the time has passed, the app deletes the key and redirects to `/login` with the cookie cleared, as in step 9. This check runs even if the TTL has not fired yet. If the DEL fails, the app returns 503 and keeps the cookie. The expired record stays, and every request is denied until it is removed.\n\n11. **The app extends the idle timer and serves the page.** It sets the key's TTL to the smaller of 30 minutes and the time left until `absolute_expires_at`. It then returns 200 with the page for `user_id`. A request at 11 h 50 min gets a 10-minute TTL, so the key expires exactly at 12 hours. If the EXPIRE fails, the app returns 503, keeps the cookie, and serves no page. The session is unchanged. The check reads only Redis, never Postgres, so a disabled user keeps access until the session ends.\n\n12. **Idle and abandoned sessions.** If no request arrives for 30 minutes, Redis deletes the key itself. The next request then lands in step 9's \"missing\" branch. No sweeper job is needed.\n\n13. **The user logs out.** The browser sends `POST /logout`. Logout does not need a valid session.\n    - If there is a `sid` cookie, the app deletes the `sess:` key. A key that is already gone counts as success.\n    - If the DEL fails, the app returns 503 \"Could not sign you out. Try again.\" and keeps the cookie, because the session may still exist.\n    - Otherwise, and also when there was no cookie, the app returns 303 to `/login` with the cookie cleared. The reply is the same either way, so logout is safe to repeat.\n\n14. **Failures in general.** Every storage error is logged and counted as a metric. The app fails closed: any Redis or Postgres failure gives 503 and lets nothing through unchecked.",
+   "gaps": [
+    "The document does not say how the app finds the right user's page, or what `/dashboard` contains. It only says the page is served 'for user_id'.",
+    "The document does not say what the app does with the `id` it selects from Postgres at login. I assume it becomes `user_id` in the session record, but the document never says so.",
+    "The document does not say which Redis value the 'sess:' key holds in serialized form, or how `absolute_expires_at` is read back. I carried on assuming it can be read after the GET."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

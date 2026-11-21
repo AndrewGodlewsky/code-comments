@@ -1,0 +1,18 @@
+## Review of pay-02 (rewrite, author haiku, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Restructured into the required order: two-to-three sentence summary, terms, assumptions, rules, numbered steps, failure rules, build checks, and open questions last.
+- Added a Terms section with one-line definitions for names a newcomer would not know: captured, provider, idempotency key, UUID v4, refund status, webhook, row lock, conditional update, audit log, outbox, sweeper, unconfirmed and unmatched event.
+- Moved the audit fields and append-only rule into one Rules section, instead of repeating them in each step. Each step now says it writes an audit entry; the full field list appears once.
+- Removed the old step 14 (audit) as a numbered step, because it applies to every step. Renumbered the final outcome from 15 to 14.
+- Corrected the assumptions reference from step 13 to step 9, because the status lookup and find-by-key are used by the sweeper and step 5b, not by the label step.
+- Named the step 8 conditional update as 'the transition' so that steps 9, 10 and 11 refer to one defined rule.
+- Changed 'older than 1 hour' to 'created more than 1 hour ago' in the sweeper selection, to say which timestamp is meant.
+- Replaced the repeated 'as in step 10' failure text in step 11 with the plain outcome, and removed the repeated 'webhooks do not count' and similar sentences where they were already stated.
+- Added the 4xx-write-failure gap and the unset email retry count and alert and review process to Open questions. These were not in the first version as questions; they are the holes a newcomer would hit.
+- Kept every requirement, limit, number and rule from the first version and the brief, including the 10-second timeout, 3 retries with 4 total attempts, 1s/2s/4s backoff, 6-hour sweep cadence, 18-hour alert, 23-hour manual-review cutoff, the reason list, the unique outbox key, and the verification list.
+
+### Holes
+- None.

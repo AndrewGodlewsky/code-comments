@@ -1,0 +1,176 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What happens when the Key Service is slow or down and the cache is cold? The diagram only shows found and not found.",
+     "about": "GW->>KS: Resolve key (served from 5 min cache when warm)"
+    },
+    {
+     "id": "2",
+     "text": "How does the gateway know the current time to compute windowStart, and which instance's clock is used? Do all six instances agree?",
+     "about": "Window: windowStart = floor(now / 60) * 60"
+    },
+    {
+     "id": "3",
+     "text": "Where does the limit number come from when the gateway calls the script? Is it in the gateway config per plan, and what is passed as ARGV[1]?",
+     "about": "Limit for Standard is 100 per minute"
+    },
+    {
+     "id": "4",
+     "text": "On an allowed request, what exactly are X-RateLimit-Limit and X-RateLimit-Remaining set to? Is Remaining computed from the count returned after the increment?",
+     "about": "Backend plus X-RateLimit-Limit and X-RateLimit-Remaining"
+    },
+    {
+     "id": "5",
+     "text": "What does the gateway do if the backend call fails or times out after a request was allowed? What does the client receive?",
+     "about": "BE-->>GW: Backend response (500 still counts)"
+    },
+    {
+     "id": "6",
+     "text": "The script does a GET and then INCR as separate calls. How does that make the check atomic, and does the whole thing run as one round trip from the gateway?",
+     "about": "Check and count in one step"
+    },
+    {
+     "id": "7",
+     "text": "On a 429, how does the gateway know windowStart and now for Retry-After? Does the script return them or does the gateway compute them itself?",
+     "about": "Retry-After = ceil(windowStart + 60 - now)"
+    },
+    {
+     "id": "8",
+     "text": "What does the X-Api-Key look like when it is present but the Key Service says unknown versus when the header is absent? Are both the same 401?",
+     "about": "Key missing or unknown"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The brief only covers counter-store failure (req 8). If the Key Service errors or times out, the gateway cannot authenticate the caller, and forwarding anyway would break req 3. So v1 returns 503 without forwarding or counting. Added as a diagram branch and in the notes. Listed as open item 2 because the brief does not decide it."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Each gateway computes windowStart from its own system clock (UTC, NTP-synced). The six instances agree only to within clock skew. Skew moves a window boundary by that amount, which is within the already-accepted boundary-burst tradeoff. Notes now state the clock source and the NTP requirement."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The gateway config holds a plan-to-limit map (Standard = 100, Enterprise = OPEN). It looks up the caller's plan from the Key Service result and passes that limit as ARGV[1]. Enterprise has no value until Product decides, so it must not ship (open item 1)."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Checked against the script: it returns the count after INCR when allowed. X-RateLimit-Limit is the plan limit. X-RateLimit-Remaining = limit - count, with count taken from the script's return value after the increment. Notes now say this explicitly."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The request was already counted, so it uses budget (req 5). If the backend returns any status, the gateway passes that response through with the headers. If the backend fails or times out, the gateway sends its usual 502 or 504 with the same headers. No retry, to keep v1 simple. The diagram now shows this branch."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Redis runs a Lua script as one atomic unit, so no other command can run between GET and INCR. The gateway makes one call (EVALSHA) and receives both the allowed flag and the count in one round trip. Notes now say the script is one call and explain why it is atomic."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The gateway computes windowStart and now itself, from its own clock at the moment of denial. The script returns only the allowed flag and the count. Keeping time out of the store keeps the script small. The same clock question as Q2 applies."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Missing and unknown keys both return the same 401 with no detail, and neither touches a counter. An empty header counts as missing. Returning the same response avoids telling a caller which keys exist. The 401 branch in the diagram now says so."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The script reads the counter then increments it. After a Redis EXPIRE of 120 seconds is set on the first increment, what happens if the script's INCR succeeds but the gateway never receives the reply (timeout)? Is that request counted, and is it forwarded?",
+     "about": "Store error or no answer within 50 ms / Fail open"
+    },
+    {
+     "id": "10",
+     "text": "How does the gateway get the 5 minute cached key result when the cache is warm: is the cache inside each gateway instance or inside the Key Service, and what is cached (customerId and plan only)?",
+     "about": "GW->>KS: Resolve key (served from 5 min cache when warm)"
+    },
+    {
+     "id": "11",
+     "text": "What is the gateway's timeout for the Key Service call, and for the backend call? The document gives 50 ms only for the store.",
+     "about": "Key Service error or no answer / Backend fails or times out"
+    },
+    {
+     "id": "12",
+     "text": "When the count is already at the limit, what is X-RateLimit-Remaining on the 429 response? Do 429 responses carry X-RateLimit-Limit and X-RateLimit-Remaining at all?",
+     "about": "Denied (count already at limit, nothing incremented)"
+    },
+    {
+     "id": "13",
+     "text": "What does the metric ratelimit_store_unavailable go to, and does anyone get alerted when it fires? Who notices a long outage where nothing is limited?",
+     "about": "GW->>M: Emit ratelimit_store_unavailable"
+    },
+    {
+     "id": "14",
+     "text": "The key is rl:customerId:windowStart. Which windowStart does the gateway use when two gateways straddle a boundary due to skew: do they hit different keys and each give the customer a fresh budget?",
+     "about": "Window and clock"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "Yes, it is counted and forwarded. The Lua script runs atomically on the Redis side, so INCR and EXPIRE both run once the script starts. A client timeout does not undo server-side work. The gateway cannot know whether the script ran, so it fails open and forwards the request. The earlier text said nothing was counted, which was wrong, so the Fail open paragraph now says the store may or may not have counted it. No rollback mechanism is added, because the brief does not require one."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "The cache is inside each gateway instance, not in the Key Service. The brief says the gateway caches the Key Service answer in memory for 5 minutes. The cached answer is the customer ID and plan. The earlier text said 'Key Service cache' in the Plan changes paragraph, which was misleading, so it now says the gateway's own in-memory cache. The diagram label now says the same. The brief does not say whether unknown keys are cached, so that is not stated."
+    },
+    {
+     "id": "11",
+     "tag": "unknown",
+     "text": "The brief gives no timeout for the Key Service call or for the backend call. Only the 50 ms store timeout is set. I have no reason I can defend for specific values, so I did not invent any. Both are listed as open item 4 for the team to choose."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "A 429 carries Retry-After only, with no X-RateLimit-Limit or X-RateLimit-Remaining. The brief asks for those headers only on responses to requests that passed the check. On a denial the remaining budget is always 0 anyway, so a Remaining header would add nothing. The Denied branch of the diagram and the Decisions table now say this."
+    },
+    {
+     "id": "13",
+     "tag": "unknown",
+     "text": "The brief names no metrics system and no alert. v1 only emits the metric. Nothing in this design pages anyone, so a long store outage means no limits apply and no one is told. The team must choose a destination and an alert rule. This is open item 4."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes. If two gateways disagree about the boundary because of skew, they compute different windowStart values and use different keys for the skew interval. A customer can then use up to one extra limit's worth during that slice. This is the same boundary effect already accepted as the tradeoff. Once all clocks are past the boundary, every gateway uses the new key, so the extra budget lasts only for the skew interval, not the whole minute. The Window paragraph now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one request, from client to response.\n\n1. Client sends a request with an `X-Api-Key` header to the API Gateway. One of six gateway instances receives it. (The document does not say how the request is routed to an instance.)\n\n2. Authentication. The gateway looks in its own in-memory cache (per instance, entries kept up to 5 minutes). On a miss it asks the Key Service to resolve the key to a `customerId` and a `plan`, and the answer is cached. State is held in the gateway cache, with the Key Service as the source of truth.\n   - Header missing or key unknown: the gateway returns 401 with no detail on which case it was. No counter is read or written and nothing is forwarded.\n   - Key Service errors or does not answer: the gateway cannot identify the caller, so it returns 503 and does not forward or count. This is marked as unconfirmed (open item 2).\n\n3. Limit lookup. The gateway config maps the plan to a limit (Standard = 100 per minute; Enterprise is undecided). The limit is passed to the script as `ARGV[1]`. Counting is per `customerId`, not per key, so all of a customer's keys share one budget.\n\n4. Window and key. The gateway computes `windowStart = floor(now/60)*60` from its own UTC system clock. The counter key is `rl:{customerId}:{windowStart}`, so there is one key per customer per minute in the shared Redis store.\n\n5. Check and count. The gateway makes one Redis call that runs a Lua script, with a 50 ms timeout. Redis runs the script atomically. It reads the count (0 if absent). If the count is below the limit, it increments, sets a 120 s expiry when the count becomes 1, and returns {1, count}. Otherwise it returns {0, count} and increments nothing. The key expires on its own, so no cleanup job is needed.\n\n6a. Store error or timeout (fail open). The gateway emits the metric `ratelimit_store_unavailable`, forwards the request to the backend, and returns the backend response with no `X-RateLimit-*` headers. The store may or may not have counted the request, and nothing is rolled back. Each request in an outage waits up to 50 ms. There is no circuit breaker in v1.\n\n6b. Denied (count already at limit). The gateway returns 429 with only a `Retry-After` header. The request is not forwarded and not counted. `Retry-After = ceil(windowStart + 60 - now)` in seconds, using the gateway's own clock at denial time. It is at least 1.\n\n6c. Allowed (count incremented). The gateway forwards the request to the backend, with no retry.\n   - Backend answers with any status, including 500: the gateway passes it through.\n   - Backend fails or times out: the gateway builds its usual 502 or 504.\n   Either way the response carries `X-RateLimit-Limit` (the plan limit) and `X-RateLimit-Remaining` (limit minus the count the script returned). The request stays counted even if the backend failed.\n\n7. Window rollover. When the minute changes, the gateway computes a new key, so the count starts fresh. The old key expires after 120 s. If the gateway clocks are skewed, requests near the boundary can land in either key, so a customer can get up to one extra limit's worth. Up to about twice the limit across a boundary is accepted for v1.\n\n8. Plan changes. A customer who changes plan may see the old limit for up to 5 minutes, per instance, because of the gateway cache.\n\nKnown caveats from the document: a long store outage means no limit applies and nobody is alerted. Clients must not treat missing rate-limit headers as an error.",
+   "gaps": [
+    "Enterprise plan limit is undecided (open item 1), so I cannot say what an Enterprise request is checked against.",
+    "How long the gateway waits for the Key Service is not set (open item 4), so I cannot say when 'no answer' triggers the 503.",
+    "Backend timeout value is not set (open item 4), so I cannot say when a 504 is produced.",
+    "Where `ratelimit_store_unavailable` goes (metrics destination) and whether anything alerts on it is not specified.",
+    "How the client's request reaches one of the six gateway instances (load balancing) is not described.",
+    "The document does not say what happens when the cache entry expires mid-request, or how the Key Service is called (protocol and request shape).",
+    "Whether the Key Service 503 behavior is final is unconfirmed (open item 2)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

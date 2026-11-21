@@ -1,0 +1,31 @@
+## Review of auth-03 (junior-v6, author sonnet, natural)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added an opening paragraph describing how the system works today and how the flow goes, ahead of the diagram.
+- Added a Terms section defining token, reset row, live link, normalise email, link, sessions table, email queue/worker/provider, breached-password list and FOR UPDATE (Q1-Q4, Q6).
+- Defined the link as client base URL plus /reset-password?token=T, with the raw token as its only secret (Q3).
+- Noted in the diagram that the token returns in a hidden form field and the POST body, and explained the GET check's purpose in the notes (Q5).
+- Clarified that a rate-limited request rolls back and leaves the older live link live, and that a replaced link shows the expired page (Q7).
+- Added a short Password rules note so the 12-character and breached-list rules and the retry behaviour are stated outside the diagram.
+- Added an Open questions section: breached-list location, stored email case, worker retry timing (Q1, Q4, Q6).
+- Fixed section B so the web client serves the page and calls the API to check the token, because the link points at the client and the old diagram had the API returning pages.
+- Defined the queue job as {to, link} and said the token lives only in API memory until then.
+- Stated that the 200 is sent after enqueue returns and never waits for the mail send.
+- Defined hash(pw) as the same hashing login uses, and added the unknown algorithm and check-endpoint URL to Open questions.
+- Added notes on check order (422 before the expired page), how long a rate-limited user waits, the lack of a working link when enqueue fails, and login after reset with the mailbox-access caveat.
+- Added a Terms section before the diagram: token, reset row, live link, link (built from a configured client base URL, points at the client page), normalise email, sessions table, queue/worker/provider with retry rule, queue job, FOR UPDATE, hash(pw), breached-password list.
+- Opening paragraph now says how the existing system works today (client, API, Postgres users/sessions, email queue) before the two flows.
+- Fixed the diagram so the web client serves the reset page and the API only answers valid/invalid on the token check; renamed GET check to 'check on load'.
+- Added to the diagram: token kept in memory only, rate-limited request leaves the older link untouched, 200 sent after enqueue returns, and the enqueue-failure case leaving the user with no working link.
+- Merged the answer-derived notes: moved the password-rules ordering (422 before expired page) into a Password rules note, and the mailbox-control caveat into Sessions and login after reset.
+- Stated the 3/hour limit, 30-minute single-use validity, 12-character minimum and no-auto-login in the notes so every brief requirement is kept.
+- Rate-limit note now says how long a blocked user waits (at most one hour, about 30 minutes after link expiry).
+- Rewrote notes as shorter paragraphs; merged repeated statements about generic response and token handling.
+- Open questions list now has five items: breached-list location, email storage case, retry delays, hash algorithm, check endpoint URL.
+- Left out details the plan does not need (exact session lookup key, specific hash algorithm name, exact endpoint URL).
+
+### Holes
+- Q6: What is the 'breached list', where does it live, and what does the check call (local file, external service)? (author: The brief says only 'the breached-password list' and does not say where it lives or whether it is a local file or an external service. I did not invent one. I added an open question. The design only needs a yes/no check and fails closed (reject with 'try again shortly', token untouched) if the check is unavailable.)
+- Q11: What does hash(pw) use to hash the password, and is it the same method login uses to check passwords? (author: The brief does not say which algorithm login uses. The design requires hash(pw) to be the same function login verifies against, otherwise the user could not log in after reset. I did not name an algorithm. Added to Open questions.)

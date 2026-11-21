@@ -1,0 +1,30 @@
+{
+ "q4": {
+  "answer": "Only a `StockReserved` event triggers the charge. Payment reads the amount and token from the `charge_request` it saved when it consumed `OrderPlaced`, and it throws and retries if that row is missing. Inventory writes `StockReserved` to its outbox only in the same transaction as the reservation, and Payment acks and ignores `StockUnavailable`, so no charge can happen without a committed reservation.",
+  "decided": true
+ },
+ "q5": {
+  "answer": "Each writes its result event to its own `outbox` table in the same local transaction as its state change, with the `eventId` fixed at that point, and its own relay publishes the row to `order-events` keyed by `orderId`. If it crashes after the commit but before publishing, the row is still unsent and the relay publishes it on the next poll. If it crashes after the broker ack but before marking the row sent, the row goes out again with the same `eventId` and consumers skip it as a duplicate.",
+  "decided": true
+ },
+ "q6": {
+  "answer": "Each consumer records the event's `eventId` in `processed_events` in the same transaction as its state change, and acks and skips any event whose `eventId` is already there. Each state change is also guarded so that a repeat does nothing: one reservation per `orderId`, release only `WHERE status = 'RESERVED'`, one payment row per `orderId`, and order status changes only `WHERE status = 'PENDING'`. Notification keys `email_log` by `eventId` and skips anything already `SENT`, but it accepts a possible second email if it crashes between the send and writing `SENT`.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The idempotency key sent to the card provider is the `orderId`. On redelivery Payment calls the provider again with the same key, gets the first result back without a second charge, and only then stores the result and emits the event in one transaction.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Payment publishes `PaymentDeclined` (through its outbox and relay), and Inventory consumes it in its own consumer group. Inventory releases the reservation in one transaction, setting it to `RELEASED` `WHERE status = 'RESERVED'`, restoring the stock and recording the `eventId`, so a repeat does nothing.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Order Service has its own consumer group on `order-events`. `PaymentSucceeded` sets the order to `CONFIRMED`, and `StockUnavailable` or `PaymentDeclined` sets it to `CANCELLED`, through a guarded update `WHERE status = 'PENDING'`. When that update changes a row, it writes an `OrderConfirmed` or `OrderCancelled` row to its outbox in the same transaction; when it changes zero rows, it treats the event as a duplicate and writes nothing.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Notification sends an email only on `OrderConfirmed` or `OrderCancelled`. Order Service emits these only when the final status actually changes, so each email matches a final status. If the send fails, Notification retries after 1 s, 10 s and 60 s, then puts the message in its dead-letter queue and pages on-call. The order status is never touched.",
+  "decided": true
+ }
+}

@@ -1,0 +1,177 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the orchestrator, and how does it differ from the scheduler? Which one runs the 6 steps, and what happens to the attempt counter if the orchestrator itself dies mid-run?",
+     "about": "What starts each step: A failed attempt / orchestrator"
+    },
+    {
+     "id": "2",
+     "text": "When a run fails, is its run_log row changed from running to failed so the next attempt can insert a new running row? And if the orchestrator dies, who or what notices the running row is older than 3 hours and marks it dead?",
+     "about": "Single flight"
+    },
+    {
+     "id": "3",
+     "text": "How are run_id, run_date and attempt chosen when the row is inserted? Does a retry get a new run_id or reuse the same one for that night?",
+     "about": "A1: Insert run_log row, status running"
+    },
+    {
+     "id": "4",
+     "text": "What timeout applies, and to which steps? Who enforces it and how long is it?",
+     "about": "Any step errors or times out: rollback, HWM untouched"
+    },
+    {
+     "id": "5",
+     "text": "Where does the extracted count come from, and where does the dedupe happen? Is the deduped data stored in the stage table or just read in step 6?",
+     "about": "A5: Check stage count equals extracted count; dedupe to newest per order_id"
+    },
+    {
+     "id": "6",
+     "text": "How does the check decide that tonight's run succeeded? Which run_log column or date does it compare, and what counts as tonight?",
+     "about": "The 06:00 UTC scheduler / freshness check"
+    },
+    {
+     "id": "7",
+     "text": "What is the backfill start value, and what happens on the very first run when the high-water mark is that seed? Is the first extract a huge load, and do the same window and timeout apply?",
+     "about": "etl.control: seeded once with the backfill start"
+    },
+    {
+     "id": "8",
+     "text": "If retries are still running at 06:00, or a late attempt commits after 06:00, what do dashboards show? Is anything sent to #data-alerts when the load finally succeeds?",
+     "about": "Third attempt fails / Load not committed by 06:00"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The scheduler only fires triggers at 02:00 and 06:00. The orchestrator is the workflow runner the 02:00 trigger starts; it runs the six steps, waits 15 minutes between retries and enforces the timeout. The attempt number is derived from run_log (1 + rows already written for that run_date), so it is not held in memory. If the orchestrator dies nothing resumes automatically: the running row goes stale, the 06:00 check alerts, and the HWM did not move so the next night recovers the data. Reason: the brief allows no new takeover mechanism."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. On failure the attempt's row is set to failed, so the next attempt inserts a new running row. Nothing separate watches for dead rows: step 1 of the next trigger marks a running row older than 3 hours as failed and proceeds. Reason: the simplest handling that needs no new process."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Each attempt inserts a new row with a new UUID run_id, so a retry gets a new run_id. run_date is the UTC date of the 02:00 trigger, shared by all attempts that night. attempt is 1 + the count of run_log rows for that run_date."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The brief gives no timeout value. I chose one 60-minute limit per attempt, enforced by the orchestrator, covering the whole attempt, and below the 3-hour dead-row threshold. A timeout aborts and fails the attempt like any error. The 60 minutes is a guess and is listed as an open question."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The extracted count is the number of rows the step 3 query returned, which the orchestrator keeps. Dedupe happens in step 6 as a query over the stage; deduped data is not stored. The stage holds all extracted rows. The diagram and text now say this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It looks for a run_log row with status succeeded and run_date equal to today's UTC date. Tonight means the run_date of the 02:00 trigger, which is the same UTC date as 06:00. Added to the document."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "The backfill start value is not known; it is an open question. The first run uses the same window rule, so it loads all history from the seed and is large. I added that a first run exceeding the timeout should be run by hand with a longer limit."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Dashboards show the previous committed snapshot, because they read only committed data. A late commit after 06:00 appears at their next refresh. The staleness alert is posted at 06:00 even if retries are running. Nothing is sent when the load later succeeds, to avoid a new mechanism. This is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Reconciliation logs to run_log and has its own 3 attempts. Does it use the same run_date and the same attempt formula as the nightly run? Do its rows count toward the nightly attempt number or the single-running-row index?",
+     "about": "Sunday reconciliation: run_log and attempt counting"
+    },
+    {
+     "id": "10",
+     "text": "What actually starts reconciliation: the same orchestrator run right after the nightly commit, or a separate trigger? If it is still running at 06:00, does the freshness check care?",
+     "about": "Sunday reconciliation: starts only after that night's commit"
+    },
+    {
+     "id": "11",
+     "text": "If the connection drops after the warehouse commits but before the orchestrator hears back, the attempt looks failed. Is the run_log then marked failed even though it was already marked succeeded in that transaction? What happens on the retry?",
+     "about": "Step 6: ONE warehouse transaction ... COMMIT"
+    },
+    {
+     "id": "12",
+     "text": "If a stale running row (over 3 hours) gets marked failed by step 1, does that failed row count toward the attempt number for that run_date? Can that push attempts past 3?",
+     "about": "Step 1: Insert run_log row, status running"
+    },
+    {
+     "id": "13",
+     "text": "The checksum is a sum of per-row hashes of order_id and updated_at. Who runs the replica query and the warehouse query, and how are the two numbers compared? Does the orchestrator pull both results into memory?",
+     "about": "Reconciliation: Compare"
+    },
+    {
+     "id": "14",
+     "text": "After a third failure, on-call is paged. Does on-call have a defined action, such as a manual rerun, or do they wait for the next night? Is the staleness alert from 06:00 also posted?",
+     "about": "Third attempt fails"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Same run_date as the night, but run_log gets a `kind` column (nightly or reconcile). Reconciliation's attempt number is 1 + the count of reconcile rows for that run_date, so it never changes the nightly count. Both kinds share the single-running-row index, which is safe because reconciliation only starts after the nightly attempt has finished. Reason: simplest way to keep the two counts apart with no new mechanism."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Nothing separate starts it: the same orchestrator run continues into reconciliation right after Sunday's nightly commit. The 06:00 freshness check only looks for a succeeded nightly row for today's run_date, so a reconciliation still running at 06:00 is irrelevant to it. Reason: no extra trigger or scheduler coupling."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The success mark is inside the same transaction as the data, so run_log can never say failed for a committed night. When the reply is lost, the orchestrator first reads run_log for its run_id: if succeeded, it counts as a success; if not, it marks the row failed (only while still running) and retries. A retry is harmless anyway because the merge is idempotent. Added to the document."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "A stale-failed row counts toward the attempt number only if it has the same run_date and kind. In practice it comes from an earlier night, because 3 attempts of 60 minutes plus 15-minute waits cannot leave a running row older than 3 hours inside one night's retries. So it cannot push a night past 3 attempts. Added a sentence to step 1."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The orchestrator issues the same SQL expression to each database over its own connection. Each returns at most 30 small rows of (day, count, checksum), and the orchestrator compares them in memory. No bulk data is pulled. Reason: the simplest approach; the data is tiny."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "The brief defines no on-call runbook. I only stated that a manual rerun is safe because runs are idempotent, and otherwise the next night's lookback recovers the data. The 06:00 staleness alert is still posted if nothing has succeeded by then, even after the page, because the check is independent and only reads run_log. Added the runbook gap to the open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. The scheduler fires a 02:00 UTC trigger, which starts the orchestrator. The scheduler only fires triggers (02:00 and 06:00); it does not drive retries. The orchestrator is the workflow runner. It runs the six steps of an attempt, waits between retries, enforces a 60-minute per-attempt timeout, and on Sundays runs the reconciliation. The scheduler also fires an independent 06:00 trigger for the freshness check (see step 12).\n\n2. Attempt number and step 1 (claim the run). The attempt number is 1 plus the count of etl.run_log rows already written for this run_date and kind. So it is kept in the warehouse, not in orchestrator memory. The orchestrator inserts a run_log row with status running, kind nightly, a fresh UUID run_id, and run_date set to the UTC date of the 02:00 trigger. A unique partial index allows only one running row at a time, across both kinds.\n   - If another running row exists and is under 3 hours old, this trigger exits immediately.\n   - If it is older than 3 hours, step 1 marks it failed (its orchestrator is presumed dead) and carries on.\n\n3. Step 2 (read state). The orchestrator reads high_water_mark from the single etl.control row (pipeline='orders'). It computes lo = HWM minus 2 hours. The 2 hours cover bulk imports that hold a transaction open for up to 90 minutes, because updated_at is stamped at write time and not commit time. The other 30 minutes cover replica lag.\n\n4. Step 3 (extract). It runs one repeatable-read query against the Postgres read replica: rows from orders with updated_at > lo, with no upper bound. The snapshot is consistent. The orchestrator keeps the number of rows returned. The job only reads from the replica; it has no write access to the app database.\n\n5. Step 4 (stage). It empties etl.orders_stage so a retry never sees leftovers. It then bulk-loads the extracted rows, tagged with run_id. The stage keeps all extracted rows, including multiple versions of the same order.\n\n6. Step 5 (check). It checks that the stage row count equals the extracted count.\n\n7. Step 6 (commit). This is one warehouse transaction.\n   - Select from the stage the newest version per order_id. The deduplication happens in this query.\n   - MERGE those rows into analytics.orders. It updates when stage.updated_at >= target.updated_at and inserts when the order is new. An older version therefore never overwrites a newer one. is_deleted is set to deleted_at IS NOT NULL.\n   - Set the HWM to GREATEST(old HWM, max updated_at of the extracted rows). If no rows came back, the HWM does not move. Data timestamps are used instead of the clock so a lagging replica cannot push the mark past rows it has not shown yet.\n   - Mark the run_log row succeeded and record rows_extracted, new_hwm and finished_at.\n   - COMMIT. Because all of this is in one transaction, dashboards see the whole night or none of it, and the HWM cannot advance unless the data committed.\n\n8. Deletes and repeats. The app never hard-deletes. It sets deleted_at, which also bumps updated_at, so deletes arrive as ordinary updates with is_deleted = true and are never removed from the warehouse. Re-running a night is harmless. The same rows are re-extracted, the guard makes unchanged rows a no-op, and the HWM only moves forward. The warehouse holds exactly one row per order_id.\n\n9. Failure handling.\n   - Any error or timeout in steps 2 to 5 means the attempt is marked failed with the error recorded. Target and HWM are unchanged. The orchestrator waits 15 minutes and starts the next attempt, up to 3 per night. The next attempt empties the stage.\n   - A merge failure or dropped connection in step 6 means the warehouse rolls back the whole transaction. Target, HWM and success mark are unchanged, and the attempt is marked failed.\n   - If the connection drops and the orchestrator does not know whether step 6 committed, it reads run_log for its run_id. If the row says succeeded, the attempt counts as a success. Otherwise it marks the row failed (only if it is still running) and retries.\n   - If the third attempt fails, on-call is paged. The HWM has not moved, so tomorrow night's lookback covers the missed night. Reconciliation does not run that night. On-call may rerun the night by hand.\n   - If the orchestrator dies mid-attempt, nothing resumes automatically. The running row blocks new triggers for up to 3 hours, then the next trigger marks it failed. The HWM did not move, so the next night recovers the data.\n\n10. Success. Once the commit succeeds, the night is loaded. On a non-Sunday the run is done. Dashboards refresh at 06:00 and read only committed analytics.orders. An attempt that commits after 06:00 appears at the next refresh. Before that, dashboards show the previous snapshot.\n\n11. Sunday reconciliation. This is not a separate trigger. After Sunday's nightly commit succeeds, the same orchestrator run continues.\n   - Its run_log rows use the same run_date with kind = reconcile. Its attempt count counts only reconcile rows.\n   - For each order-creation day (created_at, UTC) in the last 30 days, the orchestrator gets the row count and a checksum of order_id and updated_at from the replica and from analytics.orders. Both sides run the same SQL expression on their own database, and each returns at most 30 small rows. The orchestrator compares them in memory. Deleted rows count on both sides.\n   - If every day matches, there is nothing to reload.\n   - For each mismatched day, it re-extracts every order created on that day and loads it to the stage. In one transaction, covering all mismatched days, it runs the same guarded MERGE and logs to run_log. The HWM is never touched. A day that is still mismatched afterwards is logged in run_log and shows up again next Sunday.\n   - If reconciliation fails, it makes the same 3 attempts 15 minutes apart, then posts to #data-alerts instead of paging.\n\n12. 06:00 freshness check. This is independent of the nightly job, so it fires even if the job hung or the orchestrator died. It looks in run_log for a succeeded row with kind = nightly and run_date equal to today's UTC date. If there is none, it posts a staleness alert to #data-alerts, even while retries are still running or after on-call has been paged. If there is one, it takes no action. A reconciliation still running at 06:00 does not matter to it.\n\n13. First run. The HWM starts at a seeded backfill value, so the first extract is the whole history from that point under the same rules. If it would exceed the timeout, it is run by hand with a longer limit.",
+   "gaps": [
+    "The seeded backfill start value for etl.control is not given (the document lists it as an open question), so the first run's extract window cannot be stated.",
+    "The document does not say how the orchestrator is deployed, how it connects to the replica and the warehouse, or how it authenticates.",
+    "It does not say how the 60-minute attempt timeout aborts an in-flight query or load (for example, how an in-progress warehouse transaction is cancelled) before the attempt is marked failed.",
+    "It does not say what the rows_extracted/new_hwm columns of run_log hold for a failed attempt, or whether a failed row stores window_lo.",
+    "It does not say how a Sunday night that fails all 3 attempts handles the cross-check: it says reconciliation does not run, but not whether the following Sunday's reconciliation is the only catch-up.",
+    "It does not say how a page to on-call is delivered or what the on-call runbook is, beyond an optional manual rerun, so what happens after the page is unspecified (listed as an open question).",
+    "It does not say how the dashboards refresh is implemented, or how the dashboards read a consistent committed snapshot beyond 'read only committed data'.",
+    "It does not say how the reconciliation's re-extract of mismatched days is loaded to the stage with respect to the stage-emptying rule (whether it empties the stage and tags with a reconcile run_id), or whether it runs a stage count check like step 5."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

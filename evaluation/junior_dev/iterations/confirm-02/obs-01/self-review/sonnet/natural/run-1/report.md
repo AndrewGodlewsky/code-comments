@@ -1,0 +1,29 @@
+## Review of obs-01 (self-review, author sonnet, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short summary up front explaining the overall mechanism.
+- Defined terms a newcomer would not know: CAS (compare-and-set), the outbox pattern, incident `level` meanings, `status` values for incidents and pages.
+- Fixed an inconsistency: the on-call lookup is done by the dispatcher at send time, not by the sweeper. The diagram now shows the sweeper only inserting a pending page row and the dispatcher doing the role lookup.
+- Clarified that a minute can be neither breaching nor healthy, including the low-traffic case, and that breaching minutes also reset the healthy run.
+- Noted that resolved notices need recipient in the unique index, since the original (incident_id, level, kind) index would block multiple notices.
+- Said that next_escalation_at on opening is T + 5 min, matching the diagram.
+- Added a one-line note that the diagram follows evaluator A and that the loops run on both instances.
+- Made the resolved-notice step in the diagram say the dispatcher sends it.
+- Summary now names the three database guarantees explicitly and mentions the sweeper runs on both instances.
+- Streaks section restructured: a clear three-way classification (breaching, healthy, neither) followed by separate open and resolve rules, instead of scattered edge cases.
+- Clarified the resolved-notice unique index wording (one row per recipient, so the index must include recipient).
+- Replaced 'no further deadline is set' with 'the sweeper never selects it again', which says what actually happens.
+- Fixed 'no level after it is claimed' to 'no later level is claimed'.
+- Clarified the diagram intro: loops run on both instances but are drawn from A's side, except the sweeper race with B.
+- Tightened a few sentences for plainer wording; design and diagram logic unchanged.
+- Added a short glossary (tick, rule, CAS, outbox) so a reader new to the stack can follow the terms.
+- Turned the three guarantees in the summary into a bullet list.
+- Fixed the pages unique-index description: the recipient is empty until dispatch, so a single index including recipient would not stop duplicate level pages. It is now two partial indexes, one for page rows and one for resolved notices.
+- Added the 'cancelled' page status and stated that unsent page rows are cancelled on resolution, in the notes and in the diagram.
+- Split dense paragraphs into clearer labelled sections (classifying evaluations, streak rules) and reworded the on-call lookup and resolve-before-ack notes.
+- Clarified the diagram intro sentence about which loops run on both instances.
+
+### Holes
+- None.

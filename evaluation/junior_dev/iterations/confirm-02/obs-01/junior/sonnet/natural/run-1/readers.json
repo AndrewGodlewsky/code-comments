@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Three consecutive breaching evaluations (rate above 2% with at least 500 requests), and no unresolved incident already open for that service and rule.",
+  "q2": "Nothing new is paged. Each breaching evaluation increments breach_count on the open incident and resets healthy_streak to 0.",
+  "q3": "Ten consecutive healthy minutes (rate below 1%) resolve it, cancel pending steps, and send resolved notices. A later breach needs three consecutive breaches to open a new incident.",
+  "q4": "Level 1 primary at opened_at, level 2 secondary at opened_at+5m, level 3 engineering manager at opened_at+10m. Each person is looked up when their level pages.",
+  "q5": "The same worker immediately sends SMS. If both fail, the row is marked failed and retried with backoff up to 5 attempts; escalation continues on schedule.",
+  "q6": "Everyone previously paged gets a resolved notice at the same level. Pending escalation steps are cancelled, so escalation stops.",
+  "q7": "Breaching runs are read from the last 3 evaluation rows, not stored as a counter. Healthy_streak is stored on the incident. A missing tick or non-healthy evaluation resets it.",
+  "q8": "Both compute the same tick and window. Each inserts the evaluation ON CONFLICT DO NOTHING; only the winner updates streaks. A partial unique index blocks a second open incident.",
+  "q9": "Each step fires at its fixed due time, claimed by polling workers using SKIP LOCKED. Before paging, it checks for ack or resolution; if none, it looks up on-call and pages.",
+  "q10": "The provider sends a signed webhook with the notification id. The handler verifies it, locks the incident, sets acked_by and acked_at, and cancels all pending steps.",
+  "q11": "At the moment each level is paged, by querying the on-call schedule service. Not when the incident opens. The person paged is stored on the notification row.",
+  "q12": "It reads the page notification rows already recorded for the incident, copying each person and level. It does not consult current on-call."
+ },
+ "sonnet": {
+  "q1": "3 consecutive breaching evaluations (last 3 evaluation rows, ticks T-2, T-1, T; breaching = rate above 2% and at least 500 requests in the trailing 5-minute window) and no unresolved incident for that (service, rule). The incident insert is also guarded by the partial unique index (one open per service, rule).",
+  "q2": "The winning evaluator only records it on the incident: breach_count + 1 and healthy_streak = 0. No new step or page is created, and no new incident.",
+  "q3": "Resolves after healthy_streak reaches 10 (10 consecutive healthy minutes, rate below 1%; a rate of 1% or more, or a missing tick, resets it to 0). Status becomes resolved and pending steps are cancelled. A later breach finds no unresolved incident, so after 3 consecutive breaching evaluations a new incident opens.",
+  "q4": "Level 1 primary at opened_at, level 2 secondary at opened_at+5m, level 3 engineering manager at opened_at+10m (fixed due times). Level 3 is the last; nothing is re-paged after it. Stops on acknowledgement or resolution.",
+  "q5": "If push fails, the same worker sends SMS right away with the same key. If both fail, the notification is marked failed and the send loop retries with backoff up to 5 attempts, then it stays failed (visible in audit data, nobody told). Escalation continues on schedule regardless. A crashed worker's lease (60s) expires and another worker retries with the same idempotency key.",
+  "q6": "Everyone who was paged (people on the page notification rows) gets a resolved notice, sent by push then SMS if push fails; none if nobody was paged. Pending escalation steps are cancelled (set to cancelled) in the resolving transaction, so escalation stops.",
+  "q7": "Consecutive breaches are not stored as a counter; they are read from the last 3 evaluation rows. A missing tick row or a non-breaching evaluation breaks the run. Only healthy_streak is stored, on the incident row; it resets to 0 on a rate at or above 1% (including 1-2%), or when a tick was missing before the next evaluation, and when a breach is recorded while the incident is open.",
+  "q8": "Both compute the same tick and the same window, then each runs a transaction starting with INSERT evaluation (service, rule, tick) ON CONFLICT DO NOTHING under a unique index. Only the winner proceeds; the loser's insert waits for the commit, gets a conflict, rolls back and skips the tick. Incident insert is also guarded by the partial unique index (one open per service, rule), and steps are only written if the incident row was created. No leader election.",
+  "q9": "A worker polling every 5s claims a due pending step (due_at reached) with FOR UPDATE SKIP LOCKED, then locks the incident row. If the incident is acknowledged or resolved, the step is cancelled and no page is sent. If still unacknowledged, it looks up the on-call person for that level, inserts a notification, marks the step done, and sends.",
+  "q10": "The paging provider calls the ack webhook (with the notification id, signed with a shared secret) when the responder taps Acknowledge. The handler verifies the signature, finds the incident via the notification id, locks the incident; if open and not yet acknowledged it sets acked_by and acked_at, cancels all pending steps in one update, and logs the ack as applied. Otherwise it logs ignored. It returns 200 OK. The incident stays open.",
+  "q11": "At the time each level is paged (when the step is claimed and processed), not when the incident opens. A 09:00 handover mid-incident means whoever holds the role at that moment is paged. The person paged is stored on the notification row.",
+  "q12": "It reads the page notification rows recorded for the incident. When the incident resolves, the winning evaluator inserts a resolved notification for each person already paged (copying the level of the page); the send loop then claims those rows. It does not use the current on-call schedule."
+ }
+}

@@ -1,0 +1,23 @@
+## Review of feat-01 (junior-v2, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Step 6 rewritten as ordered cases: `failed` returns without reviving the row, `done` goes to the email step, otherwise the handler continues and a concurrent duplicate is safe because both runs write identical content to the same key (answers Q1, Q2).
+- Step 8 and Step 9 now say the handler calls the email step straight after marking `done`, and Step 6 also routes reruns there (Q3).
+- Step 10 states that a killed or timed-out attempt leaves the row reading `running` during backoff, and that this is intended (Q4).
+- Step 12 defines `download_available` and what the page shows for a `done` export older than 24 hours (Q5).
+- Step 2 says report.view is the same check the page and rows API use; added an Open questions section for the unknown function name (Q6).
+- Step 3 says the 10,000 limit is checked against `row_count` only, since filters never add rows (Q7).
+- Step 14 gains a test: running the handler on a `failed` row does nothing.
+- Added error_text to the Step 1 data list and removed the duplicate explanation in Step 11, so the column is defined once.
+- Merged the two stale-check rules in Step 4 into a single list under one 'mark failed' outcome with shorter wording.
+- Cut the 'Data in' line from Step 2 and the 'Data' line in Step 5 about payload size, which the main flow does not need.
+- Merged the Step 12 'Failed state' bullet into the Display bullet.
+- Shortened Step 6 item 2, Step 8 explanation and Step 10 to remove repeated reasoning.
+- Removed the Step 5 'in the same request' wording and the Step 13 'see below' pointer, replaced by decision 2 reference.
+- Tightened the Step 7 timing and state notes and the decisions text without changing any decision.
+- Kept the open question together at the end; no mechanism was added or removed.
+
+### Holes
+- None.

@@ -1,0 +1,218 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly does Extract read from the app replica, and how does it decide which rows to pull using etl_watermark?",
+     "about": "Extract / etl_watermark"
+    },
+    {
+     "id": "2",
+     "text": "When does the watermark get advanced: after Extract, after staging, or after Merge succeeds? What if the run fails midway?",
+     "about": "etl_watermark"
+    },
+    {
+     "id": "3",
+     "text": "What is stg_orders: is it wiped at the start of each run, and does it hold only the rows from this run?",
+     "about": "stg_orders"
+    },
+    {
+     "id": "4",
+     "text": "The 2h lookback re-pulls rows already loaded. How does Merge keep them from being duplicated, and what does 'latest version wins' compare?",
+     "about": "Merge on order_id, latest version wins"
+    },
+    {
+     "id": "5",
+     "text": "How does a soft delete in the app reach fact_orders? Is the row removed from the replica or just flagged, and what about hard deletes?",
+     "about": "Soft deletes become is_deleted"
+    },
+    {
+     "id": "6",
+     "text": "What does etl_runs record, and who writes to it and reads it?",
+     "about": "etl_runs"
+    },
+    {
+     "id": "7",
+     "text": "How many retries, with what spacing, and what does 'then pages' do: who gets paged through Alerts, and does the run stop?",
+     "about": "Retries on failure, then pages"
+    },
+    {
+     "id": "8",
+     "text": "What does the 06:00 check look at to decide the load missed the deadline, and what does it do when it fails?",
+     "about": "06:00 check"
+    },
+    {
+     "id": "9",
+     "text": "What does Sunday reconciliation compare, and what does it do when it finds differences over the last 30 days?",
+     "about": "Sunday reconciliation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Extract reads the app's orders table from the read-only replica, every column of each row whose updated_at is later than etl_watermark minus 2 hours. It reads no upper bound. The watermark is read from the warehouse before the read starts. Source: the brief's fixed rules on read-only replica access and the 2-hour lookback."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The watermark advances in the same warehouse transaction as the Merge commit, and only after Merge succeeds. The new value is the UTC time Extract started, captured before it reads the replica. If the run fails before that commit, the transaction rolls back and the watermark stays where it was. The next attempt then reads the same window again. I chose Extract-start time, not the largest updated_at seen, so the value does not depend on which rows happened to arrive."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "stg_orders is emptied at the start of each attempt and holds only that attempt's extracted rows. It is a scratch table. Dashboards never read it. A failed attempt can leave partial rows there, and the next attempt empties it first."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Duplicates are handled by the Merge, not by Extract. Merge is an upsert keyed on order_id. It replaces the stored row only when the staged updated_at is later than the stored one. The latest version is the one with the greatest updated_at, since every write stamps the write time. A re-read row with the same updated_at changes nothing, so the overlap is harmless."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "A soft delete is a normal write. The app sets deleted_at and updated_at moves, so the row is extracted and Merge copies deleted_at into fact_orders and sets is_deleted to true. The replica row is flagged, not removed. The brief says the app never hard-deletes, so the pipeline does not handle hard deletes."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "etl_runs has one row per attempt: the night, the attempt number, the status (success or failed), the times and any error. The pipeline writes it. Each failed attempt writes its row after rolling back. A success row is written in the same transaction as the Merge, so it exists only if the data committed. The retry logic reads it to count attempts, and the 06:00 check reads it to find a success row. Dashboards and reconciliation do not read it."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "Checked from the brief: three attempts in total. Attempt 2 starts 15 minutes after attempt 1 fails, and attempt 3 starts 15 minutes after attempt 2 fails. After the third failure the pipeline pages on-call and the run stops, with the watermark unchanged. Unknown: which paging tool and which on-call recipient the brief means. The brief does not name them, so I left them out of the file and listed them as open questions."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The 06:00 check looks for a success row in etl_runs for tonight's run. If there is none, it posts a staleness alert to #data-alerts. It changes no data. The check does not depend on the load succeeding; the load failing is what makes the check fire. Dashboards refresh at 06:00 regardless and show the last committed night. Unknown: what happens if the Slack post itself fails. The brief does not say, so it is an open question."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Reconciliation compares, for each order-creation day in the last 30 days, the row count and the checksum of order_id and updated_at, on the replica and in fact_orders. The checksum and count come from the brief. A mismatched day is reloaded by re-reading that day's orders from the replica and merging them with the same rule as step 3, in one transaction. A reload only inserts or replaces rows, so it cannot delete warehouse rows. Reconciliation does not move the watermark. What happens if reconciliation itself fails is not in the brief, so it is an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Retry says a failed attempt writes a failure row and the next attempt starts 15 minutes after the failed one. What actually triggers that next attempt, and what if an attempt hangs rather than fails?",
+     "about": "4. Retry, 15 min later"
+    },
+    {
+     "id": "11",
+     "text": "The 06:00 check looks for a success row for 'tonight's run'. How does it identify tonight's run in etl_runs, and what if attempt 3 is still running at 06:00?",
+     "about": "6. 06:00 check"
+    },
+    {
+     "id": "12",
+     "text": "If a night is fully missed, the watermark stays put. Does the next night's extract then pull the whole missed period in one go, and does tonight's lookback still apply on top of the old watermark?",
+     "about": "5. Page on-call"
+    },
+    {
+     "id": "13",
+     "text": "The new watermark is the Extract start time. If an order is written on the app after Extract starts but before the replica shows it, how does it get picked up next night?",
+     "about": "Extract / candidate new watermark"
+    },
+    {
+     "id": "14",
+     "text": "Reconciliation groups by order-creation day, but extract uses updated_at. How does an update to an old order (created last month) get into fact_orders, and how does the checksum on order_id and updated_at spot a stale row?",
+     "about": "7. Sunday reconciliation"
+    },
+    {
+     "id": "15",
+     "text": "The merge compares staged updated_at to the stored one. If an order is soft-deleted, is that row's updated_at later, and what happens if the stored row has a later updated_at than the staged one (for example during a reconciliation reload)?",
+     "about": "3. Merge and commit"
+    },
+    {
+     "id": "16",
+     "text": "What does 'Sunday reconciliation starts after Sunday's load step has finished' mean if the Sunday load failed all three attempts? Does reconciliation still run?",
+     "about": "Sunday reconciliation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Attempts run one after another, so two never overlap. A failed attempt writes its failure row, then the job's retry logic starts the next attempt 15 minutes later, at step 2 with the same watermark. The 02:00 scheduler trigger does not start retries. A hung attempt writes no failure row, so no retry starts. The brief gives no time limit per attempt, so the hang case is an open question in the file, not something I decided."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "etl_runs now has a run date column, the UTC date the night started. Tonight's run is the set of rows with that run date, and the 06:00 check looks for a success row with that date. If attempt 3 is still running at 06:00, the check finds no success row and posts the alert without waiting. If attempt 3 commits later, dashboards show the new night on their next refresh, and the alert stays posted."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Yes. Step 2 subtracts the 2-hour lookback from the stored watermark each night, and the window has no upper bound. The next night therefore reads every row changed after the old watermark minus 2 hours, in one window. The lookback is applied once, on top of the old watermark, not per missed night. I checked this against the step 2 rule in the first version. The file now says so in step 5."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "The new watermark is the Extract start time. An order written after Extract starts has an updated_at at or after that time, so the next night's window (watermark minus 2 hours) includes it. A bulk-imported row stamped just before the start but visible after the read is covered by the 2-hour lookback, because it can appear at most 90 minutes late. This depends on the app and warehouse clocks agreeing within the lookback margin, which the brief does not state, so it is an open question."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Extract selects on updated_at for every order, so an update to an old order is extracted by the nightly run like any other update. The creation date matters only to reconciliation, and fact_orders keeps it so reconciliation can group by it. A missing row changes that creation day's count. A stale row, one with an older updated_at, changes that day's checksum. A reload of that day inserts the missing rows and replaces the stale ones. Stale orders created more than 30 days ago are not checked, which is listed as an open question."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Yes, the soft-deleted row's updated_at is later. Setting deleted_at is a write, so updated_at is the write time, which is later than the stored row's, so Merge replaces the row and sets is_deleted. If the stored row has a later updated_at than the staged one, Merge keeps the stored row, including during a reconciliation reload. A row never moves back to an older version. If the replica shows an older version persistently, the day mismatches each Sunday, which is listed as an open question."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Reconciliation still runs. It starts after the night's last attempt ends, whether that attempt committed or was paged, so a failed Sunday load does not block it. I chose this because reconciliation compares the warehouse with the replica, so it repairs missing or stale rows whatever the load did. The watermark has not moved, so the next night's window covers the failed period too. The file now says this in step 7."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "Walkthrough of one night, 2026-11-13, following a normal run and then the failure paths.\n\n1. **Scheduler starts attempt 1.** At 02:00 UTC the scheduler starts attempt 1 for run date 2026-11-13. Nothing is written yet. The scheduler only ever starts attempt 1. Later attempts come from the retry logic.\n\n2. **Extract begins and takes its time marker.** Extract records the current UTC time as the candidate watermark. That value is held for the end of the attempt. It becomes the real watermark only if the night commits. It then reads the current watermark from the `etl_watermark` table in the warehouse. All pipeline state lives in the warehouse, because there is no write access to the app database.\n\n3. **Extract reads the replica.** Extract reads every `orders` row (all columns) from the read-only replica whose `updated_at` is later than (watermark minus 2 hours). There is no upper bound on the read. The 2-hour lookback exists because bulk-import rows can become visible up to 90 minutes after their `updated_at`. Any write made after the candidate time has `updated_at` at or after that time, so the next night's window picks it up. Soft deletes are included. They are ordinary writes that set `updated_at` and `deleted_at`.\n\n4. **Extract stages the rows.** Extract empties `stg_orders` and loads the rows into it. `stg_orders` holds only this attempt's rows, and dashboards never read it. The watermark does not change here. If Extract fails, the attempt fails and goes to step 8.\n\n5. **Merge opens one warehouse transaction.** When Extract finishes, Merge starts one warehouse transaction. For each staged row, matched by `order_id` against `fact_orders`:\n   - If no row exists, it inserts the row.\n   - If a row exists and the staged `updated_at` is later, it replaces the values, including `deleted_at`.\n   - If the staged `updated_at` is equal or earlier, it leaves the existing row alone. Re-read rows therefore change nothing, and a row never goes back to an older version.\n   - `is_deleted` is set to true when `deleted_at` is set, and to false otherwise.\n\n6. **Commit.** In the same transaction, Merge sets `etl_watermark` to the candidate watermark and writes a success row to `etl_runs`, then commits. At the commit, `fact_orders`, the watermark and the success row all become visible at once. Dashboards see the whole night or none of it. If any write fails, the whole transaction rolls back. `fact_orders`, the watermark and the success row stay as they were, and the attempt goes to step 8.\n\n7. **Dashboards and the 06:00 check.** At 06:00 UTC dashboards refresh from `fact_orders` whatever the load state. If the night has not committed, they show the last committed night. Also at 06:00 the check looks in `etl_runs` for a success row with tonight's run date. If it finds none, it posts a staleness alert to #data-alerts. It changes no data. It does not wait for a running attempt 3. If the load commits after the alert, the new data shows on the next dashboard refresh, and the alert is not withdrawn.\n\n8. **Failure and retry.** A failed attempt (in Extract or Merge) writes a failure row to `etl_runs` with the run date, attempt number and error. The retry logic starts the next attempt 15 minutes after that failure row is written. The next attempt starts again at step 2 with the same watermark. Attempts run one after another. If each attempt fails quickly, attempt 2 starts about 02:15 and attempt 3 about 02:30. This repeats while fewer than three attempts have run.\n\n9. **Third failure.** After the third failed attempt, on-call is paged. The night's run stops and the watermark is unchanged. The next night's extract reads from the old watermark minus 2 hours in one window, so the lookback is applied once and no separate catch-up run is needed. The 06:00 check will also alert if there is still no success row.\n\n10. **Hang.** If an attempt hangs, it writes no failure row, so no retry starts. The document sets no time limit. The 06:00 check alerts if the night is not committed.\n\n11. **Re-running a night.** Running the same night again re-reads the same window. The merge leaves unchanged rows alone, so the result is the same.\n\n12. **Sunday reconciliation.** After the Sunday night's last attempt ends, whether it committed or was paged, reconciliation runs. It does not need the load to have succeeded.\n    - For each creation date in the last 30 days, it computes a row count and a checksum of `order_id` and `updated_at`, once on the replica and once in `fact_orders`.\n    - A count difference means rows are missing from the warehouse. A checksum difference with equal counts means a warehouse row has an older `updated_at`.\n    - A day with either difference is reloaded. The reload reads all of that day's orders from the replica, stages them, and merges them with the step 5 rules in one transaction.\n    - A reload only inserts or replaces, so it never deletes rows. It does not move the watermark.\n    - If a reload fails, the transaction rolls back and that day is unchanged. Whether that is retried or paged is not stated.\n    - Orders created more than 30 days ago are never checked.",
+   "gaps": [
+    "Which dates the first-ever run reads: there is no starting watermark or first-load rule, so I cannot explain step 3 for the very first run.",
+    "How the retry logic knows how many attempts have run and which watermark to reuse for the run date. The document says it starts the next attempt but not how that count is tracked.",
+    "Whether the retry logic still starts attempt 2 or 3 if the failure row itself cannot be written, or if the failure happens before anything can be logged.",
+    "What pages on-call, and who receives the page: the tool and recipient are not named, so I cannot say how step 9 is carried out.",
+    "What stops or detects a hung attempt, or how someone is told. There is no per-attempt time limit, and only the 06:00 staleness alert covers it.",
+    "What happens when a staleness alert post fails, or when a reconciliation reload fails: whether either is retried or paged is not stated.",
+    "Whether the scheduler's 02:00 start and the 06:00 check start reliably, and what happens if the scheduler does not fire. The document does not say.",
+    "How the reconciliation step gets triggered at the end of the Sunday last attempt (what signals 'last attempt ended'), and how the mismatched-day reload hands off to Merge when it uses the same stg_orders table that an attempt empties. The document does not say how these avoid colliding.",
+    "How the checksum is computed (algorithm, and how the replica and warehouse versions are made comparable). I can only say it uses order_id and updated_at.",
+    "What to do when the replica holds an older version of a row than the warehouse (for example after a failover): the merge keeps the warehouse row and that day mismatches every Sunday, and the document does not say how to resolve this.",
+    "Whether the warehouse and app database clocks are synchronized. The 2-hour lookback is the stated margin, but the document does not say how far the clocks may differ."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 4 (Retry): the explanation could not say how the retry logic knows how many attempts have run or which watermark to reuse. The first version says the failure row carries the attempt number but does not say the retry decision reads it, or that the watermark is reused because it only changes at a commit. Fixed in step 4 of the artifact.; Step 7 (Sunday reconciliation): the explanation could not say what signals that the Sunday night's last attempt has ended. The first version does not define 'ended' (a success row committed, or the third failure paged). Fixed in step 7 of the artifact.; Failures table: the explanation could not say what happens if the failure row itself cannot be written, so no retry can be timed from it. The first version does not cover this case. Fixed by treating it like a hang, which the document already defines, so no retry starts.; Step 7 and the open questions: the explanation could not say how reconciliation's reload shares stg_orders with a nightly attempt. The first version does not say that reconciliation must not overlap an attempt. Fixed by stating the rule and adding it as an open question."
+  },
+  {
+   "text": "Walkthrough of one normal night, then the failure path.\n\n1. Trigger. At 02:00 UTC the scheduler starts attempt 1 and writes nothing. The scheduler only ever starts attempt 1. The run date is that UTC date, for example 2026-11-13, and every attempt that night shares it.\n\n2. Extract begins. The attempt first records the current UTC time as the candidate watermark. This is held for this attempt only and is not saved as the real watermark yet.\n\n3. Extract reads state. It reads the one value in `etl_watermark` in the warehouse, which is the time up to which data has loaded. It subtracts 2 hours from that value. The 2 hours cover bulk imports, whose rows can become visible up to 90 minutes after their `updated_at`.\n\n4. Extract reads the replica. It reads every `orders` row, all columns, whose `updated_at` is later than watermark minus 2h. There is no upper bound. The replica is read-only and is not changed. Writes made after the candidate time have `updated_at` at or after it, so the next night's window picks them up.\n\n5. Extract stages the rows. It empties `stg_orders`, then writes the rows into it. `stg_orders` holds only this attempt's rows, and dashboards never read it. The watermark is unchanged at this point. If Extract fails, the attempt fails and we go to step 9.\n\n6. Merge opens one warehouse transaction. For each staged row, matched by `order_id`:\n   - If `fact_orders` has no such `order_id`, insert the row.\n   - If one exists and the staged `updated_at` is later, replace its values, including `deleted_at`.\n   - If the staged `updated_at` is equal or earlier, leave the existing row alone.\n   - Set `is_deleted` to true when `deleted_at` is set, and to false otherwise.\n\n   A soft delete is just a write with the newest `updated_at`, so it wins and the row stays in `fact_orders` with `is_deleted` set. The app never hard-deletes.\n\n7. Commit. In the same transaction, Merge sets `etl_watermark` to the candidate watermark and writes a success row to `etl_runs`. It then commits. `fact_orders`, the watermark and the success row all become visible together, and they change only at this commit. Dashboards therefore see the whole night or none of it. The success row exists only if the data committed.\n\n8. 06:00 check. At 06:00 UTC, whatever the load state, a check looks in `etl_runs` for a success row with tonight's run date. If it finds none, it posts a staleness alert to #data-alerts. It changes no data and does not wait for a running attempt. Dashboards refresh from `fact_orders` at 06:00 regardless, and show the last committed night if tonight has not committed. A later commit shows up on the next refresh. The alert is not withdrawn.\n\n9. Failure and retry. If Extract or Merge fails, the Merge transaction rolls back. `fact_orders`, the watermark and the success row stay as they were. The failed attempt writes a failure row to `etl_runs` with its run date, attempt number and error. The retry logic reads the attempt numbers for that run date. If the highest is below 3, it starts the next attempt 15 minutes after the failure row was written. Attempts run one at a time. The next attempt goes back to step 2 and reads the same watermark, because the failed attempt never moved it. If every attempt fails fast, attempt 2 starts at about 02:15 and attempt 3 at about 02:30.\n\n10. Third failure. If attempt 3 fails and its failure row is written, on-call is paged and the night stops. The watermark stays at the old value. The next night's extract reads from the old watermark minus 2 hours in a single window, so no separate catch-up run is needed. The 06:00 check also alerts, because there is no success row.\n\n11. Hang or failure row not written. If an attempt hangs, or its failure row cannot be written, no retry is scheduled and no page is sent. The 06:00 check alerts if the night has not committed.\n\n12. Sunday reconciliation.\n   - It starts when Sunday night's last attempt ends, either by committing or by the third failure paging on-call. It runs even if the load failed.\n   - For each creation date in the last 30 days, it computes a row count and a checksum of `order_id` plus `updated_at`, once on the replica and once on `fact_orders`.\n   - A count difference means rows are missing from the warehouse. A checksum difference with equal counts means a warehouse row has an older `updated_at`.\n   - Each mismatched day is reloaded. All of that day's orders are read from the replica, staged in `stg_orders`, and merged with the step 6 rules in one transaction. This only inserts or replaces rows and never deletes any.\n   - Reconciliation does not move the watermark. If a reload fails, the transaction rolls back and that day is left unchanged.\n\n13. Re-running a night is safe. The same window is read again, and the merge leaves unchanged rows alone, so the result is the same.",
+   "gaps": [
+    "The first-ever run has no starting watermark and no first-load rule, so I cannot explain what step 3 reads then.",
+    "The paging tool and the on-call recipient are not named, so I cannot say how step 10 reaches anyone.",
+    "It is not stated whether a failed reconciliation reload, or a failed post to #data-alerts, is retried or paged. I only know a failed reload rolls back and leaves that day unchanged.",
+    "There is no time limit per attempt. I cannot explain how a hung attempt ends: it writes no failure row, so no retry or page happens until someone stops it. How it is stopped is not given.",
+    "The document does not say what happens if Sunday reconciliation is still running when the next 02:00 attempt starts. Both use `stg_orders` and empty it.",
+    "The checksum algorithm, and how replica and warehouse values are made comparable, are not specified.",
+    "Orders created more than 30 days ago that become visible late are never checked by reconciliation, and the document gives no remedy.",
+    "The document does not say what to do if the replica holds an older version of a row than the warehouse, for example after a failover. The merge keeps the warehouse row and that day mismatches every Sunday.",
+    "It is not stated that the warehouse clock (used for the watermark) and the app database clock (used for `updated_at`) are synced. The 2-hour lookback is the only margin.",
+    "It does not say how the scheduler or retry logic is implemented or where it runs. The retry logic reads `etl_runs` for the attempt numbers, but what process does this and how the 15-minute delay is timed is not said.",
+    "It does not say what happens if the 06:00 check or the dashboard refresh itself fails."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

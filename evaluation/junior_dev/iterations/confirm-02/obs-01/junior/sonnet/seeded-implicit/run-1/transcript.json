@@ -1,0 +1,208 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly is a 'breach'? Is it one evaluator run where the error rate is above 2% with at least 500 requests, and must the 3 breaches be consecutive minutes?",
+     "about": "Notes: opens an incident after 3 breaches"
+    },
+    {
+     "id": "2",
+     "text": "Who counts the 3 breaches and where is that count kept? The diagram shows the evaluator sending 'breach' to the incident manager. Does it send one every minute, or only after the third?",
+     "about": "Evaluator->>IncidentManager: breach"
+    },
+    {
+     "id": "3",
+     "text": "How do the two evaluators work together through Postgres? Do both run every minute, or is one active and the other a standby? What stops them both opening an incident or paging twice?",
+     "about": "Two evaluators are coordinated through Postgres"
+    },
+    {
+     "id": "4",
+     "text": "What does 'Dedup on service + rule' do? If an incident is already open for the same service and rule, what happens to a new breach?",
+     "about": "Dedup on service + rule"
+    },
+    {
+     "id": "5",
+     "text": "What is stored in the incident row in Postgres (state, level, ack, timestamps)? What is the page_log table for, and who writes to it and when?",
+     "about": "IncidentManager->>Postgres: incident; page_log table"
+    },
+    {
+     "id": "6",
+     "text": "What starts the timer queue? When is the first escalate timer set, and what does the 'escalate' message contain? How does an ack cancel a timer that is already queued?",
+     "about": "TimerQueue->>IncidentManager: escalate"
+    },
+    {
+     "id": "7",
+     "text": "What does the schedule service return on 'lookup' (who is primary, secondary, EM)? Is the lookup done at each escalation step or once? What happens if the lookup fails or nobody is on call?",
+     "about": "IncidentManager->>Schedule: lookup"
+    },
+    {
+     "id": "8",
+     "text": "What does 'Push with SMS fallback' mean here? What triggers the fallback, and who decides, the paging provider or the incident manager? What does 'Failures don't block escalation' mean for the incident manager?",
+     "about": "Notes: Push with SMS fallback. Failures don't block escalation"
+    },
+    {
+     "id": "9",
+     "text": "What happens after the EM has been paged and nobody acks? Does escalation stop, repeat, or do something else?",
+     "about": "Notes: Escalation: primary, secondary, EM, 5 min apart"
+    },
+    {
+     "id": "10",
+     "text": "How does the clear get decided? Is 'auto-resolves after 10 min below 1%' tracked by the evaluator, which then sends 'clear'? What happens if the rate sits between 1% and 2%?",
+     "about": "Evaluator->>IncidentManager: clear"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "A breach is one 60-second evaluation where the trailing 5-minute rate is above 2% and the window has at least 500 requests. The 3 must be consecutive evaluations. Added to the notes."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The evaluator counts, in an alert_state row in Postgres. It sends breach to the incident manager once the streak reaches 3 and on every later breach (so they can be recorded). Not before the third."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Both run every minute, no standby. Each tries to insert a row keyed (service, rule, minute); the unique key lets one win, and only the winner updates streaks and sends messages. Reason: it needs no lock or takeover, and survives one instance dying."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Postgres allows only one unresolved incident per (service, rule). A breach while one exists is recorded on it (count, time) and pages nobody. After it resolves, a new breach opens a new incident."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Incident row: id, service, rule, state, current level, acked_by/at, opened_at, resolved_at, breach count. page_log is one row per page attempt (incident, level, person, channel, result, time), written by the incident manager after each attempt; it also decides who gets the resolved notice."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The incident manager queues the first escalate (incident id, level) for 5 minutes later when it opens the incident, and each escalate queues the next. Nothing is cancelled: when a timer fires, the incident manager reads the incident and does nothing if it is acked or resolved. Reason: avoids cancellation logic and races."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Lookup is done at each level when it is paged, because rotations change at 09:00. It returns who is on call for that level. If it fails or nobody is on call, log it, page nobody at that level and let the next timer run on schedule, so the clock is not delayed."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The incident manager calls the push API; if that call returns an error, it calls the SMS API. The provider does not decide. Failures not blocking escalation means the next timer is queued before the page is sent and does not depend on the page result."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The EM is the last level. After paging them nothing further is sent; the incident stays open until an ack or auto-resolve. No repeat, since the brief calls the EM the last level."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. The evaluator tracks consecutive minutes below 1% in alert_state and sends clear at 10. A rate between 1% and 2% is neither a breach nor recovered, so it resets both streaks."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "If the winning evaluator claims the minute but crashes before updating the streaks or sending breach, what happens? Does the other evaluator retry that minute, or is it skipped?",
+     "about": "Evaluator->>Postgres: claim this minute"
+    },
+    {
+     "id": "12",
+     "text": "How does the evaluator deliver breach or clear to the incident manager (direct call, queue)? What if the incident manager is down or the call fails?",
+     "about": "Evaluator->>IncidentManager: breach"
+    },
+    {
+     "id": "13",
+     "text": "Between inserting the incident, queuing the level 1 timer, and paging, what order are they in, and what happens if the incident manager dies partway? Could an incident exist with no timer or no page?",
+     "about": "IncidentManager->>Postgres: insert incident"
+    },
+    {
+     "id": "14",
+     "text": "When an escalate timer fires, where is the 'current level' updated, and does the timer carry the level to page or does the incident manager compute it? Also, does the timer for the EM level queue anything further?",
+     "about": "IncidentManager->>Postgres: read incident; stop if acked or resolved"
+    },
+    {
+     "id": "15",
+     "text": "How does the ack webhook say which incident and which person acked? What if the ack arrives twice, or after the incident is already resolved (the open question)?",
+     "about": "Pager->>IncidentManager: ack webhook"
+    },
+    {
+     "id": "16",
+     "text": "Does the resolved notice go to people whose page attempt failed or who were never reached? And what happens if sending the resolved notice fails?",
+     "about": "IncidentManager->>Pager: resolved notice to everyone in page_log"
+    },
+    {
+     "id": "17",
+     "text": "After the 3rd breach opens an incident, what do 4th and later breaches do? And if a rate between 1% and 2% resets the streak while the incident is still open, does a later new streak of 3 just record onto the existing incident?",
+     "about": "Notes: breach (every later breach)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "If the winner dies before its transaction commits, the claim and streak update roll back and that minute is skipped; the streak continues next minute (it counts evaluations), so detection is at most a minute late. If it dies after commit, the next minute re-sends breach or clear, since both are sent on every qualifying minute. Reason: no retry or takeover mechanism needed."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It is a direct call. If it fails, the evaluator logs it and the next minute repeats it, because breach and clear are sent every qualifying minute and the incident manager's actions are safe to repeat."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Order: generate incident id, queue the level 2 timer, insert the incident, then page level 1. Death before insert leaves a harmless timer and the next breach opens the incident. Death after insert before paging is caught by the next breach, which sees no page_log rows and pages level 1. Escalation still runs from the timer either way. Added to the file."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The timer carries the level to page. The incident manager sets current level from it, queues the next timer, then pages. The level 3 (EM) timer queues nothing. The diagram previously showed the first timer as level 1, which was wrong; it is now level 2."
+    },
+    {
+     "id": "15",
+     "tag": "unknown",
+     "text": "Plan assumes the provider echoes an incident id and person we send with each page; whether it supports this is not verified, so it is under open questions. A repeated ack is ignored because the update applies only while the incident is open. An ack after resolution is ignored, which is a decision and not confirmed by the team."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The resolved notice goes only to people who were successfully reached by push or SMS. People whose pages all failed, and lookup-failure rows with no person, are skipped. A failed notice uses push then SMS, is logged and not retried; the incident stays resolved. Reason: keeps it simple and the incident is already closed."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "4th and later breaches are only recorded on the incident (count, time) and page nobody. If a 1-2% reading resets the streak while the incident is unresolved, a later new streak of 3 also just records onto the existing incident. Only 10 quiet minutes resolve it."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The trigger is a clock. Every 60 seconds, two identical evaluator instances each read the metrics store (a time-series database that the API gateway writes per-minute request and 5xx counts to). For each (service, rule) they work out whether the trailing 5-minute error rate (5xx / requests) is a breach. A breach means the rate is above 2% and the window holds at least 500 requests.\n\n2. Claiming the minute. Each evaluator tries to insert a row into Postgres for (service, rule, minute). A unique key means only one insert wins. The loser does nothing. This is why there are no double incidents or pages, and why one evaluator can be down without anyone noticing. No lock or standby is needed.\n\n3. Updating the streaks. In the same transaction as the claim, the winner updates the two streak counters in the alert_state row for (service, rule). The streaks count evaluations, not wall-clock time.\n   - A breach adds 1 to the breach streak and zeroes the quiet streak.\n   - A rate below 1% adds 1 to the quiet streak and zeroes the breach streak. Zero requests counts as below 1%.\n   - A rate from 1% to 2%, or above 2% with fewer than 500 requests, resets both streaks.\n\n4. Telling the incident manager. After the commit, the winner calls the incident manager directly. It sends \"breach\" on every breaching minute once the breach streak is 3 or more. It sends \"clear\" on every minute once the quiet streak is 10 or more.\n   - If the call fails, the evaluator logs it and the next minute repeats it.\n   - If the winner dies before commit, nothing was claimed or counted. That minute is skipped and detection is at most a minute late.\n   - If it dies after commit but before sending, the next minute sends again.\n\n5. Breach arrives at the incident manager. Every action here is safe to repeat. The manager checks whether an unresolved incident already exists for (service, rule).\n   - If one exists, it goes to step 6.\n   - If none exists, it generates a new incident id and queues escalate(id, level 2) on the timer queue, due in 5 minutes. It then inserts the incident in Postgres. After that it asks the schedule service who is on call for level 1, pages that person (step 8), and writes page_log.\n   - Postgres allows only one unresolved incident per (service, rule). If two inserts race, the loser stops. The loser's timer later finds no incident and does nothing.\n   - If the manager dies before the insert, the next minute's breach opens the incident with a new id. If it dies after the insert but before paging, the next breach finds an unresolved incident with no page_log rows and pages level 1 then. The level 2 timer runs either way.\n\n6. Duplicate breach. If an unresolved incident exists, the breach is only recorded on it (breach count and last breach time) and pages nobody. This covers the 4th and later breaches. It also covers a new streak of 3 after a reset while the incident is still open. A breach after the incident resolved opens a new incident.\n\n7. Escalation timer fires. After 5 minutes the timer queue delivers escalate(incident id, level N) to the incident manager. N is 2 for the first timer.\n   - The manager reads the incident from Postgres and stops if it is acked or resolved. Timers are never cancelled, and this check on firing replaces cancellation.\n   - Otherwise it sets the incident's current level to N.\n   - If N is 2, it queues escalate(id, 3) due in 5 minutes. Level 3 queues nothing further.\n   - It then asks the schedule service who is on call for level N and pages them (step 8). The next timer is queued before the page is sent, so a failed page never stops or delays escalation.\n   - If the schedule lookup fails or nobody is on call, the manager writes a page_log row with no person and pages nobody at that level. The next timer fires as normal.\n   - After the engineering manager (level 3) is paged, nothing more is sent until an ack or a resolution.\n\n8. Paging. The manager calls the push API. It calls the SMS API only if push returns an error. The manager decides this, not the provider. It writes one page_log row per attempt: incident, level, person, channel, result, provider reference and time. The page goes through the Pager to the engineer's device. Each send passes an incident id and person, which the provider is assumed to echo back later.\n\n9. Acknowledgement. The engineer taps Acknowledge. The Pager calls our webhook with the incident and person. The manager sets state to acked, plus acked_by and acked_at, but only if the incident is still open. A second ack, or an ack after resolution, is ignored. Any ack stops escalation, because later timers see the incident is acked and stop. An acked incident can still resolve.\n\n10. Clear and resolve. Once the quiet streak reaches 10, the evaluator sends \"clear\" every minute. The manager marks the incident resolved in Postgres. If there is no unresolved incident, it does nothing. It then sends a \"resolved\" notice to everyone in page_log who was successfully reached by push or SMS. People whose pages all failed, and lookup-failure rows, are skipped. A failed resolved notice uses the same push-then-SMS rule and is logged. It is not retried, and the incident stays resolved. If the incident resolves before anyone acks, the next timer sees \"resolved\" and escalation stops.",
+   "gaps": [
+    "The document does not say what the evaluator does when the metrics store read fails or returns no data for a minute. It does not say whether that counts as a skipped minute, a reset, or a quiet minute, and this decides the streaks.",
+    "The document does not say how the incident manager (which owns incidents) tells the winning evaluator's repeated 'breach' from a retry. It does not say how it behaves if the 'clear' arrives while the incident id is being created, beyond 'safe to repeat'.",
+    "The document does not say how the incident manager, the timer queue and the evaluators are triggered or deployed. In particular it does not say how many incident manager instances run, or whether timer delivery is at-least-once, so I cannot say what a duplicate timer message does to a page already sent.",
+    "The document does not say how 'resolved' (and so the resolved notice) treats the quiet streak counter after clear. It also does not say what happens to the streaks once the incident resolves, for example whether clear keeps being sent every minute and what the manager does on each repeat.",
+    "The document does not say what a page_log 'result' value looks like, or when a push counts as 'successfully reached'. It does not say whether a push accepted by the provider but never delivered counts, which decides who gets the resolved notice.",
+    "It is not stated how the ack webhook identifies the person if the provider does not echo the reference (flagged open question). It is also unclear whether an ack by a person who was not paged is accepted.",
+    "The document does not say what happens if both push and SMS fail for the level 1 page, beyond writing a page_log row, or whether the manager retries the page. It does say the next breach pages level 1 only when there are no page_log rows at all, so a failed page with a row would not be retried.",
+    "The document does not say what the level 1 timer or 'current level' initial value is at incident insert, i.e. whether current level is set to 1 when the incident opens.",
+    "The document does not say how the incident manager is told which rule or which service the metrics query applies to, or how many rules exist and what their thresholds are, since the 2%/500/1%/10-minute numbers are described only for one rule."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

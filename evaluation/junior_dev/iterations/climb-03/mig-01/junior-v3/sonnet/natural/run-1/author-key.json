@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Every write inserts a row in the outbox table (users_sync_outbox) in the same MySQL transaction as the write, so the record of 'Postgres may be behind' commits atomically with the write and survives a crash right after commit. The inline sync deletes it on success; otherwise the standalone repair worker polls the outbox (FOR UPDATE SKIP LOCKED), reads the user's current row and applies the guarded upsert (or tombstone), retrying forever with backoff capped at 60 s.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Deletes write a permanent tombstone row (deleted_at set) in Postgres, and the one-statement upsert is INSERT ... ON CONFLICT DO UPDATE ... WHERE deleted_at IS NULL AND version < EXCLUDED.version, so a copy never overwrites or recreates a tombstoned id; it is atomic on the primary key so it cannot race. The tombstone is upserted unconditionally even if the row was never copied. Also copies read current state by id rather than replaying events, and in the reverse direction MySQL's users_erased table is checked under FOR SHARE so a stale copy cannot revive an erased user.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is the last_id in the Postgres table migration_state. Each batch is one Postgres transaction that upserts the rows and sets last_id to the batch's highest id, so the checkpoint moves only with committed data; a crash rolls back the open batch and it resumes from last_id (repeats are harmless due to the version rule). A lease row allows a single runner. It stops when a batch (WHERE id > last_id ORDER BY id LIMIT 2000, read from the replica) comes back empty with the lag condition met, which sets done.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The full comparison job scans every id in both tables (MySQL via replica under the same lag rule), compares all columns including version, and checks for Postgres rows with no MySQL counterpart. A difference is rechecked against the MySQL primary and Postgres once the outbox has nothing pending for that id; only a persistent difference counts as a mismatch and is pushed into the outbox of the current source of truth for the worker to repair. Results are kept in migration_state, and the pass is repeated until one has zero mismatches; a repeated mismatch means investigating the cause.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "One flag, users_write_mode, is moved to paused first. Instances may disagree for up to 30 s, so the operator waits until every instance's exported app_flag_value shows paused and users_writes_inflight (which includes the inline sync) is 0, then drains the MySQL outbox to empty by T0+55, sets the sequence, and flips to dual_pg. Paused instances return a retryable 503 and touch no database. If a wait misses its deadline (T0+45 or T0+55), the operator sets the flag back to dual_mysql, instances resume within 30 s so the pause stays under 90 s, and nothing has moved.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "After the switch Postgres assigns ids from users_id_seq (in dual_pg and pg_only) and copies them to MySQL as explicit ids. At the switch, inside the pause, setval is set to the MySQL max id + 1,000,000, so new ids cannot collide with existing ones. On rollback, inside the pause, MySQL's counter is set unconditionally with ALTER TABLE users AUTO_INCREMENT = (largest id in Postgres or MySQL) + 1,000,000, so ids created in Postgres in the meantime do not collide.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "In dual_pg, each write commits to Postgres with an outbox row there and then syncs to MySQL inline, with the same worker repairing misses, so MySQL stays current or has the pending change in the outbox. Rollback: set paused, wait for all instances paused and in-flight 0, drain the Postgres outbox to 0, set MySQL's AUTO_INCREMENT, then set dual_mysql, within the same 90 s budget (if it fails, set back to dual_pg). The option ends when the operator sets pg_only, no sooner than 14 days after the switch and with a clean comparison and outbox; after that MySQL is no longer updated and rollback is no longer possible.",
+  "decided": true
+ }
+}

@@ -1,0 +1,34 @@
+## Review of ml-01 (self-review, author haiku, natural)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a short 'Terms used in this plan' section defining feature row, store manifest, popular list, fallback, active version, shadow candidate, shadow cohort, gate, compare-and-set, fail static and warm set, so a reader outside the project can follow the steps.
+- Step 14: specified the exact hash recipe (UTF-8 bytes of salt then user ID, SHA-256, first 4 bytes read as big-endian unsigned integer). The draft did not state byte order or encoding, which would let two implementations disagree and break the 'same cohort on every pod' requirement.
+- Components table: the routing record now also lists the ordered exposure-rule list, matching the 'Where the open decision attaches' section, which the draft contradicted.
+- Step 3: rewrote the row rules as a bulleted list (missing, stale, invalid, unusable schema) so each case is easy to find.
+- Step 5 and step 2: replaced terse phrasing ('lesser of', 'fail static') with plain descriptions of the deadline and the pod behavior.
+- Step 13: explained compare-and-set and the pre-warm rule in plain sentences, including why two concurrent switches cannot both succeed.
+- Step 17: expanded the agreement metric names (overlap@20 described as how many items the two lists share) and stated the denominator for the fallback comparison.
+- Step 18: converted the pass conditions into a clear 'all must hold' list and stated that the sample minimum is proposed.
+- Step 21: stated the rollback timing as a comparison with the 1-minute requirement and kept the 60 s drill target in the test plan, so the two numbers are not confused.
+- Kept the section structure, numbering, per-step fields (starts when, data moves, state, on failure), the proposed/assumed labels and the open questions unchanged in intent.
+- Added a short "What this plan does" opening that explains the problem and the three questions the plan answers, in plain language.
+- Moved the jargon into the terms section and added definitions for latency budget and `as_of`, which the original used without explaining.
+- Expanded compare-and-set, fail static and warm set into plain-language definitions with a concrete example of what a race means.
+- Explained the two open-decision options (shadow to 100%, or shadow to A/B to 100%) in one place so a reader does not have to infer them.
+- Spelled out the cohort hash recipe as numbered steps, including why the exact byte order and encoding matter.
+- Clarified that the fallback rate comparison uses the candidate's attempts as the denominator, so both rates cover the same users.
+- Split long bullets into short sub-lists in the table of shadow row fields, the response-check steps and the activation checks, without changing any rule or number.
+- Replaced the 'Open questions' phrasing with direct questions and marked which ones are proposed defaults.
+- Kept every number, threshold, requirement and state location from the original. No design decisions were changed.
+- Added a short "How the pieces fit together" overview before the terms, so a reader meets the components in plain language first.
+- Defined terms the first time they appear: feature, schema, catalog, digest, circuit breaker, enqueue, orchestrator, gateway, null rate, and the meaning of p99 and CAS.
+- Clarified the CAS rule (each successful write increments revision; losers re-read and retry) and the hashing recipe (big-endian, mod 10000).
+- Stated in step 3 that shadow must use the same feature row as the response, and in step 8 that each user sees either the old or the new row, never a mix.
+- Explained the hourly materialization retry (backoff) and the mechanics of the step 17 agreement metrics in plain words.
+- Defined the live A/B slice in the open-decision section, and noted in the glossary which terms are proposals.
+- Kept every requirement, step, Proposed marker, test and open question. The open A/B decision is still unchosen.
+
+### Holes
+- None.

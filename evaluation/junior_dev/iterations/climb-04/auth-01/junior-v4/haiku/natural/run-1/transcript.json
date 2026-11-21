@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where is the CSRF token created and stored, given that a visitor on the login form has no session yet? What does the server do when it is missing or wrong?",
+     "about": "POST /login (email, password, CSRF token) / Decision 12 Login form CSRF"
+    },
+    {
+     "id": "2",
+     "text": "On a successful login the diagram deletes the session matching the incoming cookie. What if the browser has no cookie, or the cookie belongs to a different or expired session? Does the user's other sessions (other devices) stay valid?",
+     "about": "DELETE sessions where id_hash = hash(incoming cookie), if any"
+    },
+    {
+     "id": "3",
+     "text": "For a locked email, what does the 429 login page show and how is the Retry-After value worked out? Does a locked-out user with a correct password still get nothing, and is the existing session of that user affected?",
+     "about": "alt Locked (locked_until is after now)"
+    },
+    {
+     "id": "4",
+     "text": "When the 5th failure sets the lock, the user sees the same 401 as before. How does the user learn that they are now locked? Only on the 6th attempt?",
+     "about": "The 5th failure sets locked_until / 401 login page"
+    },
+    {
+     "id": "5",
+     "text": "What exactly happens when a request waits on the per-email row lock for more than 2 seconds? Is the 503 raised through the 'Database error at any step' path, and is anything changed or counted for that attempt?",
+     "about": "Serializing attempts per email / lock_timeout = 2s"
+    },
+    {
+     "id": "6",
+     "text": "What does the app do with the user_id returned by the session UPDATE on a protected page? Is anything else loaded, and how do other protected routes (not just /dashboard) share this check?",
+     "about": "Request for a protected page / RETURNING user_id"
+    },
+    {
+     "id": "7",
+     "text": "The 'Unknown email or wrong password' branch updates login_failures after a bcrypt check. If the transaction holds the row lock during bcrypt, how long does a login attempt take and what do concurrent attempts for different emails do?",
+     "about": "Note: bcrypt compare, or dummy hash when no user matches"
+    },
+    {
+     "id": "8",
+     "text": "The cookie has no Max-Age, so it is a browser-session cookie. What happens when the user closes and reopens the browser within 30 minutes, and what does 'Set-Cookie clearing __Host-sid' actually send?",
+     "about": "Cookie __Host-sid / Set-Cookie clearing __Host-sid"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The token is a random value. It is set in a `__Host-csrf` cookie on every page that has a form, and the same value goes in a hidden form field. A visitor with no session still gets this cookie. On POST /login the server compares the field with the cookie, using a constant-time comparison. If either is missing or they differ, it returns 403 and changes nothing: no counter, no session, no cookie. This adds a second cookie, which may conflict with the brief's rule that the cookie carries only the session ID, so that is listed as an open question."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The login step deletes only the session that matches the cookie the browser sent, if there is one. With no cookie, nothing is deleted. With a cookie for an expired or unknown session, the DELETE matches zero rows and login still goes ahead. Sessions on the user's other devices are not touched, so they stay valid. The brief asks only that the incoming cookie's session be destroyed."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The 429 shows 'Too many failed attempts. Try again later.' Retry-After is the number of seconds from the database clock now() until locked_until, rounded up. A locked user with the correct password still gets 429 and the password is not checked. The lock does not end that user's existing sessions. The diagram and notes now say this."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The user is not told on the 5th failure. They get the same 401 as before, and they learn about the lock on the next attempt, which gets the 429. This is deliberate. Unknown emails are counted too, so a different 5th response would reveal whether an account exists. The notes now state this."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "If the wait for the row lock passes 2 seconds, Postgres raises a lock-timeout error. That is a database error, so the transaction is rolled back and the response is the 503 sign-in-unavailable page with no cookie. Nothing is counted for that attempt, because the rollback undoes any change. The failure table now lists this case."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The user_id from the UPDATE is attached to the request as the signed-in user. Nothing else is loaded on this check. A single shared check runs before every route except /login, so /dashboard and every other protected route get the same behavior. The protected-page step now says every route except /login."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "Concurrency for different emails is clear from the design: each email has its own row lock, so attempts for different emails do not block each other. They do share the database connection pool, so the bcrypt time limits how many logins run at once. How long one attempt takes depends on the bcrypt cost factor, which the plan does not set. That is listed as an open question and needs a load test."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The cookie has no Max-Age, so the browser keeps it only for the browser session. If the user closes and reopens the browser within 30 minutes, most browsers no longer send the cookie, so the user sees the login page. The server session row still exists until it expires or cleanup removes it. Clearing sends a Set-Cookie with the same name, empty value, the same Path, Secure, HttpOnly and SameSite attributes, and Max-Age=0. The old text said 'no Max-Age' for clearing as well, which was wrong. Whether some browsers restore session cookies after a restart is not known, so it is an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Background. Today every page is public. The new design makes every page except /login require a signed-in user. There are two app instances with no sticky sessions, and they share one Postgres database. All session and failure state therefore lives in Postgres, and every expiry check uses Postgres's own clock (now()).\n\n2. Following one user. The user opens a page with a form, and the server sets a __Host-csrf cookie holding a random token. The page also carries that token in a hidden form field. The user types an email and password and submits. The browser sends POST /login with the email, password and token, and the cookie goes along with it.\n\n3. CSRF check. The app compares the form token to the __Host-csrf cookie. If the token is missing or does not match, the app returns 403 \"Reload the page and try again\" and changes nothing.\n\n4. Email cleanup. If the token matches, the app trims and lowercases the email. If it is over 254 characters, the user gets the same 401 as a wrong password, and no row is written.\n\n5. Opening the transaction. The app starts a Postgres transaction and inserts a login_failures row for this email if there isn't one. It then does SELECT ... FOR UPDATE on that row, with a 2 second lock_timeout. This row lock is what serialises concurrent attempts on the same email across the two instances. If the wait passes 2 seconds, or any other database error occurs, the transaction rolls back. The user gets a 503 \"Sign-in is temporarily unavailable. Try again shortly.\" and nothing is counted. A lock timeout is never reported as a 401.\n\n6. Lock check. If locked_until is in the future, the app commits and returns 429 with a Retry-After header in seconds and the text \"Too many failed attempts. Try again later.\" The password is not compared at all, even if it is correct. Attempts made during a lock change nothing, so the lock is not extended.\n\n7. Password check. If the email is not locked, the app selects the user by email and runs a bcrypt check. If no user matches, it checks against a dummy hash so the timing stays close.\n\n8. Wrong password or unknown email. The app updates the login_failures row. If the window started at least 10 minutes ago, the count restarts at 1. Otherwise it adds 1. The 5th failure sets locked_until, which makes a 15 minute lock. The app commits and returns 401 with the login page and \"Invalid email or password\". Unknown email, wrong password, the 5th failure and an over-long email all get an identical 401. The user finds out about the lock only on the next attempt, which gets the 429.\n\n9. Correct password. The app deletes the login_failures row. If the request carried a __Host-sid cookie, it deletes the session whose id_hash matches the hash of that cookie. It then inserts a new sessions row, with a new random id_hash plus created_at, last_seen_at, user_id and absolute_expires_at (created_at + 12 hours), and commits. The new session ID is 32 random bytes, base64url encoded. Only its SHA-256 hash is stored, so a leaked table gives no usable sessions. The response is 302 to /dashboard with Set-Cookie __Host-sid carrying the raw ID. The cookie is HttpOnly; Secure; SameSite=Lax; Path=/, with no Domain and no Max-Age. Sessions on the user's other devices are not touched. If the session insert fails, the response is a 503 with no cookie, and the counter reset is rolled back too.\n\n10. Browser follows the redirect. GET /dashboard arrives with the __Host-sid cookie. If there is no cookie, the app returns 302 to /login and clears the cookie. Every route except /login goes through this check.\n\n11. Protected page check. The app runs one statement: UPDATE sessions SET last_seen_at = now() WHERE id_hash = hash(cookie) AND last_seen_at > now() - 30 min AND absolute_expires_at > now() RETURNING user_id. If a row comes back, the session exists, has not been idle for more than 30 minutes, and is inside its 12 hour limit. last_seen_at has now moved forward, so the idle clock restarts, and the app serves the page for that user_id with 200. The 12 hour limit never moves.\n\n12. Protected page failures. If no row comes back, the session is unknown, idle too long, or past 12 hours. The user gets 302 to /login and the cookie is cleared. If the database errors, the user gets 503 \"Sign-in could not be checked. Try again shortly.\" and the cookie is kept. This is the fail-closed choice: no protected content is served, and the user is not told they are signed out when they are not.\n\n13. Logout. The user submits a form that does POST /logout with the CSRF token. A missing or mismatched token gives 403 and no change. Otherwise, if there is a cookie, the app runs DELETE FROM sessions WHERE id_hash = hash(cookie). If that succeeds, whether it deleted 0 or 1 rows, the user gets 302 to /login and the cookie is cleared with Max-Age=0. If there is no cookie, the user gets the same 302 and cookie clearing. If the delete errors, the user gets 503 \"Could not sign you out. Try again.\" and the cookie is kept. Logout is idempotent.\n\n14. Background cleanup. Every instance runs the same job every 15 minutes. It deletes sessions that are past absolute expiry or idle over 30 minutes. It also deletes login_failures rows whose window started over 10 minutes ago and whose lock is absent or past. It deletes at most 1000 rows per table per run. If a run fails, the next run retries. Expired rows are ignored by the request checks anyway.\n\n15. Side notes. A lock blocks only new logins for that email. It does not end that user's existing sessions. Because locking is per email, anyone can lock a known user out for 15 minutes. The document accepts that and recommends a per-IP limit later.",
+   "gaps": [
+    "How the server generates and delivers the CSRF token on the login page, and what happens to the __Host-csrf cookie after a successful login or logout (cleared, rotated, or kept), is not stated. The document says only that the server sets it on every page containing a form.",
+    "Where the logout form lives and how it gets its CSRF token is not stated. The logout POST needs the token, but the document does not say which pages carry a logout form.",
+    "Which of the 'rows' the 5th-failure UPDATE and the 'restart window' case touch (for example, whether window_started_at is reset when the count restarts at 1) is only partly described. The exact fields set on the first failure after a clear row are not spelled out.",
+    "How a freshly inserted login_failures row (created with the INSERT-if-missing step) looks, meaning its initial failure_count and window_started_at, is not given. The document does not say how 'clear' is represented for a new row.",
+    "What the app does when the login request is valid but the user already has a valid session cookie for a different user is only covered by 'delete the session matching this cookie'. How that interacts with the response is not stated beyond that.",
+    "Whether the login page is reached through any redirect when an unauthenticated user hits a protected page, and whether the original URL is remembered so the user returns there after login, is not stated. Login always redirects to /dashboard."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

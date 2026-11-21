@@ -1,0 +1,20 @@
+## Review of cred-02 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Cut the first version's bare state labels and the single global [*] that merged two starts. Split the diagram into two composite states (account 2FA settings, one sign-in attempt), each with its own start, so the transitions read correctly.
+- Added a trigger and a failure label to every transition in the diagram, and kept the diagram as the one stateDiagram-v2 the brief asked for.
+- Added a short summary of today's login (password, then start_session at once) and of what the plan changes, in plain words.
+- Added a terms list defining TOTP, secret, time step, drift window, replay protection, recovery code, pending login, seal/unseal, start_session and enqueue_email.
+- Added a where-the-state-lives section for user_totp, recovery_codes, pending_logins and the p2f cookie.
+- Decided: the pending-login token is stored as a hash, the same way sessions store theirs. The table keeps the replacement secret in a pending column until it is confirmed.
+- Rewrote the notes as numbered steps, each with trigger, action, which data it keeps and what happens on failure. Failure handling is placed at each step, not repeated in a separate table.
+- Merged setup and replacement into one confirmation rule (step 1 and step 2 point to the same four outcomes), instead of two separate descriptions.
+- Replaced the vague 'other sessions are handled' note with the exact rule: every other session is signed out on confirm, and the current session stays.
+- Kept every requirement of the brief and the first version: the Security-settings setup, QR code, unconfirmed secret ignored at sign-in, RFC 6238 parameters, drift window, replay rule, seal() for secrets, hashed recovery codes, 10 codes shown once, old codes dead, password check unchanged, no session during pending login, 5-minute and 5-wrong-entry limits with restart from password, recovery-code sign-in with email and remaining count, email not awaited, lost-phone setup straight away, and disable with password plus code.
+- Kept the product decision on lost phone with no recovery codes marked open and not designed.
+- Added open questions for the unresolved gaps: whether replacement needs re-authentication, whether a replayed code counts as a wrong entry, and whether an unconfirmed setup expires. These are not decided by the brief.
+
+### Holes
+- None.

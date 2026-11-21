@@ -1,0 +1,60 @@
+## Review of mig-02 (junior-v6, author haiku, natural)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Reordered the document: summary and terms before the diagram, then modes and rules, the failure table, and open questions last.
+- Rollback from both: billing_mode now goes to old_only first, so new-engine charges stop. The first version kept the mode at both through steps 1 to 4.
+- Added catch-up before the flip. From new_only it is the replay, which computes without charging. Corrected the claim that the old engine's last shadow state is the base for a rollback.
+- Added release of a charge claim when the provider shows no charge, so the old engine can charge that period. Without this, a due charge would be dropped.
+- Specified the double-charge guard: a unique-key claim row in the ledger, with the same key as the provider idempotency key.
+- Gate mechanics: a person sets the next mode, and the controller refuses out-of-order moves and moves whose gate is not met.
+- Automatic rollback is measured and run by the rollout controller.
+- Failure table: added the held unknown charge, provider unreachable during the key check, a failed replay, and controller down.
+- Diagram substates now match the rollback steps.
+- Open questions added: minimum sample for the 2 percent trigger, controller as single point of failure, hold on new charges during the new_only replay, hold time limit, decommission blocking, and the assumptions to confirm.
+- Changed: Charge claims have three states (claimed, charged, released) and are never deleted, so paid and release are row updates. Why: Q12, Q13 and Q14 showed the first version did not say what a claim becomes.
+- Changed: The old engine skips a period whose claim is claimed or charged, and takes over a released claim with a conditional update. Why: the first version skipped any period with a claim, which would block the takeover after release (Q14).
+- Changed: Rollback step 3 drains in-flight new-engine charges before the provider check. Why: Q14, a release must not race a running new-engine charge.
+- Changed: Added a numbered list for one charge, with the claim state at each point. Why: Q13.
+- Changed: The replay now ends when a pass finds no new events, and later events are covered by the old engine's normal run after the flip. Why: Q11.
+- Changed: On-call starts a manual rollback through the rollout controller, which runs the steps. Why: Q10, the first version did not say who starts or runs it.
+- Changed: The old engine's normal run charges due periods after the flip, and no special pass runs. Why: Q9.
+- Changed: Added open question 7 on the definition of due. Why: the brief does not define it.
+- Changed: Rewrote for a newcomer. Added terms for config service, drain, paid, catch-up, replay, held period and rollout controller. Steps are numbered in order. Kept every stated fact from the brief and the first version, including the mismatch and gate rules, the 35-day rules, the rollout record and the assumptions list.
+- Moves now go through the rollout controller, which checks the next-mode and gate rules and then writes billing_mode. The first version said the controller did not change the mode. This was needed so it can refuse bad values (Q20).
+- Added a failure row for a forward move when the config service cannot be written (Q20).
+- Rollback step 2 now says the old engine's normal run may charge during the drain, and skips claimed and charged periods (Q15).
+- Each charge now has start and outcome reports to the controller, and the drain waits on open starts (Q16).
+- Named the source for each side of the nightly comparison in shadow and in both (Q17).
+- Added the day-35 arithmetic for replay to the new_only path and open question 7 on replay length (Q18).
+- Added open question 8 on refund or credit for a paid period that differs from the old invoice (Q19).
+- Added open question 6 on direct writes to the config service (Q20).
+- Merged the separate claim and charge rules into one per-charge section, and combined the gate text into the moving-forward steps, to cut repetition.
+- Added open question 11 listing the assumptions and the unnamed nightly-job tables, and open question 10 on due periods, so every assumption is in one place.
+- Added a notes section before the steps that says what each mode does and where state lives, with the diagram kept in place.
+- Shadow notes: added that the new engine writes no claims in shadow, because it stops at the mode check (Q21).
+- Rollback from both, step 1: catch-up now runs passes until a pass finds no new events, the same check as the replay (Q24).
+- Rollback from both, step 5: the takeover of a released claim sets it to claimed, then the old engine charges and sets charged on success (Q22).
+- Each charge, step 5: added that the plan does not say who settles an unknown charge outside a rollback (Q23).
+- Moving forward, step 4: added that retiring the old engine ends the return to old_only and that the brief does not say what else it involves (Q25).
+- Open question 4: added that nothing settles an unknown charge outside a rollback and the brief does not name who runs the key check there (Q23).
+- Open question 5: added the drain's time limit for a charge with a start report and no outcome report, and who sets it (Q26).
+- Open question 12 added: what retiring the old engine at day 35 involves is not in the brief (Q25).
+- Rewrote the whole document in the order the skill asks: summary paragraph, terms, diagram, notes on the diagram, steps, failure table, open questions. Added a line that the controller is not built yet, from the brief.
+- Summary: rewritten as short sentences that walk through the main flow from start to finish, and state the no-double-charge and no-dropped-charge rules in plain words.
+- Terms: every term is now defined in one plain line. Added 'Skipped events' (it was only explained in an answer), 'Drain', 'Catch-up', 'Replay', 'Held period', 'Paid' and 'Due period'. 'Due period' is marked as assumed, since the brief does not define it.
+- Diagram: kept the same states and transitions, and the rollback substates for both paths. Relabelled transitions in plain words, and wrote 'percent' inside the diagram labels to keep Mermaid safe.
+- Notes: each mode now says what it does, what it writes, and what it stops doing. Shadow says it writes no claims. Both and new_only say where each comparison reads its invoices. Gate counters and approvals are stated as a proposal to confirm, held in the rollout record.
+- Steps: merged the gate rules into the forward-move steps, so each step says what starts it, what it does, what keeps its data, and what happens when it goes wrong. Each-charge steps are kept in order, with the claim state at each point.
+- Rollback: kept the catch-up, flip, drain, mark-paid, old-engine-charges and close steps, with the same order and rules. The replay for new_only is described once, with its passes and deadline, and the step list refers to it in words instead of by a code.
+- Failure table: merged the notes and the first table into one table. Kept every row from the first version, including the 'rollback still open at day 35' row and the failed config write on a forward move.
+- Open questions: removed the cross-references to other question numbers. Each open point now states its own context in the question itself. Kept all twelve points, with the assumptions moved into the last item.
+- Cut: repeated statements of the same rule (for example the claim check, the 'skip if claimed or charged' rule and the controller's refusal rule now appear once each, in the place they apply). Cut the 'Q' and cross-reference codes. Nothing from the brief or the first version was dropped; the rules, numbers, limits and failure cases were checked line by line against the first version.
+- Added (no new mechanism): the deadline and failure rules for the replay are stated where the replay is described, and the nightly job's read-only role is stated in one sentence.
+
+### Holes
+- Q18: The 35-day clock starts when the rollout enters new_only, and rollback from new_only is allowed until day 35. How does that fit with the usage event log keeping only 35 days of events, given that the replay must finish before the oldest skipped event expires? What is the practical deadline for a manual rollback near day 34? (author: The oldest skipped event arrived about when the rollout entered new_only, so it leaves the 35-day log about day 35. The replay must finish before then, so a rollback started near day 34 has about a day for the replay. How long a replay takes is not known, so the practical last start day is not known. The plan does not set a safe start day. This is open question 7.)
+- Q23: A period is 'held' while its claim is claimed with an unknown charge. If the provider check shows a charge, step 3 sets it to charged. What if the check happens when no rollback is running, such as an unknown charge in plain 'both' or 'old_only'? Who settles it then? (author: The plan has no settle path for an unknown charge outside a rollback, and the brief does not give one. The period stays held until a provider check settles it, but nothing names who runs that check in plain both or old_only. The gap is noted under each-charge step 5 and open question 4.)
+- Q25: Day 35 in new_only: what exactly happens when the old engine is 'retired'? Who does it, and what is removed or stopped? (author: The brief does not say what retiring the old engine involves, such as which jobs stop or what code or data is removed. The plan only says it can no longer return to old_only. This is added as open question 12, and step 4 now says the brief does not cover it.)
+- Q26: The drain waits for a new-engine charge with a start report and no outcome report. If the new engine's worker crashed after the start report, how long does the drain wait before treating it as unknown, and who decides? (author: The brief sets no time limit for a drain that waits on a charge with a start report and no outcome report, and it does not say who would decide one. The plan has no answer. It is added to open question 5, next to the missing outcome-report question.)

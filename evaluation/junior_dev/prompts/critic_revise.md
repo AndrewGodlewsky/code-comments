@@ -1,0 +1,1 @@
+You wrote the document below from the brief shown. A reviewer who saw only the document made the points listed. Revise the document to address the points you agree with, keeping its intent and format. Put the full revised document in `artifact` and list what you changed in `changes`. Use no tools.

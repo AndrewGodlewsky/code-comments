@@ -1,0 +1,29 @@
+## Review of ev-02 (junior, author haiku, seeded-implicit)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Added a summary paragraph saying what the service does and why the Postgres table is the work queue (the message queue's 15-minute maximum delay and lack of querying).
+- Added a terms section defining event, subscription, delivery, lease, dispatcher, worker, dead letter and the four delivery states.
+- Rewrote the Dispatcher step to say how it matches, how the unique key makes duplicates harmless, and what happens if it crashes before the ack.
+- Replaced the vague lease note with the claim mechanism: FOR UPDATE SKIP LOCKED, 60 s lease, attempts counted at claim time, and what happens if a worker dies mid-POST.
+- Added the subscription status check before each send, which cancels pending deliveries for disabled subscriptions.
+- Added the full retry schedule (30 s, 2 min, 10 min, 30 min, 1 h, 3 h, 6 h) and the 8-attempt limit, which the first version omitted.
+- Added the classification of each result, including 410, other 4xx and a decided rule for 3xx redirects.
+- Made dead letter a state in the deliveries table, with dead_at, and described how support lists and replays it, keeping the delivery id.
+- Added a 14-day hourly cleanup of dead rows only.
+- Restored requirements the first version dropped: the 10 s timeout, the X-Webhook-Id and signature headers, signing on every attempt, at-least-once delivery, no ordering, several workers, and the database access limits.
+- Added a failure table covering the main crash and error cases.
+- Left open the question of whether delivered and cancelled rows are ever deleted, since the requirements are silent on it.
+- Cut the one-line component list and the bullet notes, because each fact now sits once at the step or section it belongs to. Kept every fact from the first version, including the dedupe key, leases, HMAC and webhook-id headers, the 8-attempt schedule, the permanent-failure and 410 rules, the 14-day dead-letter retention and replay, and disabled-subscription handling.
+- Added a summary that says how the existing system works today (core app stores endpoints, outbox relay publishes events), then the main flow and why the table is the queue. Dropped the first version's 'Workers use leases, so a crash doesn't lose work' line and its vague wording in favour of the exact lease and crash behaviour in step 2.
+- Added a terms section defining Event, Subscription, Delivery, Attempt, delivery states, Dead letter, Replay, Lease, Ack, Dispatcher, Worker, retryable and permanent failure, HMAC-SHA256, and FOR UPDATE SKIP LOCKED, which the junior's Q1 to Q4 showed a newcomer would not know. Ack and visibility timeout were added from the queue facts because the Dispatcher's crash handling depends on them.
+- Rewrote the Mermaid flowchart to run from the domain-events message to delivered, dead letter or cancelled. It now shows the subscription-status check, the 410 disable path, the attempts-used check that sends a retryable failure back to pending, the admin replay, and the hourly cleanup. Added a short 'where state lives' note after the diagram, as the diagram layout requires.
+- Clarified the retry schedule. The first version listed the waits as 'after attempts 1 to 7', which the junior had to map by hand. It now states each wait by the attempt that precedes it, with the same seven values.
+- Put failure handling at each step, not in a separate table, so each failure sits next to the step that causes it. Covered all six rows of the first version's failure table, adding the failed-result-write case as a pointer to step 2.
+- Rewrote step 3 to say why signing happens on every attempt (receivers reject t older than 5 minutes) and why the body is signed raw. Rewrote step 4 to give the reason for not following redirects, a decision the first version left unexplained.
+- Moved disabled-subscription handling into its own section after the steps, since it spans steps 1, 3 and 4. Added a short 'Rules this design keeps' list, merging the first version's requirement notes and the brief's guarantees into one place.
+- Kept the one open question about deleting delivered and cancelled rows and removed the 'Holes' wording, since it is a document, not a report. Net effect: the file is about 1.5 times the first version's length, with no requirement dropped.
+
+### Holes
+- None.

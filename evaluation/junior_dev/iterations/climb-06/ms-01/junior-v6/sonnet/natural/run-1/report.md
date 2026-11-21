@@ -1,0 +1,39 @@
+## Review of ms-01 (junior-v6, author sonnet, natural)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Removed the wrong arrow from the timer box to the refuse-claim box; timer now stands alone and the note explains the claim reads status or expires_at.
+- Made the claim result an explicit HTTP reply to Order.
+- Added CHECKOUT_FAILED status, retry handling and failure branch for an unanswered Inventory or Payment call.
+- Payment now answers the charge call 202 accepted; Order sets AWAITING_PAYMENT before the call.
+- Added one open order per cart id rule so a double press returns the same order.
+- Snapshot and OrderConfirmed now carry the cart id so Cart knows which cart to empty.
+- Added a table of what the customer sees at each final status.
+- Order now publishes OrderFailed on the late-success cancel path so the hold is released; release is a no-op if already expired.
+- Named the RETRYING refund status, said Payment runs the retry job, and added the 35-minute silent-provider timer to the diagram and trigger table.
+- Noted that a lapsed hold is expected and added Open questions for the unknown hold-length reason and retry counts.
+- Added a diamond (O13) so that on PaymentSucceeded, Order claims only if the order is still AWAITING_PAYMENT, otherwise publishes RefundRequested (O14); this was only described in prose before.
+- Silent-provider timer now keeps asking while the provider says undecided; added failure branch 8 and a trigger table update.
+- Webhook is matched to the payment by provider reference; added to the diagram boxes and Assumptions.
+- Added failure branch 9: events for an order in the wrong status are ignored, and spelled out the expected-status rule.
+- Defined the outbox relay, gave every service an outbox table, and added failure branch 10 for a down relay.
+- Customer-facing table now says PENDING and AWAITING_PAYMENT show Processing.
+- Added an open question about stopping or alerting on a long-undecided charge.
+- Added box and edges for a claim call that gets no answer: retry, then CHECKOUT_FAILED with RefundRequested and OrderFailed, because money is already taken.
+- Changed the Payment charge box: store the payment with the order id first, then store the provider reference from the provider's reply (reference was wrongly stored before the provider was called).
+- Added an edge so a charge the provider never accepts ends as DECLINED with PaymentDeclined, so the order leaves AWAITING_PAYMENT.
+- Rewrote failure branch 6 into four sub-cases (reserve, charge from Order, charge to provider, claim) and updated the CHECKOUT_FAILED line in the customer table, the Payment storage row, webhook matching assumption and open questions.
+- Added an opening paragraph that says how checkout works today (monolith), the main flow and why it is shaped this way
+- Added a Terms section: service, hold, claim, release, snapshot, idempotency key, provider, webhook, event, outbox and relay, retry job and timer
+- Merged the 'How to read this' bullets into one line above the flowchart and moved the summary and terms before the diagram
+- Removed the I6 node reference from the chart note; the notes now describe the timer and claim in words
+- Added a numbered Steps section in time order, each with trigger, action, stored data and failure handling; this replaces the trigger table and the ten numbered failure branches, which repeated each other
+- Replaced the failure branches with one failure table
+- Merged the Design rules into a shorter Rules list and moved outbox and relay definitions to Terms
+- Kept the flowchart, the stored-data table, the customer-status table, the assumptions and the open questions
+- Kept every fact from the first version: 10-minute hold, 30-minute webhook, order id as key, all-or-nothing reserve, refund never dropped, cart emptied only on confirm, no partial orders
+- Cut the separate trigger table, now covered in the steps, and some repeated wording
+
+### Holes
+- None.

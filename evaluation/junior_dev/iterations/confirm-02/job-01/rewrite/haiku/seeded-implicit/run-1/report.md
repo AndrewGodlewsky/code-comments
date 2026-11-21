@@ -1,0 +1,21 @@
+## Review of job-01 (rewrite, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Rewrote the document for a newcomer, with a short summary, a terms section, the diagram, the steps in order, a failure table and open questions, in that order.
+- Defined every term a newcomer would not know (schedule, fire time, run, attempt, lease, heartbeat, reaper, SKIP LOCKED, idempotent handler), with the IANA timezone example.
+- Kept every fixed requirement from the brief: 50 schedules per tenant, 5-minute minimum, 3 workers to 10, no leader, Postgres only, 30-second heartbeat, 2-minute expiry, 3 attempts, 1-minute and 5-minute waits, the presumed-dead attempt counted as used, the stale-worker write block, pause and disable cancelling queued runs only, no catch-up on resume, the 90-day history, and idempotent handlers.
+- Added a lease_token fence and used it in the heartbeat, the finish write and the reaper, so an old worker's writes are refused. The first version had no mechanism for this.
+- Replaced the vague notes on overlap and uniqueness with concrete constraints: unique (schedule_id, scheduled_for), a partial unique index for one queued or running run per schedule, and unique (run_id, attempt_no).
+- Merged the separate retry_wait state into queued with not_before, which is one mechanism instead of two.
+- Added the missing columns the flow needs: attempt_count, not_before, lease_token, attempt_no, started_at, ended_at and the lost outcome. Each is explained in the diagram comments or the steps.
+- Made claims check that the tenant is active and the schedule is enabled, so a missed cancel cannot start a run during a pause.
+- Merged the repeated statements about one run per fire time and about skipping into the create-runs step, so each rule appears once.
+- Moved the build tasks into their own section, separate from how the system runs.
+- Put the failure cases in one table, with no codes or cross-references.
+- Stated the decision that queued and waiting-to-retry runs count as in progress, and that the 90 days is measured from the fire time, and listed both as open questions because the brief does not settle them.
+- Listed as an open question whether a worker that lost its lease must stop the handler, since the brief only requires that its writes are blocked.
+
+### Holes
+- None.

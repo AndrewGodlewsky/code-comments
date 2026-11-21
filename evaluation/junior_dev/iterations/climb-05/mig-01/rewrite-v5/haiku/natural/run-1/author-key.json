@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The change's outbox row (user_id, version, op) is written to the owner database in the same transaction as the change, so a crash after the MySQL commit leaves it in MySQL's user_sync_outbox. The mirror worker in each app instance then copies pending rows to Postgres through the copy function and deletes a row only after Postgres confirms and the version is unchanged; the inline dual-write copy is best-effort and never fails the request.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Erase writes a tombstone in the owner and the mirror writes one in the other database, and the copy function checks for a tombstone under the per-id advisory lock before inserting. The erase's mirror delete takes the same lock, so an in-flight copy either lands before the delete (and is removed) or runs after the tombstone exists (and is skipped).",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress lives in the one-row migration_backfill table in Postgres (last_id, lease owner, lease expiry, status), and last_id is updated in the same Postgres transaction as the batch's rows, so progress and copied rows cannot disagree. The backfill stops when a batch returns fewer than 2,000 rows, which marks it complete, and stops and alerts on a batch error without skipping ids.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The compare pass walks the replica in id order comparing version and fields, rechecks each candidate on both primaries, and repairs only confirmed mismatches through the copy function under the version rule, recording each pass in migration_compare. The design says what happens to a row found only in MySQL (a mismatch that queues a repair), but it does not specify what happens to a row that exists only in Postgres, so that case is undecided.",
+  "decided": false
+ },
+ "q10": {
+  "answer": "Each database's own fence row is the authority: writes take FOR SHARE on it and check owner and mode, so a write that reaches the old owner after the flip re-routes to the new owner, and the flag users.source only picks the first try. The freeze waits for in-flight writes, and the drain has a 60-second deadline; if it expires before the Postgres ownership flip, MySQL is unfrozen and the switch stops, but after that point there is no stopping, the MySQL owner update is retried until it succeeds, and Postgres writes return 503 while Postgres is down.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns ids from users_id_seq after the switch, set at each switch to GREATEST(N, current) + 1,000,000, where N is MySQL's AUTO_INCREMENT value read while MySQL is frozen, so the ranges do not overlap. On rollback, MySQL's AUTO_INCREMENT is set to GREATEST(current, PG max id + 1) before MySQL becomes owner again, so MySQL never reissues a Postgres id.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "While Postgres owns writes, its outbox is copied into MySQL through the copy function (version rule, tombstones included), and a reverse compare with Postgres as reference runs continuously. Rollback freezes Postgres, drains its outbox into MySQL under a 60-second deadline, moves the MySQL counter and owner, then flips the Postgres owner and the users.source flag, with the same pause pattern as the forward switch. The rollback option ends at step 13, at least 14 days after the switch, when mirroring to MySQL stops and MySQL write grants are removed, which cannot be undone.",
+  "decided": true
+ }
+}

@@ -1,0 +1,212 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the publisher marks a row handed_off after the broker confirm, it says the row lock is held across the confirm. What happens to a pending service row if the broker confirm is slow or never comes? Does the transaction time out, and what state is the row left in?",
+     "about": "Step 5, Publisher"
+    },
+    {
+     "id": "2",
+     "text": "What starts the Sender in the service, and how often does it look for due rows? The document says it claims rows but not what triggers it after the consumer inserts one.",
+     "about": "Step 4, Sender"
+    },
+    {
+     "id": "3",
+     "text": "How does the Sender move a row from queued or retry to sent or failed in the inbox, and where is the status event written? Is the outbox row written in the same transaction as the outcome?",
+     "about": "Step 4, Status outbox"
+    },
+    {
+     "id": "4",
+     "text": "What does the service do with a 'sent' or 'failed' outcome when the status event is lost or never reaches the monolith? Who notices besides the 1-hour sweep?",
+     "about": "Step 5, Status consumer and Sweep"
+    },
+    {
+     "id": "5",
+     "text": "I4 says an attempt is 'in doubt' if send_started_at is set but no outcome was recorded. How does the sender check this on each claim, and what exactly counts as 20 hours: since send_started_at of the first attempt or of the latest claim?",
+     "about": "I4, No resend past the key window"
+    },
+    {
+     "id": "6",
+     "text": "The Retry policy says attempts increment only on a recorded failure, but each claim sets send_started_at. How does a retry after a recorded failure set next_attempt_at, and what happens to send_started_at and the in-doubt rule across retries?",
+     "about": "Step 4, Retry policy"
+    },
+    {
+     "id": "7",
+     "text": "In Step 7, which side actually renders the email for service rows, and what does the monolith's status row hold for a 'sent' notification (accepted_at, attempts)? How does the monolith learn the final outcome of a failed row?",
+     "about": "Step 7, Data that moves"
+    },
+    {
+     "id": "8",
+     "text": "What are flags and where do they live (flag store)? Who sets 'notifications.route.<type>' and how is it flipped in practice?",
+     "about": "Step 2, enqueue_notification and flags"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The publisher's lock covers one row and one broker confirm. The confirm has a bounded timeout (value open, Open decision 4). On a timeout or error the transaction rolls back and the row stays pending; the next poll publishes it again, and the service dedupes on id (I3). If the broker stored a message but the confirm was lost, the same happens. Enqueue never waits on the publisher, so checkout is unaffected. The sweep pages after 5 minutes of pending."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The Sender is a poll loop every 5 s, the same cadence as today's worker. It claims up to 50 due rows (queued or retry, next_attempt_at <= now()). The consumer sets next_attempt_at = now() on insert but does not wake the Sender, so a new row waits at most about 5 s. A wake-up signal is not needed for the brief and is not added."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Each attempt has a claim transaction (committed before the send) and an outcome transaction. The outcome transaction changes the inbox state and, for terminal states only (sent, or failed on the 5th failure), writes the outbox row in the same transaction. A retry failure sets state = retry and next_attempt_at, and writes no outbox row. The outbox loop then publishes the event and marks it published only after broker confirm."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "A confirmed status event is held by the broker until the monolith acks it, so a confirmed event is redelivered rather than lost. An outbox row that is not confirmed is retried by the outbox loop, and the service pages if it stays unpublished for more than 5 minutes. Anything still missing shows up as handed_off in the monolith and is paged by the 1-hour sweep. The sweep pages only and never resends. The service inbox is the authoritative record for any manual check."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The in-doubt check runs when a claim finds an expired claimed_until with no recorded outcome. Then it compares now() with send_started_at. send_started_at is set once, on the first claim, and is never reset, so the clock runs from the first attempt. This matches MailRelay's 24-hour window, which counts from the first accepted send with the key, and retries are only about 15 minutes apart. Past 20 hours, the id is failed and paged without a send."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The failure outcome increments attempts, clears claimed_until, and sets next_attempt_at = now() + backoff[attempts - 1] minutes (1, 2, 4, 8). send_started_at is not reset. The in-doubt rule only applies to reclaims of an expired lease, never to a retry after a recorded failure, because a recorded failure means no send is in doubt. Lease expiry does not consume an attempt."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The service renders the email for service rows (step 4 Sender, using the shared templates from step 3). The monolith row for sent holds status = 'sent' and attempts, copied from the status event. accepted_at and last_error are not in the monolith schema; they stay in the event and the service inbox. For a failed row the monolith gets status = 'failed' and attempts from the event. The service pages on-call on the 5th failure. The monolith learns the outcome only through notification.status, and the 1-hour sweep covers a missing event."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Flags live in the monolith's runtime flag store and are read with flags.get(name). The platform facts say a change reaches every monolith instance within 10 s. The files do not say which tool or UI sets notifications.route.<type>, who is allowed to flip it, or how a flip is recorded. That is not known from the brief, so it is listed as Open decision 8."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The claim selects rows in queued or retry with next_attempt_at <= now(). A row whose lease is still live is also queued or retry. What stops a second Sender from claiming a row that another Sender is mid-send on?",
+     "about": "Step 4, Sender (claim)"
+    },
+    {
+     "id": "10",
+     "text": "What does the service do when rendering the email fails (bad template or payload)? Open decision 2 only describes today's monolith behaviour. Is that a failed attempt with retry, or something else?",
+     "about": "Step 4, Sender (send step 3, render)"
+    },
+    {
+     "id": "11",
+     "text": "How is the parity check done? The service records its rendering in `shadow`. Where does the monolith's rendering of the same payload come from, who compares the two, and where does a mismatch show up?",
+     "about": "Step 6, Shadow soak and parity check"
+    },
+    {
+     "id": "12",
+     "text": "After the in-doubt check passes (under 20 hours), is the resend the same normal send in step 3, with the same key? And is there any limit on how many times a row can be reclaimed after lease expiry, if the process keeps crashing?",
+     "about": "Step 4, Sender (in-doubt check)"
+    },
+    {
+     "id": "13",
+     "text": "Who generates the notification id, and what are `email` and `payload` at enqueue time? Does the publisher read them from the same notifications row to build notification.requested?",
+     "about": "Step 5, Publisher and Step 2, enqueue_notification"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The claim query selects only rows with no live lease: claimed_until IS NULL OR claimed_until < now(), with FOR UPDATE SKIP LOCKED. The claim sets claimed_until in its own short transaction, which is committed before the send. A second Sender therefore skips the row while the lease is live. A row whose lease has expired is a reclaim, and the in-doubt check runs on it. The file now says this in the Sender claim."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "A render error is a failed attempt. It goes through the same outcome transaction as a MailRelay error: attempts + 1, last_error stored, backoff, and failed plus page on the 5th attempt. This keeps the brief's retry policy exactly. Open decision 2 asks whether to fail template errors at once instead. The plan does not do that by default, and the file says so."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The monolith renders each shadow row with its own copy of the templates, in the shadow publisher, and puts render_sha256 (SHA-256 of subject and body, or null if rendering fails) into notification.shadow. The service renders the same payload and writes its own hash, the message hash and match to its shadow table. The service's shadow consumer does the comparison. A mismatch is a row with match = false, and the step 6 gate counts those rows. Note: notification.shadow now has one field more than the brief's same-fields rule, which the file records."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes. After the in-doubt check passes (under 20 hours since send_started_at), the resend is the normal step 3 send with the same key. There is no limit on reclaims. An expired lease does not consume an attempt, so a row whose crash happens before MailRelay is called can be reclaimed until the 20-hour rule ends it. This is a hole, not a solved case. It is recorded as open decision 9 for a decision on whether to cap reclaims."
+    },
+    {
+     "id": "13",
+     "tag": "checked",
+     "text": "Confirmed in existing/notifications.py: enqueue_notification generates the id with uuid4 and writes user.id, user.email and payload into the row, inside the caller's transaction. The publisher reads that same row and copies id, type, user_id, email, payload and created_at into notification.requested. No other read is needed. The file now states this under Message contracts."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "When MailRelay drops a send because it already saw the idempotency_key, what does it return to the caller? Does the Sender treat that as accepted and set accepted_at, or as an error?",
+     "about": "Step 4, Sender (send) and Step 1"
+    },
+    {
+     "id": "15",
+     "text": "How often does the monolith publisher poll for pending service rows, and does it handle many rows per poll or one at a time?",
+     "about": "Step 5, Publisher"
+    },
+    {
+     "id": "16",
+     "text": "The publisher commits handed_off only after the broker confirm. Could the service send and publish a status event before that commit lands? If so, the status update matches no row and is acked. What happens to that row?",
+     "about": "Step 5, Status consumer (UPDATE ... WHERE status = 'handed_off')"
+    },
+    {
+     "id": "17",
+     "text": "Which rows does the shadow publisher cover: all rows, or only some routes or types? And does shadow publishing apply to rows the monolith sends itself?",
+     "about": "Step 5, Shadow publisher"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "The overview says that if MailRelay has already accepted a send with the same key in the last 24 hours, it drops the new one and returns success. So the Sender treats a repeated key as accepted: it takes the normal accepted path, sets accepted_at to the time of that success response, and writes the terminal status event. There is no separate error path for a drop. The file now says this in the Sender's Accepted outcome."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The publisher polls every 5 s, the same cadence as the old worker and the Sender. Each poll selects up to 50 pending service rows, oldest first, and handles them one at a time, each in its own short transaction. One at a time keeps each lock to a single row and one confirm. Throughput is limited by broker confirm latency: 50 rows per poll is about 10 rows per second if each confirm is fast. A slow confirm delays later rows in the same poll, and the 5-minute pending sweep catches a stall. The lock query repeats the route and status checks, so a row another instance has already handed off is skipped. The file states the cadence, batch size and one-at-a-time rule in the publisher item."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The race as posed does not happen when the commit succeeds. The publisher takes the row lock before it publishes, so the service cannot send and report status before the lock is held, and the status UPDATE waits on that lock. After the commit the row is handed_off and the UPDATE matches it. The real gap is the rollback case: the broker stored the message, the confirm was lost, the publisher rolls back, and the row stays pending. The service may already have sent and reported status. With the old WHERE status = 'handed_off', that event would match nothing, be acked, and leave the row stuck. The status consumer now matches status IN ('pending', 'handed_off'). After a rollback the status update applies to the pending row and makes it sent or failed, so the publisher never publishes it again. The publisher's lock query also repeats the pending check. The file records this in the status consumer and in the new failure bullet."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The shadow publisher covers every row created after a fixed shadow start time set in its config, for all routes and all types, including rows the monolith sends itself. Step 6 is a parity check across all three types before shipping_update moves, and shipping_update rows are still monolith-routed during that check, so limiting shadowing to service-routed rows would leave the first cutover unchecked. The start time stops the publisher from re-publishing the table's history when it first turns on. Shadowing does apply to monolith-sent rows. It only renders and records, so it does not affect sends. Shadow volume roughly doubles message and render load, which step 6's queue-depth gate covers. The file states the scope and the start time."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one `shipping_update` notification from checkout to its final status.\n\n1. **Preparation before any traffic.** The old worker (`run_worker`) is changed to send each email with `idempotency_key = row.id`, and to reuse that key on every retry. MailRelay remembers an accepted key for 24 hours and drops repeats. This fixes the ~30 duplicates a week caused by a crash after MailRelay accepted a send but before the batch commit. After a crash the batch rolls back, the row is picked up again within 5 s, and MailRelay drops the repeat.\n\n2. **Routing columns.** The monolith `notifications` table gets `route` (default `monolith`), a new status `handed_off`, `handed_off_at`, and `shadow_published_at`. The old worker's select becomes `route = 'monolith' AND status = 'pending'`. So a row is owned by exactly one side (I1), and only the owner sends it.\n\n3. **A user action creates the row.** Something in the monolith, such as checkout, calls `enqueue_notification` inside the caller's transaction. It generates a uuid4 `id` and writes the row with `user.id`, `user.email` and `payload`. It reads the flag `notifications.route.shipping_update`. Only if the flag is exactly `\"service\"` does it set `route = 'service'`. Any other value, or a flag read error, gives `monolith`, so checkout is never blocked. The row starts as `pending`. The state lives in the monolith `notifications` table. If the transaction fails, the whole thing rolls back. Flags reach every monolith instance within 10 s.\n\n4. **Rows routed to the monolith.** The old worker polls every 5 s and takes up to 50 rows with `FOR UPDATE SKIP LOCKED`. It sends each one and commits once per batch. The rest of this walkthrough covers the `route = 'service'` path.\n\n5. **The publisher hands the row off.** Every 5 s, a monolith loop selects up to 50 ids with `route = 'service' AND status = 'pending'`, oldest first. It handles them one at a time, each in its own short transaction.\n   - It locks the row with `FOR UPDATE SKIP LOCKED`, repeating the route and status checks in the lock query.\n   - It publishes `notification.requested` (`v`, `id`, `type`, `user_id`, `email`, `payload`, `created_at`), copied from the same row. It waits for the broker's confirm, which means the message is stored.\n   - It sets `status = 'handed_off'` and `handed_off_at`, then commits.\n   - On a timeout or error it rolls back. The row stays `pending` and the next poll retries.\n   - If it crashes after the confirm but before the commit, the row is published again. The service dedupes on id.\n   - The publisher ignores flags (I5). Enqueue still succeeds if the broker is down.\n\n6. **The service consumer stores the message.** The Notification Service has its own database. For each message, in one transaction, it runs `INSERT ... ON CONFLICT (id) DO NOTHING` into `inbox` with `state = 'queued'` and `next_attempt_at = now()`. It commits, then acks. It never acks before the commit. The broker is at-least-once and redelivers an unacked message after 30 s. A redelivered duplicate conflicts on the insert, is acked, and leaves the existing row untouched (I3). If the broker is down, the consumer waits and reconnects.\n\n7. **The sender claims the row.** The sender polls every 5 s. It selects up to 50 `queued` or `retry` rows where `next_attempt_at <= now()` and there is no live lease, using `FOR UPDATE SKIP LOCKED`. The claim is a short transaction committed before the send.\n   - If `claimed_until` is not null, an earlier claim never recorded an outcome, so the earlier send may have been accepted. If `send_started_at` is more than 20 hours ago, the sender sets the row `failed`, writes a status event, pages on-call, and sends nothing (I4).\n   - Otherwise it sets `claimed_until = now() + lease`, and sets `send_started_at` only if it is still NULL.\n   - An expired lease does not consume an attempt.\n\n8. **The send.** The sender renders the email using the shared template package, which was checked against the monolith's output by golden tests. Rendering must use only the message payload. The sender then calls MailRelay with `idempotency_key = id`. The same key is used on every attempt, using the service's own MailRelay credentials.\n\n9. **The outcome is recorded, in one transaction.**\n   - If MailRelay accepts, or drops a repeat under the same key, the row becomes `sent`. The sender sets `accepted_at`, clears `claimed_until`, and writes a terminal status event to `outbox` in the same transaction.\n   - On an error (a render error, a MailRelay error or a timeout), it increments `attempts`, stores `last_error`, and clears `claimed_until`. If `attempts < 5`, the row becomes `retry` with `next_attempt_at` set 1, 2, 4 or 8 minutes ahead, depending on the attempt number. At the fifth failure the row becomes `failed`, a status event is written to `outbox` in the same transaction, and on-call is paged.\n   - If the service crashes between MailRelay accepting and this commit, the lease expires and the row is reclaimed (step 7). Within 20 hours it is sent again with the same key, and MailRelay drops it. No attempt is consumed.\n\n10. **The outbox loop publishes the status.** It publishes unconfirmed `outbox` rows as `notification.status` (`id`, `status`, `attempts`, `accepted_at` or `failed_at`, truncated `last_error`). It marks a row published only after the broker confirms. If a row stays unpublished for more than 5 minutes, the service pages on-call.\n\n11. **The monolith applies the status.** The status consumer runs `UPDATE notifications SET status, attempts WHERE id = ? AND status IN ('pending','handed_off')`, then acks after the commit. It stores only `status` and `attempts`. `accepted_at` and `last_error` stay in the event and the service inbox.\n    - A redelivered event matches nothing, so it is a no-op.\n    - If the event arrives before the publisher commits, the publisher's row lock makes the update wait. After the publisher's commit the row is `handed_off` and the update matches. After a rollback the row is `pending` and the update still matches, so the row becomes `sent` or `failed` and is never published again.\n    - The row has now gone `pending`, then `handed_off`, then `sent` or `failed`.\n\n12. **Safety nets.** Every minute a sweep pages on-call when a `route = 'service'` row has been `pending` for more than 5 minutes, or a row has been `handed_off` for more than 1 hour without a status event. The sweep never resends. If the service is down, messages wait in the broker, rows stay `handed_off`, and the sweep pages after 1 hour. The plan deliberately does not re-route rows that might already be on the broker. A human must first check the broker and the service inbox for that id.\n\n13. **Shadow check before cutover.** A shadow publisher in the monolith renders rows created after a configured start time, for all routes and types. It computes `render_sha256` and publishes `notification.shadow`, then stamps `shadow_published_at`. The service's shadow consumer renders the same message, compares the hashes, and records a `shadow` row with `match`. It never calls MailRelay. Any mismatch blocks cutover. The recommended gate is 3 days with zero mismatches.\n\n14. **Cutover and rollback.** `shipping_update` is flipped to `service` first, then `order_confirmed`, then `password_reset` after a p99 latency gate. Each step has a 3-day dwell. Flipping the flag back takes effect within about 10 s for new enqueues. The old worker picks those up within 5 s. Rows already routed to the service keep flowing through the service. After the 7-day hold, the old worker is removed (step 11). From then on, rollback means redeploying the old worker.",
+   "gaps": [
+    "The sender lease length, MailRelay's timeout and the publisher's broker confirm timeout are not given (Open decision 4), so I can't say how long a claim blocks other senders or how long a publish waits.",
+    "The document doesn't say what triggers the in-doubt retry beyond the lease expiring. It also doesn't say whether the reclaim path counts toward any cap, which is Open decision 9.",
+    "It doesn't say what 'send' covers for a monolith-routed row that fails permanently, or what the old worker's own retry and failure rules are. It only says they are unchanged.",
+    "It doesn't say how rendering errors are finally treated, because Open decision 2 is unresolved. The plan counts them as failed attempts for now.",
+    "It doesn't say how a status event for a row the monolith has already marked `sent` or `failed` is handled, beyond the conditional update matching nothing.",
+    "It doesn't say how the broker topics, queues or consumer groups are named or arranged, or how the service tells a consumer instance apart from another."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

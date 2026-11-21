@@ -1,0 +1,243 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In step 3 the endpoint inserts first and only selects the existing row if the insert returns nothing. But step 4 says step 3 \"checks the existing row first\" to find an old queued row with no job_id. In what order do these happen, and which code re-enqueues the orphaned row?",
+     "about": "Step 3 / Step 4 (The API process dies between the insert and the enqueue)"
+    },
+    {
+     "id": "2",
+     "text": "When does the 202 reply go back to the page relative to the enqueue? Does the client get the reply only after step 4 finishes, and what does the page see if enqueue fails?",
+     "about": "Step 3 reply 202 and Step 4 Queue the job"
+    },
+    {
+     "id": "3",
+     "text": "What is `ctx` in `handler(ctx, {\"export_id\"})`, and where does `ctx.attempt` come from? Who calls `on_final_failure` and with what error?",
+     "about": "Step 6. A job attempt starts"
+    },
+    {
+     "id": "4",
+     "text": "If the queue delivers the same job twice at the same time, while the row is queued or running, what stops two attempts from writing at once? Step 6 only handles done or failed.",
+     "about": "Step 6, item 2 (duplicate delivery) and \"at-least-once delivery\""
+    },
+    {
+     "id": "5",
+     "text": "If a worker is killed by the 1,800 s timeout or dies, nothing in step 9 runs. What status does the row show then, and what does the page show until the next attempt starts 60 s or 300 s later?",
+     "about": "Step 9. An attempt fails (the timeout kills it, or the worker dies)"
+    },
+    {
+     "id": "6",
+     "text": "In step 8, signed_url is created for 86400 s before expires_at is set. How does the page's download use `expires_at`, and how does it get a link if the emailed link was created at a slightly different time?",
+     "about": "Step 8 item 2 and Step 5 (done state)"
+    },
+    {
+     "id": "7",
+     "text": "What is `report_rows` versus `reports.row_count`, and what does the filtered view do to the count? Is row_count the total for the report or the number of rows after the user's filters?",
+     "about": "Step 1 item 3 (Read `reports.row_count`) and Step 2"
+    },
+    {
+     "id": "8",
+     "text": "How does the job read a consistent view across 400 pages from the replica? What does the job do if the replica fails mid-read (is it just an ordinary attempt failure)?",
+     "about": "Step 7. Stream the report into the bucket"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The file was inconsistent. Step 3 now runs in one order: select the user's active export first; if it is an orphan (queued, no job_id, older than 2 minutes) run step 4 for it; otherwise return it as existing. Only if none exists does it insert, and a lost insert race falls back to selecting. Step 3 re-enqueues the orphan, on the user's next click after 2 minutes. I chose click-triggered recovery because the brief forbids extra mechanisms such as a sweeper."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Steps 3 and 4 are one request. The 202 is sent only after enqueue returns and job_id is saved. If enqueue fails, the row is marked failed and the client gets a 500, so the button shows an error and the user can click again. Step 4 now says this."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "ctx is the JobContext dataclass in jobs.py (job_id, attempt 1 to 3), filled in by the queue. The queue also calls on_final_failure(ctx, payload, error) once after the last attempt fails, passing that attempt's error. Both are now in the vocabulary."
+    },
+    {
+     "id": "4",
+     "tag": "unknown",
+     "text": "jobs.py says only that a handler may run again for a job that already succeeded. It does not say whether two attempts of one job can run at once, and I do not know. Step 6 assumes not. If it did happen, both attempts write identical content to the same key, so the worst case is a wasted retry. I added a short note in step 6 and one line under open questions, and added no lock because the brief does not require one."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "After a timeout kill or worker death, nothing runs, so the row stays running with its old upload_id and the page shows running through the 60 s or 300 s wait. The next attempt (step 6) aborts the old upload and sets running again. I chose to accept this instead of adding a heartbeat or sweeper. Step 9 and step 5 now say so."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "This was a real inconsistency. expires_at is now set in the same update that marks the row done (step 8 item 1, only if still null), and the emailed link's TTL is the time left until expires_at. The page's download also uses the time left until expires_at, so both links end at the same moment. A retry after an email failure uses the remaining time, so the link never outlives expires_at."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "report_rows holds the data rows. reports.row_count is the unfiltered total for the whole report, rewritten nightly (reports_page.md). A filtered view has at most that many rows, so a filtered export of a big report may take the large path even if it is small. The brief says to decide by row_count, so I kept that and said so in step 1 and the vocabulary. The stale-count fallback in step 2 only handles the opposite case."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The job does not read one snapshot across the pages. The file can mix old and new rows only if the nightly rebuild runs during the export, which is already listed under risks and noted in step 7. A replica failure mid-read is an ordinary attempt failure (step 9): the upload is aborted and the next attempt restarts from the first row. Step 7 now says so."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "When the page's download link is requested, which endpoint returns the signed URL, and what does the click on 'download' actually call? Step 5 mentions 'the endpoint' but only names /exports/latest.",
+     "about": "Step 5, done state"
+    },
+    {
+     "id": "10",
+     "text": "In step 6 item 2, a retry finds status 'done' or 'failed'. For 'failed' (e.g. set by a user-access removal), what exactly does the handler do on return? Does it just exit without raising?",
+     "about": "Step 6, item 2 (duplicate delivery)"
+    },
+    {
+     "id": "11",
+     "text": "In step 6 item 3, access removed fails the export with 'access removed' (step 10). Step 10 is the final-failure handler after attempt 3. Does this fail immediately and skip retries, and who sends the email and sets status failed?",
+     "about": "Step 6 item 3 and Step 10"
+    },
+    {
+     "id": "12",
+     "text": "In step 9, after a handled failure the row is set to 'queued' and the handler re-raises. The unique index treats queued as active. If the job was queued with job_id set, does the orphan rule (queued, no job_id) ever apply to it? Also, does a user click during that retry wait return the existing export?",
+     "about": "Step 9, handled failure and Step 3 orphan rule"
+    },
+    {
+     "id": "13",
+     "text": "What does the click request return to the page for the small path: how does the page know to treat the 200 as a file download versus the 202 JSON for the large path?",
+     "about": "Step 1 and Step 3 reply"
+    },
+    {
+     "id": "14",
+     "text": "In the stale-count fallback, how does the small path know it has exceeded 20,000 rows mid-read, and does it then insert the export row on the same request? What is the 'about 20 queries' time budget when the count is stale?",
+     "about": "Step 2, stale row_count fallback"
+    },
+    {
+     "id": "15",
+     "text": "What are `signed_url`, `start_multipart`, `upload_part`, `complete_multipart`, `abort_multipart` and `send_email`? Who provides them, and what do they return and raise on failure?",
+     "about": "Step 6, 7, 8 (storage and email helpers)"
+    },
+    {
+     "id": "16",
+     "text": "In step 8 the status update has 'WHERE status=running'. If it matches no row (e.g. row already done), what does the handler do next, and when is row_count_written set versus the final rows written?",
+     "about": "Step 8, item 1"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "A separate endpoint, GET /api/reports/{id}/exports/{export_id}/download, checks report.view and ownership, requires status done, and returns {url} from signed_url with the time left until expires_at. The Download button calls it. Step 5 now names it."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "For failed, the handler returns without raising, so the queue counts the job finished and nothing more happens. For done it follows step 8. Step 6 item 2 now says so."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Access removed fails immediately and skips retries, since retrying cannot help. The handler calls the shared fail_export helper and returns without raising. Because it returns normally, on_final_failure is not called, so fail_export itself sets failed and sends the email. Step 10 is now the fail_export helper, which on_final_failure also calls."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "No. A row with a job_id is never an orphan, and a handled failure keeps the job_id. A click during the retry wait finds the active queued row and returns it with existing true. Step 3 now says this, and a test covers it."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "By status code: 200 with text/csv is the small path and the page saves it as a file. 202 with JSON is the large path and the page starts showing export status. Step 1 now says this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The small path counts rows as it reads. When the count passes 20,000 it stops, discards the buffer and continues at step 3 in the same request, which inserts the export row. The worst case is 40 queries of 500 rows (about 10 MB), still well inside 60 s. I corrected the old 'more than 20,000 rows come back' wording and the query count. The 20,000 cutoff is my own safeguard value, not from the brief."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "The storage helpers are in the existing storage.py. Their return values are documented there: upload_id, etag, visible object, discarded parts and signed URL. send_email is the existing function named in the brief. What they raise is not documented in any file I have. Treating any exception as failure is my assumption. The vocabulary now lists the helpers and the file's open questions now says this."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "If the update matches no row, this attempt does not own the export, for example a duplicate delivery already finished it. The handler does not retry the update. It reloads the row, does the email step if it is done with notified_at null, and returns if it is failed. row_count_written is set in that same update, from the row count the attempt counted while streaming in step 7. Steps 7 and 8 now say so."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "Step 9 says a handled failure sets status back to 'queued' and re-raises. If the email call in step 8 raises, the row is already 'done'. Does step 9 also reset it to 'queued'? Step 8 says the retry finds 'done' with notified_at null, so which is it?",
+     "about": "Step 9 (An attempt fails) and Step 8 (The email call raises)"
+    },
+    {
+     "id": "18",
+     "text": "When a retry finds the row 'done' with notified_at null, does it still do the report.view re-check and the abort/start_multipart items before reaching the email? Where exactly does the handler branch for this case?",
+     "about": "Step 6, item 3 (re-check report.view) for a retry of a 'done' export"
+    },
+    {
+     "id": "19",
+     "text": "fail_export clears upload_id in item 1 and only then aborts any open upload in item 2. Where does it get the upload_id to abort, if the update already set it to NULL?",
+     "about": "Step 10, fail_export, item 2 (Abort any open upload)"
+    },
+    {
+     "id": "20",
+     "text": "If enqueue succeeds but saving job_id on the row fails, what happens? The job may already be running while the row has no job_id. What does the client see, and what does the job do?",
+     "about": "Step 4 (Enqueue raises) and the 202 reply"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "No. Once the row is done, a failing email must not move it back to queued. Step 9 now updates only rows WHERE status='running', so a done row is left alone. Step 8 now says the row stays done, the handler re-raises, and the retry goes to the email via step 6. I chose this so the page never shows a finished export as pending."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "No. Step 6 item 2 is now the branch point: done skips items 3 to 6 and step 7 and goes straight to step 8 item 2 (the email, only if notified_at is null). failed returns. Only queued or running continue to the permission re-check and the upload start. I skip the re-check for done because the file already exists and the email is the only work left."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "It could not, which was a bug. fail_export now loads the row and remembers upload_id first (item 1), then sets failed (item 2), then aborts the remembered upload (item 3), then emails (item 4). The failed status is still written before the abort and the email, so the page shows failed even if they fail."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "The client gets a 500 and the row stays queued with no job_id, while the job runs. I handled it with one small change and no new mechanism. Step 6 now also writes job_id=ctx.job_id when the job starts, so the row stops being an orphan as soon as the job runs. The next click returns the existing export. If the job has not started within 2 minutes, the orphan rule enqueues a second job, which is harmless because the job is idempotent. Step 4 and step 0 now say this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Prerequisites (step 0). Before anything runs, a migration adds a table `report_exports` on the primary database. It holds one row per large export: ids, the validated filters and cols, `status` (queued/running/done/failed), `job_id`, `attempt`, `upload_id`, a fixed `object_key` (`report-exports/{export_id}.csv`), `row_count_written`, `expires_at`, `notified_at` and `error`. A unique partial index on (user_id, report_id) where status is queued or running means the database allows only one active large export per user per report. Two email templates (`export_ready`, `export_failed`) are also added.\n\n2. The click. The user clicks Download CSV. The page sends `POST /api/reports/{report_id}/export` with the filters and column order copied from the page URL (the server stores no view). The endpoint checks `report.view` (403 if missing). It then validates the view with the rows API's parser (400 if invalid). Then it reads `reports.row_count` from the read replica. This is the unfiltered total, rewritten nightly. If the replica is unreachable it returns 503 and writes nothing. If `row_count <= 10,000` it takes the small path, otherwise the large path.\n\n3. Small path. The endpoint pages through `report_rows` on the replica by keyset, 500 rows per query, with the view's filters. It keeps only the chosen columns in URL order and builds the whole CSV in memory. It replies 200 with `text/csv` and `Content-Disposition: attachment`, and the page saves the body as a file. Nothing is stored and no job runs. An error before the last row gives a 500 with no file. If the running count passes 20,000 rows (stale count), it discards the buffer and falls through to the large path in the same request.\n\n4. Large path, find or record the export. On the primary, the endpoint looks for the user's active export for this report. If one exists and is not an orphan, it replies 202 with that export and `existing: true`, and no new job starts. An orphan is a `queued` row with no `job_id` older than 2 minutes. For an orphan it re-runs the enqueue step for the same export_id. If none exists, it inserts a `queued` row with `job_id` NULL, using INSERT ON CONFLICT DO NOTHING RETURNING. If the insert returns nothing, another click won, so it selects the active row and replies 202 with `existing: true`. The reply body is `{export_id, status, filters, cols, existing}`. A DB failure gives 500 and nothing is queued.\n\n5. Enqueue. For a new or orphan row, the endpoint calls `enqueue(\"report_csv_export\", {\"export_id\": ...})`, saves the returned `job_id` on the row, and only then sends the 202. If enqueue raises, it marks the row `failed`, sends no email and returns 500, so the user can click again. If saving `job_id` fails, it returns 500 but leaves the row. The job will still run and set `job_id` itself. A second job may be enqueued after 2 minutes, which is harmless because the job is idempotent. If the API process dies between insert and enqueue, the row stays orphaned until the next click after 2 minutes.\n\n6. The page tracks state. The page calls `GET /api/reports/{id}/exports/latest` on load and after the 202. It checks `report.view` and returns the user's newest export row for the report. While the status is queued or running it polls every 5 seconds, and it stops on done or failed. A failed poll keeps the last state and retries next tick. Queued and running show as progress, including during retry waits. Failed shows the short `error`. Done shows a Download button while `expires_at` is in the future. The button calls `GET .../exports/{export_id}/download`, which rechecks `report.view`, checks the export is the user's and is `done`, and returns `{url}` from `signed_url(\"exports\", object_key, remaining time)`. After `expires_at` the page says \"link expired, export again\".\n\n7. A job attempt starts. The queue calls `handler(ctx, {\"export_id\"})` for attempt 1, 2 or 3. The handler loads the row. If it is `failed`, it returns and nothing more happens. If it is `done`, it jumps to the email step (step 10 below). Otherwise it rechecks that the user still has `report.view`. If not, it calls `fail_export(export_id, \"access removed\")` and returns without raising, so there are no retries. Then, if an old `upload_id` exists, it calls `abort_multipart` and ignores errors. It sets status `running`, `attempt`, `job_id` and `upload_id=NULL`, then calls `start_multipart(\"exports\", object_key)` and saves the new `upload_id`. Any exception here counts as an ordinary attempt failure.\n\n8. Streaming. The job reads `report_rows` from the read replica in keyset pages of 5,000 rows, with the same filters and columns as the page. It writes the CSV header and rows (UTF-8, standard quoting) into one in-memory buffer. At 8 MB it calls `upload_part(upload_id, n, buffer)`, keeps the etag and empties the buffer. After the last page it uploads the final part and calls `complete_multipart(upload_id, etags)`. Only then does the object become visible, so a half-written file is never downloadable. The job checks the clock, and past 1,700 s it aborts the upload and raises. A read error or other exception is an ordinary attempt failure, and the next attempt restarts from row one.\n\n9. Mark done. After `complete_multipart`, the job runs `UPDATE ... SET status='done', upload_id=NULL, row_count_written=..., expires_at=COALESCE(expires_at, now+24h) WHERE export_id=? AND status='running'`. If it matches no row, another run owns the export. The job reloads the row, continues only if it is `done`, and returns if it is `failed`.\n\n10. Email. If `notified_at` is null, the job gets `signed_url` with the time left until `expires_at` (at most 86,400 s). It calls `send_email(user_id, \"export_ready\", {report name, url, expires_at})` and then sets `notified_at`. If the email raises, the row stays `done`, the handler re-raises, and the retry goes straight to the email without rebuilding the file. A crash between the email and writing `notified_at` can send a second email, which the plan accepts. A duplicate delivery that finds `done` with `notified_at` set returns at once.\n\n11. An attempt fails. If the handler can still run, it catches the exception and calls `abort_multipart`. It then runs `UPDATE ... SET status='queued', error=... WHERE status='running'` (a `done` or `failed` row is left alone) and re-raises. The queue retries after 60 s, then 300 s, up to 3 attempts. If the attempt is killed (1,800 s timeout) or the worker dies, no code runs, the row stays `running`, and the next attempt's step 7 aborts the old upload.\n\n12. Final failure. After attempt 3 fails, the queue calls `on_final_failure(ctx, payload, error)`, which calls `fail_export`. `fail_export` loads the row and does nothing if it is `done`. Otherwise it sets `failed` and the error, with `upload_id` NULL. It then aborts any remembered upload, ignoring errors. Then, if `notified_at` is null, it sends the `export_failed` email and sets `notified_at`. The page then shows failed, and the user can start a new export.\n\n13. Expiry. At `expires_at` the signed link stops working and the page shows \"link expired\". The bucket deletes the object 7 days after creation. Export rows stay as history.",
+   "gaps": [
+    "Inside step 7, `fail_export` is said to set `failed` and send the email, but step 10 item 1 stops if the row is `done`. The document does not say how the access-removed case interacts with a row that has `upload_id` set by an earlier attempt, beyond the abort in `fail_export`.",
+    "The document does not say what the 202 response looks like on the page after the stale-count fallback, or whether the stale-count fallback's discarded work needs any cleanup on the client. It only says to continue at step 3 in the same request.",
+    "How the clock check at 1,700 s interacts with the queue's own retry counting is not stated. For example, it does not say whether a raise from that check counts as a normal failed attempt, though step 9 implies it does.",
+    "The document does not say how the endpoint computes `report name` for the emails, or what `error` values are written, beyond 'short, user-safe'.",
+    "Whether `fail_export` is called when a step 6 `report.view` recheck itself throws an exception is not stated, only the case where the user has lost access.",
+    "How `on_final_failure` is registered with the job is not shown. The document only says 'a function we register with the job'.",
+    "The job's handling of `row_count_written` versus rows in the file is clear, but what 'the validated view stored as text' looks like when reparsed by the job is not described, so the job's parser is not specified."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

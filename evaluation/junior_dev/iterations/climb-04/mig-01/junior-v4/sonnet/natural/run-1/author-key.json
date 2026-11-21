@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The MySQL outbox row (users_sync_outbox) holds the user id and is inserted in the same MySQL transaction as the write, so a committed write always has a repair record even if the app dies right after commit. The permanent drainer reads outbox rows, copies the current MySQL primary row to Postgres with the version rule, and deletes the outbox row. The inline apply deletes it on success. Alerts fire at 2 and 10 minutes of age.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "Every copy into Postgres (inline, drainer, backfill, compare repair) checks the users_tombstone table and takes pg_advisory_xact_lock(id). The delete writes the tombstone in the same transaction as the Postgres delete. A stale in-flight copy therefore sees the tombstone and is skipped, and ids are never reused.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Progress is migration_state.backfill_last_id in Postgres, updated in the same Postgres transaction as the batch's row copies, so it matches the copied rows exactly and a crash resumes after the last completed batch. The backfill ends when a batch returns fewer than 2,000 rows, and it then sets backfill_done. Rows written or erased during the run are covered by dual writes, the version rule, the tombstone and the compare pass.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The compare worker walks ids in 10,000-row chunks, comparing checksums of the replica against Postgres, and also finds Postgres rows that are gone from MySQL. A differing chunk is checked row by row, then the differing rows are re-read from the MySQL primary after 60 s. Rows that now match are ignored as in-flight or lag. Rows that still differ are counted as mismatches and their ids go to the MySQL outbox, so the drainer repairs them (or deletes and tombstones them). A pass with any mismatch does not count as clean.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Each database has a fence: a one-row open/closed switch, and at most one is open at a time. Every user write takes a shared lock on the fence of the database it writes to and returns 503 if the fence is closed. The switch script closes the MySQL fence with an exclusive lock, drains the outbox, sets the sequence, opens the Postgres fence, and only then sets the flag. An instance with a stale flag therefore gets a 503 and never writes the wrong database. If the switch runs long, it aborts at a 30 s deadline before sub-step 5 and reopens the MySQL fence. After sub-step 5 it uses the rollback, a second pause under the same 90 s limit.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Postgres assigns new ids from the sequence users_id_seq. At the switch it is set to GREATEST(MySQL AUTO_INCREMENT, max Postgres id) + 100000, so new ids cannot collide with existing ones. On rollback MySQL's AUTO_INCREMENT is set to the sequence's last value + 100000. Mirrored creates carry their explicit Postgres id into MySQL.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "After the switch every write goes to Postgres first, with a users_mirror_outbox row in the same transaction, and is applied to MySQL inline. The mirror drainer repairs misses, and the compare worker keeps running in both directions. Rollback (switch_to_mysql) closes the Postgres fence, drains the mirror outbox to zero, resets MySQL AUTO_INCREMENT, opens the MySQL fence and sets the flag, with a pause of about 45 s. The option ends at step 11, no sooner than 14 days after the switch (T1), when users_write_mode=pg_only stops the mirroring. It is fully gone once the mirror drainer is stopped, and MySQL is then dropped in step 12.",
+  "decided": true
+ }
+}

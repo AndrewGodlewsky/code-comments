@@ -1,0 +1,353 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Step 7 says a model error or timeout falls back to popular items. Is the 140 ms internal deadline measured from request arrival, and how much time does the model get after the 30 ms lookup?",
+     "about": "Latency budget / Step 5 Run the active model with the remaining deadline"
+    },
+    {
+     "id": "2",
+     "text": "What is \"the active pool\"? Is it a separate service the API calls over the network, or in-process? How does the API pick an instance and what is the 'transport error'?",
+     "about": "Step 5 / Inference pools"
+    },
+    {
+     "id": "3",
+     "text": "Who is the \"operator\" and what tool do they use to write a CAS revision? What does the \"promotion tool\" do versus the operator?",
+     "about": "Step 13 Update the serving config with CAS"
+    },
+    {
+     "id": "4",
+     "text": "In step 14, how does the status table work? Who writes to it and where does it live, and how does the control tool see every instance report the new version loaded?",
+     "about": "Step 14 Load and switch without redeploying the API"
+    },
+    {
+     "id": "5",
+     "text": "During the 10 s poll window, different instances may be on different versions. Is that acceptable, and does the response's model_version tell which one served?",
+     "about": "Step 14 / Step 2 Read the serving config from the local cache"
+    },
+    {
+     "id": "6",
+     "text": "What does 'approved' mean at step 13 validation for a rollback target or for any version, and how does that fit with assumption 4 that rollback needs no approval?",
+     "about": "Step 13 and Assumption 4 Rollback needs no approval"
+    },
+    {
+     "id": "7",
+     "text": "Step 6 says the sample is queued only if the candidate's manifest is satisfied by the row. How does the API know this without calling the shadow pool, and does shadow run when the active request fell back?",
+     "about": "Step 6 Hand off to shadow after the decision"
+    },
+    {
+     "id": "8",
+     "text": "Who runs the shadow worker and where does the 'log' in step 19 go (log stream to warehouse)? How is the drop rate computed if queues are per instance and in-memory?",
+     "about": "Step 19 Log and compare"
+    },
+    {
+     "id": "9",
+     "text": "Step 12 says eligibility is re-checked when the store's schema changes. What triggers that check, and what happens to an already active version if it becomes ineligible?",
+     "about": "Step 12 Check eligibility against the online store"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The 140 ms internal deadline is measured from when the API receives the request (step 1). The model gets whatever time remains after the feature lookup and config read. If the lookup uses the full 30 ms, the model has at most about 110 ms. Reason: the 150 ms budget covers the whole call, and this keeps headroom for the gateway and serialization. Step 5 now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The active pool is a set of model servers behind an internal load balancer. The API calls them over the network. The brief does not specify this, so it is a design choice. Reason: a separate pool lets versions load without redeploying the API and keeps the shadow pool isolated. A transport error is a refused or reset connection, or a 5xx response. Step 5 now defines this."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The operator is an on-call ML platform engineer with write access to the serving config store. They use the control tool. The promotion step is not a separate tool. It is the control tool's activate path: it checks the gate report, requires the approval record, then writes the CAS revision. Reason: one writer keeps the CAS rules in one place. Steps 13, 15, 20 to 22 now refer to the control tool."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The status table lives in the serving config store, with one row per instance: instance, version, status (ready or failed), revision and time. Each instance writes its row after each swap attempt. The control tool reads the rows and waits until every active-pool instance shows ready on the new revision, with a 2 minute timeout. How the tool gets the instance list is not yet set, so it is listed under open questions."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Yes, mixed versions for up to about 10 seconds during a switch are acceptable. The brief allows a 1-minute rollback, and both versions are valid. The model_version field comes from the pool that served the request, so it shows which version answered. Shadow samples also carry the config revision. Step 7 and step 14 now say this."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Approved means an approval record from step 21, tied to that version. Step 13 requires it for the active version. A rollback target keeps the record it got at its first promotion, so rollback does not need a new approval, which matches assumption 4. The very first active version still needs approval. Reason: the word approved keeps one meaning. Step 13 now explains this."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The API knows the candidate manifest from the serving config it already holds in memory (step 2), so it checks the row against the manifest without calling the shadow pool. Shadow does not run when the active request fell back, whether from missing features or a model failure, because there is nothing to compare against. Step 6 now says this."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The shadow worker is a background task inside each API instance. It drains that instance's queue and calls the shadow pool. Each attempt writes one log record to the log stream, which loads into an append-only warehouse table. Drops are counted per instance. Each instance writes a counter summary every minute (eligible, queued, dropped), and the daily job sums them. Drop rate is dropped divided by (queued plus dropped). Steps 18 and 19 now say this."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The re-check is triggered when the online store publishes a schema change. The registry then re-checks every version that is not retired. An active version that becomes ineligible keeps its pointer. Step 4 refuses rows that lack its features, so those users get the fallback. An alert fires, and an operator must switch or roll back. Reason: an automatic switch to an unknown model is riskier than a fallback. Whether to block feature removal is listed under open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "Step 2 says each instance polls every 10 s, but step 14 says instances load the artifact on a new revision. Are the API instances and the pool servers both polling the config? Which of them downloads and loads the model, and which only reads the config?",
+     "about": "Step 14 Load and switch without redeploying the API"
+    },
+    {
+     "id": "11",
+     "text": "During a switch, the API reads the new active version from its in-memory config in step 2, but the pool server may not have loaded it yet. What does the API send to the pool, and what happens if the pool does not hold that version yet?",
+     "about": "Step 5 Run the active model / Step 14"
+    },
+    {
+     "id": "12",
+     "text": "Step 4 checks the row against the active manifest, but the 'schema_version' in the row and the manifest are never compared. Is schema_version used in any check, or only the list of required feature names? What does 'incompatible' mean in the intro?",
+     "about": "Step 4 Check the row for freshness and compatibility"
+    },
+    {
+     "id": "13",
+     "text": "What does the 'warm-up inference' run on, and what are the 'current and previous version' in memory in step 14 when a candidate is also loaded in the shadow pool? Does the active pool ever hold the candidate before activation?",
+     "about": "Step 14 Load and switch without redeploying the API"
+    },
+    {
+     "id": "14",
+     "text": "In step 14 the switch is 'complete' when every instance is ready. What happens to traffic if the switch times out at 2 minutes with some instances still on the old version? Does anyone roll back, or does it stay mixed?",
+     "about": "Step 14 Completion"
+    },
+    {
+     "id": "15",
+     "text": "Step 20 needs 'the candidate was eligible for the whole window'. How is eligibility history recorded, given that the registry only keeps the current 'eligible' flag and its reason in step 12?",
+     "about": "Step 20 Evaluate the gates / Step 12"
+    },
+    {
+     "id": "16",
+     "text": "How does the daily comparison job know which log records belong to the window and the candidate and salt? Is overlap at 20 a gate, or only reported? Step 20 lists no overlap threshold.",
+     "about": "Step 19 Log and compare / Step 20 Evaluate the gates"
+    },
+    {
+     "id": "17",
+     "text": "Step 17 says the cohort is 10% by bucket < 1000, and step 16 says the percentage is a config field. How does the percentage map to the bucket threshold, and who decides when the 7 full days have passed and runs step 20: the control tool on request, or a schedule?",
+     "about": "Step 17 Assign the shadow cohort / Step 20"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Only pool servers download and load models. API instances and pool servers both poll the serving config every 10 s, but for different reasons. API instances read the active version ID and shadow settings (steps 2 and 6). Pool servers read the active version ID and load it (step 14). Reason: model files stay in the pool, and the API stays light. The status table rows are written by pool servers. Step 2 and step 14 now say this."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The API sends the version ID from its config. A pool server that does not hold that version returns an error, and the request falls back to popular items as model_error. Reason: the response never comes from a version the config did not name. The cost is that requests routed to pool servers that have not yet loaded the new version fall back during the poll-and-load window, about 10 s plus load time. This is accepted for now and is listed under open questions. Step 5 now says this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "schema_version is now checked. Step 4 compares the row's schema_version with the manifest's and gives feature_mismatch when they differ. The required-feature check still compares names and types. Incompatible in the intro means either of these. Step 4 and the failure table now say this."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Warm-up runs one inference on a fixed sample feature row, stored with the version in the registry at registration (step 11). Each active pool server holds the current and previous version in memory. The active pool never holds the candidate before activation. Candidates live only in the shadow pool. On activation, active pool servers load the version from the object store and do not reuse the shadow pool's copy. Steps 11, 14 and 22 now say this."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Nothing rolls back automatically. The control tool reports the switch as incomplete and an alert fires. The config still names the new version, so pool servers that never loaded it answer with an error, and their requests fall back until an operator rolls back (step 15) or fixes the failed servers. The servers stay mixed until then. Reason: the brief says nothing switches automatically, and an automatic rollback would be a second switch the brief does not ask for. Step 14 now says this."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The registry keeps an append-only eligibility history. Each time a version's eligible flag or reason changes, a row records the version, flag, reason and time. Step 20 requires that the candidate was never ineligible during its 7-day window. Reason: the current flag alone cannot show past states. Steps 12 and 20 now say this."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Each shadow record carries the candidate version and salt (step 19). The daily job keeps only records whose candidate version and salt match the current shadow settings and whose time is on or after started_at. The config revision is recorded for audit. Overlap at 20 is reported, not gated, because the brief sets no threshold for it. Step 19 and the open questions now say this."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "percentage is a whole percent. The threshold is percentage times 100, out of 10000 buckets, so 10 gives bucket less than 1000. A daily comparison job runs step 20. It checks whether 7 full days have passed since started_at, then runs the gates and stores the report. The control tool does not decide timing. The operator then requests approval and activation through the control tool. Steps 17 and 20 now say this."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "18",
+     "text": "Step 5 says the API sends the feature row to the active pool through the load balancer. The load balancer can send it to any pool server. During a switch, how does a request that gets an error from one server end up, and does the API retry on another server or go straight to fallback?",
+     "about": "Step 5 Run the active model with the remaining deadline"
+    },
+    {
+     "id": "19",
+     "text": "Step 14 says the switch completes when every active pool server reports ready on the new revision. Does a pool server that is still loading keep answering requests with the old version, or does it already refuse them because the API now names the new version?",
+     "about": "Step 14 Load and switch without redeploying the API"
+    },
+    {
+     "id": "20",
+     "text": "Step 22 says the previous version becomes retired but stays in memory. Step 14 says each server keeps the current and previous version. After a second switch, what happens to the version before the previous one, and how does rollback in step 15 get the version ID from the config history?",
+     "about": "Step 15 Roll back in under 1 minute / Step 22 Activate"
+    },
+    {
+     "id": "21",
+     "text": "Step 13 says the config holds one shadow entry. What does the shadow pool do to load the candidate, and who triggers that load? Step 14 only describes the active pool.",
+     "about": "Step 18 Run the candidate off the hot path / Shadow pool"
+    },
+    {
+     "id": "22",
+     "text": "Step 20 says a failed gate leaves the candidate in shadow or moves it to rejected. What decides which, and what happens to shadow after 7 days if gates pass but nobody approves?",
+     "about": "Step 20 Evaluate the gates"
+    },
+    {
+     "id": "23",
+     "text": "Step 16 says changing the candidate, salt or percentage restarts the 7-day clock. Who writes that change, and how do the old log records stop counting toward the new window?",
+     "about": "Step 16 Start shadow"
+    },
+    {
+     "id": "24",
+     "text": "Step 4 reads source_as_of and step 17 hashes user_id. What exactly is in the feature row that goes to the model, and does the model server see schema_version or only feature values?",
+     "about": "Step 3 Look up features / Step 5"
+    }
+   ],
+   "answers": [
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "One attempt, no retry on another server. The 140 ms deadline leaves no room for a second call, the brief sets no retry rule, and the fallback is the stated rule for model_error. Step 5 now says this. Whether the load balancer retries on its own is not specified, so it is listed under open questions."
+    },
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "It refuses. A pool server answers only with a version it holds in memory (step 5). While it loads, it still holds its old version, and the API now names the new one, so the request gets model_error and falls back. Step 14 now says this."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Each server keeps two versions, current and previous. A swap unloads the old previous version, which stays in the registry. The rollback target is the version active in the revision before the current one, read from the serving config history, since each revision records its active version. A rollback to that version finds it in memory, so no download is needed; if it is not there, the step 14 load path runs. Steps 14, 15 and 22 now say this."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Shadow pool servers use the same load path as step 14 for the shadow field: they poll the config, download by version ID, verify the checksum, warm up and swap. Clearing shadow unloads the candidate. A failed load counts as candidate failures in step 18. This reuses one mechanism rather than adding a new one. Step 16 now says this."
+    },
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "The kind of failure decides. If the candidate's own numbers fail (error rate or p99), it moves to rejected, which is final for that version number, because more shadow time will not make it faster or more reliable. If the window fails (an eligibility gap or drop rate above 1%), it stays in shadow, and the operator restarts with a fresh salt. If all gates pass but nobody approves, it stays in shadow, the daily job keeps storing reports, and nothing times out or promotes. Whether an approval must match the latest report hash is an open question."
+    },
+    {
+     "id": "23",
+     "tag": "checked",
+     "text": "The operator writes the change through the control tool as a CAS revision (step 13). Each change sets started_at to the write time. Step 19 keeps only records whose candidate and salt match and whose time is on or after started_at, so older records drop out of the window. Steps 16 and 19 now say this."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "The model receives only the feature values its manifest lists. It does not receive schema_version, source_as_of, materialized_at or user_id. The API uses the metadata for the step 4 checks and the step 19 logs. Reason: the manifest is the model's input contract, so extra inputs would change the model's inputs without a version change. Steps 5 and 18 now say this."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "25",
+     "text": "After the pool server answers, the API says model_version is what the pool reports it served. Does the pool server's reply carry the version ID and the 20 item IDs together, and does the API compare the reported version with the one it asked for?",
+     "about": "Step 7 Return the response / Step 5 Run the active model"
+    },
+    {
+     "id": "26",
+     "text": "Step 22 clears shadow in the same write that activates the candidate. The candidate is only in the shadow pool, so when active pool servers load it, does the shadow pool unload it at the same time, and what happens to samples already queued for it?",
+     "about": "Step 22 Activate / Step 16 Shadow pool"
+    },
+    {
+     "id": "27",
+     "text": "The control tool 'runs the gate checks' (intro terms) but step 20 says the daily job runs the gates. At activation time, what exactly does the control tool check: the stored gate report, the approval record, or both? And what does step 13 check that the control tool does not?",
+     "about": "Control tool / Step 13 / Step 22 Activate"
+    },
+    {
+     "id": "28",
+     "text": "The first-ever active version has no previous revision. How does the first version get activated, and what does the API do before any version is active?",
+     "about": "Step 13 Write the serving config with CAS / Step 15 Rollback target"
+    },
+    {
+     "id": "29",
+     "text": "If the pool server's reply to the API is a valid 200 but the model server was slow partway, is the 140 ms deadline enforced by the API cutting the call off, or by the pool server? What does the pool server do with a request the API has already abandoned?",
+     "about": "Step 5 Deadline / model_timeout"
+    },
+    {
+     "id": "30",
+     "text": "In the status table, what happens to rows from servers that were removed or replaced (autoscaling or restarts)? Does a new server that starts after a switch load the active version before it takes traffic?",
+     "about": "Step 14 Status table / Active pool"
+    }
+   ],
+   "answers": [
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "Q25 [decided]: The pool server's reply carries the version ID it served and the 20 item IDs together. The API checks that the returned version matches the one it asked for, and a mismatch counts as model_error. Reason: model_version must name the version that actually answered, and the check costs almost nothing. Step 5 and the failure table now say this."
+    },
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "Q26 [decided]: The one CAS write that activates the candidate also clears shadow. Shadow pool servers then unload the candidate, and active pool servers load it from the object store on their poll. Samples already queued for the candidate are discarded by the shadow worker when it dequeues them: no call is made, and they are counted as neither attempts nor drops. Reason: the gate report was already stored and reviewed, so later attempts add nothing, and sending them to a pool that no longer holds the version would only produce errors. The activation step now says this."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "Q27 [decided]: The control tool does not run the gates. The daily job runs them and stores the report. At activation the control tool checks that the stored gate report passed, that an approval record exists for this version and names a passing report, and the config-write checks (registered, eligible, approved). Step 13's checks are the same rules, applied by the control tool before its CAS write, so step 13 checks nothing the control tool does not. The terms list no longer says the control tool runs the gate checks. Whether the approval must name the latest report is still open."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "Q28 [decided]: Before the first activation the serving config holds no active version. The API treats that as having no config: every request takes the popular list with reason no_config. The first version is activated by the same CAS write, with no previous version, and it still needs approval. Reason: the API has nothing to call until a first version exists. The terms, the no_config row of the failure table and the activation step now say this. Rolling back the first version has no target and is listed under open questions."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "Q29 [decided]: The API enforces the 140 ms deadline. When time runs out it closes its call and ignores any later reply, so a valid 200 that arrives late is model_timeout. The pool server does not enforce the API's deadline. When the caller disconnects, the pool server stops the work and discards the result. Reason: the API owns the user's time budget. Step 5 now says this."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "Q30 [decided]: The control tool waits only for status rows from servers in the active pool, and ignores rows from servers that were removed. A new server, from a restart or autoscaling, loads the version the config names through the same load path and reports ready before it takes traffic. Reason: otherwise every new server would answer with errors after a switch. Whether the load balancer enforces the ready-before-traffic rule is listed under open questions, together with how the pool list is kept. The switch step now says this."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends GET /recommendations?user_id=U. The API instance (stateless; it holds only a config copy and the popular list in memory) checks user_id. A missing or malformed one gets a 400 with no list. Otherwise it makes a request_id and starts a 140 ms internal deadline.\n2. The API reads its in-memory copy of the serving config: the active version ID and manifest, the shadow candidate with its manifest, salt and percentage, and the revision. Each instance refreshes this copy by polling the serving config store every 10 s. If a poll fails, it keeps the last good copy and alerts once the copy is over 2 minutes old. If no config has ever loaded, the request falls back with reason no_config.\n3. The API reads one key, U, from the online feature store. It gets the whole row back, with 30 ms to do it. The row holds all of the user's features plus schema_version, source_as_of and materialized_at. A timeout gives the fallback reason lookup_timeout. A store error gives lookup_error. The model is not called in either case.\n4. The API checks the row against the active manifest, in this order. No row gives no_features. A source_as_of more than 6 hours old gives stale_features. A schema_version different from the manifest's gives feature_mismatch. A missing or wrongly typed required feature also gives feature_mismatch. Any failure skips the model.\n5. The API sends the active version ID and only the feature values the manifest lists to the active pool, through an internal load balancer. It sends no metadata and no user_id. The model gets whatever is left of the 140 ms deadline. If nothing is left, the result is model_timeout. There is one attempt and no retry.\n   - The pool server replies with the version it served and 20 ranked item IDs.\n   - The API checks that the version matches what it asked for and that the output is exactly 20 unique catalog IDs.\n   - A timeout, including a late reply, gives model_timeout.\n   - Connection errors, a 5xx, invalid output, a version mismatch, or a version the server does not hold give model_error.\n6. If step 5 succeeded, the user is in the shadow cohort and the feature row satisfies the candidate's manifest (checked in memory), then a sample is queued after the response bytes are written. The sample holds request_id, user_id, the feature row, the active items and the config revision. The cohort rule is bucket = hash(salt, user_id) mod 10000, with bucket < percentage × 100 (below 1000 at 10%). The queue is a bounded in-memory queue on that instance. If it is full, the sample is dropped and a counter goes up. Fallback responses never queue a sample.\n7. The API replies. A normal reply is {items, fallback:false, model_version}, where the version is the one the pool reported. A fallback reply is the 20 popular IDs, fallback:true and a fallback_reason. The popular list comes from an in-memory cache. If that cache is empty (cold start only), the API returns 503.\n8. In the background, a shadow worker on each API instance dequeues samples. It sends the candidate manifest's features to the shadow pool with a 500 ms deadline. Shadow pool servers have their own concurrency limit and shed load first. The worker logs the candidate output next to the active output. If the candidate has since become active, the worker silently discards queued samples. Every attempt writes a record with its status (ok, timeout, error or invalid). Timeouts, errors and invalid outputs count as candidate failures. Dropped samples are counted separately. Each instance writes a per-minute summary of eligible, queued and dropped samples. Everything lands in append-only warehouse tables.\n9. Feature freshness is maintained outside the request path. An hourly job copies warehouse features into the online store, one row per user with timestamps. The job is idempotent, retries, and alerts after 90 minutes without a successful run. Freshness is enforced on read (step 4), not by TTL. Rows are deleted after 24 hours only to save storage. A daily job writes a new popular list as a versioned object, and API instances reload it every 5 minutes.\n10. Model lifecycle. A training run is registered with its artifact (object-locked, SHA-256 checksum), a manifest, a warm-up sample row and a registry row. The registry checks eligibility, meaning every manifest feature exists in the store schema. It re-checks on every schema change and keeps an append-only history. An ineligible version cannot be shadowed or activated. If the active version becomes ineligible, nothing switches automatically. Users fall back until an operator acts.\n11. Shadow start. An operator uses the control tool to write a CAS revision. It sets the shadow candidate, a fresh salt and 10%, and started_at is the write time. The write is rejected if the revision is stale, and the writer then re-reads and retries. Shadow pool servers see the new revision on their 10 s poll. They download the artifact, verify the checksum, run warm-up and then swap.\n12. Gates. A daily comparison job takes only records matching the current candidate and salt and on or after started_at. Once the window is 7 full days old, it evaluates the gates and stores the report with its hash in the registry. The gates are:\n   - 7 continuous days under one salt and candidate.\n   - Eligible for the whole window.\n   - Error rate under 0.5%.\n   - p99 under 80 ms.\n   - Drop rate at or under 1%.\n   If error rate or p99 fails, the version is rejected for good. If eligibility or drop rate fails, it stays in shadow and the operator restarts with a fresh salt. If all gates pass but nobody approves, it stays in shadow.\n13. Approval. The ML lead approves through the control tool. The approval record names the version, the gate report hash, the approver and a timestamp.\n14. Activation. The control tool checks that the version is registered, eligible and approved, and that a stored passing gate report exists. It then writes one CAS revision with active = candidate and shadow cleared. Shadow pool servers unload the candidate. Active pool servers see the revision on their poll and download the artifact. They verify the checksum, run warm-up and swap atomically. Each server keeps the current and previous versions. Each server writes a ready or failed status row. The control tool waits up to 2 minutes for all servers to report ready. If that fails, it reports the switch as incomplete and alerts. Nothing rolls back automatically. Servers that did not load the version return errors, so their requests fall back until an operator fixes it or rolls back. For about 10 s during a normal switch, servers may run different versions, and some requests fall back with model_error.\n15. Rollback. An operator writes a CAS revision pointing active at the version that was active in the previous revision. No approval is needed. The previous version is normally still in memory, so there is no download. The budget is a 10 s poll, a swap under 5 s and confirmation under 30 s.\n16. After each switch, dashboards and alerts watch error rate, fallback rate by reason and p99 per version.",
+   "gaps": [
+    "How the control tool learns which servers are in the active pool, so it knows which status rows to wait for (stated as an open question).",
+    "Whether the internal load balancer retries a failed call, and whether it sends traffic to a new server only after that server reports ready. This affects what happens to a request that reaches a server that has not loaded the version.",
+    "How the API maps a pool request to a particular server. It says only that a load balancer is in front.",
+    "How an approval is matched to the gate report at activation. The daily report changes, and it is open whether the activation check needs the latest report or any passing one.",
+    "How the operator is told that a gate report passed or what triggers asking for approval. The document says only that the operator then asks the ML lead.",
+    "What 'catalog' means for validating item IDs, including where the API gets the catalog list for the output check.",
+    "Whether rollback is automatic or manual after a regression. The document says it is to be decided.",
+    "How 'which version was active in the previous revision' is read when there is no earlier active version (the first activation). The first active version has no rollback target and no way to clear the active version.",
+    "How registry status transitions, such as from registered to shadow, are triggered and by what component.",
+    "Whether a config switch waits for pool servers to load the new version. The document says that today a switch can cause brief fallbacks."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}

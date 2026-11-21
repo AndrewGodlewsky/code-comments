@@ -1,0 +1,248 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The forgot-password response is generic. What exactly does it say, and is it the same whether or not the email matches a user?",
+     "about": "The forgot-password response is generic"
+    },
+    {
+     "id": "2",
+     "text": "What does the rate limit count: per email, per IP, or both? Where is that count stored, and what does the user see when they hit 3 per hour?",
+     "about": "Rate limit: 3 per hour"
+    },
+    {
+     "id": "3",
+     "text": "What is stored in reset_tokens, and what is in the emailed link? When a new token is created, what happens to older unused ones for that user?",
+     "about": "create token -> email link"
+    },
+    {
+     "id": "4",
+     "text": "The API puts a message on the Email queue. What is the queue, what is in a message, and does the API wait for the email to be sent before it responds?",
+     "about": "Email queue ---> Email worker"
+    },
+    {
+     "id": "5",
+     "text": "What does 'usual retries' mean for the email worker: how many attempts, what delay, and what happens after the last one fails? Does the user find out?",
+     "about": "The email worker has the usual retries"
+    },
+    {
+     "id": "6",
+     "text": "'Work once': at which step is the token marked used, on opening the link or on setting the password? What if the password check fails, can the user retry with the same link?",
+     "about": "Links last 30 minutes and work once"
+    },
+    {
+     "id": "7",
+     "text": "Why is the token validated twice (Open link and Set password)? How does the set-password request carry the token?",
+     "about": "Set password: validate token"
+    },
+    {
+     "id": "8",
+     "text": "What does 'revoke sessions' do in the sessions table, and does it include the session of whoever is resetting? Is the user logged in afterward or sent to login?",
+     "about": "revoke sessions -> confirmation email -> login page"
+    },
+    {
+     "id": "9",
+     "text": "Is 'save password' to Postgres, token-used marking and session revocation one transaction? What happens if the breached-list check service is unavailable or a step in the middle fails?",
+     "about": "check password -> save password -> revoke sessions"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The exact text is \"If an account exists for that address, we've sent a link.\" It is the same for unknown addresses and for requests over the rate limit, and nothing is sent in either case. The email is queued, so the reply does not wait for the mail provider. Reply timing for known and unknown addresses is not equalized; this is listed under Open questions."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The limit counts per account, because the brief states it per account. It counts the reset_tokens rows created for that user in the last rolling hour. This needs no separate counter table, since each link already creates one row. Per-IP limits are not in the brief, so they are not added and are listed under Open questions. A user over the limit sees the same generic message and gets no email."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "reset_tokens holds the id, user_id, token_hash (SHA-256 of the token), created_at, expires_at (created_at plus 30 minutes) and used_at (empty until the token is used or replaced). The emailed link holds the raw 32-byte token, which is never stored raw. When a new token is made, older unused tokens for that user get used_at set to now, so they fail the check. The rows are kept so the rate limit still counts them."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The queue is the existing email queue. Its technology is not stated in the brief and is listed under Open questions. A job holds the recipient, the email type and the link. The API does not wait for the send. It replies once the job is queued, because the reply must be the same whatever happens to the email."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The brief says the worker retries up to 3 times with backoff, so that is one try plus up to 3 retries. The exact delays are set by the existing worker and are not part of this design. After the last failure the worker logs the failure and drops the job. Nobody is notified, so the user does not find out."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The token is marked used only at the set-password step, in the same transaction that saves the new password. Opening the link does not use it. If the password check fails, nothing is changed, so the user can retry the same link until it expires. This follows the brief's rule that a rejected password leaves the link usable."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The token is checked at page load so a dead link never shows a password form. It is checked again at submit, because the link can expire, be used or be replaced between those two steps. The form carries the raw token in a hidden field taken from the URL, along with the new password. The API hashes the token and looks it up, the same way as at page load."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Revoking sessions means deleting every sessions row for that user_id. The API rejects a deleted session on the next request. The row for the device doing the reset is included, so that browser is logged out too. The user is redirected to the login page and no session is created."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes. Saving the password, marking the token used and deleting sessions are one Postgres transaction, and the token is claimed first inside it. The breached-password check is a read, so it runs before the transaction. If that check cannot run, the password is rejected with a try-again message and the link stays usable; this fails closed. If any step in the transaction fails, all of it rolls back. The confirmation email is queued after the commit, so a queue failure there does not undo the reset. Whether the breached-password check is a local list or a service is unknown and is listed under Open questions."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "In step 1, the row lock only helps if the lock, count, kill-older and insert happen in one transaction. Are they? And when is the lock released: before or after the job is added to the queue?",
+     "about": "Step 1: Locks the account's user row"
+    },
+    {
+     "id": "11",
+     "text": "If adding the email job to the queue fails after the new token row is inserted, what happens to that row? Is it rolled back, or does it stay and count toward the 3 per hour limit?",
+     "about": "Step 1: Adds an email job to the queue / If a database or queue write fails"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Not in the first version. It is now one database transaction: lock the user row, count the last hour, kill older unused tokens, insert the new token, and queue the email job. The lock is held until that transaction commits or rolls back, so the job is queued before the lock is released. Reason: without one transaction, two requests could both count 2 and both insert, which passes the limit of 3."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The new row is rolled back, so it does not stay and does not count. The queue write is inside the same transaction as the insert. If it fails, nothing is committed: no new row, no killed older tokens, and no job. Reason: a row with no email would use up one of the 3 hourly slots for a link nobody received. The failure table covers the case where the commit fails after the job is queued. That case depends on the queue technology, which stays under Open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "12",
+     "text": "The Terms and diagram say the queue is a Postgres table, but the first open question says this is unknown. Is it decided or only assumed? Which should I rely on when explaining step 1?",
+     "about": "Email queue / Open questions: Is the existing email queue a Postgres table?"
+    },
+    {
+     "id": "13",
+     "text": "After the worker sends a job successfully, what happens to the job row? Is it deleted or marked done? And does the raw token in the link stay in the queue table afterwards?",
+     "about": "Step 2: Send the email"
+    },
+    {
+     "id": "14",
+     "text": "If the worker crashes or times out in the middle of a send, is the job picked up again? Could the user get the same email twice?",
+     "about": "Step 2: Send the email"
+    },
+    {
+     "id": "15",
+     "text": "How does the 'choose a new password' page get the token from the link? Is it in the URL path or query, and what is the link's address (which site)?",
+     "about": "Step 3: Open the link"
+    },
+    {
+     "id": "16",
+     "text": "When a link is dead, does the user see the same expired page whether it was expired, already used, or replaced by a newer request? Does the page tell them which?",
+     "about": "Step 4: Set the new password / 4a"
+    },
+    {
+     "id": "17",
+     "text": "What does the 'password changed' email contain, and where does the API get the recipient address? Does it go through the same worker, retries and drop rule as the reset email?",
+     "about": "Step 4e: queue 'password changed' email"
+    }
+   ],
+   "answers": [
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "The brief does not say the email queue is a Postgres table. The first version's terms and diagram assumed it. I cannot confirm it from the brief, so step 1 is explained on that assumption, and the document now says it is assumed. If the queue is not Postgres, step 1 changes, and this is the first open question."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The worker deletes the job once it is sent or dropped, so the raw token does not stay in the queue after the email has gone out. Reason: the brief allows the token only in the link, so no copy should remain once the email is out. Caveat: while the job waits in the queue it still holds the raw link. That conflicts with the brief's never-store-the-raw-token rule, so it is an open question. How the worker marks a job as taken is not decided."
+    },
+    {
+     "id": "14",
+     "tag": "unknown",
+     "text": "The brief does not decide how a job is marked taken or finished, so I do not know whether a job is picked up again after a crash. If the worker crashes after the mail provider accepts the email but before the job is deleted, a retry could send the same link twice. The link works once, so only one copy can be used. This is listed under open questions."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The link points to the web client's 'choose a new password' page and carries the token as the last part of its address. Reason: the page can read the token from its own address and send it to Check link, with no form post needed. The host name and exact path format are not in the brief and are left out of the design. Step 3 now says this."
+    },
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "The brief says an invalid, expired or already-used link shows the same 'this link has expired, request a new one' page. A link replaced by a newer request fails the same check, so it gets the same page. The page does not say which reason applied. Steps 3 and 4a now say so."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The recipient is the account's address in users, found by user_id from the link check (checked in the brief). The brief gives no wording for the email, so the wording is not decided and is left out. It goes through the same queue, worker, retries and drop rule as the reset email, because it uses the same existing email path. If it is dropped, the user gets no notice, which is listed under open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The user clicks \"Forgot password?\" and submits their email. The browser sends it to the API server, which opens one Postgres transaction.\n2. Inside the transaction the API looks up the address in `users`. If there is no account, it skips to the reply. Nothing is written or sent.\n3. It locks that user's row. Other requests for the same user wait until this transaction ends, so two requests cannot both pass the limit. It then counts the account's `reset_tokens` rows created in the last hour. Used and replaced rows count. If the count is 3 or more, it skips to the reply, again with nothing written or sent.\n4. It sets `used_at` on every older unused token for the user. These tokens now fail the link check, but the rows stay and still count toward the limit.\n5. It makes a token (32 random bytes). It inserts a `reset_tokens` row holding the SHA-256 hash of the token, `created_at` = now and `expires_at` = now + 30 minutes. Only the hash is stored.\n6. In the same transaction it queues an email job holding the recipient, the email type and the link, which contains the raw token. Sharing the transaction means a token row never exists without its email. If the queue write fails, the row rolls back, so no hourly slot is used up.\n7. The transaction commits and the API replies \"If an account exists for that address, we've sent a link.\" The reply is the same for unknown addresses and for requests over the limit. The API does not wait for the mail provider. If any step in 2 to 6 fails, everything rolls back, nothing counts toward the limit, and the API returns a server error for any address. If the commit fails after the job was queued, the emailed link points to a token that does not exist and fails the link check.\n8. The email worker takes the job from the queue and sends it through the mail provider. If the send fails, it makes one try plus up to 3 retries, with backoff (delays come from the existing worker). After the last failure it logs the failure and drops the job. Nobody is told and the user gets no email. The user can ask again, and that new request counts toward the limit. The job, with the raw link, is held until it is sent or dropped.\n9. The user clicks the link and the page sends the token to the API. The API hashes it and runs the link check: the row exists, `used_at` is empty, and the row is under 30 minutes old. If valid, it shows the \"choose a new password\" form with the token in a hidden field. If not, it shows \"this link has expired, request a new one.\" This step changes nothing in the database. If the database read fails, it shows a server error page.\n10. The user submits the form with the token and the new password. The API runs the link check again, because the link may have expired, been used or been replaced since the page loaded. If it fails, the expired page is shown and nothing changes.\n11. The API checks the password. It must be at least 12 characters and not on the breached-password list. If it fails, the form shows the reason. The link is unchanged and the user can retry until it expires. If the breached-password check cannot run, the API rejects the password with \"please try again shortly.\" This fails closed, and the link is unchanged.\n12. The API opens a second transaction. It sets `used_at` on the token only if the token is still unused and not expired. If no row changes, it rolls back and shows the expired page, which stops two submits from both succeeding. It then saves the new password hash in `users` and deletes every `sessions` row for the user. This includes the session of the device doing the reset, so every device is logged out, because the API checks `sessions` on every request. If this transaction fails partway, it rolls back. The password is unchanged, the token is still unused and no session is deleted. The user sees an error and can retry the same link until it expires.\n13. After the commit, the API queues a \"your password was changed\" email. If that queue write fails, the password change still stands, the error is logged and no notice is sent.\n14. The API redirects to the login page. No session is created, so the user must log in with the new password.",
+   "gaps": [
+    "Where the 32 random bytes are generated (API server) and how the raw token is encoded into a URL are not stated. The document implies the API server generates it but does not say so.",
+    "How the 'older unused token' marking in step 1c interacts with the commit-failure case is not covered. After a rolled-back or failed commit it is unclear whether old tokens were already killed. The document says a rolled-back request leaves no killed token, but says nothing about the commit-failure case where the job was queued.",
+    "What the queue is made of, and whether a queue write can share the Postgres transaction, is stated only as an open question. I cannot explain how the queue write is rolled back with the transaction.",
+    "How the worker learns a job exists (push or poll), and how a job is marked as taken or finished, are not described.",
+    "The retry delays (backoff values) are only said to come from the existing worker.",
+    "How the API session check works in detail is not described, and neither is how the login page and normal login relate to this flow. The document says the API checks `sessions` on every request and that deleting rows logs a user out.",
+    "Whether the breached-password list is local or an outside service is unknown, which decides how the step 4c failure arises.",
+    "The document does not say how the password hash is made (the algorithm) or what email address the 'password changed' email goes to. The recipient is presumably the account address, but this is not stated.",
+    "How the link in the email maps to the API call, meaning the URL shape and whether it is a browser page load that then calls the API, is not specified. The document says the page sends the token to the API, but the three API calls are not named or described individually."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 1e (queue write in the same transaction) cannot be explained. The first version left the queue technology open, so the explanation has no mechanism for rolling back the queue write with the transaction.; The failure row 'Commit fails after the job was queued' contradicts the shared-transaction claim in step 1e. The explanation repeated both without noticing: a shared commit cannot leave a queued job behind, so the emailed link would never exist. The step 1c old-token kill is also unclear in the commit-failure case, because it is not stated whether it rolls back with the transaction.; The worker's job lifecycle (how it learns a job exists and how a job is marked taken or finished) is not explained. This is left as an open question, not a main-flow misreading, because step 2 only needs the worker to take a job from the queue."
+  },
+  {
+   "text": "1. User clicks \"Forgot password?\" and submits their email. The web client calls the API's Request link. The API server starts one Postgres transaction.\n2. Inside it the API looks up the address in `users`. If no account exists, it skips to the reply (step 8). Nothing is written or sent.\n3. It locks that user's row, so concurrent requests for the same user wait. It counts the user's `reset_tokens` rows created in the last hour (used and replaced rows count). If the count is 3 or more, it skips to the reply with nothing written.\n4. It marks all older unused tokens for the user as used (`used_at` set), so they fail the link check. The rows stay and still count toward the limit.\n5. The API makes a token (32 random bytes, URL-safe text) and computes its SHA-256 hash. It inserts a `reset_tokens` row with `user_id`, `token_hash`, `created_at` = now, `expires_at` = 30 minutes later. Only the hash is stored. The raw token lives only in the link and the queued job.\n6. In the same transaction it inserts an email job into the email queue, which is a Postgres table here. The job holds the recipient, email type and the link containing the raw token. If any step fails, everything rolls back (no row, no killed tokens, no job), the API returns a server error, and the attempt does not count toward the limit.\n7. The API commits, which releases the row lock.\n8. The API replies \"If an account exists for that address, we've sent a link.\" This is the same for unknown addresses and over-limit requests. It does not wait for the mail provider.\n9. Separately, the email worker takes the job from the queue and sends it through the mail provider. If a send fails it retries up to 3 more times with backoff (4 attempts total). If all fail, it logs the failure and drops the job. The user is not told and gets no email. The link remains valid until expiry and the user can request again, which counts toward the limit. The job is held until sent or dropped.\n10. The provider delivers the email. The user clicks the link, which opens the \"choose a new password\" page in the web client. That page sends the token to Check link.\n11. The API hashes the token and runs the link check: the row exists, `used_at` is empty, and it is under 30 minutes old. If valid, it returns the password form with the token in a hidden field. If not, it shows \"this link has expired, request a new one.\" This step writes nothing. If the database read fails, it shows a server error page.\n12. The user submits the form (token plus new password) to Set password. The API repeats the link check, because the link may have expired, been used or been replaced since the page loaded. If it fails it shows the expired page and changes nothing.\n13. The API checks the password: at least 12 characters and not on the breached-password list. If it fails, the form shows the reason, the link is unchanged and the user can retry until expiry. If the breached check cannot run, the password is rejected with \"please try again shortly\" and the link is unchanged.\n14. The API starts a second transaction. It sets `used_at` on the token only if still unused and unexpired. If no row changed, it rolls back and shows the expired page, which stops double submits. It saves the new password hash in `users`. It deletes all of this user's `sessions` rows, including the current device's, so every device is logged out on its next request.\n15. If this transaction fails partway, it rolls back. The password is unchanged, the token is unused and the sessions are kept. The user sees an error and can retry the same link.\n16. After the commit, the API separately queues a \"your password was changed\" email to the account's address. If this queue write fails, the password change stands, the error is logged and no notice is sent.\n17. The API redirects to the existing login page. No session is created, so the user logs in with the new password.",
+   "gaps": [
+    "How the email worker learns that a job exists, and how a job is marked taken or finished, are not decided. So I cannot say how step 9 begins or how two workers avoid sending the same job.",
+    "The backoff delay values are not given. They come from 'the existing worker', which is not described.",
+    "How the token gets from the email link to the 'choose a new password' page and the Check link call is only partly described. I cannot say how the page reads the token from the URL, or whether Check link is called by the page or by the browser directly.",
+    "The document does not say how the API finds which user a token belongs to. It only says it hashes the token and finds the row, so I assume the row's `user_id` is used in step 14. I also cannot say how Set password gets the address for the 'password changed' email.",
+    "Whether the existing email queue is a Postgres table is an open question. If it is not, the shared transaction in step 6 does not work as described.",
+    "The password hash algorithm is not decided, so I cannot say how the new password is hashed in step 14.",
+    "It is unknown whether the breached-password check is a local list or an outside service. This affects how I could explain the 'cannot run' failure in step 13.",
+    "The document does not say how the API recognises a request as coming from a logged-in session, beyond 'checks sessions on every request'. It also does not say what the user sees in a server error for step 6 beyond 'a server error'."
+   ],
+   "verdict": "wrong",
+   "notes": "Step 4 never says which account the password change, the session deletion and the \"password changed\" email act on. The explanation had to guess that the token row's `user_id` is used (its step 14 says it \"assumes\" this). The file must say that the link check finds the token's row, returns the account it belongs to, and that parts d and e act on that account."
+  },
+  {
+   "text": "1. Request a link. The user types their email into the \"Forgot password?\" form. The form calls the Request link API call on the API server. The server opens one Postgres transaction and works through these parts.\n   a. It looks up the address in `users`. If no account exists, it writes nothing, sends nothing and jumps to the reply.\n   b. It locks that user's row. Other requests for the same user wait until this transaction ends. It then counts the `reset_tokens` rows for the user created in the last hour. If the count is 3 or more, it writes nothing and jumps to the reply. The lock stops two simultaneous requests from both passing the limit.\n   c. It marks every older unused token for this user as used. Those links now fail the link check. The rows stay, so they still count toward the limit.\n   d. It makes a new token (32 random bytes, URL-safe text), takes its SHA-256 hash, and inserts a `reset_tokens` row with `user_id`, `token_hash`, `created_at` = now and `expires_at` = 30 minutes later. `used_at` starts empty. Only the hash is stored.\n   e. In the same transaction it inserts an email job into the email queue. The job holds the recipient, the email type and the link, which contains the raw token. A token row and its job always exist together.\n   f. It commits and replies \"If an account exists for that address, we've sent a link.\" Unknown addresses and over-limit requests get the same reply. The API does not wait for the mail provider.\n   If any read, write or the commit fails, everything rolls back: no row, no killed token, no job, and no hourly slot is used. The API returns a server error for any address.\n\n2. Send the email. A job in the queue starts this step. The email worker takes the job and sends it through the mail provider. On success the worker deletes the job, so the raw token does not stay in the queue. On failure it makes one try plus up to 3 retries, with backoff set by the existing worker. If the last try fails, it logs the failure and deletes the job. Nobody is told and the user gets no email. The link in the database still works until it expires. The user can ask again, but the failed link still counts toward the hourly limit.\n\n3. Open the link. The user clicks the link in the email. It is an address on the web client with the token as its last part. It opens the \"choose a new password\" page, which sends the token to the Check link API call. The API hashes the token and runs the link check, which looks for a row with that hash, `used_at` empty and `expires_at` not passed. If the link is valid, the API returns the password form with the token in a hidden field. If the link is missing, used, expired or replaced, the API shows \"this link has expired, request a new one\", without saying which reason applied. This step changes nothing in the database. If the database read fails, the API shows a server error page.\n\n4. Set the new password. The user submits the form (token from the hidden field plus the new password) to the Set password API call. The API does the following in order.\n   a. It runs the link check again, because the link may have expired, been used or been replaced since the page loaded. This finds the token's row and the account through `user_id`. If the check fails, the expired page is shown and nothing changes.\n   b. It checks the password. It must be at least 12 characters and not on the breached-password list. If it fails, the form shows the reason. The link is unchanged and the user can retry until it expires.\n   c. The breached-password check runs before the transaction, because it is only a read. If it cannot run, the password is rejected with \"please try again shortly\" and the link is unchanged (it fails closed).\n   d. The API starts one transaction. It sets `used_at` on the token only if the token is still unused and not expired. If no row changes, it rolls back and shows the expired page, which stops two submits from both succeeding. It saves the new password hash in `users` for that account. It deletes every `sessions` row for the account, including the current device's session, so the account is logged out everywhere. If the transaction fails partway, it rolls back: the password is unchanged, the token is still unused and no session is deleted. The user sees an error and can retry the same link until it expires.\n   e. After the commit, the API queues a \"your password was changed\" email to the address in `users`, found by `user_id`. This write is separate from the transaction. It uses the same queue, worker, retries and drop rule as step 2. If this queue write fails, the password change still stands, the error is logged and no notice is sent.\n   f. The API redirects to the existing login page. No session is created, so the user logs in with the new password.",
+   "gaps": [
+    "The document does not say how the worker learns a job exists (push or poll), so I cannot say what moves a job from the queue to the worker in step 2.",
+    "The document does not say how a job is marked taken or finished, so I cannot explain what happens if the worker crashes mid-send. A job may be picked up again and sent twice, but this is undecided.",
+    "It is not confirmed that the email queue is a Postgres table. Steps 1e and 4e depend on this, and I cannot say how the token row and the job stay consistent if the queue is somewhere else.",
+    "The raw token sits in the queued job until it is sent, which conflicts with the stated aim of never storing it. The fix (encrypt the job, or have the worker make the token) is not decided, so I cannot say what the job actually holds.",
+    "The document does not say what the web client does with the Request link response. Open question: the API returns a server error on a write failure, which conflicts with the same-reply rule. It is undecided whether that case should return the generic message.",
+    "The breached-password list may be a local list or an outside service, and this is undecided. I cannot explain exactly how step 4c fails or what its error handling covers.",
+    "The host and path of the link are not decided, so I cannot say what address the email link points to or how the web client turns it into a Check link call.",
+    "The password hash algorithm is not given, so I cannot say how the new password hash in step 4d is made.",
+    "The backoff delay values are not given. They are 'set by the existing worker', but I cannot say how long retries take.",
+    "The document does not say how the worker finds the recipient or the 'password changed' email's content beyond the type and recipient. The wording is undecided.",
+    "The document does not say what response the Check link call returns to the page after a success, beyond 'the password form'. It does not say whether this is a rendered page or data for the client. It also does not say how 'show the expired page' differs between the web client and the API."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

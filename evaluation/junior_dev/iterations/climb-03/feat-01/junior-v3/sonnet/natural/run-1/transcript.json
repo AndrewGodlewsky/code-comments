@@ -1,0 +1,105 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In Step 5, the 10,000 threshold uses reports.row_count. What keeps row_count up to date, and what happens if it is stale (e.g. says 9,000 but the report really has 50,000 rows)?",
+     "about": "Step 3. Choose the path by size"
+    },
+    {
+     "id": "2",
+     "text": "In the small path, can the 45 s deadline and a failure really be handled cleanly given the response is built fully in memory? And does the user see the browser download start only after the whole CSV is built, with no progress indicator?",
+     "about": "Step 4. Small path: the response is the CSV"
+    },
+    {
+     "id": "3",
+     "text": "What is `ctx` in `report_export(ctx, payload)` and `on_final_failure(ctx, payload, error)`, and how does the handler know which user and which database/storage clients to use?",
+     "about": "Step 6. Job start: the handler picks up the work"
+    },
+    {
+     "id": "4",
+     "text": "How does a worker pick up a queued job: what does `enqueue` do, who runs workers, and what states can the job have inside the queue versus the row's `status`?",
+     "about": "Step 5. Large path: create or return the export record"
+    },
+    {
+     "id": "5",
+     "text": "In Step 5, the stale-row rule marks a 3-hour-old row failed and then inserts a new one. If the old job is somehow still alive, what stops it from overwriting the new export, given both use the key `{export_id}.csv`?",
+     "about": "A stuck row"
+    },
+    {
+     "id": "6",
+     "text": "Step 6 says a permission-removed job sets failed and returns without raising. Is the user emailed in that case, since on_final_failure is not called?",
+     "about": "Step 6, item 4 (permission removed)"
+    },
+    {
+     "id": "7",
+     "text": "In Step 9, how can the attempt be retried when `done` was set in Step 8? Is Step 9 part of the same handler run as Steps 6-8, and what does a retry after a Step 9 failure consume from the 3 attempts?",
+     "about": "Step 9. Email the download link"
+    },
+    {
+     "id": "8",
+     "text": "Where does the page's status block live relative to the Download CSV button: does the button get disabled while an export is queued or running, and what does the user see when clicking returns the existing export?",
+     "about": "Step 11. Show the status on the page"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "row_count is rewritten only by the nightly rebuild, so it can be up to a day stale. A stale value only chooses the wrong path; it cannot corrupt a file. If it is too high, a small report takes the job path, which is correct. If it is too low, the small path could read far more than 10,000 rows, so I added a guard in Step 4: once more than 10,000 rows are read, drop the buffer and fall through to the large path (Step 5). This keeps memory and the 60 s limit safe without changing the size rule. I did not add any other freshness mechanism."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes on both. Nothing is sent until the whole CSV is built, so a failure or the deadline gives a clean 500, never a truncated 200. The deadline is checked after each page (45 s, under the 60 s kill). The browser download starts only after the full body arrives, and there is no progress indicator; that is acceptable for at most 10,000 rows. I made both points explicit in Step 4."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Per jobs.py, ctx is JobContext(job_id, attempt) and nothing else. The payload holds only export_id. The handler loads the export row and takes user_id, report_id, filters and cols from it. It uses the application's normal database, replica and storage helpers; this plan does not specify how those clients are wired, as that is existing application setup. I added this to the Terms and Step 6."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Per jobs.py, enqueue(name, payload) queues the job and returns its job_id; workers on the existing worker pool run it, one attempt at a time per process, and retry and timeout rules are the queue's. The plan does not use the queue's internal job states, only the export row's status, which is what the page reads. I added this to the Terms."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The new export gets a new export_id, so its object key {export_id}.csv differs from the old one and they cannot overwrite each other. If the old job is still alive, Step 6 makes a fresh attempt return when the row is failed, and I changed Step 8 so the done update only applies WHERE status='running'. If the row was already marked failed, the update changes nothing and no email is sent; the orphaned file is deleted by the bucket in 7 days."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "No email. The permission-removed path returns normally so on_final_failure never runs. The user lost access to the report, so sending them any message about it, including a link, is unwanted. The page shows failed if they can still see the status block (it returns 403 and hides if they cannot). Made explicit in Step 6 item 4."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "Step 9 is part of the same handler run as Steps 6 to 8. If send_email raises, the handler raises, and the queue treats that as a failed attempt, regardless of the row already being done, so it uses one of the 3 attempts. The retry begins at Step 6, sees done with notified_at null, and goes straight to Step 9. I clarified this in Step 9's trigger and failure lines."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The status block sits next to the Download CSV button. The button is disabled while the state is queued or running and enabled again on done or failed (done also lets the user start a new export after the 7-day window or whenever they wish). If a click still gets through, for example from a second tab, Step 5 returns the existing export and the page shows 'An export of this report is already running' with its status. Added to Step 11."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. The user clicks Download CSV on /reports/{report_id}. The browser sends POST /api/reports/{report_id}/export with the filters and cols it holds in the page URL. The URL is the only place view state lives. If the network fails, the page shows \"Export could not be started, try again\" and nothing has been created.\n\n2. The API checks report.view on the report's workspace, using the same check as the Rows API. It validates filters and cols like the Rows API, so an unknown column is rejected. It reads reports.row_count from the read replica. That is the unfiltered total, rewritten nightly, so it can be a day old. Failures: 403 with no permission, 400 for bad parameters, 404 for a missing report. Nothing is created in any of these cases.\n\n3. The server compares row_count with 10,000. At or below goes to the small path. Above goes to the large path. Because row_count is unfiltered, a heavily filtered export of a big report still takes the large path and may give a small file.\n\n4. Small path, where the response is the CSV:\n   - The server writes the header in cols order.\n   - It reads the replica in keyset pages of 500 (row_id > after ORDER BY row_id), using the same query as the Rows API.\n   - Each row is encoded as RFC 4180 UTF-8 and appended to an in-memory buffer.\n   - Guard: if more than 10,000 rows are read, the stale row_count was wrong. The buffer is discarded and the request goes to step 5.\n   - Otherwise it returns 200 with text/csv and a Content-Disposition attachment filename of report-{report_id}.csv. The browser only starts the download when the whole body has arrived.\n   - Nothing is stored in the database or storage.\n   - Failures: a clean 500 is returned, never a truncated 200. A 45 s deadline is checked after each page and gives a 500 \"Export took too long, try again\". The user can click again.\n\n5. Large path, creating the export record:\n   - The server inserts a report_exports row with status=queued, user_id, report_id, filters, cols and created_at, using INSERT ... ON CONFLICT DO NOTHING against the partial unique index on (user_id, report_id) where status is queued or running.\n   - If the insert conflicts, the server selects the existing export and returns 202 with {export_id, status}. Its filters win even if the new click used different ones.\n   - If the insert succeeds, the server calls enqueue(\"report_export\", {\"export_id\": ...}), stores the returned job_id on the row, and returns 202 with {export_id, status: \"queued\"}.\n   - The page then starts showing status (step 11).\n   - The job queue now holds the job. The report_exports table, in the application database, is the state the page reads.\n   - Failures:\n     - If enqueue raises, the row is marked failed and the click gets a 503 \"Export could not be started, try again\".\n     - If the API dies between insert and enqueue, the row is queued with a null job_id. On the next click, if it is older than 60 s, enqueue is called again and job_id is filled in.\n     - A queued or running row older than 3 hours is marked failed (\"timed out\") on the next click, and then a new export proceeds.\n\n6. A worker on the worker pool runs report_export(ctx, payload). The handler loads the export row by payload.export_id.\n   - If the status is done and notified_at is null, it skips to step 9. If notified_at is set, it returns.\n   - If the status is failed, it returns.\n   - It re-checks report.view. If the permission is gone, it sets failed with \"permission removed\" and returns without raising. No retry and no email.\n   - Otherwise it sets status=running. The row stays running through retries.\n   - If the database is unreachable, the handler raises and the queue retries after the backoff.\n\n7. Streaming into storage:\n   - The key is {export_id}.csv, fixed per export.\n   - The handler calls start_multipart(\"exports\", key) and writes the header into a byte buffer.\n   - It pages the replica by keyset, 5,000 rows per page, using the stored filters and cols.\n   - Each page's CSV bytes are appended to the buffer. When the buffer reaches 8 MB, upload_part is called, the etag is kept and the buffer is emptied. The loop stops when a page returns fewer than 5,000 rows.\n   - The remaining bytes are uploaded as the last part.\n   - The upload_id and etags are held only in the running attempt, not in the database.\n   - The handler has its own deadline at about 1,700 s. When it is hit, it calls abort_multipart and raises. The queue kills an attempt at 1800 s.\n   - Failures:\n     - On any error, abort_multipart is called and the error is re-raised. The queue retries after 60 s, then 300 s, for at most 3 attempts.\n     - If an attempt is killed or the worker dies, orphaned parts are discarded by the bucket after 24 hours.\n     - Nothing is visible at the key until complete_multipart, so a half-written file is never downloadable.\n     - A nightly rebuild during the run may mix old and new rows. This is accepted.\n\n8. Publishing:\n   - The handler calls complete_multipart(upload_id, etags). The whole object appears at the key, replacing any existing one.\n   - It then updates the row to done, with object_key and finished_at, only WHERE status='running'. If no row changed (it had been marked failed), it returns without emailing.\n   - If complete_multipart raises, the handler aborts and the attempt is retried as in step 7. If the database update fails, the attempt fails and the next attempt rebuilds the file.\n\n9. Emailing:\n   - The handler creates a signed URL with signed_url(\"exports\", object_key, 86400) at send time.\n   - It calls send_email(user_id, \"report_export_ready\", {report_id, url, expires_in}).\n   - It then sets notified_at.\n   - If send_email raises, the handler raises, which uses up one attempt. The next attempt sees done with notified_at null and only sends the email.\n   - If the email is sent but notified_at is not saved, a duplicate email may go out.\n   - If all attempts fail at this step, the status stays done but the user has no email (open question 1).\n\n10. Final failure:\n   - After attempt 3 fails, the queue calls on_final_failure once.\n   - It loads the row. If the status is done, it does nothing.\n   - Otherwise it sets failed with an error and finished_at, then sends the \"report_export_failed\" email. Any email error is caught and logged.\n   - A failed row no longer matches the unique index, so the user can start a new export.\n   - If the callback itself crashes, the row stays running until the 3-hour rule in step 5 clears it on a click.\n\n11. Status on the page:\n   - On page load, and when the user starts a large export, the page calls GET /api/reports/{report_id}/exports/latest. It checks report.view and returns the user's most recent export from the last 7 days, as {export_id, status, created_at, finished_at}, read from report_exports.\n   - The page shows queued, running, done or failed beside the button.\n   - While the state is queued or running, the button is disabled and the page polls every 5 s.\n   - On done it says \"Done. We emailed you a download link\". On failed it says \"Export failed. Try again\" and re-enables the button.\n   - If a poll errors, it keeps the last state and retries. A 403 hides the block. After 7 days nothing is shown and a new export is allowed.\n   - A click from a second tab while an export is active returns the existing export (step 5), and the page shows \"An export of this report is already running\".\n\nThe user then opens the emailed link, which is valid for 24 hours. The file is deleted by the bucket 7 days after creation.",
+   "gaps": [
+    "The document does not say what happens when the user opens the signed link after it expires, or how the page offers a new link. This is only raised as open question 1.",
+    "The document does not say what the browser-side page does with a 202 beyond 'starts showing status'. It is unclear whether Step 11's GET is called immediately from the 202 body or via the separate latest endpoint.",
+    "The document does not say which pool or process serves the API for the 'latest' status route, or who triggers the 60 s check on a null job_id row apart from a user click. This is inferred to be click-only."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

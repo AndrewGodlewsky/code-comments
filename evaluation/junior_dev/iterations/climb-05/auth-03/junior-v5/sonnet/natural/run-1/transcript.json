@@ -1,0 +1,108 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"raw token\" and where does it come from? Who generates it, how, and at which step in flow A?",
+     "about": "insert new token row: sha256(raw), expires=now+30m"
+    },
+    {
+     "id": "2",
+     "text": "How does the job payload with the raw token get from the queue to the worker, and how does the worker build the link from it? What does the link URL look like?",
+     "about": "enqueue \"reset\" job (raw token in link)"
+    },
+    {
+     "id": "3",
+     "text": "If the enqueue fails after COMMIT, the old link was already marked consumed. So does the user end up with no working link at all until they request again?",
+     "about": "Enqueue fails after commit"
+    },
+    {
+     "id": "4",
+     "text": "In flow B, the form keeps the token. How is it kept (hidden field, cookie?) and how does it get sent back in the POST /reset?",
+     "about": "\"choose a new password\" form (token kept in the form)"
+    },
+    {
+     "id": "5",
+     "text": "What is the breach list and where does it live? Is it a local file, a database table, or an external service?",
+     "about": "not on breach list ?"
+    },
+    {
+     "id": "6",
+     "text": "What does the existing session mechanism look like? How does the API identify a request's session, and what is in the `sessions` table that makes deleting rows log the user out?",
+     "about": "DELETE sessions WHERE user_id (all devices)"
+    },
+    {
+     "id": "7",
+     "text": "Where is the \"password changed\" email's content built and what does its job payload contain? Does it contain any token?",
+     "about": "enqueue \"password changed\" email -> queue"
+    },
+    {
+     "id": "8",
+     "text": "What does the generic reply return for the client: status code and what does the client UI show next? And does the client do anything with the 503 case?",
+     "about": "generic reply: \"If an account exists for that address, we've sent a link.\""
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The API server generates the raw token in flow A, after the user is found and before the transaction. It is 32 bytes from a CSPRNG, base64url-encoded. Only sha256(raw) is stored. Reason: the brief fixes 32 random bytes and hash-only storage."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The reset job payload is {email, raw token}. The worker reads it from the queue and builds APP_URL/reset?token=<raw>, with APP_URL the public base URL from configuration. This matches the GET /reset?token=RAW route in flow B. The queue's transport details are the existing system's and I have not checked them."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes. The old link is already consumed and the new one was never sent, so the user has no working link until they request again. I accept this because it is rare and the user can retry. Moving the enqueue inside the transaction would not fix it and would hold the lock longer. Documented in the failure table. The failed attempt still counts toward the limit of 3."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The token is in a hidden form field and is sent in the body of POST /reset. No cookie. This keeps the token out of server logs on the POST and avoids adding cookie state."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "I do not know where the breach list lives or how it is queried. Nothing I have says whether it is a local file, a table or an external service. The design only needs a yes/no lookup, and treats an unavailable lookup as a rejection. Added to Open questions."
+    },
+    {
+     "id": "6",
+     "tag": "unknown",
+     "text": "I have not seen the session code. The brief says sessions has one row per logged-in device and the API checks it on every request, so deleting the user's rows makes the next request fail the check. How the request carries the session id (cookie or header) is unknown to me. Added to Open questions."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The payload is only the user's email address, and the 'password changed' template is chosen by job type. It contains no token. The worker builds the content from the existing email template mechanism, which I have not checked."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The generic reply is HTTP 200 with the fixed message in the body. The client shows that message and does nothing else. On the 503 the client shows a generic 'try again' message. These are my choices, since the brief only fixes the message text. The client UI is not specified beyond that."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: a user who cannot log in clicks \"Forgot password?\" and enters an email. The web client sends POST /forgot-password {email} to the API server.\n\n2. The API server normalizes the email (trim, lowercase) and asks Postgres (`users`) for a user with that email. If none exists, it returns the generic reply [G] (HTTP 200, \"If an account exists for that address, we've sent a link.\") and sends nothing.\n\n3. If a user exists, the server makes a raw token: 32 random bytes from a secure random generator, base64url-encoded. This happens once, before the transaction. The raw token lives only in memory, then in the queued job, then in the emailed link.\n\n4. The server opens a Postgres transaction and locks the user row with FOR UPDATE. This serializes parallel requests for the same user, so two simultaneous requests cannot both pass the check below.\n\n5. Inside the transaction it counts that user's `password_reset_tokens` rows with created_at in the last hour. If the count is 3 or more, it rolls back and returns [G]. No token is made and no email is sent. The rows themselves are the rate-limit counter, which is why they are kept after expiry.\n\n6. Otherwise it sets consumed_at = now on the user's earlier unused tokens, so old links die. It then inserts a new row with token_hash = sha256(raw), expires_at = now + 30 minutes, and the user_id, and commits. Only the hash is stored.\n\n7. After commit, the server enqueues a \"reset\" job {email, raw token} on the email queue and returns [G]. Enqueueing is asynchronous, so response times are similar for known and unknown addresses.\n\n8. The existing email worker takes the job and builds APP_URL/reset?token=<raw>. It sends the email through the third-party mail provider. If the send fails, it retries 3 times with backoff, then logs and drops the job. Nobody is told. The job payload is removed once sent or dropped.\n\n9. The user clicks the link, which sends GET /reset?token=RAW to the API server. The server computes sha256(RAW) and looks for a row with that hash that is unused (consumed_at is null) and not expired. If there is no such row, it shows the expired page [E]. The same page covers invalid, expired, used and replaced tokens. If the row is valid, it returns the \"choose a new password\" form with the token in a hidden field and the header Referrer-Policy: no-referrer. A GET changes nothing, because mail scanners and link previewers open links.\n\n10. The user submits a new password. The browser sends POST /reset {token, new password} with the token in the body. No cookie is used. The server repeats the same validity check and shows [E] if it fails.\n\n11. The server checks the password rules: at least 12 characters, and not on the breach list (a yes/no lookup). If either rule fails, it returns 400 with the reason and shows the form again. Nothing is written and the link stays usable until it expires. If the breach-list lookup is unavailable, the password is treated as rejected (\"try again shortly\"), never accepted unchecked.\n\n12. If the password passes, the server hashes it and opens a transaction with three statements. First, UPDATE the token row SET consumed_at = now WHERE hash = h AND consumed_at IS NULL AND expires_at > now, RETURNING user_id. If this returns 0 rows, it rolls back and shows [E]. This statement is the real single-use check. If two submits race, or a new link request lands mid-submit, exactly one wins and the rest see [E]. Second, UPDATE `users` SET password_hash. Third, DELETE all of that user's `sessions` rows (every device). Then it commits. If the transaction fails, it rolls back and password, token and sessions are unchanged, so the user can retry.\n\n13. Because the API checks `sessions` on every request, deleting the rows logs out every device at once, including the one that did the reset. The server responds 302 to /login with no auto-login. After commit it enqueues a \"password changed\" email job carrying only the address, which the worker sends the same way. If that enqueue or send fails, the reset still succeeds, and the failure is only logged.\n\nOther failures:\n- A DB error in the request flow returns 503 with a \"try again\" message, the same for every address, and no email is sent.\n- If the enqueue fails after commit, the failure is logged and [G] is still sent. The row stays and counts toward the limit of 3, and the old link is already dead, so the user has no working link until they request again.\n- If the mail provider fails, the user sees nothing and has no link. They must request again, and each attempt uses quota. The document recommends alerting on dropped `reset` jobs but does not change the worker.",
+   "gaps": [
+    "Where the breach list lives (local file, database table or external service) and how it is queried is undecided, so I cannot say where the lookup in step 11 goes or what 'unavailable' looks like.",
+    "How the session mechanism identifies a request (cookie name, session id format) is not described. I know only that the API checks a `sessions` row, so I cannot say what the user's browser holds or sends when it is logged out.",
+    "The value of APP_URL per environment is not specified, so I cannot say what host the emailed link actually points to.",
+    "What the email queue is or how it works (technology, message format, where the job payload is stored and removed) is not described. I know only that the API adds jobs and the worker takes them.",
+    "How the 'password changed' email is built, since the document says only that its job carries just the address and gives no template or content.",
+    "How the client shows the 400 reason or the 'try again' message to the user is not described. Nor is the exact request or response shape (JSON versus HTML form) for POST /reset."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

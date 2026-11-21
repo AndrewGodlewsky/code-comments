@@ -1,0 +1,19 @@
+## Review of mig-01 (simplify-only, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Defined the five `write_mode` values and `read_from_pg`. The draft named the flag but not its values, and it had no pause.
+- Defined source and target, so one copy rule, one pending table and one switch procedure serve both directions. The draft implied separate mechanisms.
+- Replaced the draft's one-line 'freeze writes, restart sequence, switch' with an ordered pause procedure (step 7). It has the 90-second limit, the 80-second abort rule, and the sequence value (larger of AUTO_INCREMENT and max id, plus 1,000). These values are my decisions.
+- Added a rollback procedure, which the draft lacked. It includes setting MySQL's AUTO_INCREMENT above the max Postgres id, which the draft also lacked.
+- Explained the pending table and the sweeper, which the draft named but did not describe. The sweeper is a worker loop, not `app.jobs`, because `app.jobs` dead-letters a job after 5 failures. The 10-second interval is my decision.
+- Stated the copy rule (per-user lock, tombstone check, version check) once in Terms. The draft's steps did not describe it.
+- Merged the draft's 'ramp reads' and 'keep at 100% for 3 days' into step 6.
+- Folded 'run the comparer until clean' into step 5 and defined what counts as a mismatch.
+- Added the starts, does, state and failure parts to every step, as the brief's format requires. This is the main reason the file is longer than the draft, which is more than the 1.5x target. Nothing beyond what the brief requires was added.
+- Moved failure handling into one table and kept the open questions at the end. Cut the draft's repeated 14-day wording.
+- Kept the draft's intent: the ten-step order, the 14-day wait before pg_only, the backup before the drop, and the pg_only switch.
+
+### Holes
+- None.

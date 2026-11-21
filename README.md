@@ -18,6 +18,13 @@ makes no claim of better downstream work. See the
 [plugin README](plugins/code-comments/README.md) for install, use and evidence, and
 [hygiene-skill.md](docs/skill/hygiene-skill.md) for its purpose and limits.
 
+**Also installable:** Junior-dev, a plugin for GitHub Copilot and Claude Code. When an
+agent writes a plan or diagram file, a junior developer who sees only that file questions the
+agent until a fresh reader can explain the file back. Measured result: it does not beat a
+plain self-review on fresh cases, but it helps Haiku's thin drafts. See the
+[plugin README](plugins/junior-dev/README.md) and the
+[evidence report](docs/junior-dev/report-2026-11-21.md).
+
 ## The story and the evidence
 
 To understand or explain the project, start with

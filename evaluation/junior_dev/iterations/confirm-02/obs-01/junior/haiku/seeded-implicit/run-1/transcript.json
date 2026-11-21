@@ -1,0 +1,198 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The notes say the evaluator opens an incident after 3 breaches. Does the evaluator hold that count itself, or is it stored somewhere? Is the breach message to the incident manager sent on every breach or only the third?",
+     "about": "Evaluator->>IncidentManager: breach"
+    },
+    {
+     "id": "2",
+     "text": "Two evaluators are 'coordinated through Postgres'. What does each one do on a given minute, and how do they avoid both sending a breach or both opening an incident?",
+     "about": "Evaluator (x2) / Two evaluators are coordinated through Postgres"
+    },
+    {
+     "id": "3",
+     "text": "How does dedup on service + rule work? What happens when a breach arrives for a service and rule that already has an open incident?",
+     "about": "Dedup on service + rule"
+    },
+    {
+     "id": "4",
+     "text": "What is the timer queue, and what starts the 'escalate' message? Who puts a timer into it, and when?",
+     "about": "TimerQueue->>IncidentManager: escalate"
+    },
+    {
+     "id": "5",
+     "text": "On escalate, what does the schedule lookup return, and how does the incident manager know which level (primary, secondary, EM) is next? Where is that level stored?",
+     "about": "IncidentManager->>Schedule: lookup / Escalation: primary, secondary, EM"
+    },
+    {
+     "id": "6",
+     "text": "How does an ack stop escalation? What happens to a timer that is already queued, and what if the ack arrives at the same moment an escalate fires?",
+     "about": "Engineer->>Pager: ack / Ack stops it"
+    },
+    {
+     "id": "7",
+     "text": "What does 'Push with SMS fallback' mean here? Does the paging provider or the incident manager decide to fall back, and when? What is 'Failures don't block escalation' in practice?",
+     "about": "Push with SMS fallback. Failures don't block escalation."
+    },
+    {
+     "id": "8",
+     "text": "What is stored in the page_log table, who writes to it, and what is it used for? How does the incident table relate to it?",
+     "about": "page_log table"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The evaluator holds no count. The breach streak is stored in rule_state in Postgres. There is no separate breach message to the incident manager. Each minute's result is written to Postgres, and an incident opens only when the streak reaches 3, so the incident manager is not sent a message on every breach."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Both evaluators run every minute. Each tries to insert an evaluation row keyed by service, rule and minute. The unique key lets only the first insert succeed, and the other evaluator stops for that minute. The winner updates streaks and any incident change in the same transaction, so a breach is sent to nobody and only one incident can open."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Dedup uses an open-incident pointer in rule_state plus a unique index that allows one open incident per service and rule. A breach for a service and rule that already has an open incident adds to that incident's breach count and sends no page."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The timer queue is a delayed-message queue. The incident manager queues an escalate message 5 minutes after each page to the primary or secondary. The message carries the incident id and level. No timer is queued after the EM page, because EM is the last level."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The schedule lookup returns who holds the role at the moment of the page, so a 09:00 handover is respected. The current level is stored as incident.level (0 primary, 1 secondary, 2 EM). Escalation adds one to it, then looks up the person for that level."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "An ack sets acked_at under a row lock. Escalate reads acked_at under the same lock and does nothing if it is set. A queued timer is not removed. It becomes a no-op once the incident is acked or resolved. If ack and escalate arrive at the same moment, the lock decides the order, as stated in rule 10."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The incident manager decides to fall back. If the push call errors or times out (10 seconds, a value I chose), it sends SMS straight away. Failures do not block escalation means the escalate timer is queued when the page is sent, whatever the result, so a failed page cannot delay the clock."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "page_log holds one row per page attempt: incident, purpose, role, person, channel, result and provider reference. Only the incident manager writes it. The incident table holds the state (open or resolved, level, acked and resolved times). page_log holds the history. It is used to map an ack webhook to its incident, to find who gets the resolved notice, and for audit."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The diagram shows the evaluator inserting an incident, and then the incident manager calling the schedule service and the paging provider. What actually triggers the incident manager after the evaluator's transaction commits? Is it a message, a call, or a poll?",
+     "about": "Ev->>DB: insert incident at level 0 / IM->>Sch: who is primary now"
+    },
+    {
+     "id": "10",
+     "text": "What does the evaluator read to decide whether a minute is a breach, and where does the trailing 5-minute rate come from? What does the evaluator do if the metrics store has no data for that service?",
+     "about": "Breach / Metrics store"
+    },
+    {
+     "id": "11",
+     "text": "Rule 11 says each person with a page_log row gets a resolved notice. Does that include people paged at levels the incident never reached, or only those actually paged? If someone was paged twice (push then SMS), do they get one notice or two?",
+     "about": "IM->>Pg: resolved notice to each paged person"
+    },
+    {
+     "id": "12",
+     "text": "The page reference in the ack webhook maps back to an incident through page_log. Where does that reference come from, and which page_log row (push or SMS) does it match? What if the push call timed out but the push was actually delivered and acked?",
+     "about": "Pg->>IM: webhook with page reference"
+    },
+    {
+     "id": "13",
+     "text": "When the schedule lookup fails, the table says the level still moves on. Who gets paged in that case, and does the incident manager try the next person up or just log a failure and queue the timer?",
+     "about": "Schedule lookup fails"
+    },
+    {
+     "id": "14",
+     "text": "Does an ack also stop the incident from receiving breach counts or resolving? What does acked time change besides escalation, and does the incident stay open until 10 quiet minutes regardless?",
+     "about": "IM->>DB: lock incident, set acked time if empty"
+    },
+    {
+     "id": "15",
+     "text": "In the escalate check, what does 'stale' mean concretely, and when would the incident level differ from the level in the message, given that each level queues only one timer?",
+     "about": "Acked, resolved or stale"
+    },
+    {
+     "id": "16",
+     "text": "The page to the primary happens after the evaluator's transaction commits. Are the incident insert and the page sent in the same flow, and what does the on-call see in the page (what information does it contain)?",
+     "about": "IM->>Pg: push page to primary"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Nothing sends a message and nothing is polled. The incident manager is a code module that the evaluator calls directly, in the same process, after its transaction commits. Reason: it needs no new queue, and the commit is what makes it safe to page. A crash between the commit and the page is listed as an open question."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The evaluator reads the service's per-minute request and 5xx counts from the metrics store for the last five minutes and divides the 5xx total by the request total. If the store has no series for the service, or the window has zero requests, the minute changes nothing. Reason: a missing series cannot show that the rate is clear, so it must not resolve an incident. If the store is unreachable, no evaluation row is written for that minute."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Only people with a page_log row get a notice, which means people an attempt was actually made for. Levels never reached have no row and get nothing. Someone paged by push and then SMS gets one notice, not two. Reason: the brief says everyone who was paged gets a notice, and one notice per person avoids duplicate messages."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The provider returns a reference for each send, and it is stored in page_log as the provider reference. The ack matches the row whose reference it carries and uses that row's incident. If a push call timed out, the design stores a reference only if the provider returned one. If no row matches, the ack cannot be mapped and escalation continues. This gap is in the open questions."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Nobody is paged at that level, because no person is known. The failed lookup is logged with no person, the escalate timer still runs, and the next escalate moves to the level after. The design does not try the next person up, because the brief gives no such rule and I will not invent one."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "No. The brief's only effect of an ack is that escalation stops. The resolve rule counts only the clear streak. Acked time is recorded and stops escalation. Breaches still add to the breach count, and the incident resolves only after 10 quiet minutes, whether it was acked or not."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The escalate message carries the level it was paged at. Stale means the incident has already moved past that level, or is resolved or acked. In normal flow the levels always match, because each level queues one timer. The check protects against duplicate or late timers. If a timer says level 0 and the incident is already at level 1, it does nothing."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes. The incident row and the page are one flow: the evaluator commits, then calls the incident manager (see Q9), which looks up the primary and sends the page. The page names the service, the alert rule and the current 5xx rate, so the on-call knows what is failing. The exact wording is not set, because the flow does not depend on it."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: every 60 seconds, each of the two evaluator instances runs for each service and each alert rule (here, the 5xx rule). It reads the trailing 5-minute window from the metrics store. That is the 5xx total divided by the request total over the last five one-minute buckets. The gateway writes those counts each minute.\n\n2. Classify the minute (Rule 1). The minute is a breach if the window has more than 2% 5xx and at least 500 requests. It is clear if the window has less than 1% 5xx. Any other minute that has requests is \"neither\". A window with no requests, including a service with no series in the store, changes nothing. A neither minute resets both streaks. A breach resets the clear streak, and a clear minute resets the breach streak.\n\n3. Claim the minute (Rule 2). The evaluator inserts an `evaluation` row for (service, rule, minute) in Postgres. The unique key means only one insert succeeds. If the insert conflicts, that evaluator stops, because the other one has the minute. If one evaluator is down, the other still wins every minute. If both miss a minute or the metrics store is unreachable, there is no row, the minute is not counted, and streaks continue from the last counted minute.\n\n4. Update state. The winner opens one transaction. In it, it updates the breach and clear streaks in `rule_state` (one row per service and rule) and makes any incident change. Streak and incident changes commit together, so each minute counts once.\n\n5. Breach streak reaches 3 and `rule_state` shows no open incident (Rule 3). In the same transaction the winner inserts an `incident` at level 0, and `rule_state` points to it. A unique index allows only one open incident per service and rule, as a backstop. After the commit, the evaluator calls the incident manager directly. The incident manager is a code module inside the app.\n\n6. Page procedure (Rule 6), used for every page.\n   - The incident manager asks the schedule service who holds the role for the level right now, so a 09:00 handover is respected. Level 0 is primary.\n   - It sends a push through the paging provider. If the push errors or gets no answer in 10 seconds, it sends an SMS.\n   - It writes one `page_log` row per attempt. Each row holds the incident, purpose \"page\", role, person, channel, result and the provider reference the provider returned.\n   - The page names the service, the alert rule and the current 5xx rate.\n   - If the schedule lookup fails, it writes a failed row with no person and sends nothing. If push and SMS both fail, the failure is logged.\n\n7. Queue the escalation timer (Rule 7). After a page to primary or secondary, the incident manager queues an escalate message for 5 minutes later, whatever the page result. The message names the incident and the level it was paged at. The timer queue holds only these pending messages. No timer follows the EM page.\n\n8. While the incident is open (Rule 4). Later breach minutes add one to the incident's breach count and send no page.\n\n9. Escalation (Rule 8). The timer queue delivers the message to the incident manager after 5 minutes. The incident manager locks the incident row. It acts only if the incident is open, not acked, still at the level in the message, and a next level exists. In that case it:\n   - sets the level to level+1 in Postgres;\n   - looks up the person for the new level now;\n   - pages them with the step 6 procedure;\n   - queues a new timer if the new level is not EM.\n   Otherwise it does nothing. This covers duplicate, redelivered or late timers, and also acked, resolved or no-next-level cases. So the sequence is primary, then secondary 5 minutes later, then EM 5 minutes after that, with no further timers.\n\n10. Acknowledge (Rule 9). The engineer taps Acknowledge in the provider's app. The provider calls our webhook with the provider reference. The incident manager finds the incident through `page_log`, locks the incident row, and sets the acked time if it is empty. Any ack stops escalation, and later acks change nothing. The ack does not stop breach counting or resolving. The incident stays open.\n\n11. Ack and escalate race (Rule 10). Both take the same row lock. If the ack commits first, the escalate check sees an acked incident and does nothing. If escalate commits first, the next level is paged once, and then the ack stops any further levels. If the ack webhook is lost, escalation just continues.\n\n12. Resolve (Rule 5). Each minute, a clear minute adds to the clear streak. When the clear streak reaches 10 and an incident is open, the winner sets the incident to resolved in the same transaction. A later breach opens a new incident with fresh streaks.\n\n13. Resolved notices (Rule 11). After the commit, each distinct person with a `page_log` row for the incident gets one resolved notice, however many attempts they had. People at levels never reached get nothing. The notice goes by push then SMS. The person comes from `page_log`, not from a fresh schedule lookup. The notice is logged with purpose \"resolved\". No timer is queued. Timers that fire later do nothing, because the incident is no longer open. A failed notice is logged and not retried.",
+   "gaps": [
+    "The document does not say how the evaluator reaches the metrics store or when in the minute it runs. It does not say whether the two evaluators are scheduled in step, or how 'the minute' is derived from the clock. Both affect how the evaluation row key is built.",
+    "The document says the streaks update 'in one transaction' and that Postgres 'holds all state'. It does not say whether the evaluator locks `rule_state` while updating. It also does not say whether the open-incident check and the streak update are safe against a concurrent writer. The unique incident index is only described as a backstop.",
+    "It is not stated what the resolved-notice step does when the transaction has committed but the notice has not yet been sent. This is the same crash-after-commit hole the document lists as unhandled, but it is not said to cover resolved notices specifically.",
+    "The document does not say whether the escalate message is queued before or after the page_log writes. It also does not say what the 'level it was paged at' is when the schedule lookup failed. The effect on a lost timer or crash is therefore unclear.",
+    "How the paging provider handles an SMS (whether it also returns a reference, and whether an ack can come back through SMS) is not described. The only ack path described is the app's Acknowledge button on a push.",
+    "The document does not say what happens if the provider's ack webhook arrives with a reference that matches no `page_log` row, other than 'escalation continues'. It also does not say whether the webhook returns an error to the provider.",
+    "The document does not say how the incident manager is invoked by the timer queue or the webhook (in-process, or over a network). It also does not say how retries or delivery guarantees of the timer queue work beyond 'duplicate or redelivered' being possible.",
+    "Open questions left unresolved by the document: recovery from a lost page or timer after commit, behaviour during a Postgres outage, the validity of the 10-second timeout, and whether a timed-out push returns a provider reference. Without these answers the failure paths are unspecified.",
+    "The page content beyond naming the service, rule and 5xx rate is not set. It is also not said where the 'current 5xx rate' in the page is taken from (the evaluation row or a fresh read of the metrics store)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

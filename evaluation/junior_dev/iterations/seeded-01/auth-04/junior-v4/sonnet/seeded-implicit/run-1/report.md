@@ -1,0 +1,23 @@
+## Review of auth-04 (junior-v4, author sonnet, seeded-implicit)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Replaced the vague 'Match or create account' box with explicit branches: email_verified check, no-match create, match with other Google refused, match goes to confirm. Reason: Q3 and Q4.
+- Added a State table naming where each piece lives (Redis attempt, Redis pending link, user_identities, nullable password_hash) and what removes it. Reason: Q1, Q2, Q6.
+- Defined terms: sub, identity, modes, pending link, lockout. Reason: Q2, Q9.
+- Drew the confirm-password loop with expired, locked and wrong-password paths. Reason: Q6, Q9.
+- Added callback failure branches and a Failures table, saying nothing is stored. Reason: Q8.
+- Described link mode: how the callback knows it is a link request, and refusals. Reason: Q7.
+- Added numbered steps, a summary of today's start_session, an unlink rule (needs an existing password, none typed) and a rollout section.
+- Added an open question on binding the attempt to a browser cookie.
+- Added a short opening on how sign-in works today and the main Google flow, before the terms
+- Terms: added attempt, kept others; folded the long prose after the table into one short paragraph
+- Rewrote all seven steps with the same four parts: starts when, does, data, fails
+- Merged the Fails text duplicated between steps and the table; steps now give the local failure and the table keeps the cross-cutting ones
+- Removed repeated statements of the lockout rule and the 10-minute TTL from step prose
+- Tightened step 2 wording and moved the ID token check list into it once
+- Reworded the rollout as one build order; kept diagram, state table and open questions unchanged in substance
+
+### Holes
+- None.

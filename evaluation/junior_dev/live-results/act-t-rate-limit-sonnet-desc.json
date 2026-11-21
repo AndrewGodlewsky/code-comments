@@ -1,0 +1,47 @@
+{
+ "label": "act-t-rate-limit-sonnet-desc",
+ "model": "sonnet",
+ "hooks": false,
+ "wall_s": 34.1,
+ "cost_usd": 0.08724320000000002,
+ "junior_cost_usd": 0,
+ "num_turns": 8,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": false,
+  "helper_started": false,
+  "hook_reminder": false,
+  "triggered": false
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "did not start with the helper",
+   "no teach-back",
+   "no report"
+  ],
+  "helper_calls": [],
+  "end_reason": null,
+  "rounds": null
+ },
+ "state": null,
+ "final": "I saved the plan to `docs/plans/rate-limit.md`. I didn't change any code.\n\n- **Where it goes:** the limit is checked at the top of `place_order()` in `src/app.py`, before the stock check and `charge()`. The README mentions `POST /orders`, but the repo has no HTTP layer yet, so a rate-limited call never reaches the payment provider.\n- **Algorithm:** a sliding window per customer. It starts at 5 attempts per 60 seconds, set by environment variables. These numbers are my guess and need your confirmation.\n- **What counts:** every attempt, including ones that fail on stock or payment. Counting only successes wouldn't stop card testing.\n- **Response:** `{\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": N}`, which can become a 429 once the HTTP layer exists.\n- **Implementation:** a new `src/ratelimit.py` with an injectable clock and a lock, then one call from `place_order`, plus a README section.\n- **Tests:** a pytest plan using a fake clock. It covers the window boundary, per-customer independence, and that rate-limited calls never call `charge()` or touch stock or `orders.json`.\n- **Limitations:**\n  - The `customer` value comes from the caller, so someone can dodge the limit by changing it. Real protection needs an authenticated customer ID.\n  - The counters live in memory, so they reset on restart and aren't shared between processes.\n  - Separately, the read-then-write of `orders.json` has no locking, so concurrent orders can collide. I noted it as a separate ticket.\n\nThe plan ends with four open questions: the limit numbers, per-customer overrides, who builds the HTTP layer, and logging.",
+ "helper": [],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/rate-limit.md": "# Plan: per-customer rate limiting on order placement\n\nStatus: proposal. No code has been changed.\n\n## Goal\n\nStop one customer from placing orders (or attempting to) faster than a set rate. This protects the card provider from card-testing and runaway clients, and keeps stock from being drained by one account.\n\n## What exists today\n\n- `src/app.py: place_order(customer, items, card_token)` is the only order entry point. It does three things in order: check stock, call `charge()`, then write the order to `data/orders.json`.\n- It returns plain dicts: `{\"status\": \"rejected\", \"reason\": ...}` or `{\"status\": \"placed\", ...}`. It never raises.\n- The README says orders arrive via `POST /orders`, but **no HTTP layer exists in the repo**. `place_order` is a bare function. The plan therefore puts the limiter in `place_order` itself, so it works whatever layer ends up calling it.\n- `customer` is a free-form string passed by the caller. It is not authenticated here.\n\n## Design\n\n### Algorithm\nSliding-window log per customer: keep a deque of recent attempt timestamps and allow at most `N` within the last `W` seconds. It is simple, exact, and gives an accurate `retry_after`. A token bucket would allow bursts, which we don't need.\n\nDefaults: `N = 5` attempts per `W = 60` seconds. Both are overridable by env vars `ORDER_RATE_LIMIT` and `ORDER_RATE_WINDOW_SECONDS`. These defaults are a starting guess and should be confirmed (see Open questions).\n\n### Where the check goes\nFirst line of `place_order`, before the stock check and before `charge()`. A rejected request must never reach the payment provider.\n\n### What counts\nEvery attempt counts, including ones later rejected for stock or failed payment. Counting only successes would not stop card testing, which is mostly failed charges.\n\n### Response shape\nMatches the existing style, with one added field:\n\n```python\n{\"status\": \"rejected\", \"reason\": \"rate limited\", \"retry_after\": 17}  # whole seconds, rounded up\n```\n\nWhen the HTTP layer exists, map `reason == \"rate limited\"` to `429` with a `Retry-After` header.\n\n### Customer key\nUse `customer.strip().lower()`. An empty or missing customer is not exempt: it falls into a shared `\"\"` bucket, which is stricter on purpose.\nLimitation: since `customer` is caller-supplied, a client can dodge the limit by changing it. Real protection needs the authenticated customer ID, plus a per-IP limit at the HTTP layer. Both belong to the future HTTP work.\n\n## Implementation steps\n\n1. **New module `src/ratelimit.py`**\n   - `class RateLimiter(limit, window, clock=time.monotonic)`.\n   - `check(key) -> (allowed: bool, retry_after: int)`: prune timestamps older than `window`, then either record the attempt and allow it, or deny with the time until the oldest timestamp expires.\n   - A `threading.Lock` around `check`, so concurrent calls cannot both pass at the limit.\n   - Drop a key's deque when it empties, so memory does not grow with every customer ever seen.\n   - The clock is injectable so tests do not sleep.\n2. **Wire into `src/app.py`**\n   - Create one module-level limiter from the env-configured values.\n   - Call it at the top of `place_order` and return the rejection above when denied.\n   - No other behaviour changes.\n3. **Config**: read the two env vars once at import, with the defaults above. Reject non-positive values at startup.\n4. **Docs**: add a short \"Rate limiting\" section to `README.md` (limits, env vars, response shape).\n\n## Tests\n\nThere are no tests today. Add `tests/test_rate_limit.py` (pytest) with a fake clock:\n\n- `N` attempts pass and attempt `N+1` is rejected with the correct `retry_after`.\n- Allowed again once the window has passed. Test the boundary exactly.\n- Customers are independent: A being limited does not affect B.\n- Key normalisation: `\"Ann\"` and `\" ann \"` share a bucket.\n- A rate-limited call does **not** call `charge()` (patch it and assert) and does **not** change `STOCK` or `orders.json`.\n- Failed attempts (out of stock, bad card) still count.\n- Concurrency: many threads against one key never pass more than `N`.\n- Empty deques are removed (no memory leak).\n\nTests must patch `ORDERS` to a temp path and reset `STOCK`, since `place_order` writes real files.\n\n## Known limits and risks\n\n- **In-memory only.** State resets on restart and is not shared between processes or hosts. This is fine for the current single-process, no-database setup. If it is ever scaled out, move the counters to a shared store (e.g. Redis) behind the same `check()` interface.\n- **Unrelated existing issue, out of scope:** `place_order` reads, appends, and rewrites `orders.json` with no locking, and the order `id` comes from `len(orders)+1`. Two concurrent orders can collide or lose data. The limiter does not fix this, but it is worth a separate ticket.\n- A limit set too low could block legitimate bulk buyers. Make it configurable and log rejections so it can be tuned.\n\n## Open questions\n\n1. Are 5 attempts per minute the right numbers for real customers?\n2. Should limits differ for trusted or wholesale customers (a per-customer override)?\n3. Who will build the HTTP layer, and will it supply an authenticated customer ID? This decides how strong the limit really is.\n4. Should rejections be logged or counted in metrics? There is no logging in the codebase today.\n\n## Rollout\n\nSmall, self-contained change. Ship behind generous defaults, watch rejection logs, then tighten. Rollback is removing the one call in `place_order`.\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Write"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-rate-limit",
+ "kind": "trigger",
+ "prompt": "Plan how to add per-customer rate limiting to placing orders. Save it to docs/plans/rate-limit.md. Do not change any code."
+}

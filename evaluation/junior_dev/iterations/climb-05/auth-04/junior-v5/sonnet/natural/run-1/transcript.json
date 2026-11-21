@@ -1,0 +1,193 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "In the login entry, the diagram says Google sign-in is GET /auth/google/start with no CSRF token, while the settings link is a POST with CSRF. What does the g_bind cookie protect against that CSRF would, and why is it enough for login?",
+     "about": "1. Entry points / g_bind cookie"
+    },
+    {
+     "id": "2",
+     "text": "What exactly is the g_bind cookie value compared with at the callback, and where does the record.bind value come from? Are they both random values generated at start?",
+     "about": "C3: g_bind cookie matches record.bind?"
+    },
+    {
+     "id": "3",
+     "text": "When the user returns from Google with an error such as Cancel, the record has already been consumed by GETDEL. Does the user simply start again from the origin page? And is g_bind cleared in that case, since C7 is the only node that says it is cleared?",
+     "about": "C4 / E_CANCEL"
+    },
+    {
+     "id": "4",
+     "text": "In login mode when the sub is found in google_identities, the diagram goes straight to OK. If the user has been deleted or locked, or the stored link points to a user that no longer exists, what happens? Which user_id is passed to start_session?",
+     "about": "LG1 sub found in google_identities? -> OK"
+    },
+    {
+     "id": "5",
+     "text": "When Google creates a new user (LG4), what are the users row's other columns (name, failed_logins, locked_until) set to? And what does the user's next password login look like given password_hash is NULL?",
+     "about": "LG4: INSERT users with password_hash NULL"
+    },
+    {
+     "id": "6",
+     "text": "Why does an existing user with the same verified email require a password, and why is no password asked in link mode? What stops someone else who controls a Google account with that email from taking over?",
+     "about": "LG7 and LK4"
+    },
+    {
+     "id": "7",
+     "text": "At confirm (CF2), how is the g_pending cookie turned into a Redis lookup, and is the confirm POST protected by CSRF? What does a user see if they have no g_pending cookie when they GET the confirm page?",
+     "about": "4. Password confirmation loop / CF0, CF2"
+    },
+    {
+     "id": "8",
+     "text": "Where do the 'Account temporarily locked' and the error pages appear in terms of HTTP response (a rendered page or a redirect), and what does the user do next? In particular, for the 'Wrong password' path, which sid session exists during the confirm loop, if any?",
+     "about": "DISC_LOCK / CF9"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The start GET only writes a Redis record and redirects, so it changes nothing for the user. The risk is a login-CSRF/callback injection: an attacker starts a flow in their own browser and tricks the victim into loading the callback. g_bind ties the callback to the browser that started the flow, so the victim's browser has no matching cookie and gets the error page. The settings entry changes an existing account, so it also takes a CSRF token."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Yes. A random bind value is generated at start, stored in the Redis record as record.bind and set as the g_bind cookie value. The callback compares the cookie with the record. The diagram's start node now lists bind among the generated values."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Yes, the user starts again from the origin page. g_bind was not cleared on that path, which was a gap. It is now cleared in the first callback node, so it is cleared in every outcome."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The user_id passed to start_session is the one on the matching google_identities row. The foreign key has ON DELETE CASCADE, so a link to a deleted user cannot exist. A locked user still signs in with Google, which is the first decision to confirm. The diagram edge and OK node now say this."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The users table has no name column. failed_logins takes its default 0, locked_until stays NULL, created_at defaults to now, email_verified_at is now. A later password login treats the NULL hash as a wrong password with the generic message. The user can use the Forgot password email to set one. This is now stated in the diagram and the state notes."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The brief requires it. In login mode the caller is unauthenticated, so a matching verified email alone is not enough proof of owning the existing account. The password proves ownership, so someone controlling only a Google account with that email cannot take over. In link mode the user is already signed in with a valid session, which proves ownership, so no password is asked. The link-mode node now says so."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The g_pending cookie holds the random pending id. The server computes sha256 of it and reads goog:pending:<hash>. The confirm POST now carries a CSRF token like the other POSTs; this is a change. A GET or POST with no cookie or no live record redirects to /login with the expired message, and the diagram now has that edge from the GET page."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The state error page and the Account temporarily locked message are rendered pages. Callback and redirect failures are redirects. After a locked message the user waits out the 15 minutes and starts Google sign-in again. During the confirm loop the user has no sid session. Only g_bind (until the callback) and g_pending exist. An old sid from a previous login is replaced by start_session on success. This is now in the reading guide."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The record is keyed by sha256 of state, and state goes to Google. What does Google send back, and how does the server turn it into the Redis key at the callback?",
+     "about": "P1 / Redis SET goog:auth:sha256 of state"
+    },
+    {
+     "id": "10",
+     "text": "In login mode, the g_bind cookie is cleared at the callback. After success, what does the browser hold, and what happens to the 'next' value for the new-user and confirmed-user paths? Is next carried in the pending record only for the confirm path?",
+     "about": "Reading guide / OK: start_session"
+    },
+    {
+     "id": "11",
+     "text": "When the race loops back to LG1, the sub is now found and goes to OK. Is the user_id then the other callback's new user? And what does the second callback's transaction leave behind?",
+     "about": "LG5 Unique violation? on sub -> LG1"
+    },
+    {
+     "id": "12",
+     "text": "CF9 re-shows the form by going back to CF0. Does CF0 check for a live record again each time, and does the CSRF token change between displays?",
+     "about": "CF0 / CF9 confirm page"
+    },
+    {
+     "id": "13",
+     "text": "What does the 'Re-check' at CF10 look at in the database, and why can it fail after the pending record was created? What is the user told in E_RACE versus what actually happened?",
+     "about": "CF10 / CF11 / E_RACE"
+    },
+    {
+     "id": "14",
+     "text": "After CF12 deletes the pending record, CF13 inserts the identity. If that insert fails with a unique violation or the database is down, what happens? The pending record is already gone.",
+     "about": "CF13 INSERT google_identities"
+    },
+    {
+     "id": "15",
+     "text": "Where do the client secret and the JWKS keys come from, and are the JWKS keys fetched on every callback or cached? What happens if the JWKS fetch is slow or fails?",
+     "about": "C5 Server-to-server POST to Google token endpoint"
+    },
+    {
+     "id": "16",
+     "text": "In link mode, the callback relies on the sid cookie. SameSite=Lax cookies are sent on the return from Google, but what if the session expired during the 10 minutes? Is the user told why they are sent to /login?",
+     "about": "LK1 Current sid session valid"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Google returns the same state value we sent, as a query parameter on the callback. The server hashes it with sha256 and uses goog:auth:<hash> as the Redis key for GETDEL. The callback node now says this."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "After success the browser holds only the new sid cookie, since g_bind and g_pending are cleared. For the existing-identity and new-user paths, next comes from the auth record read at the callback. For the confirm path it is copied into the pending record and read from there. The OK node and reading guide now say so."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes. The loop back to LG1 finds the sub linked by the winning callback and signs in as the user that callback created. The losing transaction rolled back, so it leaves no users row and no identity row. The edge label now says this."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Yes, CF0 checks for a live record on every display. The CSRF token is an HMAC of the g_pending value, so it is the same on each display and needs no session. This is a decision; the confirm node now says it."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The old re-check read google_identities for the user and for the sub. It could fail because up to 10 minutes pass between the callback and the password, and in that time the sub or the user could be linked elsewhere, for example from Settings in another tab. I replaced the re-check with the INSERT itself, since the unique constraints catch the same cases. In E_RACE the user sees only a generic 'cannot be linked' message and the real cause is logged. Changed: the separate re-check node is gone."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "This was a real hole: deleting the pending record before the insert lost the attempt on failure. The order is now INSERT first, then DEL pending. A unique violation goes to E_RACE and deletes pending. A database error shows a generic error page and the pending record stays, so the user can retry within its TTL. If two confirms race, the second hits the unique constraint and is refused, so the DEL count check is no longer needed."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The brief does not say where the client secret lives. I decided it comes from server-side app configuration and is never sent to the browser. For JWKS I decided to cache the keys in memory and refetch when an ID token names an unknown key. A slow (5 s timeout) or failed JWKS fetch is handled like a failed code exchange: redirect to the origin page with the try-again message, cause logged. The exact cache lifetime is not decided because the plan does not need it."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "If the session expired or changed during the round trip, LK1 fails and the user is redirected to /login. The message is now explicit: your session ended, sign in again and retry linking Google. The sid cookie is sent on the return from Google because SameSite=Lax allows top-level GET navigations. Sessions last 14 days and slide forward, so this is rare."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I'll follow one request: a user who has a password account but clicks \"Sign in with Google\" on the login page. Google reports a verified email that matches that account. I note the branches along the way.\n\n1. **Start.** The user clicks \"Sign in with Google\" on `/login`, which sends `GET /auth/google/start`. The server sets mode = login, cleans `next` to a relative path or none, and sets origin = /login. It generates four random values: `state`, `nonce`, `code_verifier` and `bind`. It writes a Redis record under the key `goog:auth:<sha256(state)>`. The record holds mode, nonce, code_verifier, user_id (empty in login mode), next, origin and bind, and it expires after 600 s. It sets the `g_bind` cookie to `bind`. It then redirects the browser to Google with scope `openid email profile`, an S256 code challenge, `state` and `nonce`. If Redis is down, the user sees a generic error and nothing is created. No CSRF token is needed for this start. (Settings link mode starts differently, see step 9.)\n\n2. **At Google.** The user signs in and consents, or cancels. Google redirects the browser to `GET /auth/google/callback` with `state` echoed back, plus either `code` or `error`.\n\n3. **Callback, lookup.** The server hashes the returned `state` and runs Redis `GETDEL` on that key. The record is consumed on first read, so `state` works only once. It clears the `g_bind` cookie whatever happens next.\n   - If no record is found (missing, unknown, expired or already used), the user gets an error page: \"this sign-in link is invalid or expired\". Nothing changes.\n   - If the `g_bind` cookie does not equal `record.bind`, the user gets the same error page. This stops an attacker from making a victim's browser finish the attacker's attempt.\n   - If Google sent `error` (for example Cancel), the user is redirected to the origin page with a neutral message. Nothing changes.\n   - In all these failures the record is already consumed, so the user must start again.\n\n4. **Code exchange.** The server calls Google's token endpoint directly with the `code`, the `code_verifier` from the record and the client secret. The timeout is 5 s. The client secret comes from server-side configuration and never reaches the browser.\n   - The server then validates the ID token. It checks the signature using Google's public keys (JWKS, cached in memory and refetched when a token names an unknown key), `iss`, `aud`, `exp`, that `nonce` equals `record.nonce`, and that `sub` and `email` are present.\n   - If the exchange or validation fails, the user is redirected to the origin page with \"we could not complete Google sign-in, try again or use email and password\". The cause is logged, the code is not retried, and nothing changes.\n\n5. **Keep only identity.** The server keeps `sub`, the lowercased email and `email_verified`, and discards the tokens. No Google access or refresh tokens are ever stored. It then branches on `record.mode`.\n\n6. **Login mode, decide who the user is.** The user has no `sid` session at this point.\n   - If `sub` is in `google_identities`, the user is that row's `user_id`. They go straight to success (step 8), even if the account is locked.\n   - If `sub` is not linked and `email_verified` is false, the user is redirected to /login with a message to use email and password. Nothing is created.\n   - If `sub` is not linked, the email is verified and no user has that email, the server runs one transaction. It inserts a `users` row with `password_hash` NULL and `email_verified_at` = now, and a `google_identities` row. A unique violation on `sub` means another callback won the race. This transaction rolls back and the flow goes back to the \"sub found\" check. A unique violation on email means the user registered meanwhile, so it falls to the next case. Otherwise it goes to success.\n   - If `sub` is not linked, the email is verified and a user has that email (our example), the server checks whether that user already has a different Google account. If so, it redirects to /login with \"this account is linked to a different Google account\" and changes nothing. If not, it writes a pending record in Redis under `goog:pending:<sha256(pending id)>` holding sub, user_id and next, with a 600 s TTL that is never extended. It sets the `g_pending` cookie and redirects to `/auth/google/confirm`. Matching email alone does not prove the person owns the existing account, hence the password.\n\n7. **Password confirmation.** `GET /auth/google/confirm` first checks that the `g_pending` cookie maps to a live record. If not, the user is redirected to /login with \"this confirmation expired, start again\". If it is live, a password form is shown with a CSRF token (an HMAC of the `g_pending` value) and a Cancel link. Cancel deletes the pending record, clears `g_pending` and redirects to /login. On submit (`POST` with CSRF), the server re-checks that the pending record is live, loads the target user and then decides:\n   - If `locked_until` is in the future, the pending record is deleted, `g_pending` is cleared and the \"Account temporarily locked\" page is shown.\n   - If the bcrypt check fails (a NULL hash never matches), `failed_logins` goes up by 1. On the fifth failure, `locked_until` is set to now + 15 minutes, `failed_logins` is reset to 0, and the pending record is deleted with the locked page shown. Otherwise the form is shown again with a generic message, and the pending record stays and its TTL keeps running.\n   - If the password is right, `failed_logins` is reset to 0 and the server inserts the `google_identities` row. A unique violation (the `sub` or the user got linked since the callback) deletes the pending record and redirects to /login with the generic \"this Google account cannot be linked\". The real cause is logged. Otherwise it deletes the pending record, clears `g_pending` and goes to success.\n   - On a database error, a generic error page is shown. The pending record stays, so the user can resubmit within its TTL.\n\n8. **Success.** The server calls `start_session(user_id)`, the same function `POST /login` uses. It deletes the old `sid` session row, inserts a new `sessions` row, sets the `sid` cookie and redirects to `next` if it is a relative path, otherwise to `/home`. `next` comes from the auth record, or from the pending record on the confirm path. The browser now holds only `sid`, because `g_bind` and `g_pending` are cleared. PostgreSQL holds the permanent state (users, sessions, google_identities). Redis and the cookies hold only the short-lived state.\n\n9. **Link mode (from Account Settings).**\n   - Start: the user clicks Link Google, which is a `POST` with a CSRF token. If there is no valid `sid` session, the user is redirected to /login. If the user already has a Google account linked, Settings says \"already linked\". Otherwise mode = link, `user_id` = the session user, origin = settings, and the flow continues as in step 1.\n   - Callback: steps 3 to 5 are the same. Then the server requires the current `sid` session to be valid and its user to equal `record.user_id`. If not, the user goes to /login with a retry message.\n   - If `sub` is linked to another user, Settings shows \"already linked to someone else\". If `sub` is linked to this user, nothing changes. If this user has a different Google account, Settings says to unlink first.\n   - Otherwise it inserts `google_identities`. No password is asked, emails need not match, and the `users` row is untouched. A unique violation is treated as \"linked to someone else\". On success, Settings shows \"Google linked\". The session is unchanged and `start_session` is not called.\n\n10. **Unlink.** On a `POST` with CSRF and a valid session, the server checks that `users.password_hash` is NOT NULL. If so, it deletes the identity row, leaves sessions alone and Settings shows \"unlinked\". If the hash is NULL, it refuses and tells the user to set a password first using the Forgot password email.\n\n11. **Side rules.** `POST /login` must treat a NULL `password_hash` as a wrong password. It gives the same generic message and does a bcrypt compare against a dummy hash. The rollout order is: the migration, then the `POST /login` change, then the Google routes and buttons.",
+   "gaps": [
+    "The document does not say what happens in the callback if the user's `sid` session is valid but the mode is login. It says only that the user has no sid session during login mode.",
+    "The document does not say what the confirm page does if the user's `g_pending` cookie is missing entirely. It names only 'no live record'.",
+    "The document does not say how the server knows which user is the 'session user' for the Settings start (how `sid` is looked up). It only says 'valid sid session'.",
+    "The document does not say what origin page means for a link-mode failure at token exchange when the session has already ended."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

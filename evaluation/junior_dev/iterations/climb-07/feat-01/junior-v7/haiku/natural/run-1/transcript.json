@@ -1,0 +1,115 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The page is an infinite-scroll table, and the browser sends only filters and cols. Does the small-path query return all matching rows from the beginning, regardless of how far the user has scrolled?",
+     "about": "Step 3, Small path: the response is the CSV"
+    },
+    {
+     "id": "2",
+     "text": "The API ends the response with an error status if the replica fails partway. But the 200 status and headers are already sent when streaming starts. How does the browser actually see an error in that case?",
+     "about": "Step 3 and Step 1 (fetch to blob)"
+    },
+    {
+     "id": "3",
+     "text": "When the unique index rejects an insert, how does the API find and return the existing export? Is the stale check done before the insert, and what happens if two clicks arrive at the same moment?",
+     "about": "Step 4, Large path: record the export"
+    },
+    {
+     "id": "4",
+     "text": "Between the insert in step 4 and the job_id being saved in step 5, the job could already start. Can the job run before job_id is saved, and does that matter to step 6?",
+     "about": "Step 5, Enqueue the export job"
+    },
+    {
+     "id": "5",
+     "text": "What exactly is the attempt number and where does the handler get it from (ctx or payload)? And what does 'fenced on attempt' do when a stale attempt is still running after the queue started a new one?",
+     "about": "Step 6, Job attempt starts: claim the export"
+    },
+    {
+     "id": "6",
+     "text": "A checkpoint is written only after an 8 MB part uploads, but rows are read in 10,000-row batches. How do the batch boundaries line up with part boundaries, so that last_row_id is exactly the last row in the uploaded part and not partway through a batch?",
+     "about": "Step 8, Stream rows from the replica into parts"
+    },
+    {
+     "id": "7",
+     "text": "On resume, what happens to the in-memory buffer and header row? Is part numbering continued as len(parts)+1? Also, object_key is listed as saved in step 7 but only upload_id is described as saved. When is object_key written?",
+     "about": "Step 7, Start or resume the multipart upload"
+    },
+    {
+     "id": "8",
+     "text": "When the upload is gone, the job restarts from scratch and 'treats the attempt as failed'. Does that consume one of the 3 attempts? Does the restart happen in the same attempt or the next one?",
+     "about": "Step 7, On failure (resumed upload is gone)"
+    },
+    {
+     "id": "9",
+     "text": "Who triggers step 10 after step 9: the same job attempt, running straight on? And if the job is redelivered after status is done, step 6 ends the attempt for done exports. How does the email in step 10 then get retried?",
+     "about": "Step 9 and Step 10"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Yes. The small-path query starts at the first matching row and ignores scroll position, because the browser sends only filters and cols. Step 1 now says this."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "You are right: once the 200 status and headers are sent, a later replica error cannot change the status. Step 3 now builds the whole CSV before sending anything, so a failure before the body starts returns an error status. A connection cut after the body starts is caught by fetch-to-blob. The memory cost of a 10,000-row CSV is not measured, so it is an open question."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The first version gave no lookup for the conflict case. Step 4 now runs the stale check and the insert in one transaction. If two clicks race, the second insert waits for the first commit, fails on the unique index, rolls back, reads the user's active export, and returns it with 200."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "Yes, the job can start before job_id is saved. It never reads job_id; it finds its record by export_id, so step 6 is unaffected. Step 5 now says so, and says that a failed save is logged while the API still returns 202. One rare case remains: a failed save plus a queue backlog over 5 minutes, which the stale rule would fail. The job would then end at step 6."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "The attempt number comes from ctx.attempt, not the payload (jobs.py defines JobContext.attempt). Each write checks that the row's attempt still equals that number, so a stale attempt's write matches no rows and it stops. This relies on the queue killing an attempt at timeout before starting the next one, which jobs.py states. Step 6 now explains this and adds a zero-row check on the claim."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "Batch boundaries and part boundaries do not need to line up. The buffer holds only whole CSV lines, so a part always ends at a row end, possibly partway through a batch. The checkpoint records the last row inside the uploaded part, and rows after it are read again on resume. Step 8 now says this."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "On resume the in-memory buffer is empty, and the header is written only when the next part number is 1. Part numbering is len(parts)+1 because checkpoints are saved in order. object_key was missing from the first version's save. It is now saved with upload_id in the same fenced update at the start of the upload."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Yes, a gone upload uses one of the 3 attempts, and the restart happens in the next attempt, not the same one. The first version said both starts a fresh upload and treats the attempt as failed, which was unclear. Step 7 now clears the upload fields and ends the attempt as failed."
+    },
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "Step 10 runs straight on in the same attempt after step 9. The first version had a real bug: if the email failed, the retry would hit the step 6 rule that ends the attempt for done exports, and the email would never be resent. Step 6 now sends a done export with an empty email_sent_at to step 10."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Click. The user clicks Download CSV on /reports/{report_id}. The browser reads `filters` and `cols` from the page URL and POSTs them as JSON to `/api/reports/{report_id}/exports`. Nothing else is sent, and the export always starts at the first matching row. The browser stores nothing. On a network error or 5xx, an inline error with Retry appears. Files are saved only after the whole response arrives, so a cut connection gives an error and not a truncated file.\n\n2. API check and path choice. The API checks `report.view` on the report's workspace, validates `filters` and `cols` with the page API's parser, and reads `reports.row_count` (the unfiltered total). If the count is 10,000 or fewer, it takes the small path. If it is larger or missing, it takes the large path. Errors are 403 (no permission), 400 (bad filters or columns), 404 (no such report) and 500 (database error). Nothing has started in any of these cases.\n\n3. Small path (10,000 rows or fewer). The API reads all matching rows from the read replica using keyset paging, 500 rows per query, in `row_id` order. It builds the whole CSV in request memory, with a header row and RFC 4180 quoting, and only then sends `200` with `text/csv` and an attachment filename. Nothing is stored. A replica error or the 60-second request limit gives an error status and the browser shows Retry. The user never gets a partial file. The flow ends here for small reports.\n\n4. Large path, record the export. In one primary-database transaction the API does three things.\n   - It marks this user's stale exports of this report as `failed` with `error=\"stale\"`. An export is stale if it is `queued` with no `job_id` and older than 5 minutes, or if it is `queued` or `running` and not updated for 2 hours.\n   - It inserts a `report_exports` record with `status=queued`, the user, the report, `created_at`, and the normalised `filters` and `cols`.\n   - It commits.\n   A unique partial index allows only one active (`queued` or `running`) export per user and report. If the insert hits the index, the API rolls back and returns the existing active export with `200`. A database error returns 500. The state now lives in the `report_exports` row.\n\n5. Enqueue. The API calls `enqueue(\"build_csv_export\", {\"export_id\": id})`. It saves the returned `job_id` on the record and returns `202` with the record. The job may start before `job_id` is saved, which is harmless because the job finds its record by `export_id`. If saving `job_id` fails, the API logs it and still returns 202. If `enqueue` raises, the record becomes `failed` with \"could not start\" and the user gets 503. If the process dies before `enqueue`, the record stays `queued` with no `job_id`. Clicks within 5 minutes return it, and after that the stale rule clears it.\n\n6. A job attempt claims the export. The queue starts the handler with `ctx.attempt`. The handler works through these checks in order.\n   - It loads the record.\n   - If the status is `failed`, or `done` with `email_sent_at` set, it ends.\n   - It rechecks `report.view`. If access is gone, it sends no link. If the export is `queued` or `running`, it marks it `failed` with \"access removed\". Either way it ends.\n   - If the status is `done`, it jumps to step 10.\n   - It makes a conditional update that works only if the status is `queued` or `running`. The update sets `status=running`, `attempt=ctx.attempt` and `updated_at`. If no row matches, it ends.\n   Every later write is fenced on `attempt`, so a stale attempt writes nothing. A database error fails the attempt and the queue retries it.\n\n7. Start or resume the multipart upload.\n   - Fresh export: if `upload_id` is empty, the job calls `start_multipart(\"exports\", \"report-exports/{export_id}.csv\")` and saves `upload_id` and `object_key` in a fenced update. Nothing is visible yet.\n   - Resumed export: if `upload_id` is set, the job keeps that upload and reads `parts` and `last_row_id`. The buffer starts empty. The next part number is `len(parts)+1`, and the header goes in part 1.\n   - If the upload is gone (older than 24 hours or aborted), the next upload call fails with an unknown-upload error. The job then clears the upload fields in a fenced update and the attempt ends as failed, which uses up one of the 3 attempts. The next attempt starts fresh.\n\n8. Stream rows into parts. In a loop, the job reads up to 10,000 rows from the read replica with `row_id > :last` in `row_id` order, using the page's query builder. It formats each row as a CSV line in `cols` order and appends whole lines to a buffer. At 8 MB it calls `upload_part`. It then does a fenced checkpoint update that appends `{part_number, etag}` to `parts`, sets `last_row_id` to the last row in that part, and sets `rows_written`. Parts can end partway through a batch, and on resume the rows after the checkpoint are read again. Memory use is about 30 MB. The job has 1,800 seconds per attempt. The failure cases are:\n   - A replica error, `upload_part` error, timeout or worker death fails the attempt, and the next one resumes from `last_row_id`.\n   - A failed fence stops the attempt silently.\n   - A part uploaded but not checkpointed is replaced by the next attempt's part with the same number.\n\n9. Finish the upload. When the last row has been read, the job uploads the remaining buffer as the final part, which may be under 5 MB, and checkpoints it. If the buffer is empty it skips the upload. It then calls `complete_multipart(upload_id, etags)` with the ordered etags. Completion is atomic, so the file appears at its key only on success. A fenced update then sets `status=done` and `completed_at`.\n   - If `complete_multipart` fails for another reason, the attempt fails and the next one resumes, reads nothing, and tries again.\n   - If it reports an unknown upload, the job checks whether an object exists at `object_key`. If one does, it marks the export done and goes to step 10. If not, it clears the upload fields and the attempt ends as failed.\n\n10. Send the link. When the status is `done` and `email_sent_at` is empty, the job calls `signed_url(\"exports\", object_key, 86400)`. It then calls `send_email(user_id, \"export_ready\", {...})`, and after that succeeds it sets `email_sent_at` in a fenced update. A crash between sending and setting the flag can cause one duplicate email. If `send_email` raises, the attempt fails, the record stays `done`, and the next attempt re-enters at step 6 and goes to this step.\n\n11. Page status. The page calls `GET /api/reports/{report_id}/exports/latest`, both on load and after a click. The API checks `report.view` and returns the user's latest export for the report: `status`, `filters`, `cols`, `created_at`, `completed_at` and `error`. For a `done` export it adds a fresh 24-hour signed URL. It returns `expired` if `completed_at` is more than 7 days ago or the object is gone. While the status is `queued` or `running`, the page polls every 3 to 5 seconds, and it stops on `done` or `failed`. The page holds no state of its own, so a reload recovers it. If a poll fails, the page keeps its last state and retries. A `failed` export shows its stored `error` with Try again, and an `expired` one offers Download CSV. Both start a new export through step 4.\n\n12. Final failure. After the third failed attempt, the queue calls `on_final_failure`.\n   - If the status is `done`, only the email failed. The handler logs the error and leaves the status and the empty `email_sent_at` alone, and the page still shows the link.\n   - Otherwise, if there is an `upload_id`, it calls `abort_multipart` and ignores any error.\n   - It then sets `status=failed`, `error=\"export failed after 3 attempts\"` and `completed_at`.\n   - Finally it sends an `export_failed` email, and logs any failure of that send.\n   If the handler itself raises, the record stays active until the stale rule clears it after 2 hours without an update. Until then the user cannot start a new export.\n\nCleanup is automatic. Incomplete uploads are discarded after 24 hours, and the finished object is deleted 7 days after creation. The `report_exports` rows are kept indefinitely (open question 5).",
+   "gaps": [
+    "Step 2 says the fresh export record is returned with 202, but does not say what the Download CSV button does for the user between the 202 response and the first poll. For example, it does not say whether the page starts polling automatically.",
+    "The document does not say how a queued job is delivered or run by the queue (for example which worker picks it up, or what happens if all workers are busy). It also does not say what ctx contains beyond attempt.",
+    "The document does not say how the job gets the user's permission state in step 6. It does not say how it learns that report.view was removed, beyond saying that it rechecks."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

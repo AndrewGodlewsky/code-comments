@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "What happens to a product's search document when the product's status changes from active to archived?",
+  "key": "The document is deleted from the index, with version = that change's commit_lsn. Only active products are indexed, and draft or archived products are treated like deletes.",
+  "why": "The index is a filtered copy, so a reader has to know that a status change can remove a document."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "If an older change to a product reaches the index after a newer change to the same product, what is the outcome?",
+  "key": "The index rejects it because its version (commit_lsn) is below the stored one. It is counted as stale rather than treated as an error, and its offset is still committed.",
+  "why": "This is the mechanism that keeps the index correct when events arrive late, are retried or are replayed."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What does the indexer do while the search index is timing out or returning server errors?",
+  "key": "It pauses and retries the same batch with backoff of 1 s, then 2 s, 4 s and so on, capped at 60 s, with no limit on attempts. It commits no offsets and skips nothing, so changes wait in Kafka (7-day retention).",
+  "why": "A reader needs to know that an outage of the index delays changes but never loses them."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "What happens to a change whose document the index refuses as invalid?",
+  "key": "The event goes to catalog.products.dlq together with the error and an alert is raised. Its offset is then committed and processing continues.",
+  "why": "This shows that one bad document cannot block the stream, and where such failures end up."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "What happens if the CDC connector stays down until the primary's retained WAL reaches 50 GB, and how is search recovered?",
+  "key": "The slot holds the WAL. An alert fires at 20 GB. At 50 GB ops drop the slot and the pending changes are lost. Recovery is a new slot and connector followed by a full rebuild.",
+  "why": "This failure mode links the live path to the rebuild path."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "How do search queries start using a rebuilt index, and what must be true before that happens?",
+  "key": "The alias products is moved atomically from the old index to the new one. This happens only when the new index is less than 5 s behind and its document count is within 0.5% of the active row count.",
+  "why": "This is the cutover that keeps search available and stops anyone seeing a partial index."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "Where is the indexer's progress stored, and at what moment is it advanced?",
+  "key": "As committed Kafka offsets of a consumer group that belongs to one index (for example indexer-products_v3). The offsets are committed after the bulk write for a batch is acknowledged. A batch is flushed at 500 events or 1 s. The indexer keeps no other state.",
+  "why": "A reader needs to know where state lives in order to reason about restarts and about more than one index."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "If an indexer instance crashes after writing part of a batch, what happens when it comes back?",
+  "key": "It restarts from its group's last committed offsets and writes the uncommitted batch again. The writes carry the same commit_lsn versions, so applying them twice is harmless.",
+  "why": "It shows that delivery is at-least-once and why that is safe."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "During a rebuild, how do changes committed while the bulk copy is running reach the new index without being lost?",
+  "key": "The end offsets O of catalog.products are recorded before the snapshot opens. After the copy finishes, a separate consumer group for the new index replays from O. Any change the snapshot missed was committed later, so it is after O. Replayed changes that the snapshot already contains are no later than S, so they are rejected as stale or rewrite the same data.",
+  "why": "This is the core correctness argument for rebuilding while writes continue."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "What version do documents written by the bulk copy carry?",
+  "key": "S, the WAL position read as the first statement of the repeatable-read snapshot.",
+  "why": "Without a version on copied documents, the version rule cannot order the copy against the stream."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "After the switch, how does the old index stay a safe rollback target, and what ends that?",
+  "key": "Its own consumer group keeps applying live changes to it for 48 h, so rollback means moving the alias back. After 48 h that group is stopped and the old index is deleted.",
+  "why": "Rollback without losing changes needs the old index kept current, not just kept."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "What happens to search if the rebuild fails partway, during the copy or the catch-up?",
+  "key": "Nothing. The alias was never moved, so search keeps using the old index. The new index and its consumer group are deleted and the rebuild starts again.",
+  "why": "It shows that the rebuild cannot cause downtime, whatever step fails."
+ }
+]

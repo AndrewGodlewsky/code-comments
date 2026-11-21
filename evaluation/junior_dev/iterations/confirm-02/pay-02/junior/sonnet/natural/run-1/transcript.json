@@ -1,0 +1,225 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Step 4 says the call runs 'in the same request or on a worker'. Which one is it, and what does the admin see while the call is in flight?",
+     "about": "4. Call the provider's create-refund API (server only)"
+    },
+    {
+     "id": "2",
+     "text": "If the app crashes right after step 3 commits and before step 4 starts, what picks the pending refund up? Step 8 only re-sends after 1 hour, so does the refund just sit there until then?",
+     "about": "3. Reserve the amount / 4. Call the provider"
+    },
+    {
+     "id": "3",
+     "text": "In step 8, the select says 'last_status_check_at is null and older than 1 hour, or older than 12 hours'. What exactly is older than 1 hour in the null case: created_at or submitted_at?",
+     "about": "8. Poll the provider for pending refunds"
+    },
+    {
+     "id": "4",
+     "text": "In step 6, when the provider returns 4xx, does the same request that called the provider also run the failed-state transaction and return the message to the admin? And are 4xx and a final 'failed' from the webhook treated as different paths, given step 9 says there is one path to final state?",
+     "about": "6. Handle a provider rejection (4xx)"
+    },
+    {
+     "id": "5",
+     "text": "In step 9, how is the order's refund status stored? The data model says payments is unchanged, so where does 'Refunded' or 'Partially refunded' live?",
+     "about": "9. Apply the final status"
+    },
+    {
+     "id": "6",
+     "text": "In step 7, if the webhook arrives and the refund is not found, we return non-2xx. Is the webhook_events row inserted before that, and if so how does a redelivery get processed, given 'if it already exists and is processed, return 200'?",
+     "about": "7. Receive the provider's webhook"
+    },
+    {
+     "id": "7",
+     "text": "Who or what runs the email worker in step 10 and how often does it look for outbox rows? What is the 'set time' for stale claims?",
+     "about": "10. Email the customer, once, after success"
+    },
+    {
+     "id": "8",
+     "text": "In step 5, if the provider's immediate response says a final status and we ignore it, how long does the admin wait for the final state in practice, given polling only starts after 1 hour and webhooks may take days?",
+     "about": "5. Handle the provider's 'accepted' response"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The call runs inline in the same web request, which is the simplest option and needs no job queue for the first attempt. The admin sees a Submitting refund spinner, up to about 45 seconds in the worst case (4 attempts of 10 seconds plus backoff). If retries run out, the admin sees submitted, outcome unconfirmed."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "This was a real hole. A crash between step 3 and step 4 left a pending row with no provider id, waiting for the 1-hour check. I changed step 8 so refunds with no provider id are re-sent with the same key once they are more than 5 minutes old, so recovery takes about 20 minutes at most. The 5-minute wait avoids racing a request still in step 4."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It is created_at. I made step 8 say so, and split the selection into refunds with a provider id (checked after 1 hour from creation, then every 12 hours) and refunds without one (re-sent after 5 minutes)."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. For a create-call 4xx, the same request runs the failed-state transaction in step 6 and returns the provider message to the admin. If the 4xx comes from a step 8 re-send, the admin sees it on the page later. A 4xx is a different path from a refund.failed webhook, because it is a synchronous rejection of the create call and not a final result for an accepted refund. Step 9 is the single path for final results of accepted refunds. I clarified this in steps 5 and 6, and step 6 now locks the row and only changes it if it is still pending."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It is not stored. The plan was inconsistent, since payments is unchanged. I decided the label is computed on read from succeeded refunds, which needs no new column and cannot drift. I changed the data model and steps 1, 9 and 11 to match."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes, the webhook_events row is inserted first, with processed_at null. Only a row with processed_at set counts as already done. If the refund is not found, processed_at stays null and we return non-2xx, so the redelivery is processed again. Step 9 sets processed_at after its commit. I made this explicit in the data model and step 7."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "A background worker in our app runs it, checking the outbox once a minute. A claim with no sent_at after 15 minutes is stale and may be claimed again. Both numbers are my own choices, not from the brief. I added them to step 10 and listed them in the open questions."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "The admin sees Refund pending until the webhook arrives or the poll runs. The provider's own settlement can take days, so pending is the normal state, and nothing in the brief needs a faster final state. The first direct check happens about 1 hour after creation, and the webhook usually arrives sooner. I accepted this wait to keep one path to a final state. I added a line saying so in step 5."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 4 says the provider's idempotency key is only valid for 24 hours. Is that 24 hours counted from the first create call, and who decided that limit (the provider)?",
+     "about": "4. Call the provider's create-refund API / 8. Poll the provider for pending refunds"
+    },
+    {
+     "id": "10",
+     "text": "In step 4, the retries are done in the web request. If a retry or the first call gets a 2xx, does step 5 run in that same request before the admin sees a response? What does the admin see in that case?",
+     "about": "5. Handle the provider's \"accepted\" response"
+    },
+    {
+     "id": "11",
+     "text": "Step 8's re-send for refunds with no provider id can run while the original web request is still alive (for example a slow request past 5 minutes) or after the app crashed. Can two sends for the same refund overlap, and what stops the second from causing harm?",
+     "about": "8. Poll the provider for pending refunds"
+    },
+    {
+     "id": "12",
+     "text": "In step 8, the get-refund call returns a final status and 'goes through step 9'. Step 9 says the actor is system:poller and sets the new status. What exactly is passed into step 9 (status only, or also the provider message for a failed refund), and where does provider_message get stored for a webhook or poll failure?",
+     "about": "9. Apply the final status"
+    },
+    {
+     "id": "13",
+     "text": "Step 11 says it starts when the refund reaches succeeded or failed. What actually triggers the admin page to update? Does the admin page refresh itself, or does the admin reload?",
+     "about": "11. Record the final outcome and show it to admins"
+    },
+    {
+     "id": "14",
+     "text": "In step 3, the 409 response says the amount exceeds the remaining balance. What does the admin do next, and does the same client_request_id get reused or does the form get a new one?",
+     "about": "3. Reserve the amount in a database transaction"
+    },
+    {
+     "id": "15",
+     "text": "Step 10 says the worker claims the outbox row with claimed_at, but the stale-claim rule says a claim older than 15 minutes can be claimed again. Does the claim UPDATE in step 10 include that stale condition, and who releases the claim on failure?",
+     "about": "10. Email the customer, once, after success"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The 24 hours is the provider's rule, stated in the brief: a repeated key within 24 hours returns the original refund. The brief does not say whether it counts from the first call or the latest. We count from created_at, which is earlier than the first call, so our assumed window is never longer than the real one. Added to step 4 and the open questions."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. A 2xx on the first call or any retry runs step 5 in the same web request, before the admin gets a response. The admin sees 'Refund pending'. Added to step 5."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, two sends can overlap (a request that outlives 5 minutes, or a send racing the original after a crash). It is harmless because the same idempotency key makes the provider return the same refund, and step 5 saves provider_refund_id only if it is still null, so both write the same id. No new lock added. Added to steps 5 and 8."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "Step 9 receives the new status plus, for a failed refund, the provider's message. Step 9 stores it in provider_message when it sets failed. Steps 7, 8 and 9 now say so, and the assumptions say the payload and get-refund response carry a failure message. This was a gap in the plan."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Nothing triggers a refresh. The page reads from the database on each load and does not refresh itself, so the admin reloads to see a new outcome. Auto-refresh is not needed by the brief. Added to step 11."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The 409 returns the current remaining amount and the admin page shows it. The admin lowers the amount and resubmits. The form gets a new client_request_id, because the rejected attempt created no refund row and this is a new decision by the admin. Added to step 3."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "No, it did not, which was an inconsistency. The claim UPDATE now includes the stale condition (claimed_at is null or older than 15 minutes). On a send failure the same worker sets claimed_at back to null. If the worker crashes, nobody releases it and it becomes claimable after 15 minutes. Fixed in step 10."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "Step 4 sends a charge id to the provider. Where does our server get it from? Is it a column on payments?",
+     "about": "4. Call the provider's create-refund API (server only)"
+    },
+    {
+     "id": "17",
+     "text": "When step 2 returns an existing refund for a reused client_request_id, does it also call the provider again? What does the admin see if that refund is still pending or already failed?",
+     "about": "2. Admin submits the refund form"
+    },
+    {
+     "id": "18",
+     "text": "If two identical requests with the same client_request_id arrive at the same moment, what happens to the second one in step 3, given the unique constraint and the payment row lock?",
+     "about": "3. Reserve the amount in a database transaction (concurrency guard)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "checked",
+     "text": "Yes. The brief says the existing payments table already stores the provider's charge id. Step 4 reads it from the payment row (loaded under the lock in step 3). The exact column name is not given in the brief, so I did not name it and listed that in the open questions."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "No, it does not call the provider again and creates nothing. It returns the existing refund with its current state: pending (admin sees Refund pending), succeeded, or failed with the provider's message. A refund still pending without a provider id is recovered by step 8, not by the repeat request. This keeps retries and double-clicks harmless. Added to step 2."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The second request blocks at the payment row lock (FOR UPDATE) until the first commits. Before this round, it would then have hit the unique constraint on client_request_id and failed with an error. I changed step 3 so that, right after taking the lock, it looks up a refund with the same client_request_id and, if found, returns that refund and creates nothing. The unique constraint stays as a last safety net."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Admin opens a payment page (step 1). Opening a payment in the admin page starts it. The server checks the admin's session and refund permission, then loads the payment and its refunds from our database. It returns the captured amount, the sum of pending and succeeded refunds, the remaining amount, each refund's status, reason and provider message (for failed ones), and the order refund label. The label is computed on read from succeeded refunds. Nothing is written. Without permission the server returns 403 and the refund button is hidden. If the payment isn't captured, the page has no refund controls. The remaining amount is only a hint.\n\n2. Admin submits the form (step 2). The admin enters cents (a \"full\" button fills in the remaining amount), picks a reason, optionally adds a note, and submits. The browser sends payment_id, amount_cents, reason, note and a client_request_id (random, made when the form loaded). The server re-checks permission. It validates the input and answers 400 with a field message if the amount isn't a positive integer, the reason is unknown, or the note is too long. If the client_request_id already exists, it returns that existing refund's current state and does nothing else. Nothing is stored at this point.\n\n3. Reserve the amount (step 3). In one database transaction the server does the following.\n   - It locks the payment row with FOR UPDATE, which makes concurrent refunds on that payment queue up. It also reads the charge id.\n   - It looks again for the client_request_id and returns the existing refund if found.\n   - It confirms the payment is captured.\n   - It sums the pending and succeeded refunds, and requires sum plus the requested amount to be at most the captured amount.\n   - It inserts a refunds row with status pending and a fresh idempotency_key, plus an audit row \"requested\".\n   - It commits.\n   The pending row counts toward the cap straight away. If the payment isn't captured or the amount is too high, the server rolls back and returns 409 with the current remaining amount. No refund row exists, and the form gets a new client_request_id. If the transaction fails, nothing is committed and the admin can retry. The lock is never held during the provider call.\n\n4. Call the provider (step 4). The same web request then calls the provider's create-refund API, sending the charge id, amount and the stored idempotency key in the idempotency header. The admin sees a spinner for up to about 45 seconds. submitted_at is set when the first attempt starts, and each attempt is audited. On a timeout (10 s) or 5xx, the server retries with the same key, up to 4 attempts in total. If all attempts fail, the refund stays pending, the admin is told \"submitted, outcome unconfirmed\", and the poller resolves it later. A 4xx goes to step 6.\n\n5. Provider accepts (step 5). On a 2xx the server saves provider_refund_id, only if it is still null, and audits accepted_by_provider. The status stays pending, and the admin sees \"Refund pending\". If the response already carries a final status, it is ignored here. Final results come only through steps 7 or 8 and are applied by step 9. If saving the id fails, the refund stays pending without an id. The poller re-sends with the same key and gets the same refund back, as long as it is within 24 hours.\n\n6. Provider rejects (step 6). On a 4xx, a transaction locks the refund row. If it is still pending, it sets status to failed, stores provider_message and resolved_at, and writes audit \"rejected_by_provider\". The provider's message goes back to the admin: in the same request if this happened in step 4, or on the page later if it happened in the poller re-send. The failed refund no longer counts toward the cap, and no email is sent. If this transaction fails, the refund stays pending and the poller finds the same rejection later.\n\n7. Webhook arrives (step 7). The provider POSTs refund.succeeded or refund.failed, possibly days later, duplicated or out of order. The server verifies the signature on the raw body, and returns 400 if it is invalid or stale. It inserts the provider_event_id into webhook_events with processed_at null. If that row exists and processed_at is set, it returns 200 and does nothing. Otherwise it looks up the refund by provider_refund_id and passes the new status (and the failure message) to step 9. If the refund isn't found, it returns a non-2xx so the provider redelivers. If processing throws, it returns 5xx. It returns 200 only after step 9 commits or the event is confirmed a duplicate.\n\n8. Poller (step 8). A job runs every 15 minutes. For pending refunds that have a provider id, it picks those never checked and older than 1 hour, or last checked more than 12 hours ago. It calls the provider's get-refund endpoint and updates last_status_check_at. A final result goes to step 9. A pending result only updates the timestamp and writes a \"status_checked\" audit row. For pending refunds with no provider id that are 5 minutes to 24 hours old, it re-sends the create call with the same key, using the step 4 retry rules. A 2xx is handled by step 5 and a 4xx by step 6. Overlapping sends are harmless because of the key. If the provider errors, it tries again next run. Alerts fire if a refund has gone more than 18 hours without a successful check, or if the job hasn't run recently. A refund with no id older than 24 hours is flagged for manual review and stays pending.\n\n9. Apply the final status (step 9). One shared function handles webhook and poller results in a single transaction. It locks the refund row. If the status isn't pending, it only audits \"duplicate_or_conflicting_event\", and raises an alert if the result conflicts. Otherwise it sets the status and resolved_at, stores provider_message for failures, and writes an audit row with the actor system:webhook or system:poller. On succeeded it also inserts an outbox row. It then commits, and for a webhook it sets processed_at. A failed result frees the amount. If the transaction rolls back, the webhook returns 5xx or the poller retries next run.\n\n10. Email the customer (step 10). A background worker checks once a minute for an outbox row with sent_at null. It claims the row with an UPDATE that sets claimed_at, and it can take over a claim older than 15 minutes. It re-checks that the refund is succeeded, then sends the email using the refund id as the mail idempotency key if supported. It sets outbox.sent_at and refunds.customer_emailed_at and audits \"customer_emailed\". If sending fails, claimed_at is reset to null and the worker retries with backoff. If the worker crashes, the claim expires after 15 minutes. A rare duplicate is possible if it crashes between sending and recording.\n\n11. Show the outcome (step 11). The admin page reads refunds from the database on each load, and does not refresh itself, so the admin must reload to see a new outcome. It shows status, amount, reason, note, requester and time, the provider message for failures, the order label, and the audit trail. If the page fails to load, it shows an error and no state is lost.",
+   "gaps": [
+    "The document does not say how the web request ends if the admin's browser disconnects during the roughly 45-second inline provider call, or what the spinner does at the edges.",
+    "It does not say how step 7 maps the webhook to a refund when the refund has no provider_refund_id saved yet, beyond saying it is 'not found' and redelivered. Nor does it say how long the provider keeps redelivering.",
+    "The step 9 transaction commits first and processed_at is set afterwards, but the document does not say what happens if the process dies between those two points. Presumably the event is reprocessed and treated as a duplicate, but the document does not say so.",
+    "The poller's get-refund call needs the provider_refund_id, but for refunds that have a provider id yet remain pending forever, the document does not say what happens after the alert, for example who acts on it.",
+    "The document says step 8 'picks up' a refund with no provider id 'within about 20 minutes', but the rules give a 5-minute threshold and a 15-minute run interval, and it does not say exactly how these combine.",
+    "For the 409 case, the document does not say how the admin page gets the new client_request_id, for example whether the form is reloaded or the field is regenerated client-side.",
+    "It does not say what the admin sees or what the server does for a repeated client_request_id whose original request is still in step 4, beyond returning 'current state'.",
+    "It does not say how the webhook's signature 'stale' check is defined, for example the tolerance window or which timestamp is used, or what the shared secret rotation process is.",
+    "Step 5 says the first call or retry runs in the same request, but it does not explain how a refund's response is handled when the poller's re-send returns 2xx, specifically what the admin sees, since the original request has already ended."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

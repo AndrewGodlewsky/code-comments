@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "Business code's enqueue_notification inserts a pending row in the monolith notifications table inside its own transaction. A monolith relay thread (every second) selects pending rows of service-routed types FOR UPDATE SKIP LOCKED, publishes each to the broker topic notifications.send (message id = notification id), waits for broker confirmation of all, then sets status handed_off and commits. The monolith's part is done at that commit; the final sent/failed status is only mirrored back later via notifications.result.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The per-type route flag (notifications.route.<type>, monolith or service) decides which side may claim new pending rows, but the actual decision is made per row at claim time under a row lock. Old worker excludes service-routed types in its SELECT; the relay claims service-routed pending rows. Once the relay commits handed_off, the service owns the row permanently. Flag changes reach instances within 10 s, so during that window whichever side locks a pending row first wins.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "The service's notifications table uses the monolith id as primary key, and the consumer does INSERT ... ON CONFLICT (id) DO NOTHING, so a duplicate message is a no-op and is acked. A sent row is never re-claimed. As a backstop, every MailRelay send passes the id as idempotency_key, so even a repeat send within 24 hours is dropped by MailRelay.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "The service acks only after the insert transaction has committed, and before any MailRelay send, so the ack is always well within 30 s. If it crashes before commit or before the ack, the broker redelivers and the insert is either done fresh or hits the primary-key conflict as a no-op. Nothing is lost because the row is either stored or the message is redelivered; sending happens later from the service database via the sender loop.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "Retry state (attempts, next_attempt_at, lease_until, status) lives in the service's own notifications table (rows handed off mid-retry carry their attempts and next_attempt_at in the message). The service sender loop acts on it: it claims due rows with a 60 s lease, sends with the idempotency key, and records success, a backoff of 1/2/4/8 minutes, or failed at 5 attempts, then the failure pager pages on-call. The monolith row is just a mirror updated from result messages.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Nothing is moved. Ownership never changes after a row leaves pending, so rows already handed_off stay with the service and finish there with the same retry policy; the monolith never touches them. Only new or still-pending rows of that type go to the old worker after the flag flip (the old worker picks them up within ~10 s, the relay stops within ~15 s). There is a break-glass procedure for a broken service (pause service, operator resets young handed_off rows to pending, same key), but that is not the normal rollback.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Each message carries id, type, user_id, email, payload, created_at, attempts and next_attempt_at. The email content (subject and body) is produced inside the service, which renders the template from type and payload at send time; the monolith no longer renders for service-routed types.",
+  "decided": true
+ }
+}

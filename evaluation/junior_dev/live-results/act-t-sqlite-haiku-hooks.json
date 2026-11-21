@@ -1,0 +1,80 @@
+{
+ "label": "act-t-sqlite-haiku-hooks",
+ "model": "haiku",
+ "hooks": true,
+ "wall_s": 50.5,
+ "cost_usd": 0.01247557,
+ "junior_cost_usd": 0.0,
+ "num_turns": 14,
+ "is_error": false,
+ "activation": {
+  "skill_loaded": true,
+  "helper_started": true,
+  "hook_reminder": false,
+  "triggered": true
+ },
+ "fidelity": {
+  "ok": false,
+  "problems": [
+   "teach-back without a verdict",
+   "no report",
+   "final message lacks the changes and holes"
+  ],
+  "helper_calls": [
+   "start",
+   "ask",
+   "teachback"
+  ],
+  "end_reason": null,
+  "rounds": 0
+ },
+ "state": {
+  "artifact": "C:\\Users\\godle\\AppData\\Local\\Temp\\jd-live-nryidete\\project\\docs\\plans\\sqlite-migration.md",
+  "artifact_hash": "d10ce78f6ea67dd19d2f882fd7af65e9285afb13736be49537ad5879243d37a9",
+  "model": "sonnet",
+  "rounds_cap": 6,
+  "round": 0,
+  "phase": "teachback",
+  "transcript": [],
+  "teachbacks": [
+   {
+    "text": "(activation run: the junior is stubbed)",
+    "gaps": [],
+    "verdict": null,
+    "notes": ""
+   }
+  ],
+  "changes": [],
+  "holes": [],
+  "end_reason": null,
+  "cost_usd": 0.0
+ },
+ "final": "The plan is at `docs/plans/sqlite-migration.md`. No code was changed.\n\nThe plan covers the migration in six phases: freeze and back up the JSON file, validate it, import it into SQLite in one transaction, change `place_order`, test, and cut over. It also includes a rollback path, and it fixes the existing order-loss risks rather than just copying data across.\n\nThe main findings from reading the code:\n\n- **Lost orders today:** concurrent requests overwrite each other, and `write_text` truncates the file before writing, so a crash can empty it.\n- **Charged without a record:** the card is charged before the order is saved. The plan records the order as `pending` first, then charges, then marks it `placed`.\n- **Ids:** `len(orders) + 1` can reuse ids. The plan keeps existing ids and uses `AUTOINCREMENT`.\n- **Stock resets on restart:** `STOCK` is in memory only. This is out of scope but needs its own fix.\n- **Missing HTTP layer:** `src/app.py` has no `POST /orders` handler and no `__main__` block, though the README describes both. The plan covers `place_order()` only.\n- **No tests exist:** the plan lists the minimum tests to add.\n\n**The junior-dev review did not really run.** The junior asked no questions, and the teach-back returned only \"(activation run: the junior is stubbed)\". So nothing was validated, and I did not mark the teach-back as passed. The session state is in `.junior-dev/sqlite-migration-5f0a0dd4` in the project folder. Please treat the plan as unreviewed. If you want a real review, the junior-dev stub needs to be turned on first.\n\nQuestions for you before implementation:\n\n1. Where are the real orders? The file here is `[]`. Is there a production `orders.json` elsewhere?\n2. Is `place_order` called from more than one process?\n3. Should a charge whose order can't be saved be refunded automatically, or left for manual reconciliation? The plan assumes manual.\n4. Should stock be decremented in the same transaction as the order? That depends on whether stock becomes persistent.",
+ "helper": [
+  "start",
+  "ask",
+  "teachback"
+ ],
+ "artifacts": {
+  "README.md": "# shopfront\n\nA tiny order service used as the fixture for Junior-dev's headless runs. Customers place\norders through `POST /orders`; the service checks stock, charges the card through the\npayment provider, and records the order. Orders are kept in `data/orders.json`.\n\nRun it with `python -m src.app`. It needs no database. You will recieve an email receipt\nwhen an order is placed.\n",
+  "docs/plans/sqlite-migration.md": "# Plan: move orders from `data/orders.json` to SQLite\n\nGoal: orders are stored in a SQLite database instead of `data/orders.json`, and no order that exists today or is placed during or after the migration is lost.\n\nStatus: plan only. No code has been changed.\n\n## 1. Current state (from the code)\n\n- `src/app.py:8` sets `ORDERS` to `data/orders.json`.\n- `src/app.py:26-29` is the whole persistence path. It reads the entire file, computes `id = len(orders) + 1`, appends, and rewrites the entire file with `write_text`.\n- `src/app.py:21` charges the card **before** the order is saved (`src/payments.py` is a stub that always returns an id when a token is present).\n- `src/app.py:24-25` decrements the in-memory `STOCK` dict **before** the order is saved. `STOCK` is not persisted, so it resets on restart. This is outside the orders migration but affects it (see section 3).\n- `data/orders.json` currently contains `[]`. Confirm whether this is the real production file or a dev copy before anything else (see section 8).\n- There is no HTTP layer in `src/app.py`, and no `__main__` block, even though the README says `POST /orders` and `python -m src.app`. The migration plan covers `place_order()` only. It should not be read as the whole service.\n- There are no tests in the repo, and the project is not a git repository.\n\n## 2. Problems the current code already has (these are order-loss risks)\n\n1. **Lost updates under concurrency.** Two requests that overlap both read the same list, and the second write overwrites the first. One order disappears silently.\n2. **Non-atomic write.** `write_text` truncates the file before writing. A crash or power loss during the write leaves an empty or partial file, and every order in it is gone.\n3. **Id reuse.** `id = len(orders) + 1` gives a duplicate id if any entry was ever removed or edited by hand. It also makes a new id depend on the file's current contents.\n4. **Charged without a record.** If the order write fails after `charge()` succeeds, the customer is charged and no order exists.\n5. **Stock and record out of step.** Stock is decremented before the write, so a failed write leaves stock reduced with no order.\n6. **Encoding.** `read_text()` and `write_text()` use the platform encoding (cp1252 on this Windows machine). The file is ASCII today only because `json.dumps` escapes non-ASCII by default. The migration script must set `encoding=\"utf-8\"` explicitly.\n\nThe migration fixes 1 to 3 directly. Items 4 and 5 are fixed in the code change (phase 3).\n\n## 3. Target design\n\n**Schema** (`data/shopfront.db`, stdlib `sqlite3`, no new dependency):\n\n```sql\nCREATE TABLE orders (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    customer    TEXT    NOT NULL,\n    payment_id  TEXT    NOT NULL,\n    status      TEXT    NOT NULL DEFAULT 'placed',  -- 'pending' | 'placed' | 'payment_failed'\n    created_at  TEXT    NOT NULL                    -- ISO 8601 UTC\n);\n\nCREATE TABLE order_items (\n    order_id  INTEGER NOT NULL REFERENCES orders(id),\n    sku       TEXT    NOT NULL,\n    qty       INTEGER NOT NULL CHECK (qty > 0),\n    PRIMARY KEY (order_id, sku)\n);\n```\n\nNotes:\n- `items` in JSON is a `{name: qty}` object. It becomes one row per name in `order_items`. This allows per-item reporting without parsing JSON.\n- `payment_id` may be `None` in the JSON if a rejected order were ever stored. Current code only stores placed orders. Keep `NOT NULL` and migrate only placed orders, and add a check in the script that fails if a `null` payment appears.\n- `created_at` does not exist in the JSON. Use the file's modification time as a stand-in for migrated rows, and label that in the migration report. Do not invent per-order timestamps.\n- Keep the ids exactly as they are in the JSON. Ids are what receipts and payment records refer to.\n\n**Code change** (`place_order`):\n- Insert the order inside a single transaction (`with conn:`), so that the id is assigned by SQLite and a failed insert leaves nothing behind.\n- Recommended ordering to fix item 4: insert the order as `pending`, charge the card, then set `placed` (or `payment_failed`) in a second transaction. If the process dies after the charge, a `pending` row with a payment id shows exactly what needs reconciling.\n- Decrement stock only after the order row is committed, or move stock into the same transaction once it is persisted. This is a decision for the owner (section 8).\n\n## 4. Migration steps\n\n**Phase 0: freeze and back up (no code change)**\n1. Stop anything that writes to `data/orders.json`. Since there is no server in this repo, this means whatever process runs `place_order`. Confirm there is only one.\n2. Copy `data/orders.json` to `data/backups/orders-<UTC timestamp>.json`. Record its SHA-256 and the number of orders.\n3. Keep the original file in place and unchanged until phase 6. Do not delete it during the migration.\n\n**Phase 1: validate the JSON (read-only script)**\nWrite `scripts/migrate_orders.py` (or `src/migrate_orders.py`). Its first mode is `--check`, which reads the JSON and fails on any of these:\n- The file does not parse as UTF-8 JSON, or its top level is not a list.\n- Any entry lacks `id`, `customer`, `items`, or `payment`, or has the wrong type.\n- Any `id` is duplicated, or the ids are not contiguous from 1 (`len + 1` allows gaps only after manual edits, so a gap needs a human decision).\n- `payment` is `null` or empty.\n- Any `items` quantity is not a positive integer, or any name is not in `STOCK`/`PRICES`.\n\nIt prints a report: order count, id range, total value in cents (`total()` from `src/app.py`), and the list of problems. The script must not write anything in `--check` mode.\n\n**Phase 2: migrate into a new database (dry run first)**\n`--migrate --db data/shopfront.db` does the following:\n- Refuses to run if `data/shopfront.db` already exists with rows, unless `--force` is passed. This prevents double-import.\n- Creates the schema and inserts every order and its items in **one transaction**. Any error rolls back the whole import.\n- Sets the autoincrement counter so the next new order gets `max(id) + 1`. Insert the rows with their explicit ids, then check `sqlite_sequence`.\n- Runs verification before committing: row counts match, every id matches, and the sum of `qty * PRICES` per order matches the JSON-derived total.\n- Runs in dry-run mode by default. Prints what it would do and exits; `--commit` makes it write.\n\n**Phase 3: code change (on a branch, tested against a copy of the database)**\n- Replace `ORDERS` and the read/write in `place_order` with the SQLite calls described in section 3.\n- Keep the function's return shape (`{\"status\": ..., \"order\": ...}`) unchanged so callers do not change.\n- The order of operations (insert pending → charge → update) is the main behavior change. Describe it in the commit message.\n\n**Phase 4: test**\nThe repo has no tests, so add them as part of this change. Minimum set:\n1. Migration round-trip: a fixture JSON with 3 orders migrates, and each order reads back equal to the source.\n2. Migration refuses a duplicate id, a `null` payment, a non-list file, and a non-UTF-8 file.\n3. Migration refuses a second run without `--force`.\n4. `place_order` happy path: one row, items correct, returned id is the next id.\n5. Out of stock: returns `rejected`, writes no order row, and decrements no stock.\n6. Payment failure (no card token): returns `rejected`, writes no `placed` row.\n7. Insert failure after a successful charge: the `pending` row is left in place and is detectable. Simulate by making the update fail.\n8. Concurrency: 20 parallel `place_order` calls against one database produce 20 distinct ids and 20 rows.\n9. Encoding: a customer name containing `é` round-trips through migration.\n\nRun the migration against a copy of the real `orders.json` on a scratch machine before running it against production.\n\n**Phase 5: cutover**\n1. Run `--check` on the frozen file. Resolve every problem it reports.\n2. Run `--migrate --commit`. Verify the report.\n3. Deploy the phase 3 code. Place one test order in a copy of the database first, then in production, and confirm one row appears with the next id.\n4. Keep `data/orders.json` read-only (or rename it to `orders.json.migrated`) and keep it for at least 30 days.\n\nExpected downtime is a few seconds, since the service has one writer. If there must be zero downtime, a dual-write period would be needed; this adds complexity that is not justified for a single-writer service unless the owner says otherwise.\n\n**Phase 6: clean up**\n- After the retention period, remove the `ORDERS` constant and any JSON code path.\n- Update `README.md`: the line \"It needs no database\" and the line \"Orders are kept in `data/orders.json`\" both change. Document `data/shopfront.db` and the migration command.\n\n## 5. Rollback\n\n- **Before cutover:** nothing to undo. The original JSON file was never modified.\n- **After cutover, before any new orders are placed in SQLite:** redeploy the old code. `data/orders.json` is still present and unchanged.\n- **After cutover with new orders in SQLite:** redeploying the old code loses the SQLite-only orders. Before rolling back, run an export script (`--export-json`) that writes the SQLite orders back into a JSON file in the original format, then verify the count and ids against SQLite. Do not roll back without this step.\n\n## 6. Acceptance criteria\n\n- Every order in the frozen JSON appears in SQLite with the same id, customer, payment id, and items.\n- The total of `total()` over all migrated orders matches the source.\n- A new order after cutover gets an id one greater than the highest migrated id, and no id is reused.\n- Parallel placements produce no lost rows.\n- Migration is re-runnable without `--force` only in the refusing mode, and never silently duplicates rows.\n\n## 7. Out of scope\n\n- Persisting `STOCK`. It resets on restart today. This is a separate bug and needs its own plan, but it should be raised with the owner now.\n- A real payment provider. `src/payments.py` is a stub.\n- Email receipts. The README mentions them, but no code sends them.\n- The missing HTTP layer. If `POST /orders` lives elsewhere, the plan's file references need to be updated to match.\n\n## 8. Open questions for the owner\n\n1. Where are the real orders? The file in this checkout is `[]`. Is there a production `orders.json` on another machine, and does it need to be migrated from there?\n2. Is `place_order` called from more than one process? If so, phase 0 needs a lock or a stop of all of them, and SQLite's locking behavior under multiple processes should be checked (WAL mode is recommended).\n3. Should a charge that succeeded but whose order cannot be stored be refunded automatically, or left as a `pending` row for manual reconciliation? The plan assumes manual reconciliation.\n4. Should stock be decremented inside the same transaction as the order? The plan leaves this open because it depends on whether stock becomes persistent (section 7).\n5. Is 30 days the right retention for the JSON backup?\n"
+ },
+ "tool_names": [
+  "Glob",
+  "Grep",
+  "Read",
+  "Read",
+  "Read",
+  "Read",
+  "Bash",
+  "Write",
+  "Skill",
+  "Bash",
+  "Bash",
+  "Bash"
+ ],
+ "stub_junior": true,
+ "prompt_id": "t-sqlite",
+ "kind": "trigger",
+ "prompt": "We want to move orders from data/orders.json to SQLite without losing orders. Write the migration plan to docs/plans/sqlite-migration.md. Do not change any code."
+}

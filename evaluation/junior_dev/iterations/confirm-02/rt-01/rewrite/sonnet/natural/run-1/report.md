@@ -1,0 +1,15 @@
+## Review of rt-01 (rewrite, author sonnet, natural)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Moved the summary to the top and cut it to a short account of how presence works today, the new main flow and why; removed the four-bullet version that repeated the rest of the file.
+- Added a Terms section defining gateway node, connId/userId, localSockets, pub/sub, ZSET/HASH, Lua script, entry, reap, _n and v, snapshot, minV, appliedRev, transformPosition and HistoryGone, held cursor and lastV, because a newcomer would not know them.
+- Merged the old Rules section, the Sequence notes and the Choices and limits into a numbered Steps section (join, cursor update, heartbeat and sweep, leave, node crash), each with its trigger, what it does and what it does on failure. The five script descriptions now sit at the step that uses them.
+- Merged the two timing tables into one that also lists the 60 ms and 50 ms cursor limits. Kept every number and added the 35 s calculation (30 s expiry plus 5 s sweep) behind the 45 s limit.
+- Added a single failure table covering dropped cursors, out-of-order messages, future revisions, HistoryGone, ignored cursors, lost Redis entries, Redis outage, reconnect, node death and the all-nodes-dead case.
+- Separated rollout (retire the Postgres table, polling and nightly job) into its own short section, kept the rules for Redis TIME, primary-only reads and the hash tag, and replaced Open questions with a note that none remain. Kept the Mermaid diagram unchanged, with the summary and terms before it and the notes after it.
+- Stated the order of the client's cursor checks (lastV check, then revision check) once, and removed repeated explanations of the v ordering, the 120 s TTL and the leave behaviour.
+
+### Holes
+- None.

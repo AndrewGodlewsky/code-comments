@@ -1,0 +1,43 @@
+## Review of auth-02 (junior-v7, author haiku, seeded-implicit)
+
+Rounds: 2. Ended: teachback-correct.
+
+### What changed
+- Added a summary of today's setup: config read once at import, and each client copies its key at construction.
+- Added terms for secret store, version id, KMS key, service identity, provider, revoke, readiness and last good value.
+- Split the plan into a runtime section and a rollout section, each numbered, with what starts each step, what it does, where state lives and what happens on failure.
+- Changed clients to call secrets.get() on every request, because a constructor copy would never see a refresh (Q6).
+- Stated the startup rule: retries 3 times, 2 seconds apart, then exit non-zero. A missing key fails the load the same way (Q3).
+- Defined refresh behavior per secret: a failed re-read keeps the last good value and logs a warning with no value (Q4).
+- Defined secret_versions in /healthz as version ids only, with no values, and who reads it (Q7).
+- Moved removal of config keys and the CI check into the code-change step, so the image built from that change has no keys and the rollback path is stated (Q8).
+- Added the rotation sequence: create the new key, write it, wait for refresh, confirm every replica by version id, then revoke (Q9).
+- Added the rollback limit: after revocation, pre-migration images cannot run. Recorded in rollout step 8 and the failure table (Q8).
+- Kept the rotation-cadence question as an open question and did not choose a cadence.
+- Added open questions for the store product, the identity mechanism, APP_ENV in prod, provider key overlap, the rollback window, sandbox key supply and replica addressing.
+- Summary: stated how the system works today (keys read once from config, change needs a redeploy) and why the rollout order matters.
+- Terms: added pod, APP_ENV and secret path; defined readiness with the deploy.md rule that a new pod must be ready before an old pod stops.
+- Runtime step 2: stated that /healthz stays 200 after startup and that a failed refresh does not change it (Q13, Q16).
+- Runtime step 3: stated that each refresh swaps values in one step, that warnings go to the central log kept 30 days, and that a failed refresh leaves /healthz unchanged (Q13, Q16).
+- Runtime step 4: stated that clients do not retry or switch keys and that step 7 of the rollout is the guard against rejected keys (Q12).
+- Rollout step 2: stated that the store values equal the config values until the rotation step, so nothing changes for running pods (Q15).
+- Rollout step 5: added who runs the checks, what they compare, and the rollback path when a check fails after all pods are replaced (Q14).
+- Rollout step 6: added that mixed key versions across pods and keys are safe, and that the step d comparison is the version id from step b (Q10, Q11).
+- Rollout step 7: stated that revocation is decided per key.
+- Failure table: added rows for refresh failing for hours, a provider rejecting a key, and a failed post-deploy check.
+- Open questions: added who runs the step 5 checks and which failure metric, and who reads refresh warnings or gets alerted.
+- Restructured into the required order: summary, terms, runtime steps, rollout steps, open questions. Runtime and rollout are separate sections.
+- Added one-line terms for every name a newcomer would not know: secret store, secret path, APP_ENV, KMS key, version id, service identity, pod, rolling deploy, readiness, provider, revoke, last good value.
+- Merged the separate failure table into a per-step 'If it fails' line, so each failure sits where it applies. The rollback limit now lives only in rollout step 8 and the refresh-outage behaviour only in runtime step 3.
+- Added answer-driven clarifications: step 2 now says the store and config keys are the same until step 6; step 6 says pods can hold mixed key versions and why that is safe; step 6d checks each pod at its own address; runtime step 2 states why readiness does not drop on a running pod; runtime step 4 states that clients do not retry or switch keys and that a provider rejection surfaces as today's error.
+- Put the rules for every step (memory-only keys, no logging of values, no customer failures) at the top of the runtime section, and removed their repeats.
+- Kept every stated fact from the brief and first draft: secret path format and examples; per-environment KMS key and version ids on every write; read-only prod access for orders-api-prod to orders-api/prod/* only; security on-call as the only prod writer; engineers barred from prod values and allowed to read dev; 3 retries 2 seconds apart then non-zero exit; 5-minute refresh with last-good fallback and warnings naming secret and version; the get-per-request change; base URLs and timeouts kept in config; keys treated as leaked and rotated at providers; old key revoked only after every instance is confirmed; CI check on api_key; local make run with dev keys and no prod fallback; one image per merge; 4 pods with maxUnavailable 0; /healthz change; rollback by earlier image; 30-day log retention; deploy.md rollback notes.
+- Kept all ten open questions in plain sentences, without numbered codes. Left the rotation cadence unset and marked it open, as the brief requires.
+- Did not add any new mechanism such as a lock, lease, retry queue or takeover rule.
+
+### Holes
+- Q1: What is "the store"? Which product or service is it, and where does it run? (author: The brief does not name the secret store product or where it runs. The plan calls it the managed secret store, which encrypts per environment and gives each write a version id. Listed as an open question.)
+- Q2: How does orders-api-prod authenticate to the store to read secrets? What identity does it use? (author: The brief says the pods run as the service identity orders-api-prod and that this identity gets read access. It does not say how a pod proves that identity to the store. Listed as an open question.)
+- Q5: How does APP_ENV choose between orders-api/prod/* and orders-api/dev/*? Where is APP_ENV set in prod? (author: APP_ENV selects the prefix orders-api/<APP_ENV>/, and make run sets it to dev. Where APP_ENV is set in prod is not stated in the brief or in deploy.md. Listed as an open question.)
+- Q13: If a refresh keeps failing for hours, the pod keeps the last good value. Does anything alert anyone, or does /healthz change? Who reads the warnings in the central log service? (author: Decided: a failed refresh does not change /healthz, so the pod stays ready and keeps serving its last good value. Warnings go to the central log service, which keeps them 30 days. Unknown: who reads them and whether anyone is alerted when they repeat. Added to open questions.)
+- Q14: In step 5, what exactly checks 'logs show no key-load warnings' and 'customer request failures do not rise'? Who does the verifying, and what do they do if the check fails after all pods are replaced? (author: Decided: the checks are pod readiness, each pod's /healthz key versions, and failures and warnings over the deploy window compared with the window before it. If a check fails after all pods are replaced, redeploy the pre-migration image, which works until step 7. Unknown: who runs the checks and which failure metric is used, because the brief does not say. Added to open questions.)

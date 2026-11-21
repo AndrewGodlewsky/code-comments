@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "It persists the order (status PENDING) and an OrderPlaced outbox row in one transaction, then answers 202 with the orderId. No other service has acted yet, and the handler publishes nothing itself.",
+  "q2": "The relay marks a row sent only after the broker acks the publish. If it crashes after the ack but before marking, the row is republished, so delivery is at-least-once.",
+  "q3": "Every event is keyed by orderId on the order-events topic, which gives per-order ordering within each consumer group.",
+  "q4": "Payment Service charges a card when it consumes StockReserved; it ignores OrderPlaced. Stock Service emits StockReserved only after its hold commits, so no charge happens without stock.",
+  "q5": "They write result events to their own outbox in the same transaction as the state change, and the relay publishes them. If a crash happens after commit but before publish, the unsent row is published on the first poll after restart.",
+  "q6": "Each consumer checks a dedupe table keyed by eventId first and skips duplicates. Otherwise it inserts the eventId in the same transaction as its side effect and outbox row, commits, then acks. A primary-key clash catches racing copies.",
+  "q7": "The card call uses orderId as the idempotency key, so the redelivered request gets the original capture back instead of a second charge. The commit then goes through.",
+  "q8": "A decline is a normal outcome, not an error: StockSvc drops the hold and OMS cancels. A provider timeout or 5xx throws, so it goes through retries and then the DLQ.",
+  "q9": "The PaymentDeclined event causes the reservation to be released. Stock Service releases it, writing the release and seen entry to its database.",
+  "q10": "Order Service consumes StockUnavailable, PaymentCaptured or PaymentDeclined. If the order is still PENDING, it sets CONFIRMED or CANCELLED, plus an outbox row (OrderConfirmed/OrderCancelled) and a dedupe insert, in one transaction.",
+  "q11": "The Mailer sends the email when it consumes OrderConfirmed or OrderCancelled from the bus. If sending fails, it throws and goes through normal retries and the DLQ, and the order status is never changed.",
+  "q12": "Four attempts total, retried after 1 s, 10 s and 60 s. Then the message goes to that consumer group's DLQ and on-call is paged, and the consumer moves on to the next message. Nothing is rolled back, so the order keeps its current status."
+ },
+ "sonnet": {
+  "q1": "In one transaction it inserts the order (status PENDING) plus an OrderPlaced outbox row (in the OMS db). The handler publishes nothing itself and returns 202 with the orderId.",
+  "q2": "A row is marked sent only after the broker's ack. If the relay crashes after the ack but before marking, the row is republished (duplicate), i.e. at-least-once delivery.",
+  "q3": "Everything is on the order-events topic keyed by orderId, giving per-order ordering within each consumer group.",
+  "q4": "Payments acts only on StockReserved (ignores OrderPlaced). The stock service emits StockReserved only after the hold commits, so no charge happens without stock.",
+  "q5": "Each writes the event as an outbox row in its own DB in the same transaction as the state change, and the relay publishes it. If it crashes after commit but before publishing, nothing is lost: the row is still unsent and goes out on the first poll after restart.",
+  "q6": "Each consumer has its own dedupe table keyed on eventId in its own DB. It looks the eventId up; if present it acks and skips. Otherwise it inserts it in the same transaction as the side effect and outbox row, commits, then acks. The PK catches two copies racing.",
+  "q7": "PaySvc always sends orderId as the idempotency key to the card provider, so the retried charge call returns the original capture instead of charging again. The redelivered StockReserved isn't in the seen table yet, so it is processed again and the commit then goes through.",
+  "q8": "A decline is not an error: it follows the PaymentDeclined path (StockSvc releases the hold, OMS cancels the order). A provider timeout or 5xx is an error (throw) and goes through the retry/DLQ process.",
+  "q9": "The PaymentDeclined event causes it, and StockSvc (the stock service) releases the hold.",
+  "q10": "OMS (OrderSvc) consumes StockUnavailable, PaymentCaptured or PaymentDeclined. Only if the order is still PENDING, it sets status to CONFIRMED or CANCELLED, with an OrderConfirmed/OrderCancelled outbox row and a dedupe insert, all in one transaction.",
+  "q11": "The Mailer sends the email when it consumes OrderConfirmed or OrderCancelled from the bus. If the send fails, nothing happens to the order: the Mailer never touches order status. The failed send is a throw that goes through the normal retries and the DLQ.",
+  "q12": "Four tries total, with retries at 1 s, 10 s and 60 s. Then the message goes to the DLQ for that consumer group, on-call is paged, and the consumer carries on with the next message. Nothing is rolled back; the order stays in whatever status it had (e.g. PENDING with the stock hold still in place if PaySvc dead-lettered)."
+ }
+}

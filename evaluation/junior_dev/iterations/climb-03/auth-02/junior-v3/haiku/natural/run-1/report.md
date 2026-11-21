@@ -1,0 +1,53 @@
+## Review of auth-02 (junior-v3, author haiku, natural)
+
+Rounds: 4. Ended: teachback-correct.
+
+### What changed
+- Restructured into summary, terms, assumptions, numbered steps, runtime rules, failure table and open questions. Removed the K1 to K8 and Q-style codes and the cross-references that sent readers elsewhere, so each step stands alone.
+- Defined the terms a newcomer needs (secret store, KMS key, version id, workload identity, holder, refresh, readiness) in one line each.
+- Step 4: stated that the on-call copies the value straight from the provider console into the store write, and that it is never saved to a file, chat, ticket or environment variable.
+- Step 5: merged the runtime changes (startup load, retry, readiness, liveness, per-request key reads, config removal) into the step, and stated that new-image pods never hold old keys.
+- Step 6: compared version ids with the latest recorded ids and named the cluster pod list as the way to see which image each pod runs.
+- Merged the crash/restart rules (K6) and the log rules (K5) into the runtime rules and the failure table, and merged the dev rules (K8) into step 9.
+- Step 9: stated that developers use their own engineer identity, which reads dev only.
+- Kept A1 as a hard gate, the A3 retry reading, the rotation cadence as open, and the 15-minute window as proposed.
+- Added open questions for the store and KMS product names, the step 4 tooling, whether a store read returns the version id, per-key provider usage, and developer login.
+- Step 4: the on-call records each version id in the tracking issue at write time. A later rewrite follows the same step, including validation, and is recorded the same way (Q12).
+- Step 5: added what happens on a provider 401 (request fails, client logs provider and status, no retry with another key, fallback left to the open questions) (Q9).
+- Step 6: added a refresh-warning check. Search the central log service for the warning text over the 15-minute window; any warning fails the gate. The check says where to search (Q11).
+- Step 6: the version id check now refers to the latest id recorded in step 4 or in a later rewrite (Q12).
+- Open questions: added question 16 on whether a halted rollout alerts anyone (Q10).
+- Assumptions: removed the A1/A3 labels and wrote the assumptions out in place, so the steps no longer point to codes elsewhere in the file (skill step 7).
+- Failure table: added a row for a provider 401 for a current key, so the table matches step 5 (Q9).
+- Simplified the summary and terms only where needed for clarity; the main flow and the step order are unchanged.
+- Step 1 and Assumptions: per-key usage reporting is now a second hard gate, stated with the two-live-keys gate (Q15).
+- Step 2: the failure text now points to the step 4 read check as a second catch for a wrong policy (Q18).
+- Step 4: added a read check as orders-api-prod after the writes, with its own failure handling (Q18).
+- Step 5: states the mixed-fleet reasoning explicitly, and points the fallback question to Open questions (Q13).
+- Step 6: the version check now uses the latest logged id per key, from startup or any later refresh (Q14). The refresh search text is fixed as `secret refresh failed` (Q16).
+- Runtime rules: the refresh warning line now has a fixed starting text and listed fields (Q16).
+- Failure table: the bad-version row says when pods recover and that it works only while the previous key is still valid. The IAM row mentions the new read check (Q17, Q18).
+- Open questions: per-key usage is split out as its own item (Q15). A question on alerts for halted rollouts and provider 401s is added (Q17). Step 4 tooling now covers the read check (Q18). The list is renumbered to match.
+- Step 5: added the explicit startup order (config, read secrets, build clients, listen) and removed the sentence that said /healthz returns 503 before keys load, which conflicted with listening only after the load (Q22).
+- Terms: added Deployer, and defined workload identity as cluster-provided with no static credential (Q19, Q23).
+- Step 4: stated that a rewrite reaches running pods at their next refresh with no deploy, and merged the dev sentence into step 9 (Q20, Q25).
+- Step 5: stated that old pods keep old keys until the rolling deploy replaces them, and that the deployer watches the rollout (Q21, Q23).
+- Step 6: the check uses the latest logged id per key from startup or any refresh, requires other consumers from the step 1 inventory to be moved, and runs at least 5 minutes after the last write (Q20, Q21).
+- Runtime rules: added the cases of a deleted or missing secret and of a valid-format value the provider rejects (Q24).
+- Step 9: an engineer creates dev keys, runs the test call and writes them to orders-api/dev/ before developers switch (Q25).
+- Open questions 4 and 13: extended to cover the dev-key source, workload identity attachment and the deployer team (Q19, Q23, Q25).
+- Simplified: merged the separate refresh-failure rows in the failure table and removed the duplicate dev sentence in step 4.
+- Shortened each term to one line and cut the repeated explanations inside the terms and the rollout steps.
+- Moved the failure handling into each step's 'If it fails' line, and kept one short runtime table covering only refresh, bad store version, provider 401 and the two rollback cases.
+- Removed the table rows 'IAM misconfigured' and 'api_key added back to config' because steps 2, 4 and 8 already state their handling.
+- Merged the runtime rules: liveness, restart, core dumps and logging rules now sit in fewer bullets, and the provider-401 rule was merged into the runtime section.
+- Dropped the duplicate open questions on two live keys per provider, per-key usage reports and retry count, because the Assumptions section already states them as gates or as the owner's confirmation.
+- Replaced the cross-references by code (Q and R numbers, such as 'open question 7' and 'R3') with plain phrases, so each step reads on its own.
+- Kept the intent unchanged: the two-key and usage-report hard gates, the IAM rules, validate-then-write, the read check, the startup order, the 5-minute refresh with last-good-value fallback, the step 6 gate, and the open rotation cadence, which is still undecided.
+
+### Holes
+- Q1: What is the "managed secret store" and "KMS" here (which product), and what does "a new version" of a secret mean? Does the app always read the latest version? (author: The brief does not name the secret store product or the KMS service, so the plan calls them 'the secret store' and 'KMS' and lists the product names as an open question. What the plan does fix: each write creates a new version with its own id, and the app reads the current (latest) version. This follows from the brief's requirement that a running instance picks up a new version without a restart.)
+- Q6: Once the new pods use the new keys and old pods use the old keys, what exactly does the provider see as 'old-key requests dropped to zero'? What if a pod receives a refresh after step 5 and then old keys are the only ones still in config of rolled-back pods? (author: The plan assumes the provider reports requests per API key. Whether it does is not known, and it is an open question. If it does not, step 6 needs another check. On rollback: a new-image pod never holds old keys. It loads from the store, ignores api_key, and refreshes only from the store, so old keys are never the only keys a new pod has. Pods on the pre-migration image hold old keys and never refresh. If one is rolled back before step 7, its old keys still work, and the step 6 gate holds while it runs.)
+- Q10: When a rollout halts because new pods never become ready, who or what notices, and how? Is there an alert, or does someone watch the deploy? (author: The brief and deploy.md say only that the rollout halts and old pods keep serving. They do not say whether an alert fires or someone watches the deploy. I do not know which is the case. Added as open question 16 so security or the platform owner can answer it.)
+- Q17: In the failure table, if a bad version is written and pods pick it up within 5 minutes, the on-call writes the previous value as a new version. Who notices the 401s, and how long until pods recover? (author: Who notices the 401s is not known. The brief and the docs define no alert for provider 401s, so this is added as open question 16. Recovery timing is known from the refresh rule: once the previous good value is written as a new version, pods pick it up at their next refresh, up to 5 minutes later, plus the time to write it. That recovery works only while the previous key is still valid at the provider, which after step 7 holds only for keys that were not revoked.)
+- Q19: In step 5, how does a new pod get its identity to read the store at startup? Is `orders-api-prod` attached to the pod by the cluster, and who sets that up? (author: deploy.md says prod pods run under the service identity orders-api-prod, so the cluster already attaches that identity. The brief and deploy.md do not say how the cluster attaches it or who set it up. The plan now says the cluster provides workload identity and lists the mechanism and owner under open question 13.)

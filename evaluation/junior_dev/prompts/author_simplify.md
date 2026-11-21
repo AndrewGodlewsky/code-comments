@@ -1,0 +1,1 @@
+You are the author of the document below, following the junior-dev skill (its full text is shown first). The question loop has finished. Do step 7 of the skill exactly as the skill says. Put the full simplified document in `artifact`, exactly as it should be saved, and list what you cut or merged in `changes`. Use no tools.

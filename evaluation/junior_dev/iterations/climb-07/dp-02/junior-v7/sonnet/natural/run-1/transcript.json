@@ -1,0 +1,107 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the \"log\" here (which product), and what is the \"dedup horizon\" that the dedup scope refers to? Is it the 8-day key TTL or something else?",
+     "about": "Decisions this plan rests on: Dedup scope"
+    },
+    {
+     "id": "2",
+     "text": "A retry arrives 9 days after the first copy, after the key-value TTL has expired. What happens to it in the live path, and what does replay do with it?",
+     "about": "Step 8 Dedup against the key-value store"
+    },
+    {
+     "id": "3",
+     "text": "Step 4 returns 202 with a list of rejected events. Does the client resend those rejected events, or are they just lost? Who sees the metric and log line?",
+     "about": "Step 2 and Step 4 Respond"
+    },
+    {
+     "id": "4",
+     "text": "How does the live path know which raw objects/log records to read and in what order, given the archive and stream processor are separate consumer groups? Does the stream processor read the log directly, not the archive?",
+     "about": "Step 7 Run the stream processor"
+    },
+    {
+     "id": "5",
+     "text": "In step 11, what exactly is recorded as \"already recorded\" load ids, and where is that record stored? How is it kept atomic with the insert into events_clean?",
+     "about": "Step 11 Load into the warehouse idempotently"
+    },
+    {
+     "id": "6",
+     "text": "Step 12 says the day closes at 02:00 UTC on D+1 but also needs the watermark past D. What is the \"committed watermark\" and what happens to late events with received_at in D that reach the processor after closure?",
+     "about": "Step 12 Close the day"
+    },
+    {
+     "id": "7",
+     "text": "Step 15 reads raw from D-8 through D+1 but earlier it says 'D+2' retries are handled. How does replay decide the winner for a copy in D whose first copy might be older than D-8, or whose retries land after D+1?",
+     "about": "Step 15 and Step 16 Re-derive the winners"
+    },
+    {
+     "id": "8",
+     "text": "If a replay validation check in step 19 fails, what does the operator do next, and what state is left behind (staging, lock, audit log)?",
+     "about": "Step 19 Validate before publishing"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "The log is the existing replicated append-only log (Kafka-style, 14-day retention) named in the brief. The dedup horizon was an undefined term. Live it is the 8-day key TTL; in replay of D it is the raw window D-8 through D+1. I defined both under Dedup scope."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "A 9-day retry is outside the brief (retries reach us at most 7 days later). Live: the key has expired, so it is treated as a new event and inserted into its own received_at day. Replay: the first copy is outside D-8..D+1, so it is also treated as new, so live and replay agree. I accepted this limit because the TTL is the 7-day retry window plus one day. Added a line in Dedup scope, step 8 and step 16."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "Rejected events are not resent and not stored; this is by design. The brief says clients never retry rejected events, and the 202 response tells the client which ones failed. The metric and log line are seen by operators through the rejected-event rate in step 13. Added this to step 2."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The stream processor reads the log directly, not the archive. The archive and the processor are two independent consumer groups on the same log. Only replay reads the archive. Stated in step 7."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "The brief does not say where load ids live. I proposed a load-log table in the warehouse, written in the same transaction as the insert. Whether the warehouse supports that transaction is not known, so I added it to the assumptions and the open questions. I did not invent a fallback mechanism."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The committed watermark is the received_at of the latest record whose offsets the processor has committed, taken as the minimum across partitions. A day cannot close until it passes the end of D. If a record stamped in D still arrives after closure, the live path skips it and it stays in raw for the next replay of D. This is the simplest handling and avoids reopening closed days. Added to step 12."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Winners are decided only by the earliest copy inside the window. Retries after D+1 do not matter, because a later copy can never beat the first copy, and D+1 is read only to cover boundary and clock skew. A first copy older than D-8 is outside the horizon, so the copy in D is kept as new, which matches live behaviour after the TTL. I clarified step 16 and the dedup scope."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "On a failed check nothing is published and partition D keeps its old data. The lock is released, the audit log records which check failed, and staging is kept so the operator can inspect it. The operator fixes the cause and reruns, which overwrites staging. I chose this because it needs no new mechanism. Added to step 19."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger: a website or iOS/Android app sends a batch of up to 100 events over HTTPS to the collector. Each event has event_id (a client UUID), device_id and a client timestamp. The client holds the events until it gets an acknowledgement. The mobile SDK keeps unacknowledged events on the device for up to 7 days.\n\n2. Collector parse check: the collector tries to parse the body. If it can't, or there are more than 100 events, it returns 400 for the whole batch. The client treats 400 as non-retryable and does not resend.\n\n3. Collector stamps and validates each event: it sets received_at from its NTP-synced clock. This is server time, and it alone decides the event's UTC day. An event missing event_id or device_id, or over 32 KB, is rejected on its own. Rejected events are not stored. The collector only emits a metric and a log line. The rest of the batch carries on.\n\n4. Collector writes to the log: each accepted event goes into an envelope holding the original bytes untouched, received_at, client IP, User-Agent and collector id. The envelope is published to the log keyed by event_id with acks=all. The key sends every copy of an event to the same log partition. The collector does not dedup, so duplicates are published like any other event. The log (14-day retention) holds the state at this point. Each record gets a partition and an offset.\n\n5. Collector responds: it returns 202 only after the log confirms every accepted event is durable. The body lists each rejected event_id (or the index, if there is no usable id) with a reason. If every event was rejected it still returns 202 with the full list. If the log write fails or times out it returns 5xx for the whole batch. The client then backs off exponentially, from 1 s up to 5 minutes, and resends the same batch with the same event_ids. A 429 also triggers retry. Those resends become duplicate log records, which later stages handle.\n\n6. Two independent readers now consume the log. One is the archive. The other is the live processor. Each uses its own consumer group.\n\n7. Archive path: a dedicated consumer group copies every record, duplicates included and unchanged, to object storage under raw/received_date=YYYY-MM-DD/hour=HH/. Objects are named by log partition and offset range, so a retried write overwrites the same object. A lifecycle rule deletes raw objects 90 days after received_date. An alert fires if archive lag exceeds 2 days. The archive is the source of truth because the log keeps only 14 days.\n\n8. Live processor reads: it reads the log directly, not the archive, in micro-batches of about 1 minute. It is partitioned like the log, so one worker handles each event_id, in offset order.\n\n9. Dedup: for each event it does an atomic set-if-absent in the key-value store on key event_id. The value is partition:offset and the TTL is 8 days. If the key is absent, this copy is the winner and processing continues. If the key holds the same partition:offset, the batch is being reprocessed after a crash, so the event is re-emitted as the winner. If the key holds a different value, the copy is dropped (it stays in the archive). If the key has expired, the copy counts as new. A retry that lands in a different UTC day than the first copy is also dropped.\n\n10. Enrich: it does geo-IP lookup and UA parsing from the envelope's IP and User-Agent. It writes the enrichment version into a column.\n\n11. Bot stage: sits between enrichment and load. The document does not say what it does yet. Either it drops suspected bots or it adds an is_suspected_bot column. Dedup runs before this stage.\n\n12. Load: the micro-batch is inserted into the events_clean partition for the UTC day of the winner's received_at. Each load has a deterministic id (partition plus start and end offset). Finished ids are kept in a load-log table in the warehouse, and a load whose id is already there is skipped. The insert and the load-log row should commit together, but this is unconfirmed. Consumer offsets are committed only after the load is confirmed. Rows are queryable within 5 minutes. A crash mid-batch is recovered by reprocessing: the same partition:offset is re-emitted and a finished load id is skipped.\n\n13. Day closing: day D closes at 02:00 UTC on D+1, provided the watermark (the minimum across partitions of the received_at of the latest committed record) has passed the end of D. If the processor is more than 2 hours behind, the day stays open and an alert fires. After closing, the live path skips any late event stamped D. The event stays in the archive and the next replay of D picks it up.\n\n14. Monitoring: it tracks freshness (alert at 4 minutes), consumer lag, the rejected-event rate and the dedup drop rate. A sudden fall in the drop rate suggests the key-value store lost state. In that case duplicates leak into live partitions until the affected days are replayed.\n\n15. Replay, start: an operator runs replay(D), for example after a geo-IP or UA fix. The job refuses unless D is closed, raw data for D-8 through D+1 still exists (D at most about 82 days old), and no replay for D is running (one lock per day).\n\n16. Replay, read and winners: the job runs on its own compute and reads only the archive objects for D-8 through D+1, as they exist when it starts. It throttles its reads. It never touches the log, the key-value store or live consumers. For each event_id it picks the copy with the lowest (partition, offset) across the window, which is the same rule as live. It keeps the event for D only if that winning copy's received_at is in D. A first copy older than D-8 is treated as new.\n\n17. Replay, enrich and stage: it re-enriches the kept events from the raw envelopes with current code and lookup data and records the new enrichment version. It applies the same bot stage. It builds the result in a staging table or partition, never in the live partition.\n\n18. Replay, validate: every row must have received_at in D. COUNT(*) must equal COUNT(DISTINCT event_id). The row count must be within an operator-set tolerance of the live partition. No event_id in staging may appear in an earlier day's partition. If validation fails, nothing is published and partition D is untouched. The lock is released, the failed check goes in the audit log and staging is kept. The operator fixes the cause and reruns. Any abort leaves D untouched, so rerunning is safe.\n\n19. Replay, swap: it uses the warehouse's atomic single-partition replace to put staging into partition D. Dashboards see the old complete day or the new complete day. The replay id, enrichment version and row counts are recorded in an audit log.",
+   "gaps": [
+    "What the bot stage does (drop vs flag): Product has not decided, so I cannot say what happens between enrichment and load.",
+    "Whether the warehouse can insert micro-batches at all. If not, step 12 changes to rebuilding today's partition from staging on every cycle.",
+    "Whether the load-log commits atomically with the insert, and where the load-log lives. Without this I cannot say what happens after a crash between the insert and the load-log row.",
+    "How the archive consumer commits its own offsets and how a late-arriving D event is recorded as 'skipped' by the live path. The document says only that it is skipped.",
+    "What the live partition for the current day looks like to dashboards while micro-batches are inserted (depends on the unresolved insert question)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

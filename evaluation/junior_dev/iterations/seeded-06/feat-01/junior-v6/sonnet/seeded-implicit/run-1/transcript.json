@@ -1,0 +1,112 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "How does the API decide a report is small versus large? Is it a row count, size estimate, or something else, and who sets the threshold?",
+     "about": "3. Small reports / 4. Large reports"
+    },
+    {
+     "id": "2",
+     "text": "For small reports, where do the rows come from: the replica or the primary? And does a small export also create a report_exports record?",
+     "about": "3. Small reports: stream the CSV back in the response"
+    },
+    {
+     "id": "3",
+     "text": "What does the large-report POST return to the caller, and how does the page learn the export id to poll?",
+     "about": "4. Large reports: create an export record and enqueue a report_export job"
+    },
+    {
+     "id": "4",
+     "text": "What columns does report_exports have, and who changes the status from queued to running, done or failed?",
+     "about": "1. Add a report_exports table"
+    },
+    {
+     "id": "5",
+     "text": "What does Prevent duplicate exports mean here? Same user, same report, same filters? What does a second request get back while one is still running?",
+     "about": "7. Prevent duplicate exports"
+    },
+    {
+     "id": "6",
+     "text": "If the job fails partway, a retry starts again. Does it restart from row one, reuse the same export record, and what does the user see in status during retries?",
+     "about": "8. Errors: rely on the job queue's retries"
+    },
+    {
+     "id": "7",
+     "text": "When is the failure email sent: after the final retry only? And what marks the export as failed and when?",
+     "about": "8. send a failure email at the end"
+    },
+    {
+     "id": "8",
+     "text": "How is the signed link made, who can use it, and how long is it valid? How does it relate to the lifecycle rule deleting the file?",
+     "about": "5. email a signed link / 9. Cleanup is handled by the bucket lifecycle rule"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "It is reports.row_count (the unfiltered total) compared with 10,000, a constant in the API. The brief fixes the rule; I used the unfiltered count because that is the only stored size, so a heavily filtered large report still takes the job path."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "Small exports read from the read replica only, since report data must never come from the primary (reports_page.md). A small export creates no report_exports record and no job; nothing is stored."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It returns 202 with {export_id, status}. After a reload the page calls GET /api/reports/{report_id}/exports/latest to learn the id and state, then polls every 5 seconds while queued or running."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Columns are id, report_id, user_id, query, status, job_id, object_key, error, created_at, finished_at. The API creates the row as queued; the job sets running at each attempt start and done at the end; on_final_failure sets failed."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Same user and same report, regardless of filters, because the brief says one large export of a given report per user. A second request while one is queued or running gets the existing export back with 200 and starts nothing. A unique partial index on (user_id, report_id) for queued/running rows enforces it, so concurrent clicks cannot both insert."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The queue keeps no progress, so each retry restarts from the first row. It reuses the same export record and the same object key, with a new multipart upload; the failed attempt aborts its own. Status stays running during retries, so the user sees running."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "The failure email is sent only after the last (third) attempt fails, from the queue's on_final_failure callback, which is called once. That same callback sets status failed, so the page shows failed and the email goes out together."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The link comes from signed_url('exports', key, 86400), made when the email is sent. It is a bearer link: anyone holding it can download it until it expires after 24 hours (the maximum allowed). The lifecycle rule deletes the file after 7 days, so the link always expires first; I do not build cleanup. Whether bearer access is acceptable is listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup (rollout order: table and API first, then job, then button). A new table `report_exports` stores the state of each large export (id, report_id, user_id, query, status queued/running/done/failed, job_id, object_key, error, created_at, finished_at). A unique index on (user_id, report_id) where status is queued or running allows only one active large export per user and report. Only the API (creates the row as queued) and the job (sets running, done, failed) change status.\n\n2. The user opens /reports/{report_id}. The page loads rows 500 at a time from GET /api/reports/{report_id}/rows. That endpoint reads only from the read replica and checks `report.view`. The filters and column order exist only in the page URL, because the server stores nothing about what the user is viewing.\n\n3. On page load the page also calls GET /api/reports/{report_id}/exports/latest. This returns the current user's newest export of this report (own exports only, same permission check). The page uses it to learn the export_id and status, including after a reload.\n\n4. The user clicks Download CSV. The page calls POST /api/reports/{report_id}/exports and sends the current filters and column order, since the server does not hold them. The API checks `report.view` and returns 403 if it fails.\n\n5. The API reads `reports.row_count` (the unfiltered total, rewritten nightly) and compares it with the constant 10,000 in the API. This decides the path. A heavily filtered large report still goes down the large path.\n\n6. Small path (10,000 rows or fewer). The API responds with the CSV itself: a header row, then rows read from the replica in keyset batches (`row_id > after ORDER BY row_id`) and streamed out. No record is created, no job runs, nothing is stored. If it fails, the request errors and the user clicks again.\n\n7. Large path (more than 10,000 rows). The API inserts a `report_exports` row with status queued and the query (filters and cols copied from the request or URL). It enqueues a `report_export` job whose payload is only the export_id. It returns 202 with {export_id, status}.\n   - If the insert violates the unique index, the user already has an active export of this report. The API returns that existing export with 200 and starts nothing. This applies whatever the filters are.\n   - If enqueue fails, the API marks the row failed and returns 500.\n\n8. The page then shows the export state. While it is queued or running, the page polls GET .../exports/latest every 5 seconds and shows queued, running, done or failed.\n\n9. A worker picks up the job (the queue runs @job handlers on workers with 512 MB memory, one attempt at a time). At the start of each attempt, if the export is already done, the handler stops. This covers duplicate delivery, since delivery is at least once. Otherwise it sets status running and starts a multipart upload to the fixed key `{export_id}.csv` in the `exports` bucket.\n\n10. The loop. The handler reads a batch from the replica after the last row_id and appends CSV text to a buffer of about 8 MB. When the buffer is full it uploads it as a part and frees it. At most one buffer and one batch are in memory. About 110 parts for the largest report, well under the 10,000-part limit. Each part except the last must be at least 5 MB, which an 8 MB buffer satisfies.\n\n11. Finish. The handler calls `complete_multipart`, so the object becomes visible at the key. Before that, nothing is visible, so a half-written file is never downloadable. It sets status done and stores the object_key. It then emails the user with send_email(user_id, \"report_export_ready\", {link}), where link = signed_url(\"exports\", key, 86400). The link works for 24 hours from the email. The file itself is deleted by the bucket's lifecycle rule 7 days after creation. No cleanup job is built.\n\n12. The page's next poll sees done and shows done.\n\n13. Failure of an attempt (exception, 30-minute timeout, or dead worker). The queue retries after 60 s, then 300 s, 3 attempts in total. Each retry restarts from the first row with the same payload, the same export record and the same key, and starts a new upload. Status stays running. The failing attempt aborts its upload. If the worker died, the bucket discards the stale upload after 24 hours.\n\n14. Final failure. After the last attempt fails, the queue calls `on_final_failure` once. It sets status failed, stores the error, and emails the user that the export failed. The page shows failed. The user can then start a new export, since a new one is allowed once the earlier one is done or failed.\n\n15. Email fails after done. The attempt raises and the queue retries, but the retry sees done and stops, so no email is sent. The page still shows done.\n\nOpen questions the document itself lists: whether 2 million rows fit within 30 minutes, whether a 24-hour link that anyone holding it can use is acceptable, and whether the page should be able to give a fresh link after the email.",
+   "gaps": [
+    "How the click sends the view state is not stated precisely (the page 'sends the current filters and columns'). I do not know the request format, or whether the server validates the filters or column names.",
+    "How the CSV filters are applied when reading batches is not described (how the stored `query` becomes a replica query). This matters for the job, which only gets the export_id and must load `query` from the record.",
+    "What the small-path response looks like to the browser (headers, filename, how it becomes a download) is not stated.",
+    "How the job learns the user_id and report_id: the payload holds only export_id, so I assume it reads them from the `report_exports` row, but the document does not say so.",
+    "What happens if the retry reaches the first-attempt state when the previous attempt's `complete_multipart` succeeded but status was not yet set to done. The doc says complete replaces any object at the key, but not how this case is treated.",
+    "What the page shows or can do after done: how the user gets the file from the page is not stated. The only delivery is the emailed link, and there is no way to get a fresh link (listed as an open question).",
+    "What `on_final_failure` does if the status is already done, or what happens if the email in the final-failure path fails, is not stated.",
+    "Whether the 24-hour link and 7-day file life matter for the done state: after the link expires or the file is deleted, the page still shows done, and the document does not say what the user sees.",
+    "Whether the page shows the export status for the small path: there is no record, so the page's status display after a small download is unspecified.",
+    "Which attempt's timing 'finish within 30 minutes' is meant to be met for 2 million rows is unknown; the document says this is unmeasured."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

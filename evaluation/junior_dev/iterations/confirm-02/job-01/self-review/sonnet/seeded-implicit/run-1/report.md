@@ -1,0 +1,29 @@
+## Review of job-01 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Replaced the vague bullet notes (such as 'handled per the spec') with explicit step-by-step mechanics for run creation, claiming, heartbeats, retries, crash recovery, pausing and history cleanup.
+- Added a vocabulary section defining schedule, fire time, run, attempt and active run, and stated that all time comparisons use the database clock.
+- Added the missing columns the design needs: next_attempt_at, heartbeat_at, finished_at, attempt_no, started_at, ended_at; dropped lease_owner and lease_expires_at in favour of heartbeat_at plus the attempt table.
+- Added a constraints table naming the exact unique, partial-unique and check constraints that enforce one run per fire time, one active run per schedule, 3 attempts and the 50-schedule cap, and noted how the 5-minute minimum is validated.
+- Explained fencing: attempt_count acts as a token on every worker write, which is how a presumed-dead worker is stopped from overwriting the takeover worker's result.
+- Defined 'skip locked' in plain terms and described how missed fire times are dropped and how resume and re-enable avoid catch-up.
+- Added an assumptions section for choices the brief left open (retry-wait counts as in progress and is cancellable; backoff measured from detection).
+- Annotated the ER diagram with column comments and relationship labels.
+- Added 'fencing token' to the vocabulary so step 2 and the ER diagram comment no longer use it before it is defined
+- Moved the pause/disable cancellation rule into steps 4 and 5 as an explicit first branch, so the retry and reaper rules are complete where they are read and step 6 just points to them
+- Reworded the intro to the four loops and 'skip locked' to be simpler and more direct
+- Made step 5 a clearer two-bullet sequence and said explicitly that a lost attempt counts as used
+- Noted in step 1 that skipped runs get finished_at set at creation
+- Split the cleanup sentence in step 7 and set the example DELETE on its own line
+- Tightened a few sentences (claiming, fencing, pausing) without changing meaning
+- Defined the fencing token more concretely (value presented with every later write).
+- Stated explicitly which run statuses are final and that each sets finished_at; added finished_at to the ER column note and to the success and cancel paths, so history cleanup covers every finished run.
+- Clarified the CHECK constraint lives on job_run and reworded the minimum-interval and safety-net rows.
+- Renamed step 4 to 'Finishing and retries' and moved the success case first so the outcomes read in order.
+- Clarified step 3's final write (run and attempt updated together, attempt only if the run update matched).
+- Smaller wording tidy-ups: 'background loops', 'in batches', consistent 'disabled or tenant paused' phrasing.
+
+### Holes
+- None.

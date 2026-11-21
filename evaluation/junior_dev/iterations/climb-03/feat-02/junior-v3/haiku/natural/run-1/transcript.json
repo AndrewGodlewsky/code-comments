@@ -1,0 +1,105 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is limitFor(plan) based on? Where do the plan names and limits (Standard = 100) come from, and what happens for a plan it does not know?",
+     "about": "G->>G: limit = limitFor(plan)"
+    },
+    {
+     "id": "2",
+     "text": "The script uses GET then INCR. If the key does not exist yet, what does the first request in a window do, and how does the key get cleaned up afterwards?",
+     "about": "Check and increment are one atomic step (Lua script)"
+    },
+    {
+     "id": "3",
+     "text": "The EXPIRE is 120 s while the window is 60 s. Why the extra time, and does it matter for correctness?",
+     "about": "ARGV[2] = 120 s"
+    },
+    {
+     "id": "4",
+     "text": "Who computes windowStart and passes the key and limit to the script? Does the gateway use its own clock for that, and what happens if two instances disagree on the minute?",
+     "about": "Counter key and store / Retry-After"
+    },
+    {
+     "id": "5",
+     "text": "What does the client see when it is denied: the body, and are X-RateLimit-* headers included on the 429?",
+     "about": "Denied (count already at limit) -> 429 with Retry-After"
+    },
+    {
+     "id": "6",
+     "text": "What do the numbered requirements (1, 3, 4, 5, 7) refer to? Where are they listed?",
+     "about": "Notes, requirement references"
+    },
+    {
+     "id": "7",
+     "text": "What happens if the backend is slow or times out after the request was counted? Does the gateway have any timeout there, and is the budget refunded?",
+     "about": "Allowed (count incremented) -> Forward request to Backend service"
+    },
+    {
+     "id": "8",
+     "text": "What does the Key Service return when it is down or slow, and how does that interact with the 5 minute gateway cache?",
+     "about": "Key not in gateway cache (5 min TTL) -> Resolve key"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The plan comes from the Key Service with the customer ID: Standard or Enterprise. limitFor(plan) returns 100 for Standard (from the brief), and an explicit not-set value for Enterprise (OPEN in the brief), which takes the no-check path. A plan value the gateway does not recognise is treated as Standard, so an unknown plan can never be unlimited. Reason: an unrecognised plan should not get unlimited access, and Standard is the lowest tier. The file now says this in step 3."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "I checked the script text in the file. On the first request in a window, GET returns nil, so n is 0. That is below the limit, so INCR makes the key 1 and the EXPIRE of 120 s is set, because n == 1. Nothing else deletes the key; Redis expires it 120 s after creation. Because the script runs as one step, the EXPIRE cannot race with another INCR."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The 120 s covers the 60 s window plus a margin for clock skew between instances and for slow in-flight requests. It does not change the count, because each request only uses the counter for its own window, and the key name changes each minute. A longer expiry only keeps an idle key for at most 2 minutes. Reason: a short expiry would risk deleting a counter an instance still uses near the boundary. The file now explains this in the script section."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. The gateway computes windowStart from its own clock (floor(now / 60) * 60) and passes the key, the limit (from limitFor) and the 120 s expiry into the script. If two instances disagree on the minute, they may use adjacent counters for a few seconds around the boundary, so a customer can get slightly more or fewer requests in that moment. The error is bounded by clock skew, which is why NTP is required. Redis TIME inside the script would remove skew for the counter, but not for Retry-After, so I did not choose it, to keep v1 simple."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The 429 carries Retry-After in whole seconds and no X-RateLimit-* headers. Requirement 6 covers only responses to requests that passed the check. The exact body is not decided here, so it is listed under open questions, not guessed."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The numbers refer to the eight fixed requirements in the brief. The file never listed them, so the reference did not work for a reader. The file now states each constraint in place, in plain words, with no numbers."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "No budget is refunded. The brief (requirement 5) says a request counts once it passes the check, even if the backend then fails, so a timeout or 500 keeps the count. The file says this in the failure table. The gateway's timeout for the backend call is not in the brief or the design, so it is listed as an open question, not invented."
+    },
+    {
+     "id": "8",
+     "tag": "unknown",
+     "text": "The brief and the design do not say what happens when the Key Service errors or is slow. The gateway already has a 5 minute in-memory cache for key answers. How a Key Service failure is handled today is not in the material I have. This design does not change it. It needs to be confirmed, and it is listed under open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. A client sends a request to the API Gateway with an `X-Api-Key` header. The gateway starts here, and the key is the only identity it has.\n\n2. The gateway turns the key into a customer ID and a plan. It first checks its own in-memory cache, which holds entries for 5 minutes. On a cache miss it asks the Key Service, which replies with the customer ID and plan, or with \"unknown\". The state here is the gateway's cache and the Key Service's own records. Because plans are cached, a plan change can take up to 5 minutes to take effect. If the Key Service itself errors or is slow, the document doesn't say what happens (see gaps).\n\n3. If the key is missing or unknown, the gateway returns 401 Unauthorized and stops. It never touches Redis, so no budget is used.\n\n4. For a valid key, the gateway picks a limit from the plan.\n   - Standard has a limit of 100 requests per minute.\n   - Enterprise has no limit set yet (an open question). For Enterprise the gateway skips the rate check, forwards the request to the Backend service, and returns the backend's response with no rate-limit headers. No budget is used.\n   - Any other plan value is treated as Standard, so an unknown plan is never unlimited.\n\n5. For a limited plan, the gateway works out the counter key from its own clock. The key is `rl:{customerId}:{windowStart}`, where `windowStart` is the epoch second at the start of the current clock minute. Every key a customer owns shares this one counter, because the key uses the customer ID. A new window means a new key, so each minute starts from zero.\n\n6. The gateway sends Redis a check script, passing the counter key, the limit, and an expiry of 120 seconds. The script runs as one atomic step in Redis. It does the following:\n   - It reads the counter, treating a missing key as 0.\n   - If the count is already at or above the limit, it returns \"denied\" with the count and changes nothing.\n   - Otherwise it increments the counter. If the new value is 1 (the first request in the window), it sets the key to expire after 120 seconds.\n   - It then returns \"allowed\" with the new count, which includes this request.\n   \n   Because the read and the increment happen together, two gateway instances can't both read the same count and both pass the limit. The 120 s expiry is longer than the 60 s window only to cover clock skew and slow instances. It doesn't affect counting, because a request only uses the counter for its own window.\n\n7. The gateway waits at most 50 ms for Redis. If Redis errors or doesn't reply in time, the gateway fails open.\n   - It emits the metric `ratelimit_store_unavailable`.\n   - It forwards the request to the Backend service.\n   - It returns the backend's response with no `X-RateLimit-*` headers.\n   - Budget use is uncertain. Redis may have run the script before the timeout, so the request may have been counted without the gateway knowing.\n\n8. If Redis answers \"denied\", the gateway returns 429 with a `Retry-After` header and does not forward the request. The counter is unchanged and no budget is used. The wait is computed from the gateway's clock: `windowEnd = (floor(now/60)+1)*60`, and `Retry-After = max(1, ceil(windowEnd - now))` in whole seconds. The 429 response has no rate-limit headers.\n\n9. If Redis answers \"allowed\", the request is a counted request. The gateway forwards it to the Backend service and returns the backend's response whatever its status, including 500. It adds `X-RateLimit-Limit` (the plan limit) and `X-RateLimit-Remaining` (limit minus the new count). If the backend fails, the budget is still used and there is no refund.\n\n10. A client that retries after a 429 or a timeout is counted again only if the check lets it through. A retry after a backend timeout is a new counted request.\n\n11. The document accepts some trade-offs.\n    - A fixed window allows about 200 requests across a minute boundary.\n    - A Redis failover can lose recent increments, which allows a few extra requests.\n    - Gateway instance clocks must be kept in sync with NTP. If they disagree on the minute, they may use adjacent counters for a few seconds around the boundary.",
+   "gaps": [
+    "What the gateway does when the Key Service errors or is slow is not defined, so I can't say what the client gets or whether budget is used in that case.",
+    "No timeout is defined for the forwarded call to the Backend service. I can't say what happens when the backend is slow or never answers, or what the client sees.",
+    "The exact body of the 429 response is not defined."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

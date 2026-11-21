@@ -1,0 +1,147 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Does the count include tokens that are already used, superseded or expired, or only live ones?",
+     "about": "Request flow, step 2 (count tokens in the last 60 minutes)"
+    },
+    {
+     "id": "2",
+     "text": "When the user clicks the link, what exactly runs? Does the reset page load first, read the fragment, and then call /check, and who decides between showing the form and the expired page?",
+     "about": "Section 2, Link-click and submit flow (POST check)"
+    },
+    {
+     "id": "3",
+     "text": "Is the 'check the token is live' step on /complete a separate read before the burn, or is it the same thing as the burn? Failure paths shows a 410 before BEGIN and again after a 0-row burn, so how do these two fit together?",
+     "about": "Section 2 notes, On submit, the order is: check the token is live"
+    },
+    {
+     "id": "4",
+     "text": "How does the worker know whether the token is superseded or expired? The job holds the raw token and the table holds only the hash, so what does the worker look up, and does it also check used_at?",
+     "about": "WORKER (reset email job), token superseded or past expires_at when the job runs"
+    },
+    {
+     "id": "5",
+     "text": "What happens if the worker crashes or times out after the provider returns 250 OK but before it deletes the job row? Does the user get a second email, and does the claim ever get released?",
+     "about": "Request flow, worker claims the job, sends it and deletes it"
+    },
+    {
+     "id": "6",
+     "text": "What are the `sessions` rows here, and does deleting them by user_id log the user out of every device? Is that intended, and how does the 'changed' email worker path differ from the reset one?",
+     "about": "Section 2, 'password changed' email job and kill sessions"
+    },
+    {
+     "id": "7",
+     "text": "Where does the padding happen, in the API handler before it returns? Does it apply to all three endpoints or only /request, and what happens to the transaction and lock while it waits?",
+     "about": "Request flow notes, Pad every response to a fixed minimum time"
+    },
+    {
+     "id": "8",
+     "text": "If the user requests a reset twice in a row, the first email's link dies. If the first email arrives late, is that user told anything, or do they just see the expired page on that link?",
+     "about": "Request flow step 3, mark any live link for this user as superseded_at = now()"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The count includes every token row for the user created in the last 60 minutes, whatever its state (live, used, superseded or expired). Each row is one reset email already sent or queued, and the brief limits emails. Added this to step 2."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The reset page loads first. Its own script reads the token from the fragment, clears the fragment, and posts the token to /check. The script shows the form when valid is true and the expired page otherwise. The page script decides, not the server. Added these steps at the top of section 2."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "They are two different things. The live read on /complete is a fast exit that uses the same test, so a dead link gets 410 before the password is validated. The conditional UPDATE inside the transaction is the real guard, because two submits can both pass the read. Both return the same 410. Clarified in the section 2 notes."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The worker takes the raw token from the job, hashes it with SHA-256, and finds the row by token_hash, which has a unique index. It then applies the live test: used_at IS NULL, superseded_at IS NULL and expires_at > now(). Yes, it checks used_at too. Added this to the worker step in section 4."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "If the worker crashes after the provider returns 250 OK but before it deletes the job row, the same reset email, with the same link, can be sent a second time. The second copy is harmless because it is the same single-use token. Whether a claim is released after a crash, and when, is not in the brief. It depends on how the existing queue behaves, which I have not verified. Added the crash case to section 4 and open question 6."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "A session is one row per logged-in device, and the API checks it on every request (brief). Deleting every row for user_id logs the user out of every device, including the one that did the reset. The brief requires this. The changed-password job carries only the user id and no token, so the worker skips the live check and sends it under the same retry policy as the reset job. Added to section 2 notes, the worker steps in section 4, and the data section."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The padding belongs in the /request handler only. The brief's concern is whether an account exists, and only /request reveals that. /check and /complete are not padded. The wait happens after COMMIT, so the transaction and its row lock are already released while the handler waits. Changed the section 1 timing note."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "No, the user is not told why. An earlier link, once superseded, shows the same 'this link has expired, request a new one' page as an expired or used link. The brief gives one message for dead links, and the rate-limit overflow is also silent. Added this to the section 4 notes."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "What does the reset job row contain besides the raw token? How does the worker know which address to send to, and who builds the https://<app>/reset#<token> link?",
+     "about": "Request flow, step 3 (insert the reset email job) and WORKER (reset email job)"
+    },
+    {
+     "id": "10",
+     "text": "What do the user and the reset page see when /complete returns 500 after a database error? Does the page keep the form so they can retry?",
+     "about": "Failure paths, SUBMIT (DB error before COMMIT --> ROLLBACK, 500)"
+    },
+    {
+     "id": "11",
+     "text": "What process purges the token rows 24 hours after creation, and is anything else involved in cleaning up, for example job rows that are dropped?",
+     "about": "Data, rows are purged 24 hours after creation"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The reset job row holds the user id, the recipient address (the normalised email from step 1) and the raw token, and nothing else the worker needs. The worker reads the address from the job and does not look it up. The worker builds https://<app>/reset#<token> from the raw token and the app base URL setting, when it writes the email. The brief does not fix the payload fields, so this is my choice; it keeps the token in one place and avoids a second lookup. Added to step 3, the request-flow notes and the email_jobs data line."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "The brief does not define the 500 page, so this is my choice. After a DB error before COMMIT, the page shows 'Something went wrong, please try again' and keeps the form open. It does not show the expired page, because the link is still live and the rollback left it untouched. The user can submit again within the 30 minutes. Added to the 500 row of section 4."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Nothing in the design deletes token rows today, so the design now names a scheduled delete of rows older than 24 hours. The purge does not touch email_jobs. Dropped jobs are removed by the worker itself when it drops them. The scheduler is not named in the brief and I have not checked the existing system, so it is open question 7. A job that never runs keeps its raw token in email_jobs; I added that to open question 6."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Starting point: a user who cannot log in types their email into the \"Forgot password?\" form. The form posts {email} to POST /api/password-reset/request.\n\n2. The API opens a Postgres transaction and reads the user row by normalised email with FOR UPDATE. The row lock means that concurrent requests for the same account are handled one at a time. If no user exists, it commits, queues nothing, and returns the generic message (\"If an account exists for that address, we've sent a link.\").\n\n3. Rate check. In the same transaction the API counts this user's password_reset_tokens rows created in the last 60 minutes, in any state. If the count is 3 or more, it commits and returns the generic message. No link and no email are created, and the user is not told why.\n\n4. Issue. If the count is under 3, the API does three things in the same transaction. First, it sets superseded_at = now() on the user's live links. Second, it inserts a token row holding the SHA-256 hash of a fresh 32-byte random token (base64url), created_at, and expires_at = created + 30 minutes. Third, it inserts a reset job into email_jobs holding the user id, the recipient address and the raw token. It then commits. If the job insert fails, everything rolls back and the old link stays live. This relies on the queue being a Postgres table.\n\n5. Reply. After COMMIT, /request waits until a fixed minimum time has passed, then returns the generic message. The padding hides the fact that unknown addresses finish faster. /check and /complete are not padded.\n\n6. Worker. A worker claims the job from email_jobs with FOR UPDATE SKIP LOCKED. For a reset job it hashes the raw token, looks up the token row by token_hash, and applies the live test: used_at IS NULL AND superseded_at IS NULL AND expires_at > now(). If the row is missing or not live, it deletes the job without sending and logs at info. If the row is live, it builds https://<app>/reset#<token> from the app base URL setting and sends it to the address in the job through the mail provider. On a 2xx reply it deletes the job, which also removes the raw token.\n\n7. Send failure. The worker retries with backoff up to 3 times, and the retries send the same token. If it still fails, it logs an error and deletes the job, and nobody is told. The user has to request again, and that request counts toward the limit. If the worker crashes after the provider accepts the email but before it deletes the job, the job runs again and the same link is sent twice. That is harmless because the link is single-use.\n\n8. Link click. The user opens the link. The reset page script reads the token from the URL fragment into memory and clears the fragment with history.replaceState. The page sets Referrer-Policy: no-referrer. The fragment is never sent to the server.\n\n9. Check. The script posts {token} in the body to POST /api/password-reset/check. The server looks the token up by hash and applies the live test. It is read-only, burns nothing, and returns {valid: true|false}.\n\n10. Show. The script, not the server, decides what to display. If valid is true it shows the \"choose a new password\" form. If valid is false it shows \"this link has expired, request a new one\". Expired, used and superseded links all look the same.\n\n11. Submit. The user posts {token, password} to POST /api/password-reset/complete.\n   a. Read. If the token is not live, the server returns 410 {error: \"expired\"} and writes nothing. This is only a fast exit, not a guard against races.\n   b. Password check. The password must be 12 to 128 characters and must not be on the local breached-password list. Otherwise the server returns 422 {error: \"weak\"} or {error: \"breached\"}. Nothing is written and the link stays live.\n   c. Burn. The server opens a transaction and runs a conditional UPDATE that sets used_at = now() where the token is live, returning user_id. This is the real guard against races. If it returns 0 rows, the server rolls back and returns 410.\n   d. Reset. With 1 row returned, the server updates users.password_hash, deletes every sessions row for that user (logging them out on all devices, including this one), and inserts a \"password changed\" job holding only the user id.\n   e. Finish. The server commits and returns 303 to /login. The user is not logged in.\n\n12. Complete failure. If the database fails before COMMIT, the server rolls back, so the password, the sessions and the token are unchanged and the link stays live. It returns 500. The page shows \"Something went wrong, please try again\" and keeps the form open, and the user can resubmit within the 30 minutes. A second submit that loses a race gets 0 rows and sees the expired page (410).\n\n13. Confirmation email. The worker later picks up the changed-password job. This job has no live check. It sends \"your password was changed\" with the same retry policy. If it is dropped after the retries, the drop is logged with the user id and nobody is told.\n\n14. Token states and cleanup. A token starts as ISSUED, which is the only live state. It then ends as EXPIRED (30 minutes pass, no write is needed), SUPERSEDED (a newer link was issued) or USED (a reset committed). A scheduled delete removes password_reset_tokens rows older than 24 hours. It does not touch email_jobs.",
+   "gaps": [
+    "What the user sees if /request fails with a database error before COMMIT. The document says this is undefined (open question 8).",
+    "Whether the email queue really is a Postgres table. The whole design of /request assumes so, and the document says the flow changes if it is external (open question 1).",
+    "How long the /request padding minimum is. It has not been measured (open question 5).",
+    "When a claimed job is released after a worker crash, and whether it runs again. The document leaves this to the existing queue (open question 6).",
+    "How the worker finds claimable jobs and tells a reset job from a changed-password job. The document does not describe the job type or status fields.",
+    "The backoff timing for the mail retry policy, which the document says is existing and does not define.",
+    "Which scheduler runs the 24-hour purge, and how often (open question 7).",
+    "How the worker gets the app base URL setting, which the document only calls a setting."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

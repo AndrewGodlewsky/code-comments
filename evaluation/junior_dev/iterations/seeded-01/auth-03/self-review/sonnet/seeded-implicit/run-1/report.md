@@ -1,0 +1,29 @@
+## Review of auth-03 (self-review, author sonnet, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added the data model (reset_tokens columns and what used_at means), which the original left out entirely
+- Expanded the flow lines into step-by-step flows with branches, so the failure paths (unknown user, rate limit, invalid or expired token, rejected password, lost race) are visible in the diagram
+- Showed that every request path returns the same generic message
+- Specified the rate limit mechanism (count recent token rows) and the locking that prevents races
+- Specified how old links are killed (same transaction as the insert) and how single use is enforced (conditional UPDATE)
+- Specified the atomic final step: burn link, change password, delete all sessions in one transaction, then send email and redirect without auto-login
+- Replaced 'the usual retries' with the actual behavior (3 retries, then dropped silently) and stated its consequences for both emails
+- Removed the repeated requirement bullets in favor of notes explaining design reasoning
+- Stated assumptions: fail closed when the breached-password check is down, and timing parity for unknown addresses
+- Added a note in the SYSTEM block that sessions are checked on every API request, so the later logout step is understandable on its own.
+- Marked reset_tokens as NEW and clarified the used_at comment layout.
+- Reworded the transaction/lock comment into full sentences and removed the cramped 'so' fragments.
+- Rewrote step 2 and 3 comments for plainer wording (e.g. 'another request won the race', 'sends the token back').
+- Noted in step 3d and the failures block that 'both emails' means both the reset and password-changed emails, and said 'logs the failure and drops the job'.
+- Gave each note a short bold-free lead label (Rate limit, Raw token, One live link, Logout, etc.) so readers can scan.
+- Added a Logout note and clarified the failed reset email note ('the user sees nothing wrong').
+- Realigned the ASCII diagram's right-hand connector lines after the text edits.
+- Put used_at on its own line in the table definition and restated its meaning as a plain sentence, instead of a hanging column-aligned comment.
+- Fixed indentation of the 'After commit' step so it clearly sits inside the count < 3 branch and not inside the transaction.
+- Clarified the email failure note to 'retries up to 3 times' to match the brief.
+- Kept all notes and flow content otherwise unchanged.
+
+### Holes
+- None.

@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The status lives in the new `report_exports` table on the primary database, one row per export, and the row is the only server state. The page learns of changes by polling `GET /api/reports/{report_id}/exports/latest` every 5 seconds while the latest export is queued or running, and it stops polling at done, failed or none. Reopening the page later calls the same endpoint on load, so it shows the current state from the row. Each poll also runs the stale check (H3), so a dead export is failed even if the user never returns.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The job never holds the report in memory. It reads keyset pages of 1,000 rows from the read replica (`row_id > last ORDER BY row_id LIMIT 1000`), formats each page as CSV into a buffer, and once the buffer reaches 16 MB it uploads that buffer as one part of an S3-style multipart upload to the `exports` bucket. Estimated peak memory is about 60 MB at average row size and about 100 MB at the schema's worst case, under the 200 MB design target. The 15-minute finish time and the 200 MB peak are not yet demonstrated; they are gates in the step 13 benchmark.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Parts already uploaded stay in the bucket as an unfinished multipart upload, and nothing is visible at the final key until `complete_multipart` succeeds, so a half-written file can never be downloaded. On an ordinary exception the attempt makes a best-effort `abort_multipart` before raising. On a timeout kill or worker death no handler code runs, so the next attempt aborts the old upload (step 7.1), or the bucket's 24-hour rule discards it. The queue keeps no progress, so the next attempt starts again from the first row under a new run token and a new per-run key.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "At the click, the POST handler parses the page's query string and stores the normalised `filters` string and the `cols` list on the new `report_exports` row (step 5.2). The job payload is only `{export_id}`. When the job runs, its claim step (6.5) loads those stored values from the row and re-parses them against the report's current columns, so the job never receives the filters through the payload itself.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "A PostgreSQL partial unique index on `(user_id, report_id)` WHERE `status` IN (queued, running) enforces the rule in the database. When two simultaneous inserts race, the second one violates the index, and that request then reads the winning row and returns it with 202, starting nothing new. This relies on PostgreSQL, which is assumption A4 and is to be verified before step 1.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "The file must already be fully visible: `complete_multipart` has succeeded, `file_key` is set, and H1 `finish_if_uploaded` has checked that the object exists and conditionally set the row to done with `completed_at`. Only then does H2 send `csv_export_ready`, guarded by `email_sent_at`. If the queue reruns the job after the file exists, step 6.4 calls H1 and does not rebuild, and if the row is already done it calls H2, which sends only when `email_sent_at` is still null. If the row is failed or missing, the rerun stops without sending. A crash between a successful send and the `email_sent_at` update can send a second email, which the plan accepts as at-least-once delivery.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Nothing is stored, so there is nothing to clean up. The CSV is built completely in API memory before the response starts, so a failure partway (a replica error, the 503 concurrency cap, the 413 size cap, the 409 consistency check, or the 60-second API kill) returns an error response and the user sees a message and clicks again. A cut-off response can never look like a complete file, because no body bytes are sent until the build succeeds. The failure modes and the 60-second margin are checked by the small-path benchmark in step 13, which has not been run.",
+  "decided": true
+ }
+}

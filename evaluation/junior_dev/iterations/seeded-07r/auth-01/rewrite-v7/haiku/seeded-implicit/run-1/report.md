@@ -1,0 +1,20 @@
+## Review of auth-01 (rewrite-v7, author haiku, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added the bad-credentials path and the lockout path to the diagram. The first version showed only the success path.
+- Added the protected-request path with the 30-minute idle and 12-hour limits, and the check on every request. The first version showed only a page request.
+- Stated all eight fixed requirements from the brief as rules: lowercase emails, identical 401 responses, lockout with 429, new session ID on login, cookie contents and flags, session lifetime, server-side checks, and logout behavior.
+- Stated the 'left to you' choices explicitly: Postgres for sessions and failure counts, why not Redis or process memory, how expiry is checked and recorded, how abandoned sessions are removed, and what the user sees when storage fails.
+- Turned the 'Handle DB errors' note into a failure table covering each database step, the user-facing response and the server action.
+- Replaced the vague note 'bad login goes back to the login page with an error' with the exact 401 response and message.
+- Added the rule that refused 429 attempts are not counted, that failure rows are cleared when a lock is set, and that unknown emails are counted. Each was a decision the brief left open, so each is stated.
+- Changed the protected-request step to a single update-and-check query, so the session check and the last-seen update are one database call and one failure case.
+- Added terms for session, sid cookie, cookie flags, sticky session, Redis, bcrypt hash, lockout and cleanup job. Kept only names a newcomer would not know.
+- Added a summary that first says how the app works today, then what changes.
+- Added open questions for the cleanup interval, timing differences between unknown and wrong passwords, and the message wording, which the brief did not specify.
+- Merged the duplicated cleanup and expiry notes into one rule each. Removed the repeated cookie and lockout statements from the notes.
+
+### Holes
+- None.

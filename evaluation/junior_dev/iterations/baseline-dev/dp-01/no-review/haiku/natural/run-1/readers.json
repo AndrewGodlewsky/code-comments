@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The 02:00 UTC scheduler starts night N as attempt 1. It extracts replica orders with updated_at after lo and up to hi, keyset-paged.",
+  "q2": "Bulk-import transactions have a visibility lag of up to 90 minutes, so rows can appear on the replica after their updated_at.",
+  "q3": "The nightly extract picks up the edit if its updated_at falls in the window. MERGE then updates the matched row because the staged updated_at is later.",
+  "q4": "Nothing is removed. The MERGE sets is_deleted = true when deleted_at is not null. Hard deletes never happen.",
+  "q5": "The attempt is marked failed in etl_runs and open load transactions are rolled back. The watermark is unchanged. Retry in 15 minutes, up to 3 attempts; after attempt 3, on-call is paged.",
+  "q6": "Dashboards show the last committed night, one night old. The 06:00 staleness check posts an alert to #data-alerts because no succeeded etl_runs row exists for night N.",
+  "q7": "The Sunday reconciliation finds the creation day mismatched and reloads that whole day from the replica through staging and MERGE.",
+  "q8": "Staging keeps one row per order_id with the latest updated_at, ties broken by row hash. MERGE updates only when the staged updated_at is strictly later than the target's.",
+  "q9": "It is stored in the warehouse table etl_watermark as hwm. It is set to hi, the run's captured start time, inside the load transaction before it commits.",
+  "q10": "The MERGE and watermark update run in one warehouse transaction that commits once, and dashboards read only committed state. This assumes multi-statement transaction support.",
+  "q11": "The per-attempt staging table is dropped after failure, so its data is discarded. The retry reuses the stored lo and hi and extracts the same window again.",
+  "q12": "It re-reads the full creation day from the replica and applies it through the same staging and MERGE path. The watermark is not changed."
+ },
+ "sonnet": {
+  "q1": "The 02:00 UTC scheduler starts night N as attempt 1. It extracts orders rows with updated_at after lo and up to hi, where lo = hwm minus 2h and hi = T0 (run start time).",
+  "q2": "Bulk-import transactions have a visibility lag of up to 90 minutes, so rows can become visible after their updated_at. (The document does not say why the lag occurs beyond that.) The 2-hour overlap covers it.",
+  "q3": "The edit gets a later updated_at, so a later nightly run (window lo = hwm minus 2h to hi) extracts it, stages and dedupes it. The MERGE updates the matched dw_orders row because the staged updated_at is strictly later than the target's.",
+  "q4": "A delete in the app is a soft delete that sets deleted_at. The next extract picks it up (updated_at changes), and MERGE updates the row with is_deleted = (deleted_at is not null). Hard deletes never happen, so rows are never removed from the warehouse.",
+  "q5": "The attempt is marked failed in etl_runs, any open load transaction is rolled back, and the watermark is unchanged. If it was not attempt 3, the next attempt starts 15 minutes later, reusing the same stored window. After attempt 3 fails, on-call is paged, and the next night's window covers the gap.",
+  "q6": "Dashboards refresh at 06:00 and show the last committed night, which is consistent but one night old. The staleness check at 06:00 finds no succeeded etl_runs row for night N and posts an alert to #data-alerts. On-call was already paged if attempt 3 failed.",
+  "q7": "The Sunday reconciliation. It compares each creation day in the last 30 days between replica and warehouse and reloads any mismatched day in full from the replica through the staging and MERGE path.",
+  "q8": "Dedupe keeps one row per order_id with the latest updated_at (ties broken by row hash). The MERGE updates a matched row only when the staged updated_at is strictly later than the target's, so older or duplicate copies never overwrite newer data and re-runs are idempotent.",
+  "q9": "In the etl_watermark table in the analytics warehouse, as hwm. It is set to hi (the run start time T0 stored on the etl_runs row), not the max updated_at. The UPDATE happens inside the load transaction after the MERGE, just before the etl_runs succeeded insert and the single COMMIT.",
+  "q10": "The MERGE and watermark update run in one warehouse transaction that commits once, and dashboards read only committed dw_orders. They see either the previous night or the complete new night. This assumes the warehouse supports multi-statement transactions; otherwise the fallback is loading a new table version and swapping a view in one step.",
+  "q11": "NOT STATED for the staged data of the failed attempt specifically. The document says the per-attempt staging table stg_orders_RUNID is dropped after commit or failure. The retry reuses the stored lo and hi from the etl_runs row, so it extracts the exact same window.",
+  "q12": "It re-reads the whole creation day (full-day extract, all rows of that day) from the replica. They go through the same staging and MERGE path (with the strict updated_at guard). The watermark is not changed. A failure is logged and does not undo the night load."
+ }
+}

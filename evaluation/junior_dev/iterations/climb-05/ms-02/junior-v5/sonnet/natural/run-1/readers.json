@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "When the caller's transaction commits: enqueue_notification inserts a pending row in the monolith's notifications table. If that transaction rolls back, there is no row and no notification.",
+  "q2": "The broker redelivers it if it is not acknowledged within 30 seconds, possibly to another consumer.",
+  "q3": "Five attempts in total. Retries follow failures 1 to 4 after 1, 2, 4 and 8 minutes. The 5th failure marks the row failed and pages on-call.",
+  "q4": "Order: shipping_update, then order_confirmed (after 3 days), then password_reset last. Requires the latency gate: p99 under 60 s on order_confirmed.",
+  "q5": "The notification's id, passed as idempotency_key. If MailRelay accepted that key within 24 h, it drops the repeat send and returns success.",
+  "q6": "The dispatcher publishes each pending row to notification.requested and waits for broker storage confirmation, then sets handed_off. The monolith is done once that commit happens.",
+  "q7": "The per-type route flag notifications.route.<type>, read via flags.get. The old worker reads it at each batch start, and the dispatcher polls it every second.",
+  "q8": "The service inserts with ON CONFLICT (id) DO NOTHING, so a redelivered message is a no-op. MailRelay also drops a repeat send with the same key within 24 h.",
+  "q9": "It acknowledges after committing the row, before sending. A crash before the ack causes redelivery, and ON CONFLICT makes that a no-op.",
+  "q10": "In the service's notifications table (attempts, next_attempt_at, lease_until). The service sender acts on them by claiming due rows.",
+  "q11": "Rows already handed off stay in the service and finish there, reporting back, so none are lost or re-sent. Only new pending rows go to the old worker.",
+  "q12": "id, type, user_id, email, payload, created_at, attempts and next_attempt_at. Email content is rendered in the service, since templates move there."
+ },
+ "sonnet": {
+  "q1": "At step 1 (Record): the business code's enqueue_notification inserts a `pending` row into the monolith notifications table inside the caller's own transaction. It exists only if that transaction commits; on rollback there is no row and no notification.",
+  "q2": "The broker is at-least-once. A message not acked within 30 s is redelivered, possibly to another consumer.",
+  "q3": "Up to 5 attempts. After each failure (attempts < 5) next_attempt_at is set 1, 2, 4 or 8 minutes ahead. The 5th failure marks the row `failed` (paged=false), writes the outbox event, and the pager pages on-call.",
+  "q4": "Order: shipping_update (40,000/day) first, then order_confirmed (12,000/day) after shipping_update has run at least 3 days with its criteria holding, then password_reset (1,500/day) last, with 7 days of watching. Before password_reset moves, the latency gate must pass: p99 created_at to MailRelay accept on order_confirmed under 60 s over the whole window (at least 3 days), with NTP-synced clocks. Order_confirmed must have run 3 days to start the gate.",
+  "q5": "The notification `id` is passed as `idempotency_key` on every send. It comes from the notification's row id (the primary key). If MailRelay accepted a send with the same key in the last 24 h, it drops the new send and returns success.",
+  "q6": "The monolith dispatcher (every 1 s, only for types whose flag is `service`) selects due `pending` rows, publishes one message per row to the broker topic notification.requested, waits for the storage confirmation, then sets `handed_off` and handed_off_at and commits. The service consumer receives it. The monolith's part is done when the broker confirms storage and it commits `handed_off` (the service then owns delivery). The row still gets its final status from the outcome event.",
+  "q7": "The per-type route flag `notifications.route.<type>` (monolith or service), read via flags.get. The old worker reads it at the start of each batch for its claim query, and the dispatcher checks it each second/poll for service types. Changes reach every monolith instance within 10 s. If the flag read fails, the worker defaults to monolith.",
+  "q8": "The service inserts with INSERT ... ON CONFLICT (id) DO NOTHING. If the row exists and is `received`, nothing happens (the sender owns it). If terminal, the outcome event is written again to the outbox. Also id is passed as idempotency_key to MailRelay, which drops repeats within 24 h.",
+  "q9": "The service commits the row insert first, then acks (commit, then ack). Sending happens later, from the sender, not in the consumer. If it crashes between commit and ack, the broker redelivers and ON CONFLICT makes it a no-op. If it crashes before commit, no ack, so the broker redelivers.",
+  "q10": "In the service DB's notifications table (attempts, next_attempt_at, lease_until columns). The service sender acts on it: it claims due rows (received, next_attempt_at <= now, lease empty or expired) every 1 s. On first insert the service takes the message's attempts and next_attempt_at, and afterwards owns them.",
+  "q11": "Set the flag back to `monolith`. The dispatcher stops claiming the type and the old worker claims new `pending` rows. Rows already `handed_off` stay in the service until they finish and report back, so none are lost and none are re-sent. The service keeps running regardless of the flag. If the flip occurs during an uncommitted dispatcher publish, the old worker may also send, and the shared key makes MailRelay drop the second send.",
+  "q12": "Each message carries id, type, user_id, email, payload, created_at, attempts and next_attempt_at. The email content is rendered in the service by its sender, since templates move into the service."
+ }
+}

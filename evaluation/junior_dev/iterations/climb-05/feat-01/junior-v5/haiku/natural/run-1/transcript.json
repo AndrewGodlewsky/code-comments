@@ -1,0 +1,187 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "The filters and cols come from the page URL. Where does the user pick them, and is the 'current view' the rows API already shows on the same page?",
+     "about": "Step 1. Receive the click and check access"
+    },
+    {
+     "id": "2",
+     "text": "What is `enqueue` and the queue behind it? Which service runs the worker, and what triggers `report_export` handlers to start?",
+     "about": "Step 6. Enqueue the job"
+    },
+    {
+     "id": "3",
+     "text": "If the user has an active export for the same report, the click returns that one. What does the user see on the page when their new filters were ignored, and how do they get an export with the new filters?",
+     "about": "Step 5. Large path: record the export and allow one at a time"
+    },
+    {
+     "id": "4",
+     "text": "Step 8 mentions 'steps 6a and 6b' but part 6 is one item. What are 6a and 6b, and what exactly is the window where an upload can be left open?",
+     "about": "Step 8. Attempt starts: claim the export and clean up the last attempt"
+    },
+    {
+     "id": "5",
+     "text": "Step 10 says 'Only after step 1 succeeds'. Does that mean sub-step 1 (complete_multipart)? And if the process dies after complete_multipart but before the CAS, what does the user see on the page while the retry waits 60 seconds?",
+     "about": "Step 10. Publish the file"
+    },
+    {
+     "id": "6",
+     "text": "The retry restarts from the first row each time. Does the new attempt overwrite the same object key, and could a half-finished earlier attempt still be running and writing at the same time as the new one?",
+     "about": "Step 9. Stream rows into the upload"
+    },
+    {
+     "id": "7",
+     "text": "The CAS claim allows moving from `running` to `running`. How does that stop two workers running the same export at once if the queue delivers a duplicate while the first is still working?",
+     "about": "Step 8. Attempt starts: claim the export and clean up the last attempt"
+    },
+    {
+     "id": "8",
+     "text": "The stale rule uses created_at or attempt_started_at to decide 'older than 2 hours'? And what does a user see if the stale rule marks it failed while a worker is somehow still running?",
+     "about": "Step 15. Stale-state rule (read time, not a cleanup job)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Yes. The filters and cols come from the page URL (existing/reports_page.md, View state). The page calls the rows API with those same strings, so the export's 'current view' is exactly what the page shows. The plan now defines 'page view' in the terms and says the export uses these strings."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "checked: jobs.py says enqueue(name, payload) queues a job, jobs run on the worker pool, and each worker runs one attempt at a time. unknown: what dispatches a queued job to a worker (push, poll, or a scheduler) and how long it can wait. The file does not say. The plan now says in the terms that a worker process runs the registered handler, and the open questions ask how a job starts and how long it can wait."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The user sees a notice on the page saying their running export has these filters, that the new filters were not used, and that they can start a new export when it finishes. The notice is in step 7. There is no cancel in the brief, so the user gets the new filters only by waiting for the running export to end or fail and clicking again. I chose a notice over a silent swap because the user should see that the result differs from the click."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The '6a and 6b' label was a mistake. Step 8 part 6 is one item. The unsafe window is between start_multipart returning and the upload_id being saved on the row. If the process dies there, no later attempt can abort that upload, and the bucket rule discards it after 24 hours. The plan now states that window in step 8's failure text."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "Yes. 'Only after step 1 succeeds' meant complete_multipart. The text now says so. If the process dies after complete_multipart but before the CAS, the row still says running, so the page keeps the running banner with rows_written possibly a few parts behind. The queue retries after 60 seconds, and the retry rebuilds the file under its own key. The finished object is never linked, so it is never served."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The old plan wrote to the same key every attempt. Now each attempt writes to its own key, report-exports/{report_id}/{export_id}-attempt{N}.csv. Only the attempt whose CAS to done applies links its key, so an overwrite can no longer happen. Can an earlier attempt still be writing? The brief says a timed-out attempt is killed and a dead worker counts as failed, but it does not say the kill is confirmed before the retry. The plan does not rely on that: the old attempt's progress and completion writes are guarded by the attempt number."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "It did not stop it. The old claim allowed running to running, so a duplicate delivery could start a second run. Step 8 part 3 now applies only from queued, or from running with a stored attempt lower than ctx.attempt. A duplicate of the same attempt matches nothing and returns. A late older attempt also matches nothing. This relies on ctx.attempt being reliable, which the jobs.py contract provides."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Running rows use attempt_started_at, and queued rows use created_at, because a queued row has no attempt_started_at. Using attempt_started_at is safe because one attempt lasts at most 1,800 seconds, and the whole retry chain is at most 96 minutes. If the rule marks a row failed while its worker is still alive, the user sees failed: stalled. The worker's later CAS to done fails, so no link is issued and no email is sent. A finished file sits under its own key with nothing naming it. Queued rows waiting in a backed-up queue may be marked stalled too early; that is listed as an open question."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 4 says the insert is rejected if an active export exists, but step 15 marks stale rows failed only on a click or status read. When does that check run relative to the insert on a click, so a stalled row doesn't wrongly block the new export?",
+     "about": "Step 15. Stale-state rule / Step 4. Large path: record the export"
+    },
+    {
+     "id": "10",
+     "text": "In step 8, how does the handler know which attempt number it is? Where do ctx.attempt and the retry timing (60 s, 300 s) come from, and does a failed attempt automatically trigger the next one?",
+     "about": "Step 8. Attempt starts: claim the export"
+    },
+    {
+     "id": "11",
+     "text": "After attempt 1 fails and attempt 2 claims the row, the row goes running to running. Between those two, what does the row say, and what does the page show during the 60-second wait?",
+     "about": "Step 8, part 3 and Step 12 Banner"
+    },
+    {
+     "id": "12",
+     "text": "Step 9 reads rows from the replica in pages over many minutes. Does each page read use the same filters from the export row, and what does the job do if the replica fails or lags in the middle?",
+     "about": "Step 9. Stream rows into the upload"
+    },
+    {
+     "id": "13",
+     "text": "What does the 'about row_count' progress display compare against when filters are applied, given row_count is the unfiltered total?",
+     "about": "Step 12. Page shows the export state, Banner running"
+    },
+    {
+     "id": "14",
+     "text": "Failed attempts leave completed objects under their own attempt keys. Who deletes those, and is it only the 7-day bucket rule?",
+     "about": "Step 10. Publish the file / exports bucket"
+    },
+    {
+     "id": "15",
+     "text": "Step 14 says on_final_failure is called once after attempt 3 fails. Does it also run if the attempt 3 worker is killed by the 30-minute timeout, and what sets error_summary then?",
+     "about": "Step 14. Final failure handler"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The stale-state check now runs before the insert on every click, so a stalled export cannot block the new one. If the insert is rejected, the blocking export is checked; if it is stale it is marked failed and the insert is tried once more. Reason: a click should never be blocked by an export that can no longer finish. Changed step 4 to match."
+    },
+    {
+     "id": "10",
+     "tag": "checked",
+     "text": "jobs.py gives the handler ctx.attempt (JobContext.attempt, values 1, 2 or 3). MAX_ATTEMPTS is 3, and BACKOFF_SECONDS is [60, 300], which are the waits before attempts 2 and 3. A failed attempt (a raise, the 30-minute timeout, or a dead worker) is retried by the queue automatically. The handler never schedules a retry. The terms now say this."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Between attempts the row stays running, with attempt set to the last attempt that started and attempt_started_at from that attempt. The page shows a running banner during the wait. Reason: no handler code runs between attempts, so nothing could write a separate waiting state. The banner text now says the attempt number is that of the last attempt started."
+    },
+    {
+     "id": "12",
+     "tag": "checked",
+     "text": "Each page read uses the filters and cols stored on the export record, not the page. If the replica fails during a read, the read raises, the attempt fails, and the next attempt starts again from row 1. Replica lag is not covered by the brief, so it is listed as part of the open question on the nightly rebuild."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The comparison was wrong, because row_count is unfiltered and a filtered export has no known total. The running banner now shows rows written so far, with no total or percentage. Reason: the plan adds no filtered count, and a percentage would be wrong for most filtered views. Changed step 10."
+    },
+    {
+     "id": "14",
+     "tag": "checked",
+     "text": "Yes. The only deletion is the exports bucket's 7-day lifecycle rule (storage.py). The brief rules out a cleanup job. Objects from superseded or failed attempts are not linked, and they remain until that rule deletes them. Step 8 now says this."
+    },
+    {
+     "id": "15",
+     "tag": "checked",
+     "text": "Yes. jobs.py says a timeout or a dead worker fails the attempt, and on_final_failure is called once after the last attempt fails, so it runs after an attempt-3 timeout or worker death. The error_summary wording uses the fixed phrases in step 13. The shape of the error value is not in jobs.py, so it is an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. User clicks Download CSV. The browser POSTs /api/reports/{report_id}/exports with the filters and cols from the page address. The server checks report.view (403 if missing), parses filters and cols with the rows API parser (400 for an unknown column; input capped at 4 KB), and reads row_count from the read replica. Nothing is stored at this point. If the replica is down it returns 503 and the user can click again.\n\n2. The server picks a path using row_count, the unfiltered total. At 10,000 or fewer it goes to step 3. Above 10,000 it goes to step 4. A small filtered view of a huge report still takes the large path, and the page says so beside the button.\n\n3. Inline path. The Reader reads rows from the replica and the Writer turns them into CSV (header row, quoting rules, UTF-8, \\r\\n). The CSV streams back as the response body with Content-Type text/csv and a Content-Disposition attachment header. Nothing is stored. It must finish in 60 seconds. The button fetches the response as a blob and saves it only if the fetch ends without a network error, so a dropped connection gives an error and no partial file. This is the end of the small flow.\n\n4. Large path, record the export. The server first runs the stale check on this user's existing export for this report, if there is one. It then inserts a report_exports row in the primary database with state queued. A partial unique index on (user_id, report_id) for queued or running rows allows only one active export per user and report. If the insert succeeds, go to step 5. If the index rejects it, the server reads the active export. If that export is stale, it marks it failed and retries the insert once. If it is not stale, the server returns it with HTTP 200 and starts nothing. In that case, if its filters differ from the page's filters, the page shows a notice that the running export used other filters and the new filters were not used. There is no cancel, so the user waits and clicks again. A database error returns 503 and no job starts.\n\n5. Enqueue. The server calls enqueue('report_export', {export_id}). The payload holds only the ID, and the job reads filters and cols from the row. It saves the returned job_id on the row and returns 202 with export_id, state, filters, cols and created_at. If enqueue raises, the row is set to failed with \"could not start\" and the server returns 503. If the process dies before enqueue, the row stays queued with no job, and the stale check marks it failed after 2 hours.\n\n6. Claim. A worker runs attempt N (1 to 3) of the handler. It loads the row and returns if the row is missing or the state is done or failed. It then claims the row with a CAS. The CAS sets state running, attempt N and attempt_started_at. It applies only if the state is queued, or the state is running with a lower stored attempt. A duplicate or older attempt matches nothing and returns. If an earlier upload_id is on the row, it aborts that upload and clears the field, ignoring \"already gone\". It re-checks the owner's report.view. If access is gone, it sets failed with \"access removed\", sends the failure email, and returns normally so the queue does not retry. Otherwise it starts a multipart upload on the exports bucket under the key report-exports/{report_id}/{export_id}-attempt{N}.csv and saves the upload_id on the row before reading any rows. An error before the upload starts fails the attempt, and the queue retries after 60 s, then 300 s. If the process dies between starting the upload and saving its ID, the upload is orphaned and the bucket discards it after 24 hours.\n\n7. Write rows. The Reader pulls 5,000 rows per page from the replica using keyset paging on row_id, with the filters and cols from the row. The Writer produces CSV bytes into a buffer. At 16 MB the job sends the buffer as one numbered part with upload_part (parts start at 1), keeps the etag in memory, and clears the buffer. Every 10 parts it saves rows_written on the row, but only if the row's attempt still equals this attempt. A failed part upload is retried up to 3 times, and then the attempt fails. An attempt running past 1,800 s is killed and counts as failed. A replica read error also fails the attempt. The next attempt restarts from the first row after aborting the old upload.\n\n8. Publish. When all rows are written, the job calls complete_multipart with the upload_id and etags, which makes the object visible at this attempt's own key. Only after that succeeds does it CAS the row from running to done, provided attempt still equals this attempt. The CAS sets completed_at, object_key and rows_written. If the CAS applies, this attempt sends the email. If it does not, the attempt stops and sends nothing. If complete_multipart fails, the attempt fails and the upload stays open. If the process dies between complete_multipart and the CAS, the retry rewrites the whole file under its own key, and the old object is never linked. Unlinked objects sit in the bucket until the 7-day rule removes them.\n\n9. Email. The winning attempt builds a signed URL for object_key valid for 86,400 s and calls send_email(user_id, 'report_export_ready', {report_name, download_url, expires_at}). On success it saves email_sent_at. If the send raises, the error is logged and the state stays done. The page still offers the download and nothing resends the email. The link works for anyone who holds it.\n\n10. Status on the page. On page load the page calls GET /api/reports/{report_id}/exports/latest. The server checks report.view, runs the stale check, and returns the user's latest export (state, attempt, rows_written, filters, completed_at, error_summary), or nothing if there is none. The banner shows these states. queued shows \"Waiting to start\". running shows \"Running, attempt N of 3. R rows written so far\", with no total. done shows a Download button. failed shows error_summary and a Start again button, which repeats step 1. expired is a done export whose completed_at is more than 7 days old. The page polls every 5 s while queued or running, and also refetches when the tab regains focus. If a status request fails, it shows \"Status unavailable, retrying\" and keeps the last state. The server holds all state, so a reload loses nothing.\n\n11. Download. Clicking Download calls GET /api/exports/{export_id}/download. The server checks that the caller is the owner, still has report.view, and the state is done. It then returns a 302 to a new signed URL valid for 900 s. It returns 403 for a non-owner or a caller without access, 409 if the export is not done, and 410 if the file is gone, in which case the page shows expired.\n\n12. Final failure. After attempt 3 fails, including a timeout kill or a dead worker, the queue calls the final-failure handler once. If the state is done it does nothing. Otherwise it CASes queued or running to failed with error_summary \"timed out on attempt 3\" or \"failed on attempt 3\". If upload_id is set, it aborts the upload and ignores failures. Then it sends the 'report_export_failed' email with report_name, page_url and error_summary. If this handler itself fails, the state stays running until the stale check marks it failed, and no email is sent.\n\n13. Stale check. It runs on every click and every status read, and no cleanup job does this work. A running export is stale if attempt_started_at is more than 2 hours old. A queued export is stale if created_at is more than 2 hours old. A stale export is marked failed with \"stalled\". The longest retry chain is 96 minutes, so a live attempt is not cut off. If the worker is still alive, its later CAS fails, so it writes no done and issues no link.",
+   "gaps": [
+    "How the queue actually starts a waiting job and how long a job can wait is not stated (jobs.py is not described). The document itself says this is open.",
+    "What the 'Download' filename looks like (Content-Disposition filename=...) is elided, as is how the page learns the report_name or page_url used in emails. These are minor but are not given.",
+    "It is unclear what the Reader/Writer do about consistency when the nightly rebuild runs mid-export. The document lists this as an open question, so I cannot say what rows the file actually contains in that case.",
+    "It does not say whether the queue confirms a killed attempt has really stopped before the retry starts. The document lists this as open, so for a killed-but-alive worker I cannot fully explain the overlap beyond the attempt-number CAS checks.",
+    "It does not say what form the error takes when the final-failure handler runs, so how 'timed out' is told apart from 'failed' is unexplained.",
+    "It is not explained how the page's 'expired' banner is derived exactly before any download call, nor how a user who is not the owner could ever see another user's export (the latest endpoint appears to return only the caller's own).",
+    "It is unspecified whether the exports bucket is private and who owns the email templates; the document lists both as open questions, and both affect whether the download links and emails work.",
+    "It is not stated how the queue knows to call the final-failure handler for 'access removed' (it returns normally, so presumably it is not called), nor whether failed-state emails are sent from the stale-check path (stated as no)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,236 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What exactly do the health probes check, and what makes them decide A is down? Do they alert on-call automatically, or does a person notice?",
+     "about": "Probes --> On-call"
+    },
+    {
+     "id": "2",
+     "text": "What does On-call actually do before running the failover command? What do they check or decide, and who has authority to trigger it?",
+     "about": "On-call --> Failover command"
+    },
+    {
+     "id": "3",
+     "text": "What is the lock, where does it live, and what is it protecting against? What happens if someone runs the command twice?",
+     "about": "Take lock"
+    },
+    {
+     "id": "4",
+     "text": "How does fencing A work step by step? What is written to the control store, how do the apps see it and what do they do? What if A is unreachable or the apps do not respond?",
+     "about": "Fence A"
+    },
+    {
+     "id": "5",
+     "text": "What is the RPO here, how is lag measured, and what happens when lag exceeds it? Who decides to use the override, and what is lost if they do?",
+     "about": "Lag check"
+    },
+    {
+     "id": "6",
+     "text": "What does Promote B do concretely, and how does the command know it succeeded? What happens if promotion fails or hangs?",
+     "about": "Promote B"
+    },
+    {
+     "id": "7",
+     "text": "What does Fix up jobs mean? What state are job workers and Redis in at this point, and what is changed or re-run?",
+     "about": "Fix up jobs"
+    },
+    {
+     "id": "8",
+     "text": "What does Scale up B change, what does Health check test, and what happens if the health check fails? Then what does Switch DNS do via the global traffic manager, and how long until clients move?",
+     "about": "Scale up B / Health check / Switch DNS"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "checked",
+     "text": "Three external probes call A's /healthz every 10 s. A is down when 2 of 3 see 3 consecutive failures. That pages on-call and never fails over by itself. Added to the notes and the first diagram node."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "On-call confirms A is really lost and decides to run the command; a person always starts it. Who has formal authority to trigger it is not known; added under open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "It is a run record in the control store written with compare-and-set, so only one failover run exists. It protects against two people running failover at once. A second invocation resumes a dead run or refuses. Chosen as the simplest mechanism that gives one run; no lease or takeover rule."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The command sets the active-region record to B in the control store. A's apps and workers poll it every 5 s and refuse writes if it says B or if it cannot be read for 15 s (fail closed). The command then waits 30 s before promoting. This is required because A may be unreachable, so A must stop itself. The timings are my choices, not measured, listed as open."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "RPO is 30 s. Lag is B's recorded replay lag from when it last received WAL from A, so it does not grow while A is down. Over 30 s the command stops unless on-call passes the accept-data-loss override; then writes from up to that lag may be lost. I moved the lag check before fencing so a refusal leaves A serving. Who may use the override is not specified beyond on-call."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "It promotes B's replica to primary. Success means the replica is out of recovery and a test write works. If it takes over 2 min the run is marked failed, A stays fenced, and on-call decides whether to resume. The 2 min is my choice."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "At that point A's workers are fenced or dead and B's workers are scaled to zero, so none run. Rows in B's jobs table still marked running were cut off, so they are reset to queued and re-run once B's workers start. Jobs must be idempotent. Redis holds only sessions and is not touched. This is the simplest handling and needs no new mechanism."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Scale up takes the web/API tier from 2 to 12 instances and starts B's workers. Health check requests B's /healthz via B's load balancer. If it fails within 5 min the run stops as failed, DNS is not moved, and on-call fixes and resumes. Switch DNS repoints the traffic manager record to B; with a 60 s TTL most clients move in about a minute. The 5 min limit is my choice."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "How does the second invocation tell that the first run is dead rather than just slow? The earlier answer said there is no lease or takeover rule.",
+     "about": "Take run record: a second invocation either resumes it (if the first run is dead) or refuses"
+    },
+    {
+     "id": "10",
+     "text": "Where does the failover command run (whose machine or which service)? What happens if it crashes or loses its network partway through a step?",
+     "about": "Failover command"
+    },
+    {
+     "id": "11",
+     "text": "What happens to the failover if the control store itself cannot be read or written, for example if it lives in B and B has trouble? What do A's apps do then?",
+     "about": "control store"
+    },
+    {
+     "id": "12",
+     "text": "If A's apps are healthy but only cut off from the control store, they stop writing after 15 s even though A may still be the right region. Who notices this and how is it recovered?",
+     "about": "Fence A"
+    },
+    {
+     "id": "13",
+     "text": "Between Fence A and Switch DNS, what do users see? Are reads or writes served anywhere during that time, and where do clients still pointed at A get sent?",
+     "about": "Switch DNS"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "It cannot tell, so it does not try. A second invocation always refuses while a run record exists; a person reads the record (who, when, last step) and, once sure the first command stopped, reruns with an explicit resume flag. This avoids a lease or takeover rule, as the brief does not require one. Fixed the earlier wording that implied automatic detection."
+    },
+    {
+     "id": "10",
+     "tag": "unknown",
+     "text": "The brief only says a person runs a single command. I decided it must run outside region A (on-call's machine or a jump host). The exact machine or service is not known; added to open questions. If it crashes mid-step, the run record holds the last completed step and rerunning with resume continues, since every step is safe to repeat."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "If the store cannot be read or written, the command cannot take the run record, so failover cannot start until the store is restored. A's apps fail closed after 15 s and refuse writes. That is the price of a consistent fence. It is why the store should not live only in B; where it lives is still an open question."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "A's apps stop writing after 15 s and I made A's /healthz fail while refusing writes, so the probes page on-call. Recovery is to restore the link to the store; apps resume on their own once they read a record saying A. Changed the plan to add the healthz behaviour."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Writes fail everywhere from the fence until DNS switches. B serves nothing yet. Clients still on A get read-only service if A is up, errors if not, and are not redirected until DNS moves. This outage is accepted and fits within the 15 min RTO."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "14",
+     "text": "If A has been down for a while, the recorded lag stays at its old value. How does the command or on-call know how much data was actually lost, such as writes A accepted after B last received WAL?",
+     "about": "Lag check: the command reads the last recorded value, which does not grow while A is down"
+    },
+    {
+     "id": "15",
+     "text": "Do B's apps and workers also read the active-region record? Do they refuse writes until it says B? What happens to B when it says A?",
+     "about": "Fence A / Scale up B"
+    },
+    {
+     "id": "16",
+     "text": "How does on-call abort? Is it a flag on the command? What happens to the run record when the run is aborted?",
+     "about": "Interrupted or failed runs: Abort is allowed up to and including the fence"
+    },
+    {
+     "id": "17",
+     "text": "What marks the run as finished after DNS is switched? Is the run record removed or marked done, and what stops the active-region record or old A from being confused afterward?",
+     "about": "Switch DNS"
+    },
+    {
+     "id": "18",
+     "text": "The command waits 30 s without checking anything. Can it confirm that A has stopped writing, for example through A's /healthz, or does it only rely on the timing?",
+     "about": "Fence A: The command then waits 30 s"
+    },
+    {
+     "id": "19",
+     "text": "Probes can fail because A is fenced or cut off from the control store, not only because A is lost. How does on-call tell these causes apart before running the command?",
+     "about": "Probes: three external locations call A's /healthz"
+    }
+   ],
+   "answers": [
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Neither can know exactly. The recorded lag is only the loss as of the last WAL B received; writes A accepted after that are unknown until A is back and compared with B. The plan stays at the RPO check and the override, and now says the number is a lower bound. Measuring it needs A, so adding more would be a new mechanism the brief does not ask for."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Yes. B's apps and workers follow the same rule as A's: they read the active-region record and accept writes only when it says B. The fence already sets it to B before B scales up, so they accept writes from the start. If it said A they would refuse writes. Added to Scale up B."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Abort is a flag on the command (--abort). It sets the active-region record back to A and marks the run record aborted. A's apps then resume writing by themselves. Allowed only up to the fence because after Promote B has diverged. Added to Interrupted or failed runs."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "After DNS switches the command marks the run record done and leaves it as history. The active-region record stays B. If old A returns, its apps read B and keep refusing writes, so it cannot be mistaken for the active region. Added to Switch DNS."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "It relies on timing only. The command must work when A is unreachable, so it cannot depend on reaching A's /healthz. The 30 s wait is longer than the 5 s read interval plus the 15 s fail-closed window. Stated in the Fence A step."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "A's /healthz failure now carries a reason, 'fenced' or 'control store unreachable', when A is refusing writes itself. On-call also reads the active-region record: if it says B, a fence has already happened. If the probes fail with no such reason, A is likely truly lost. Added to Probes and On-call. The exact reason format is left open."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Detection. Three external probes call A's `/healthz` every 10 s. If 2 of the 3 see 3 failures in a row, on-call is paged. Nothing fails over automatically. The `/healthz` failure carries a reason, \"fenced\" or \"control store unreachable\", so the page shows whether A is really lost or has stopped itself. The reason's exact format is undecided.\n\n2. Decision. The paged engineer reads the failure reason and the active-region record in the control store. If the record already says B, a fence has already happened. They confirm A is really lost. Only a person can start a failover. The 15 min RTO clock starts when they run the failover command, which runs from their own machine or a jump host and never inside A.\n\n3. Take the run record. The command writes a run record (who, when, last completed step) to the control store with a compare-and-set, so only one run can exist. A second invocation sees the record and refuses. There is no lease or takeover. A person must check that the first command has stopped and then rerun with an explicit resume flag. If the control store is down, the record can't be taken and no failover can start.\n\n4. Lag check. The command reads B's last recorded replay lag. B records it each time it receives WAL from A, so it stays frozen while A is down. If it is over 30 s (the RPO), the command stops and A is untouched. It goes on only if on-call passes the accept-data-loss override. The number is a lower bound, because writes A accepted after B's last WAL are unknown.\n\n5. Fence A. The command sets the active-region record to B. Every app and worker in A reads that record every 5 s. They refuse all writes if it says B, or if they can't read it for 15 s (fail closed), and `/healthz` then fails. This is how a partitioned A stops itself without the command reaching it. The command then waits a fixed 30 s and does not check A's `/healthz`. The 30 s is longer than 5 s plus 15 s.\n\n6. Promote B. The command promotes B's PostgreSQL replica. Success means the replica is out of recovery and a test write works. If this takes over 2 min, the run is marked failed. A stays fenced, and on-call decides whether to resume.\n\n7. Fix up jobs. With A's workers fenced or dead and B's at zero, no worker is running. In B's database, any `jobs` row still `running` is set back to `queued`. Jobs must be idempotent, since reruns may repeat work. Redis is not involved.\n\n8. Scale up B. Only after B's database is writable, the web/API tier goes from 2 to 12 instances and B's workers start. B's apps follow the same rule as A's and accept writes only when the active-region record says B. The fence already set it, so they accept writes straight away.\n\n9. Health check. B's `/healthz` is checked through B's load balancer. If it hasn't passed within 5 min, the run is marked failed and DNS is not touched. On-call fixes the cause and resumes.\n\n10. Switch DNS. Only after step 9 passes, the traffic manager's record is pointed at B. With a 60 s TTL most clients move within about a minute, and some resolvers may be slower. The command marks the run record done and keeps it as history. The active-region record stays B, so if A comes back it keeps refusing writes.\n\nThroughout, each step writes its completion to the run record and is safe to repeat. A crash is recovered by rerunning with the resume flag. Sessions live in each region's own Redis and are not replicated, so every signed-in user has to sign in again. From the fence until DNS switches, writes fail everywhere. Clients still pointed at A get read-only service if A is up, or errors if not. `--abort` is allowed up to and including the fence. It sets the record back to A and marks the run aborted, and A's apps resume writing on their own. After promotion the run only goes forward. There is no failback. A is rebuilt as a replica of B, and moving back is a separate planned switchover. If A is cut off from the control store but otherwise healthy, it refuses writes after 15 s, the probes page on-call with \"control store unreachable\", and it resumes once it reads a record that says A.",
+   "gaps": [
+    "How the failover command learns B's last recorded replay lag. It is not stated where the lag is stored or how the command reads it from a machine outside A.",
+    "What identifies the state after an abort, and how `--abort` and the resume flag are invoked. Specifically, how a new run is started after a run record is marked aborted, failed or done, because step 3 says a second invocation is refused while a run record exists.",
+    "How the 'accept-data-loss override' is passed to the command (flag name or mechanism).",
+    "How a partial step is safely repeated. The document says every step is safe to repeat but does not say how, for example how the command knows whether the promotion already happened.",
+    "How promotion of B's replica is carried out and how the command reaches B's database and cloud (credentials and access path are not described).",
+    "How the command scales B's instances and starts workers, and how it changes the traffic manager's DNS record, such as which APIs or credentials it uses.",
+    "What happens to B's apps if the control store becomes unreachable. The fail-closed rule is described for A's apps. B's apps follow 'the same rule', but this is not spelled out for B's own reads of the record.",
+    "What happens to the writes and jobs that A accepted after B's last WAL when A returns. The document says they are unknown until A is recovered and compared with B, but gives no reconciliation process.",
+    "The exact format of the `/healthz` failure reason (stated as open).",
+    "Which product and location hold the control store, who may start a failover or use the override, and which machine runs the command (all stated as open)."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

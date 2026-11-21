@@ -1,0 +1,238 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the broker (which product), and what does 'broker confirmation' mean concretely for the relay? What does the relay do if confirmation never arrives?",
+     "about": "Step 3: outbox relay publishes to notifications.requested, waits for broker confirmation"
+    },
+    {
+     "id": "2",
+     "text": "The sweeper is mentioned as 'in this step' but never described. What is it, what does it run on, and what exactly does it check?",
+     "about": "Step 3 failure: the sweeper pages if a service row is unpublished for more than 5 minutes"
+    },
+    {
+     "id": "3",
+     "text": "Where does the flag service live and who sets flags? How does 'flag propagation within 10 seconds' work, and what does an enqueue see in between?",
+     "about": "Step 2 / Rollback procedure: flags.get('notify.route.<ntype>')"
+    },
+    {
+     "id": "4",
+     "text": "When the service marks a job failed, what does the monolith row end up with? The status consumer only updates rows with status='pending', so how does a 'failed' event get stored, and who tells the user or retries?",
+     "about": "Step 3 Status consumer and Step 4 sender (failed event)"
+    },
+    {
+     "id": "5",
+     "text": "What does the old worker do each cycle (poll, select, deliver, update status), and what are its existing retry rules that the plan calls 'existing retry policy, unchanged'?",
+     "about": "Old worker / Step 1 _deliver and run_worker"
+    },
+    {
+     "id": "6",
+     "text": "Step 5 says test notifications use route='service' with a test user and 'not a real type'. How are these created if routing comes from per-type flags, and what template do they use?",
+     "about": "Step 5: Verify the service end to end"
+    },
+    {
+     "id": "7",
+     "text": "How does the events outbox loop in the service work, and what happens if the monolith status consumer is down or the status event is lost? Does the monolith row stay pending forever?",
+     "about": "Step 4 Events outbox and notification.status topic"
+    },
+    {
+     "id": "8",
+     "text": "What are MailRelay's role and API here: is it an external provider, what does mailrelay.Error cover, and how is the 24-hour idempotency window enforced on its side?",
+     "about": "MailRelay and idempotency_key in Design in brief, decision 2"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "Broker confirmation means the broker has stored the message. The overview says publishers get a confirmation once a message is stored. The brief does not name the broker product, so that part is unknown. The relay waits for this confirmation before it sets published_at. If confirmation does not arrive in time, the row stays unpublished and the next cycle publishes it again. The service's jobs key makes the repeat a no-op. The sweeper pages if a row stays unpublished for 5 minutes."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The sweeper is a check the monolith relay loop runs once a minute, so it needs no new service. It pages on three conditions: (1) a service row is unpublished 5 or more minutes after creation; (2) a service row is still pending 30 or more minutes after published_at, which means the status event is not arriving, and 30 minutes is longer than the 15-minute retry schedule; (3) a monolith row is pending more than 5 minutes past next_attempt_at, which is the step 9 check. Owners are not known and are listed as open."
+    },
+    {
+     "id": "3",
+     "tag": "checked",
+     "text": "The overview confirms that flags.get is used in the monolith and that a change reaches every instance within 10 seconds. Operators set flags, as step 6 states. Where the flag store lives is not in the docs, so that is unknown. In the window between a flip and propagation, an instance can still read the old value, so the row takes the old route. Both routes are safe, because each has its own executor and a route never changes after insert. flags.get falls back to monolith on failure."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The status consumer writes whatever status the event carries. Its guard is status = pending, and a service row is still pending when the event arrives. So a failed event sets the monolith row to failed and records attempts. Nothing retries it automatically. The service pages on-call when it marks a job failed, so recovery is a human action. Reconciliation counts failed rows as well as sent rows."
+    },
+    {
+     "id": "5",
+     "tag": "checked",
+     "text": "From the code: each cycle selects up to 50 pending rows that are due, oldest first, locked with FOR UPDATE SKIP LOCKED, in one transaction. Each row is rendered and sent. On success the row is set to sent. On mailrelay.Error, which includes timeouts, attempts is incremented. At attempt 5 the row is set to failed and on-call is paged. Otherwise next_attempt_at is set to now plus 1, 2, 4 or 8 minutes. The batch commits once, then the worker sleeps 5 seconds. Gap: only mailrelay.Error is caught, so other exceptions, such as a render failure, leave the loop. The plan keeps this behavior, and it is listed as open."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Routing is per type, so a test cannot use the flag. The plan now says an operator inserts test rows directly into the monolith table with route = service, type shipping_update (that template is already in production), and a team test mailbox. Test rows are excluded from the step 6 reconciliation by mailbox address."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The service writes an events_outbox row in the same transaction as the job update. The events loop publishes unpublished rows to notification.status, keyed by notification id, and sets published_at only after broker confirmation. If it fails, it retries. If the monolith consumer is down, the broker holds the message until it is consumed, so the monolith row stays pending until the consumer catches up. The brief says the broker is at-least-once, not that it loses messages. A lost event would leave the row pending, and sweeper check 2 pages on that."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "The overview confirms that send takes an optional idempotency_key, that a repeat key within 24 hours is dropped and reports success, and that keys are not passed today. The mailrelay.Error comment says it includes timeouts. Unknown: whether MailRelay is third-party or internal (the docs say only that email is sent through it), how it stores keys, what it returns for a key that was accepted and then errors, and whether the window is per account or per send type. These are listed as open items."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The monolith rows and the service jobs live in separate databases that nothing in the monolith can read. What runs the daily comparison, and how does it get both counts?",
+     "about": "Step 6: Reconciliation, daily"
+    },
+    {
+     "id": "10",
+     "text": "When a job fails an attempt and is rescheduled, does the lease clear, and does the monolith row get any event, or does it stay pending with attempts unchanged until the final sent or failed event?",
+     "about": "Step 4: Sender, On mailrelay.Error"
+    },
+    {
+     "id": "11",
+     "text": "When reconciliation finds a mismatch, what does the on-call person actually look at to find which notifications are missing, and what do they do for a row that never reached the service?",
+     "about": "Step 6: Mismatch / Rollback step 4"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The service runs the daily count and publishes it as a summary on notification.summary through the broker: for the previous UTC day, the number of its jobs created that day that are sent or failed. The monolith counts its service rows created that day whose status is not pending, and compares the two when the summary arrives. Neither database reads the other, and the broker stays the only channel, as the brief requires. The 02:00 UTC run is after the day has closed, so every row from it is more than an hour old. Owners are still open."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "On a retryable mailrelay.Error the sender updates the job in one statement: attempts plus one, next_attempt_at set to the backoff, and lease cleared. It writes no event, so the monolith row stays pending with its old attempts value until the final sent or failed event. A retry event would add traffic for no benefit, and sweeper check 2 (30 minutes) already covers the 15-minute schedule. The monolith attempts column is therefore only exact at the final state."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "On-call starts from the mismatched day in the page. They list the monolith service rows from that day that are still pending, look up those ids in the service's jobs and events_outbox, and act per case: relay not yet publishing (fix relay), no job but published (clear published_at so the relay republishes, which is safe because nothing was sent), job done but event unpublished (the events loop publishes it), event published but not applied (clear the event's published_at, and the consumer guard absorbs the repeat), or a failed job (already paged, so handle it as a failed notification). The ids are copied by hand because neither database can read the other. Who runs this is open."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "12",
+     "text": "In Publish, the relay takes rows where published_at is null. Step 3 says two relay instances are kept apart by FOR UPDATE SKIP LOCKED 'until its update commits'. Does the relay hold the row lock while it waits for broker confirmation? If not, can two instances publish the same row?",
+     "about": "Flow step 2 Publish / Step 3 Two relay instances"
+    },
+    {
+     "id": "13",
+     "text": "In Accept, what exactly is in the jobs row when it is inserted (status, attempts, next_attempt_at, lease, the payload)? How does the sender then find it as 'due'?",
+     "about": "Flow step 3 Accept / step 4 Send"
+    },
+    {
+     "id": "14",
+     "text": "How many sender instances run, and how does the sender loop get triggered? Does it poll the jobs table, and how often?",
+     "about": "Flow step 4 Send: 'Starts when the sender claims a due job'"
+    },
+    {
+     "id": "15",
+     "text": "In Send, what does the sender do between claiming the job and calling MailRelay? Is the claim kept in an open transaction, or is the lease the only protection while the send runs? How long is the lease concretely?",
+     "about": "Flow step 4 Send: FOR UPDATE SKIP LOCKED and lease_until"
+    },
+    {
+     "id": "16",
+     "text": "If the template render fails in the service sender, what happens to the job? The plan says the old worker's thread stops on non-mailrelay errors. What does the service do, and does the user ever get that email?",
+     "about": "Flow step 4 Send / Open questions: only mailrelay.Error is caught"
+    },
+    {
+     "id": "17",
+     "text": "The Record step's UPDATE has no row-lock or ordering concerns with the old worker, but what does the monolith do if the status event arrives for a row id that does not exist or has route 'monolith'? Is the message acknowledged and dropped?",
+     "about": "Flow step 6 Record"
+    },
+    {
+     "id": "18",
+     "text": "The Reconcile step counts rows 'created that day' on each side. The service's job created time is when it accepted the message, and the monolith's is the row's created_at. How do these line up for a row created just before midnight UTC?",
+     "about": "Flow step 7 Reconcile"
+    },
+    {
+     "id": "19",
+     "text": "A service row that was already published when someone flips the flag back to monolith: the plan says it finishes on the service. If the service is down for a long time, who acts on those rows, given rollback says service rows are never moved back?",
+     "about": "Rollback step 3"
+    }
+   ],
+   "answers": [
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The relay holds the row lock from the claim until its update commits, and that includes the wait for broker confirmation. Two relay instances therefore never publish the same row at the same time, because the second one skips locked rows. Step 2 now says this. A crash after publish but before commit can cause one later repeat publish, which the jobs key absorbs. Reason: one transaction is simpler than a two-step claim. The cost is a longer lock while the broker is slow. The confirmation timeout is not set, so it is listed as open."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The jobs row holds notification_id (primary key), type, email, payload, created_at (copied from the message), status 'pending', attempts 0, next_attempt_at now, and an empty lease. The sender finds due jobs by status 'pending', next_attempt_at <= now, and an empty or expired lease. Reason: the message carries everything the sender needs, so the service never reads back from the monolith."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "The sender is a loop inside each service instance. It polls the jobs table every 5 seconds, the same interval as the old worker. The plan does not set the number of instances. The row lock keeps any number of instances from taking the same job, so the count is an operations choice, not a correctness one."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The claim is a short transaction. It locks the due row with FOR UPDATE SKIP LOCKED, sets lease_until, and commits. The send then runs with no transaction open, so the lease is the only protection while MailRelay is called. The lease must be longer than the MailRelay timeout plus a margin. The docs do not give MailRelay's timeout, so the concrete lease length is unknown and is listed as open."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "In the service, a template render error counts like a MailRelay error. Attempts go up by one and the job follows the backoff. After 5 attempts it is marked failed and on-call is paged, and the user does not get the email. Reason: without this, a render error loops forever. The lease expires, the job is claimed again, the error repeats, and no attempt is ever counted. The old worker still stops its thread on non-MailRelay errors, and that stays open. This changes the plan, so it is recorded below."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The UPDATE matches no row, so the event changes nothing. The consumer acks the message and drops it. If it did not ack, the broker would redeliver the message forever. Step 6 now says this."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The plan had the service count by receive time, so a row created just before midnight UTC but accepted after midnight would be counted on the wrong day, which causes a false mismatch. The fix: the message carries the monolith's created_at, and the service stores it as the job's created_at. Both sides now use the same timestamp. One gap remains: a status event still in flight at 02:00 UTC can cause a mismatch. No grace period is set, so it is listed as open."
+    },
+    {
+     "id": "19",
+     "tag": "unknown",
+     "text": "The plan does not say who acts. Known: rows wait in the broker or in the service's jobs table, so nothing is lost. A row still pending 30 minutes after publish pages on-call through the stuck-event check. Rollback says service rows are never moved back, so the only fix the plan names is restoring the service. Who owns that restore is not stated. It is listed as an open question."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one `service`-routed notification (for example a `shipping_update` email) from creation to the final record.\n\n1. Enqueue. Business code calls `enqueue_notification` inside its own database transaction. The function reads the flag `notify.route.<type>` and writes one row to the monolith's `notifications` table. The row has `status = 'pending'` and a route of `service` or `monolith`. A missing flag, a flag that can't be read, or any value other than `service` gives `monolith`. The route is fixed at insert and never changes. If the caller's transaction rolls back, there is no row and no email. Here the flag says `service`.\n\n2. Publish. The outbox relay runs on every monolith instance every 5 seconds. In one database transaction it locks the `service` rows that have `published_at` null and `status` pending. It publishes each row to the broker topic `notifications.requested` as `{id, type, email, payload, created_at}`, keyed by the notification id. It waits for the broker to confirm it has stored the message. Then it sets `published_at` and commits. The row lock is held through the wait, so two relay instances can't publish the same row at once. If no confirmation arrives, or the relay crashes before the commit, the row stays unpublished and the next cycle publishes it again. The service's `jobs` table makes that repeat harmless. If the broker is down, rows wait in the monolith table. The sweeper pages on-call if a row is still unpublished after 5 minutes.\n\n3. Accept. The Notification Service's consumer receives the message. In one transaction in the service's own database, it inserts a `jobs` row with `ON CONFLICT (notification_id) DO NOTHING`. The row holds id, type, email, payload and `created_at` (copied from the message, so both sides count the notification on the same day). It also holds `status = 'pending'`, `attempts = 0`, `next_attempt_at = now` and an empty lease. The consumer acks the message only after that commit. If the job already exists, the insert does nothing and the consumer still acks. If the service crashes before the commit, nothing is stored and the broker redelivers after 30 seconds without an ack.\n\n4. Send. Each service instance runs a sender loop every 5 seconds.\n   - Claim: a short transaction selects a job that is `pending`, has `next_attempt_at` now or earlier, and has an empty or expired lease. It locks the row with `FOR UPDATE SKIP LOCKED`, sets `lease_until` to now plus the lease length, and commits.\n   - Send: with no transaction open, the sender renders the template and calls MailRelay with the notification id as the idempotency key. The lease is the only protection during this call.\n   - Success: in one transaction the sender sets the job to `sent`, clears the lease, and writes a `sent` row to `events_outbox`.\n   - Failure: a MailRelay error, a timeout or a render error all count the same. The sender adds 1 to `attempts` and clears the lease. At attempt 5 it sets the job to `failed`, writes a `failed` event and pages on-call. Otherwise it sets `next_attempt_at` to now plus 1, 2, 4 or 8 minutes (for attempts 1 to 4) and writes no event.\n   - Crash mid-send: the lease expires and the next claim sends again with the same key. MailRelay drops the repeat if it already accepted the first send. A lease expiry is not an attempt, but alerts fire on expiries.\n\n5. Report. The service's events loop runs every 5 seconds. It publishes unpublished `events_outbox` rows to `notification.status`, keyed by notification id. It marks a row published only after the broker confirms. If publishing fails, it retries next cycle. If the monolith is down, the broker holds the messages.\n\n6. Record. The monolith's status consumer receives the event. It updates the notification row where the id matches, the route is `service` and the status is `pending`. It sets `status` and `attempts`: `sent` for a `sent` event, `failed` for a `failed` event. A repeated event, an unknown id or a `monolith` row matches nothing and changes nothing. In every case the consumer acks, because otherwise the broker would redeliver forever. A `failed` row is not retried automatically, because on-call was already paged. If the event is lost, the row stays `pending` until the stuck-event check pages after 30 minutes.\n\n7. Reconcile. At 02:00 UTC each day, for the previous UTC day, the service counts its jobs created that day that are `sent` or `failed`. It publishes that count to `notification.summary`. The monolith counts its `service` rows created that day whose status is not `pending`. When the summary arrives, the monolith compares the two counts and pages on-call if they differ. Test rows (identified by the team test mailbox) are skipped on both sides. On a page, on-call follows the runbook. It lists the still-pending `service` rows, copies their ids by hand to the service database, and acts by case. The cases are: no job and not published, no job but published (clear `published_at`), job done but event unpublished, and job done but event not applied (clear the event's `published_at`).\n\nAlongside this flow, the old worker handles `monolith` rows. It takes up to 50 due rows, oldest first, with `FOR UPDATE SKIP LOCKED`. It sends each row with the row id as the key and commits after each row. Success sets `sent`. A MailRelay error adds an attempt, retries on the same 1, 2, 4, 8 minute schedule, and fails and pages at attempt 5. The sweeper also pages if a `monolith` row is still pending 5 minutes after its `next_attempt_at`.\n\nRollout and rollback. The plan ships in order. First, keyed sends and per-row commits on the old worker. Second, the route column and route-aware enqueue, with everything still `monolith`. Third, the relay, status consumer and sweeper, inert. Fourth, deploy the service with no traffic and run golden template tests. Fifth, run manual end-to-end test rows and rehearse rollback. Then cut over `shipping_update` (3 days), `order_confirmed` (3 days, with a p99 latency gate of 60 seconds), and `password_reset` (7 days). After that, decommission the old worker. To roll back a type, set the flag back to `monolith`. New rows go to the old worker, and rows already on the service finish there.",
+   "gaps": [
+    "How long the relay waits for the broker's confirmation before giving up is not set, and the row lock is held during that wait.",
+    "The document gives no length for the lease, because the MailRelay timeout is not stated. So I can't say how long a crashed send waits before another sender claims it.",
+    "What happens when the daily summary never arrives is not decided, so the Reconcile step has no defined outcome in that case.",
+    "No grace period is set for events still in flight at 02:00 UTC, so a false mismatch page is possible. I can't say how the two counts are meant to line up.",
+    "What MailRelay does when a keyed send returns an error after it accepted the send is unknown. The document only assumes a retry with the same key is dropped.",
+    "It is unclear whether the 24-hour idempotency window is per account or per send type.",
+    "The broker product, its retention for `notifications.requested`, and its PII policy are not given. So I can't say how long a lost message can be republished, or how long a redelivery stays safe against the 30-day `jobs` retention.",
+    "The flag store is not named, and neither is who sets the flags operationally.",
+    "The document doesn't say what the Record step does with the `attempts` value for a `sent` event, because the event payload fields are never listed.",
+    "How the status consumer and the Accept consumer identify the broker message (the message format for events, and the contents of `events_outbox` rows) is not specified.",
+    "Whether the old worker's non-MailRelay errors stop its thread is unresolved. The document says to decide before step 1 whether to fix it.",
+    "No owner is named for the sweeper, the reconciliation and its runbook, the latency alerts, or restoring the service after a long outage."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

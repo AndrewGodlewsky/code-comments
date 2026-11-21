@@ -1,0 +1,17 @@
+## Review of infra-01 (rewrite, author sonnet, seeded-implicit)
+
+Rounds: 0. Ended: simplify-only.
+
+### What changed
+- Added a summary, a terms list and a state section; the first version had only a bare checklist and said nothing about where state is kept.
+- Expanded each checklist step with its trigger, what it changes and how it fails, and kept every fact from the brief (additive migrations, 3 passes every 10 s, 10 min limit, one-step switch, 15 min / 1% / 5 min watch, 30 min old colour hold).
+- Split the old 'Health checks' and 'Smoke tests' steps into one step, and merged the old 'Keep old colour up' and 'Tear down' into steps 9 and 10.
+- Added a test listener, defined and marked as decided, so the smoke tests can run without touching the public listener.
+- Decided that the deploy lock is a CI concurrency group and that no separate deploy-state store exists; live colour, release and old-colour status come from the listener, instance tags and instances.
+- Decided that the lock is held until teardown, and that an engineer-started rollback job is the one exception that does not wait for the lock.
+- Added a Rollback section and a failure table for every step, including no migration reversal, abort on health timeout, one retry of the repoint, and teardown skipped after a rollback.
+- Added the migration lint step and CREATE INDEX CONCURRENTLY explanation, and moved the later-release rule for drops and renames into step 3.
+- Added Open questions for alert routing and the smoke suite; nothing from the first version was cut.
+
+### Holes
+- None.

@@ -1,0 +1,28 @@
+{
+ "haiku-low": {
+  "q1": "On-call runs the failover command (target B) after probes page them. Detection alone only pages on-call; nothing fails over automatically.",
+  "q2": "Step 3 stops the run, shows the lag and releases the lock. On-call then reruns with the accept-data-loss override to promote, or aborts.",
+  "q3": "Promotion needs steps 1-3 done (lock, fence, lag check). B's workers need step 5 (jobs requeued). DNS needs step 7 (B passes health checks).",
+  "q4": "Sessions are not replicated, so every user must sign in again; the document accepts this.",
+  "q5": "Snapshotted for review of lost writes, then wiped and rebuilt from a base backup of B as B's replica. A stays read-only; failback is a separate planned switchover.",
+  "q6": "A's instances and workers read active_region every 5 s and write only if a read within 15 s named A; otherwise they go read-only.",
+  "q7": "The control store (3-node cluster in A, B, C). Only the failover command, including abort, writes it; all app instances and workers read it.",
+  "q8": "Step 5 requeues them in B's database and B's workers rerun them after step 6. Jobs must be idempotent, keyed by job id.",
+  "q9": "Rerun takes the lock and resumes at the first unfinished step. Abort returns to A only until step 4 starts; then never, this incident.",
+  "q10": "Until cached DNS expires, requests hit A: stale reads and 503 writes if A is up, failures if down. Then B.",
+  "q11": "Async-replicated commits B never received. Limited to B's recorded lag (30 s unless overridden); a partitioned A adds up to 20 s more."
+ },
+ "sonnet": {
+  "q1": "A failover is started by on-call running the failover command (target B). Detection (2 of 3 probe locations seeing 3 consecutive /healthz failures on A) only pages on-call; nothing fails over automatically.",
+  "q2": "If B's recorded lag (as of when it last received WAL from A) is over 30 s, step 3 stops, shows the lag, and releases the lock. On-call must then either rerun with the accept-data-loss override (continues to promotion) or abort (active_region back to A, restore A's write privileges, close the log). Nothing can write in the meantime.",
+  "q3": "Before promoting B's database: lock taken (step 1), A fenced with active_region = B (best-effort privilege revoke, then 20 s wait) (step 2), and lag check passed or overridden (step 3), each logged done; promotion started is logged. Before B's workers start: promotion done and step 5 requeued jobs marked running back to queued in B's database (step 5 before step 6). Before DNS points at B: B passes /healthz at its load balancer and from the probes (step 7), after scaling in step 6.",
+  "q4": "B's Redis holds no sessions from A (sessions are not replicated), so every user must sign in again; this is accepted.",
+  "q5": "No automatic failback. A's app stays read-only because active_region = B. A's old database is snapshotted so the lost writes can be reviewed, then wiped and rebuilt from a base backup of B as B's replica. Moving back to A is a separate, planned switchover.",
+  "q6": "The self-fencing rule. Every A instance/worker reads active_region from the control store every 5 s and only writes if a successful read within the last 15 s named its own region; write transactions are capped at 5 s. Once active_region = B (or A loses the control store, which needs a majority) A stops committing within 20 s, goes read-only, 503s writes and stops claiming jobs. The privilege revoke is only a best-effort backstop; the step 2 20 s wait covers this.",
+  "q7": "The control store (3-node strongly consistent key-value cluster, one node each in A, B, C; majority needed) holds active_region. Only the failover command (including abort) writes it. Every app instance and worker in both regions reads it every 5 s.",
+  "q8": "In step 5 (before any B worker starts), jobs marked running in B's database, all claimed by A's workers, are set back to queued. B's workers rerun them once step 6 starts them. Jobs A finished in its last unreplicated seconds also rerun. Jobs must be idempotent (keyed by job id), so reruns are safe.",
+  "q9": "Rerun the failover command: it takes the lock (a crashed run's 30 s lease expires within 30 s), then resumes at the first step not logged done; a started-but-unfinished step is repeated (all steps are safe to repeat). Going back to A is possible only until step 4 is logged as started, via failover --abort (takes lock, sets active_region back to A, restores A's write privileges if revoked, closes the log). Once step 4 is started, abort is refused even if promotion crashed partway; only forward, no return to A during this incident.",
+  "q10": "From step 2 until its cached DNS expires (up to 60 s after step 8), its requests still go to A. If A is up, A's instances are self-fenced: reads are served from A's stale database and writes get 503 'read-only, retry shortly'. If A is down, the requests fail. After the TTL expires the client reaches B.",
+  "q11": "If A failed outright: no more than B's recorded lag, which step 3 holds to 30 s unless on-call uses the override. If A kept running after B stopped receiving WAL (partition), A's commits from then until it stopped writing (at most 20 s after step 2) are also missing; step 3 cannot see these, and they survive only in A's old database, snapshotted when A comes back. Limited by the lag check (30 s) and the self-fencing window (20 s); B replays all WAL it received before promotion."
+ }
+}

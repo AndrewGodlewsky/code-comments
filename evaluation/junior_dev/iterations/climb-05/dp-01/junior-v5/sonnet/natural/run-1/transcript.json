@@ -1,0 +1,99 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the scheduler here, and how does it know an attempt has failed, or hung, so it can start the 15-minute retry timer?",
+     "about": "Scheduler cron / Scheduler retry timer"
+    },
+    {
+     "id": "2",
+     "text": "The merge text sets last_success_run_date inside the transaction, but the diagram sets it in step 7 after the commit. Which is right, and what happens if step 7 fails after the commit?",
+     "about": "6. Warehouse transaction / 7. Mark run_log success"
+    },
+    {
+     "id": "3",
+     "text": "Cutoff is the replica's now(), while hwm lives in the warehouse. How do these two clocks relate, and what happens to rows if the replica is lagging when the cutoff is taken?",
+     "about": "3. Open read-only REPEATABLE READ transaction on replica"
+    },
+    {
+     "id": "4",
+     "text": "What counts as a timeout, and how long can one attempt run before it is declared failed? Who enforces it?",
+     "about": "Attempt failed / any error or timeout"
+    },
+    {
+     "id": "5",
+     "text": "If the watchdog fires while attempt 2 or 3 is still retrying or running, does anything stop that run? What exactly is the dotted arrow from the alert to step 6 saying?",
+     "about": "Staleness alert (06:00 UTC) / W3 -> A6"
+    },
+    {
+     "id": "6",
+     "text": "What carries the retry timer and attempt count for a reconciliation run, and what run_date and kind does it write in run_log? Does a failed reconciliation block anything?",
+     "about": "Sunday reconciliation / DONE -> C1"
+    },
+    {
+     "id": "7",
+     "text": "How does a run with a very large number of rows get from the replica into stg.orders_nightly, and where is the 'extracted count' taken from to compare with the staged count?",
+     "about": "4. Extract all columns / A5 Validate staging"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The scheduler is the existing job scheduler that starts the job. Which product it is has not been checked, so it is an open question. It sees a failure when the attempt's process exits with an error, and it enforces a hang limit by killing the process at 60 minutes and counting that as a failure. Then it starts the 15-minute timer. We chose 60 minutes because the brief gives no limit and three attempts must finish before 06:00."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The text was right and the diagram was wrong. last_success_run_date is set in the step 6 transaction together with the data and hwm, so the watchdog never sees a committed night marked as stale. Step 7 only marks run_log success and is audit only. If step 7 fails after the commit, the failure is logged and ignored, the attempt is not retried, and the run_log row may stay running. Nothing depends on it."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "updated_at comes from the app database and cutoff from the replica clock. We assume they agree to within seconds, which is tiny next to the 2-hour lookback. This is an assumption that has not been checked. If the replica lags, rows that are not yet visible are missed that night, but hwm still advances to the cutoff. The following nights' 2-hour lookback re-reads the period. Lag beyond the margin is left to the Sunday reconciliation."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The scheduler enforces the limit. Any attempt that runs past 60 minutes is killed and counts as failed. The warehouse transaction rolls back. 60 minutes is our choice, not from the brief. Worst case, three attempts plus two 15-minute waits end around 05:30."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Nothing stops the run. The watchdog only reads last_success_run_date and posts the alert. The dotted arrow means only that an attempt still running may commit at step 6 after the alert. When it does, a recovery note is posted. I reworded the arrow label to say so."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The scheduler carries the retry timer and attempt count for reconciliation, as it does for the nightly run. Its run_log rows use kind = reconciliation and run_date = the Sunday date. A failed reconciliation blocks nothing, and does not touch hwm, the nightly status or the staleness check."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "The job streams from a cursor on the replica snapshot straight into the warehouse bulk loader (COPY), so a large night is not held in memory. The extracted count is the number of rows counted as they leave that cursor. It is compared with the count in the staging table after the load."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Setup and trigger. All pipeline state lives in the warehouse (tables etl.control, etl.run_log, the stg.* staging tables and dw.orders). The scheduler holds only the attempt count and the retry timer. The replica is a read-only source and holds nothing. At 02:00 UTC the scheduler starts a process for attempt 1. If this is a retry, the scheduler's 15-minute timer starts it with attempt = previous + 1. The scheduler watches the process exit code and kills it if it runs longer than 60 minutes.\n\n2. Start (step 1). The attempt inserts a row into etl.run_log with run_id, run_date, kind = nightly, the attempt number and status = running. This is audit only. Correctness never depends on it.\n\n3. Read the mark (step 2). The attempt reads hwm from the single row (orders_nightly) in etl.control and computes lower = hwm - 2 hours. It re-reads hwm on every attempt, so a retry never reuses a failed attempt's cutoff. If the control row is missing, hwm is seeded at the epoch, which gives a full initial load.\n\n4. Open a snapshot (step 3). The attempt opens a read-only REPEATABLE READ transaction on the replica and takes cutoff = the replica's now(), once. This gives one consistent view with a fixed upper bound.\n\n5. Extract and stage (step 4). It selects all columns from the replica's orders where updated_at > lower and updated_at <= cutoff. Soft-deleted rows (deleted_at set) are included. It streams the rows from the replica cursor into stg.orders_nightly with COPY, so nothing is held in memory. The staging table is truncated at the start of every attempt, and the COPY replaces its prior contents. The attempt counts rows as they leave the cursor, and that is the extracted count.\n\n6. Validate (step 5). It checks that the staged count equals the extracted count, and that order_id is never null and is unique. Uniqueness is expected from a single snapshot, so the check guards against bad data and does not dedupe. Any failed check fails the attempt.\n\n7. Merge and advance (step 6). In one warehouse transaction it runs MERGE INTO dw.orders from stg.orders_nightly on order_id. When matched and s.updated_at >= t.updated_at, it updates all columns and sets is_deleted = (deleted_at IS NOT NULL). When not matched, it inserts. In the same transaction it runs UPDATE etl.control SET hwm = GREATEST(hwm, cutoff), last_success_run_date = run_date, then commits. The >= guard stops older copies overwriting newer ones, and it makes re-applying an identical row a no-op. That is why the 2-hour overlap, which extracts rows more than once, is safe. Because the data and the mark commit together, dashboards see the whole night or none of it.\n\n8. Mark success (step 7). The attempt sets the run_log row to success. If this write fails, the failure is logged and ignored, with no retry, and the row may stay running. The night is considered loaded at step 6, and dashboards show it at their next refresh.\n\n9. Failure path. Any error before the commit, or a kill at 60 minutes, means the warehouse transaction rolls back or never started, and hwm is unchanged. run_log gets status = failed with the error. The scheduler writes the failed status if the process could not. The next attempt clears staging. For attempts 1 and 2, the scheduler waits 15 minutes after the failure and starts the next attempt from step 1. Worst case, three 60-minute attempts and two waits end around 05:30. After the third failure it pages on-call. hwm stays where it was, so the next night's window starts at the old hwm - 2h and loads the missed data with no gap.\n\n10. Staleness watchdog. At 06:00 UTC a separate scheduler cron reads etl.control.last_success_run_date. If it equals today, there is no action. If not, it posts to #data-alerts with the run_log status and attempt number. It never stops a running attempt. If an attempt commits later, dashboards pick it up at their next refresh, and a recovery note is posted to #data-alerts when last_success_run_date becomes today. Dashboards refresh at 06:00 regardless and read only committed dw.orders state.\n\n11. Sunday reconciliation. It is triggered by the success of Sunday's nightly load. If Sunday's night ends in a page, it is skipped that week, and the next Sunday's 30-day look-back covers the gap. For each created_at day in the last 30 days it computes the row count and an order-independent checksum (sum of a 64-bit hash of order_id || '|' || updated_at) on both the replica and dw.orders. For each mismatched day it extracts all of that day's rows, deleted ones too, from the replica into stg.orders_recon. It then runs the same guarded MERGE into dw.orders in a warehouse transaction that does not touch hwm. It logs a run_log row with kind = reconciliation and run_date = the Sunday. If it fails, the scheduler retries twice, 15 minutes apart, then pages on-call. A failed reconciliation blocks nothing else.\n\n12. Late or lagging rows. If the replica lags at cutoff time, the mark still advances because hwm = cutoff. Later nights' lookback re-reads the period if the lag is under the 30-minute margin beyond the 90-minute import delay. Longer lag is left to the Sunday reconciliation.\n\n13. Manual rerun. Rerunning a night that already succeeded is safe. It reads the current, later hwm, extracts a mostly overlapping window, and the merge treats those rows as no-ops.",
+   "gaps": [
+    "Where the attempt process itself runs and what its code or runtime is. The document describes steps but not what executes them, only that the scheduler starts it as a process.",
+    "How the scheduler writes failed to run_log when the process could not, and what mechanism it uses. The document says it does this but not how, and the scheduler product is unknown.",
+    "Whether the 06:00 watchdog and the retry timer behave as described is unconfirmed. The document lists whether the scheduler can enforce a run-time limit and a retry timer as an open question.",
+    "How the Sunday reconciliation is chained to the success of Sunday's nightly load. It is not specified whether it is a scheduler dependency or a step inside the same process, or what attempt count and retry state it uses.",
+    "How the recovery note to #data-alerts is triggered. The watchdog is described as a 06:00 cron, but the note is posted when last_success_run_date later becomes today, and the document does not say what notices that.",
+    "How staging is isolated between the nightly and reconciliation runs if they overlap, and whether the run_log rows for retries carry the same run_id. The document does not say how run_id is assigned.",
+    "How the 'MERGE into dw.orders' concretely behaves if the warehouse lacks a transactional MERGE. The document gives only a fallback outline (shadow table swapped in atomically), not the steps."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 1,
+ "end_reason": "teachback-correct"
+}

@@ -1,0 +1,26 @@
+## Review of dp-01 (junior-v5, author sonnet, natural)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Fixed an inconsistency: the diagram set last_success_run_date in step 7 after commit, while the merge text set it inside the transaction. Now step 6 sets it with hwm and step 7 is audit only.
+- Added what happens if step 7 fails after the commit: log and ignore, no retry.
+- Defined the scheduler and what counts as a failed attempt, with a 60-minute per-attempt limit that the scheduler enforces. Recorded the limit as a decision to confirm.
+- Added the clock assumption and replica-lag handling to Extraction.
+- Clarified that the watchdog never stops a running attempt, and reworded the dotted arrow to say so.
+- Stated that reconciliation retries come from the scheduler, that run_log uses kind = reconciliation and run_date = the Sunday, and that a failed reconciliation blocks nothing.
+- Described streaming the extract into staging with COPY and where the extracted count comes from.
+- Added an Open questions section for the scheduler product and the clock assumption.
+- Reordered into the required layout: summary paragraph first, then terms, then diagram, then steps, failure table, decisions, open questions.
+- Added a summary paragraph explaining the main flow and why it is shaped this way.
+- Added a Terms section defining replica, warehouse, scheduler, attempt, hwm, lookback, cutoff, staging table, soft delete and reconciliation (from the junior's questions about the scheduler, clocks, cutoff and counts).
+- Merged the separate 'Extraction', 'Staging and validation' and 'Merge logic' sections into one numbered nightly attempt walkthrough, with the extracted-count and COPY streaming explained in step 4.
+- Merged the 'How to read this' trigger list, trigger table and retry details so triggers appear once; the scheduler definition moved into Terms.
+- Moved clocks, replica lag and the hwm = cutoff decision into one short section; removed the duplicated margin and per-attempt re-read bullets by folding them into terms and step 2.
+- Merged the separate failure-and-retry prose into one failure table, covering rollback, retry timing, third failure, step 7 failure, rerun, late commit and reconciliation failure.
+- Folded the staleness watchdog and late-commit recovery note into one watchdog section.
+- Cut the 'Retry timing' decision (duplicate of the failure table) and kept the 60-minute limit as the main decision to confirm.
+- Left the Mermaid diagram unchanged, since the earlier rounds already fixed its step 6/7 and watchdog labels.
+
+### Holes
+- None.

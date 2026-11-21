@@ -1,0 +1,23 @@
+## Review of auth-01 (junior-v4, author haiku, seeded-implicit)
+
+Rounds: 1. Ended: teachback-correct.
+
+### What changed
+- Replaced the summary with a plain statement of what changes and why Postgres is the store, so a newcomer sees the goal first.
+- Added a terms list defining session, sid cookie, idle and absolute timeouts, failure and lock.
+- Rewrote the Mermaid diagram so it shows the lock check, failure counting, the success transaction, the expired-session branch and logout, with the notes after it.
+- Stated each choice explicitly (storage, session ID, expiry check, failure count, lock check, success, cleanup, DB errors), as the brief requires.
+- Added a failure table covering each situation, the browser response and what is stored.
+- Changed the vague bad-login line into the exact 401 response and login page message.
+- Recorded the timing side channel for unknown emails and the unchecked schema and scheduler as open questions.
+- The file grew beyond 1.5 times its first length because the brief asks for every choice to be stated explicitly; the extra length is the choices and the failure table, not repeated text.
+- Merged the separate Choices list into the summary, the terms and the steps. Each rule now appears once, where it applies. Storage rationale is in the summary. Session ID is in the terms. Expiry, failure counting, lock check and success are numbered steps.
+- Rewrote the flow as numbered steps for login, protected request, logout and cleanup. Each step says what starts it, what it does, what data it keeps and what happens when the database fails.
+- Removed the choice-number cross-references, such as 'choice 3', so the reader does not have to look elsewhere in the file.
+- Defined 'fail closed' in one line, since the failure rules depend on it.
+- Merged the diagram notes that repeated the choices. The unknown-email password-skip note now appears only in step 2. The lowercasing, failure-recording and expired-session notes are kept, one line each.
+- Removed the separate Tables paragraph and folded the table names into the terms and steps.
+- Kept the diagram, the failure table and both open questions unchanged in substance. No new mechanism was added, and the plan's behaviour is unchanged.
+
+### Holes
+- None.

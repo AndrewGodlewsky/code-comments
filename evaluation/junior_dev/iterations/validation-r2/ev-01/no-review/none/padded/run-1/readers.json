@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "Order Service writes the order as PENDING plus an OrderPlaced outbox row, in one transaction. Customer gets 202 Accepted with orderId, no broker call.",
+  "q2": "After the broker acks the publish, the relay marks the row sent. A crash between ack and mark republishes the row, so delivery is at-least-once.",
+  "q3": "Every event goes on the single order-events topic keyed by orderId, so each consumer group receives one order's events in publish order.",
+  "q4": "StockReserved triggers the charge; Payment acts only on it. Inventory publishes StockReserved only after reserving stock, so no charge happens without reserved stock.",
+  "q5": "Via an outbox row committed with the state change, published by the relay. A crash leaves it unsent; the relay publishes it on restart.",
+  "q6": "The consumer looks up the eventId in processed_events and, if found, acks and does nothing. Otherwise it records the eventId with its state change.",
+  "q7": "The card call uses idempotency key orderId. Redelivery calls the card API again with that key, returning the original capture, not a second charge.",
+  "q8": "A decline is a result: PaymentDeclined leads to cancellation. A timeout or 5xx is an error: no ack, retried 1s, 10s, 60s, then dead-lettered.",
+  "q9": "PaymentDeclined causes the release. Inventory releases the reservation, in one transaction that also records the eventId.",
+  "q10": "From StockUnavailable, PaymentCaptured or PaymentDeclined events. If PENDING, it sets CONFIRMED or CANCELLED and writes OrderConfirmed or OrderCancelled to its outbox.",
+  "q11": "Notification consumes OrderConfirmed or OrderCancelled and sends the email. If it fails, retries and dead-lettering follow, but the order status never changes.",
+  "q12": "Four attempts: retried after 1 s, 10 s and 60 s. Then dead-lettered, on-call paged, and the group moves on; the order keeps its status."
+ },
+ "sonnet": {
+  "q1": "In one transaction it inserts the order with status PENDING and inserts an outbox row with the OrderPlaced event (both in its own Order DB). The customer gets 202 Accepted with the orderId, with no broker call.",
+  "q2": "A row counts as delivered/sent only after the broker acks the publish; then the relay marks it sent. If the relay crashes after the ack but before marking, the row is still unsent and gets republished (at-least-once delivery), so a duplicate is possible and consumers dedupe by eventId.",
+  "q3": "All events go on the single topic order-events, keyed by orderId, so each consumer group receives one order's events in publish order (the relay also publishes oldest outbox rows first).",
+  "q4": "Payment acts only on a StockReserved event (published by Inventory after reserving stock), so no charge happens without reserved stock. If stock is unavailable Inventory publishes StockUnavailable, which Payment ignores.",
+  "q5": "Each writes its result event to an outbox row in its own DB in the same transaction as its state change (and eventId record); its relay publishes it later. If it crashes after commit but before publishing, the outbox row is committed and unsent, so the relay publishes it on its first poll after restart; nothing is lost.",
+  "q6": "Each consumer has its own processed_events table (primary key eventId) and looks up the eventId first. If already recorded, it acks and does nothing. Otherwise it records the eventId in the same transaction as its state change and outbox row, commits, then acks. The primary key stops concurrent copies. Order Service also changes an order only while PENDING. (Exceptions: Payment's card call is covered by the idempotency key; Notification may send a second email.)",
+  "q7": "Payment never acked, so StockReserved is redelivered; the eventId isn't recorded yet so Payment calls the card API again with the same idempotency key (orderId), which returns the original capture without a second charge. Payment then commits its record, PaymentCaptured and the eventId.",
+  "q8": "A decline is a result: Payment publishes PaymentDeclined, Inventory releases the reservation, and Order Service sets the order CANCELLED. A timeout or 5xx is an error: the consumer throws, does not ack, and follows the retry rule (retries after 1 s, 10 s, 60 s; 4 attempts; then dead-letter queue and on-call page).",
+  "q9": "The PaymentDeclined event, published by Payment, is consumed by Inventory, which in one transaction releases the reservation and records the eventId. Inventory releases it.",
+  "q10": "It consumes StockUnavailable, PaymentCaptured or PaymentDeclined from the broker. In one transaction, if the order is PENDING it sets CONFIRMED or CANCELLED, writes an outbox row OrderConfirmed or OrderCancelled, and records the eventId.",
+  "q11": "Notification sends the email when it receives OrderConfirmed or OrderCancelled (confirmation or cancellation email). If the email fails, it is retried and dead-lettered like any other message; Notification cannot write order status, so the order status does not change.",
+  "q12": "4 attempts in all: the original plus retries after 1 s, 10 s and 60 s. If the 4th fails, the message goes to that group's dead-letter queue, on-call is paged and the group moves on to its next message. Nothing is undone; the order keeps its current status (e.g. stays PENDING with stock still reserved if Payment's message is dead-lettered)."
+ }
+}

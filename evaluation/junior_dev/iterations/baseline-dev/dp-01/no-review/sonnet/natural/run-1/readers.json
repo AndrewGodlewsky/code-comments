@@ -1,0 +1,30 @@
+{
+ "haiku-low": {
+  "q1": "The scheduler starts it at 02:00 UTC. It extracts replica rows with updated_at greater than HWM minus 2 hours, including soft deletes.",
+  "q2": "NOT STATED for the cause. The document says only that the 2-hour lookback covers the bulk-import visibility delay, and no lost late rows within 90 minutes.",
+  "q3": "The edit bumps updated_at, so it arrives through the nightly query once its updated_at falls inside the lookback window.",
+  "q4": "The delete is an ordinary write bumping updated_at. The merge keeps the row in orders with is_deleted set to true. No row is physically removed.",
+  "q5": "The transaction rolls back and the attempt is marked failed. The lock is released and HWM and orders are unchanged. If fewer than 3 attempts, retry after 15 minutes; else page on-call.",
+  "q6": "Dashboards show the last committed complete data, never partial. #data-alerts gets a staleness alert once that night, from the 06:00 freshness check. On-call is paged only after the third failed attempt.",
+  "q7": "The Sunday reconciliation. Its per-day count and checksum comparison over the last 30 days finds the mismatch and reloads that creation day.",
+  "q8": "Staging is deduplicated to the latest updated_at per order_id. The MERGE matches on order_id and updates only when s.updated_at >= t.updated_at.",
+  "q9": "It is stored in etl_control.high_water_mark (timestamptz). It is set to max(updated_at) of extracted rows, in the same transaction as the merge, only on success. Unchanged if the extract is empty.",
+  "q10": "The merge, HWM advance and run status commit in one warehouse transaction. Staging is invisible to dashboards, which read only committed orders.",
+  "q11": "NOT STATED whether failed staged rows are cleared on failure. Housekeeping drops staging rows older than 7 days. The retry re-reads HWM and recomputes window_lo as HWM minus 2 hours.",
+  "q12": "It re-reads all rows for mismatched days from the replica into staging, then merges them in one transaction with the same >= guarded merge. It never moves the nightly HWM."
+ },
+ "sonnet": {
+  "q1": "The scheduler at 02:00 UTC starts it. It extracts rows from the read replica where updated_at > window_lo, where window_lo = HWM minus 2 hours (includes soft-deleted rows, with an is_deleted flag). The first run seeds the HWM to the epoch, so it is a full backfill.",
+  "q2": "The document only says the 2-hour lookback covers the 'bulk-import visibility delay' (and replica lag generally). It does not explain the mechanism. It says there are no lost late rows within 90 minutes. The exact maximum delay is NOT STATED beyond that 90-minute figure.",
+  "q3": "The edit bumps updated_at. The next nightly extract picks it up because updated_at > window_lo. It is staged, deduped, and merged into orders. The MERGE updates the row if s.updated_at >= t.updated_at.",
+  "q4": "Soft delete is an ordinary write that bumps updated_at. It arrives through the same extract query with is_deleted = true (deleted_at IS NOT NULL). It is merged into orders, so the row stays with is_deleted set. It is not physically removed.",
+  "q5": "The transaction rolls back, so nothing is committed and the HWM and orders are unchanged. The attempt is marked failed in etl_run_log and the lock is released. If fewer than 3 attempts have been made, it waits 15 minutes and starts a new attempt. After the third failure, it pages on-call.",
+  "q6": "Dashboards refresh regardless and show only committed data, so they show the previous complete state (yesterday's data), never partial data. The 06:00 freshness check finds no success row for tonight's night_date and posts one staleness alert to #data-alerts. Retries continue. On-call is paged if all 3 attempts failed.",
+  "q7": "The Sunday reconciliation. It compares per-creation-day count and checksum on the replica and warehouse for the last 30 days. It reloads mismatched days and merges them with the guarded MERGE.",
+  "q8": "Staging is deduplicated to the latest version per order_id (row_number by updated_at DESC). The MERGE on order_id only updates when s.updated_at >= t.updated_at, so an older copy can't overwrite a newer one. Re-running just refreshes identical rows.",
+  "q9": "It is stored in the warehouse table etl_control as high_water_mark. The value is max(updated_at) of the extracted rows (not the wall clock). It is unchanged if the extract was empty. It is written inside the single merge-and-commit transaction, at commit time and only on success.",
+  "q10": "Merge, HWM advance and run-status update happen in one warehouse transaction that commits atomically. Dashboards read only committed orders, never stg_orders. They see either the previous complete state or the new complete state.",
+  "q11": "Staging was separate from the final commit and the transaction rolled back, so orders and the HWM are untouched. The retry's stage step deletes any existing stg_orders rows for this run_id before bulk-loading. The retry re-reads the HWM and recomputes window_lo = HWM minus 2 hours, so it extracts rows with updated_at > that. The document does not clearly say whether a retry reuses the same run_id; run_id is per attempt.",
+  "q12": "It re-reads all of that day's rows (by created_at date) from the replica for each mismatched day, within the last 30 days. They go into stg_orders under a reconcile run_id. One transaction then merges all mismatched days using the same >= guarded MERGE, so the result is atomic. It never touches or moves the nightly HWM."
+ }
+}

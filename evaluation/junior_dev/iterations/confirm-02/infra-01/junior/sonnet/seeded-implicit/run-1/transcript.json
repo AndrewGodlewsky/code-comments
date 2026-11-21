@@ -1,0 +1,353 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What is the deploy lock, where does it live, and what happens if someone else already holds it or it is never released?",
+     "about": "Get the deploy lock"
+    },
+    {
+     "id": "2",
+     "text": "How do you work out which colour is live and which is idle, and where is that recorded?",
+     "about": "Work out live / idle colour"
+    },
+    {
+     "id": "3",
+     "text": "What does 'migration lint' check, and what happens to the deploy if it fails?",
+     "about": "Build image + migration lint"
+    },
+    {
+     "id": "4",
+     "text": "Migrations run before the new release is deployed. How does the old (still live) colour keep working against the migrated database, and what happens if a migration fails halfway?",
+     "about": "Run migrations (additive only, indexes built concurrently)"
+    },
+    {
+     "id": "5",
+     "text": "What do the health checks test, and what happens if one of the 4 instances never becomes healthy?",
+     "about": "Health checks"
+    },
+    {
+     "id": "6",
+     "text": "What is the 'test listener', what do the smoke tests actually do, and what happens if they fail?",
+     "about": "Smoke tests via test listener"
+    },
+    {
+     "id": "7",
+     "text": "How is the LB switched (all traffic at once or gradually), and who or what does it?",
+     "about": "Switch the LB to the new colour"
+    },
+    {
+     "id": "8",
+     "text": "How is a 5xx spike defined, and how is rollback done? Does it also undo the migrations?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "9",
+     "text": "How long is the rollback window, and is it the same as the 15 minute watch? Who or what triggers the teardown?",
+     "about": "Keep old colour up for the rollback window"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The lock is the CI concurrency group for catalog-web deploys, so no new mechanism or store is needed. A second deploy waits in the queue. CI frees the lock when the job ends, including on failure, so it cannot be stuck forever."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "Read which target group the public listener points at. The LB is the only record, so there is no separate state to drift out of date."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The lint checks that new migration files contain only additive changes (new tables, nullable columns, indexes). If it fails, the deploy stops before any migration runs. The exact lint tool is not decided."
+    },
+    {
+     "id": "4",
+     "tag": "checked",
+     "text": "The brief requires additive-only migrations, so the live release works on the migrated schema. A failed migration stops the deploy: the new release never starts and the live colour keeps serving. What a half-finished migration leaves behind, such as an invalid concurrent index, is not decided and is listed under Open questions."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "What /healthz tests inside the service is not known. Per the brief, all 4 instances must pass 3 times in a row (checks every 10 seconds). If one never gets healthy, the 10-minute limit passes and the deploy aborts without touching the public listener."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The test listener is a non-public LB listener pointing at the idle target group, so smoke tests reach the new colour without user traffic. What the suite covers is not known; I use the existing smoke test suite. Failure aborts the deploy with the public listener untouched."
+    },
+    {
+     "id": "7",
+     "tag": "checked",
+     "text": "All at once: the pipeline repoints the public listener from the old target group to the new one in one step. The brief rules out a gradual shift."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "A spike is a 5xx rate above 1% over any 5-minute window during the 15 minutes after the switch. Rollback repoints the listener at the old colour and never reverses migrations."
+    },
+    {
+     "id": "9",
+     "tag": "checked",
+     "text": "The rollback window is 30 minutes after the switch, separate from and longer than the 15-minute watch. The deploy job itself shuts down the old colour at 30 minutes, after checking the listener still points at the new colour."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "10",
+     "text": "After the switch, the deploy job waits 30 minutes. If it is the job doing the waiting, does the lock stay held that whole time, and does that block the next merge's deploy?",
+     "about": "Keep old colour up for the rollback window / Release the lock"
+    },
+    {
+     "id": "11",
+     "text": "After an automatic rollback in the 15-minute watch, what does the job do next? Does it end as failed, and what happens to the new colour's instances?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "12",
+     "text": "Who or what starts the engineer rollback job, and how does it know which colour to repoint to without taking the lock?",
+     "about": "Keep old colour up for the rollback window"
+    },
+    {
+     "id": "13",
+     "text": "How does the pipeline read the 5xx rate, from where, and is the 15-minute watch the same clock as the 30-minute window?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "14",
+     "text": "On abort in health checks or smoke tests, how are the new instances stopped, and is the idle colour left empty and ready for the next deploy?",
+     "about": "Health checks"
+    },
+    {
+     "id": "15",
+     "text": "After a rollback, the database keeps the new migrations. What does a later deploy do when the migration lint and runner meet migrations that already ran?",
+     "about": "Run migrations (additive only, indexes built concurrently)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. The deploy job holds the lock through the 30-minute wait, so the next merge's deploy queues until teardown. Reason: the old colour is the rollback target until it is shut down, and the next deploy would otherwise reuse it as its idle colour. Added to the lock step."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "After an automatic rollback the job stops the new colour's instances, skips teardown because the old colour is live again, ends as failed and releases the lock. This is the simplest handling and adds no new mechanism."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "An engineer starts it by hand as a pipeline job (the brief allows this). It reads the public listener, repoints it at the other target group, which is the old colour, and refuses if that colour is already shut down (then a normal deploy of the previous release is needed). It needs no lock because it only repoints the listener and the deploy job rechecks the listener before teardown."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "The pipeline reads the 5xx rate of the new target group from the LB's own metrics, since the LB is already the record. The exact metric name and query are not chosen and are listed in the open questions. The 15-minute watch and the 30-minute window are not separate clocks: both start at the switch, and the watch ends inside the window (checked against the brief)."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "On abort the pipeline stops the new instances in the idle target group, so the idle colour is left empty and ready for the next deploy. The public listener was never touched. Added to the health-check step."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The migration runner skips migrations already recorded as applied, and the lint checks only the new migrations in this release. After a rollback the previous release still works because the migrations are additive. Which tool records applied migrations is not chosen and is listed in the open questions."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "16",
+     "text": "When the 5xx watch fires an automatic rollback, the job ends as failed. Does anything alert a person, or does someone have to notice the failed job?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "17",
+     "text": "The watch reads the 5xx rate over 5-minute windows. In the first minutes after the switch there is less than 5 minutes of data. Does the check wait for a full window, and what happens if the LB metrics cannot be read?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "18",
+     "text": "If an engineer does a manual rollback during the 30-minute window, what does the deploy job do with the new colour's instances, and does the job end as failed?",
+     "about": "Keep old colour up for the rollback window"
+    },
+    {
+     "id": "19",
+     "text": "What happens if the CI job itself dies or is cancelled mid-deploy, for example after the switch but before teardown? Who cleans up the instances and which colour is live?",
+     "about": "Get the deploy lock"
+    },
+    {
+     "id": "20",
+     "text": "The step says the old colour 'shuts down' at teardown. What is shut down, and does the old target group stay as the idle colour for the next deploy?",
+     "about": "Tear down old colour"
+    },
+    {
+     "id": "21",
+     "text": "If the previous deploy aborted and left the idle colour empty, or an earlier colour was never torn down, how does the next deploy handle an idle target group that is not empty?",
+     "about": "Deploy new release to idle colour (4 instances)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Nothing new alerts anyone. The failed job is the signal and the plan relies on whatever failure notification CI already sends; I do not know whether that is configured, so it is an open question. Adding an alerting mechanism is not required by the brief."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "The check runs once a minute, starting 5 minutes after the switch, so each check covers a full 5-minute window and no partial window is judged. If the metrics cannot be read, health cannot be confirmed, so it rolls back (the safe default and no new mechanism). Added to the watch step."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The job rechecks the listener at each 5xx check and before teardown. If it no longer points at the new colour, it handles it like an automatic rollback: stops the new colour's instances, skips teardown, ends as failed, releases the lock. Added to the keep-old-colour step."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "No new cleanup mechanism. CI releases the lock on cancel or death. The listener is the only record, so the live colour is whatever it points at, and an engineer can still run the manual rollback if the old colour is still up. Leftover instances are cleared by the next deploy, which stops any instances in its idle target group first (this also answers Q21). Cost: if the job died before teardown, the next deploy reuses the old colour and loses it as a rollback target."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "Teardown stops the 4 instances of the old colour. Both target groups stay in place, and the old one becomes the empty idle colour for the next deploy. Clarified in the step."
+    },
+    {
+     "id": "21",
+     "tag": "decided",
+     "text": "Before starting new instances, the deploy stops any instances already in the idle target group, since they are leftovers from an aborted, cancelled or never-torn-down deploy. The live colour is never touched. Added to the deploy step."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "22",
+     "text": "If the deploy job is cancelled after the switch, the lock is released and the next deploy starts at once. It then stops the 'idle' colour's instances. Is that idle colour the one an engineer was relying on as the rollback target, and can the engineer tell that from the listener alone?",
+     "about": "Get the deploy lock / If the job itself dies or is cancelled"
+    },
+    {
+     "id": "23",
+     "text": "What does the pipeline do if the manual rollback job and the deploy job's own automatic rollback both repoint the listener at nearly the same moment? Who wins, and could the listener end up on the wrong colour?",
+     "about": "Keep old colour up for the rollback window"
+    },
+    {
+     "id": "24",
+     "text": "Between the 15-minute watch ending and teardown at 30 minutes, is anything watching 5xx? If errors rise in minutes 15 to 30, who notices?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "25",
+     "text": "The 10-minute limit covers health checks and smoke tests together. Do the smoke tests start only after all 4 instances pass health checks, and what if the 10 minutes run out while a smoke test is mid-run?",
+     "about": "Health checks / Smoke tests via test listener"
+    }
+   ],
+   "answers": [
+    {
+     "id": "22",
+     "tag": "decided",
+     "text": "Yes, in that case the next deploy stops the old colour the engineer wanted as rollback target, and the listener alone cannot show it (it only shows the live colour). I accept this cost rather than add a lease or takeover mechanism, which the brief does not require; the engineer must roll back before the next deploy starts, otherwise a normal deploy of the previous release is the way back. Stated in the file after the steps."
+    },
+    {
+     "id": "23",
+     "tag": "decided",
+     "text": "This was a real hole: a manual job that just 'repoints to the other group' could flip the listener back to the new colour after the automatic rollback. Fixed: the manual rollback is given the new colour and repoints only if the listener still points at it; the automatic rollback does the same check. Both then aim at the old colour, so whichever runs second does nothing and the listener ends on the old colour."
+    },
+    {
+     "id": "24",
+     "tag": "decided",
+     "text": "No. The brief asks for a 15-minute watch, so from minute 15 to 30 nothing watches 5xx automatically and an engineer has to notice and start the manual rollback. I did not add a longer watch because that would change the requirement. Stated in the keep-old-colour step."
+    },
+    {
+     "id": "25",
+     "tag": "decided",
+     "text": "Yes, smoke tests start only after all 4 instances pass the health checks. If the 10 minutes run out mid-run, the job stops the run and aborts, stopping the new instances and leaving the public listener untouched. Added to the smoke test step."
+    }
+   ]
+  },
+  {
+   "round": 5,
+   "questions": [
+    {
+     "id": "26",
+     "text": "After the switch, the job waits 30 minutes holding the lock. If the CI system has a maximum job duration or the runner is reclaimed during that wait, what happens, and is that the same as the 'job dies' case?",
+     "about": "Keep old colour up for the rollback window"
+    },
+    {
+     "id": "27",
+     "text": "When the new instances are stopped after a rollback or abort, does the job wait for them to be fully stopped and deregistered before ending? What if stopping fails?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "28",
+     "text": "If the 5xx rate is above 1% but the new colour has very little traffic (for example a quiet night), is 1% a percentage of requests with any minimum count? What does the check do when there are zero requests?",
+     "about": "Watch 5xx for 15 min, roll back if it spikes"
+    },
+    {
+     "id": "29",
+     "text": "Who runs the migrations and against which database, and what if a migration takes very long? Is there a time limit like the 10 minutes for health checks?",
+     "about": "Run migrations (additive only, indexes built concurrently)"
+    },
+    {
+     "id": "30",
+     "text": "If the repoint in the switch step fails partway or its result is unclear, how does the job know which colour is live before aborting?",
+     "about": "Switch the LB to the new colour"
+    }
+   ],
+   "answers": [
+    {
+     "id": "26",
+     "tag": "decided",
+     "text": "Hitting a CI maximum duration or having the runner reclaimed is the same as the job dying: nothing extra runs, CI releases the lock, the listener still shows the live colour, and the next deploy clears leftovers. To avoid it in normal runs, the job timeout must be at least 60 minutes. The actual CI limits are not known and are listed under Open questions."
+    },
+    {
+     "id": "27",
+     "tag": "decided",
+     "text": "Yes, the job waits until the new instances are stopped. If stopping fails, the job still ends as failed and releases the lock, and the next deploy stops any leftover instances in its idle target group first. No retry mechanism is added. Stated in the health-check step."
+    },
+    {
+     "id": "28",
+     "tag": "decided",
+     "text": "The rate is the share of requests that returned 5xx, with no minimum request count, because the brief sets none. A window with zero requests counts as 0%, so no rollback. A quiet period can therefore make the rate noisy or hide a problem; I accept that rather than invent a threshold. Added to the watch step."
+    },
+    {
+     "id": "29",
+     "tag": "decided",
+     "text": "The pipeline job runs the migrations against the one shared PostgreSQL database. The brief sets no time limit for migrations, so I add none; the CI job timeout is the only limit, and a timeout is treated as a failed migration (deploy stops, live colour keeps serving). Added to the migrations step."
+    },
+    {
+     "id": "30",
+     "tag": "decided",
+     "text": "After a failed or unclear repoint, the job re-reads the public listener. If it still points at the old colour, it aborts. If it points at the new colour, the switch happened, so the job continues into the watch with the switch time set to now. Added to the switch step."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger and lock. A merge to `main` starts the CI deploy job. The job first asks for the deploy lock, which is the CI concurrency group for `catalog-web` deploys. If another deploy holds it, this job queues. The lock is held for the whole deploy, including the 30-minute wait, so the next merge's deploy waits until teardown. The reason given is that the old colour is the rollback target until it is torn down. CI frees the lock when the job ends, even on failure or cancellation. The job timeout should be at least 60 minutes.\n\n2. Find live and idle colour. The job reads which target group the public listener points at. That colour is live and the other is idle. The LB is the only record of this, and no other state is stored. If the read fails, the job stops.\n\n3. Build and lint. The job builds the release image. A lint checks that the new migrations are additive only (new tables, nullable columns, indexes). If either fails, the job stops. Nothing has changed yet.\n\n4. Migrate. The job runs the migrations once against the shared PostgreSQL database, before any new instance starts. They are additive, so the live colour keeps working on the migrated schema. Indexes are built concurrently. The runner skips migrations already recorded as applied. If a migration fails or the job times out, the deploy stops. The new release never starts and the live colour keeps serving. Migrations are never reversed, even by rollback.\n\n5. Start the new release on the idle colour. The job first stops any instances still in the idle target group. These are leftovers from an earlier deploy that was cancelled, died or never reached teardown. It never touches the live colour. It then starts 4 instances of the new image in the idle target group. A 10-minute limit, shared by steps 6 and 7, starts now.\n\n6. Health checks. Every 10 seconds the job calls `/healthz` on each new instance. All 4 must pass 3 times in a row before step 7 begins.\n\n7. Smoke tests. The job runs the existing smoke suite against the test listener. That listener is not public and points only at the idle (new) colour. The new release gets no user traffic until steps 6 and 7 have both passed. If a test fails, or the 10 minutes run out, the job aborts. It stops any run still going, stops the new instances, leaves the public listener alone and ends as failed. The idle colour is left empty. If stopping the instances fails, the job still ends as failed and releases the lock. The next deploy clears the leftovers in step 5.\n\n8. Switch traffic. The job repoints the public listener from the old target group to the new one in a single step, with no gradual shift. The switch time starts the 15-minute and 30-minute clocks. If the repoint fails or its result is unclear, the job re-reads the listener. If it still points at the old colour, the job aborts as in step 7. If it points at the new colour, the job carries on as if the switch succeeded.\n\n9. Watch 5xx. Starting 5 minutes after the switch and then once a minute until minute 15, the job reads the new target group's 5xx rate from the LB's own metrics. The rate is the share of requests that returned 5xx, measured over a 5-minute window. There is no minimum request count, and zero requests counts as 0%. If the rate is above 1%, or the metrics cannot be read, the job rolls back automatically. Before each check it also re-reads the listener (see step 10).\n\n10. Wait for the rollback window. The old colour stays up and untouched for 30 minutes after the switch. From minute 15 to 30 nothing watches 5xx automatically. An engineer would have to notice a problem and start the manual rollback. The job rechecks the listener before each 5xx check and before teardown. If the listener no longer points at the new colour, an engineer has rolled back, and the job does what an automatic rollback does after repointing.\n\nRollback. A rollback points the public listener back at the old colour and never reverses migrations.\n- Automatic: the job repoints only if the listener still points at the new colour. If it already points at the old one, someone else rolled back and the job leaves the listener alone. Then it stops the new colour's instances and waits until they have stopped. It skips teardown, ends as failed and releases the lock. The failed job is the alert, using whatever notification CI already sends for failed jobs.\n- Manual: an engineer starts a pipeline job and gives it the new colour as input. It does not take the lock. If the listener points at that colour, it repoints to the other group, the old colour. It refuses if the old colour is already shut down. If the listener does not point at that colour, it does nothing. A simultaneous manual and automatic rollback therefore both aim at the old colour, and the deploy job cleans up when it notices in step 10.\n\n11. Tear down. At 30 minutes the job stops the 4 old-colour instances. Both target groups stay, and the old one becomes the empty idle colour for the next deploy. After this, any rollback is a normal deploy of the previous release.\n\n12. Release the lock. The job ends and CI frees the lock.\n\nIf the job dies or is cancelled, nothing extra runs. This includes hitting CI's maximum job duration or the runner being reclaimed. The listener still records which colour is live, and an engineer can still run the manual rollback while the old colour is up. The next deploy clears leftovers from its idle colour. The cost is this: if the job died after the switch but before teardown, the lock is freed at once. The next deploy then treats the old colour as idle and stops its instances, so the rollback target is lost early.",
+   "gaps": [
+    "The document does not say what the 'previous release' image or version is for a normal-deploy rollback, or how the deploy job is told which release to deploy.",
+    "Step 5 says to stop leftover instances but does not say how the job waits for or confirms that they have stopped before starting the new ones.",
+    "It is not said whether the 10-minute limit from step 5 also covers the time the instances take to start."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 5,
+ "end_reason": "teachback-correct"
+}

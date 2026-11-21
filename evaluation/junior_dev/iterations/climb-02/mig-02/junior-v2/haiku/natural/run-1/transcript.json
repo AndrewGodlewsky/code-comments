@@ -1,0 +1,199 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "When the person sets billing_mode to shadow, what actually happens on the new engine side? Does a worker start it, or does it just see the flag on its next run?",
+     "about": "old_only --> shadow : person sets billing_mode to shadow"
+    },
+    {
+     "id": "2",
+     "text": "The comparison runs nightly, but the gate says 7 consecutive days below 0.1% mismatch. Is the 0.1% a share of customers or invoices with a mismatch? What counts as a day when the nightly job fails to run?",
+     "about": "shadow --> both : person approves, 7 consecutive days below 0.1% mismatch and at least 5,000 invoices compared"
+    },
+    {
+     "id": "3",
+     "text": "Who is 'person' in the approval transitions, and does the system check the gates before accepting the write, or does the person just judge them?",
+     "about": "person approves"
+    },
+    {
+     "id": "4",
+     "text": "In both mode, how does a single charge go from usage events to the provider and the ledger? Which engine writes the ledger entry, and when is the idempotency key created?",
+     "about": "both. The new engine charges and writes the ledger."
+    },
+    {
+     "id": "5",
+     "text": "How is the 2% charge failure rate measured? Is it failed charges over attempted charges, and who computes it and triggers rollback?",
+     "about": "automatic when new-engine charge failures exceed 2% in any 10-minute window"
+    },
+    {
+     "id": "6",
+     "text": "During rollback, how does 'freeze_moves' work in practice if billing_mode is still both or new_only? Which component sets the kill switch, and what happens to charges due while frozen?",
+     "about": "freeze_moves"
+    },
+    {
+     "id": "7",
+     "text": "What does 'reconcile per-period charge ownership' do step by step? How does it decide which engine owns a period, and where is ownership recorded?",
+     "about": "reconcile_ownership"
+    },
+    {
+     "id": "8",
+     "text": "When rollback comes from both, the old engine already computed invoices into the shadow store. How does resume_old turn those into real charges and ledger entries without a replay step?",
+     "about": "source_check --> resume_old : came from shadow or both"
+    },
+    {
+     "id": "9",
+     "text": "In replay_skipped, how does the old engine know which usage events were skipped, and what does 'computing without charging for periods already charged' produce?",
+     "about": "replay_skipped"
+    },
+    {
+     "id": "10",
+     "text": "Who or what moves billing_mode to old_only at the end, given the flag only changes by a person-initiated write? Does the person do it after resume_old, or does the rollback do it?",
+     "about": "rollback --> old_only : billing_mode set to old_only, gate counters reset"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The new engine is code inside the billing workers, not a separate service. Workers read billing_mode at the start of every run, so the shadow mode takes effect on the next worker run after the audited write. No deployment or restart is needed. Reason: the brief says workers read the flag on every run, and the new engine's behaviour depends only on the mode. The first nightly comparison runs after that first shadow run."
+    },
+    {
+     "id": "2",
+     "tag": "decided",
+     "text": "The 0.1% is a share of invoices, not customers: mismatched invoices divided by invoices compared on that UTC day. A day counts only when its nightly comparison completed. A missed or failed run is not evidence of a clean day, so it breaks the streak and raises an alert. The 5,000 invoices are counted across the whole 7-day streak, not per day. Reason: the brief sets a volume of evidence for the gate, and a per-day figure would be a different and stricter rule."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "The person is a named on-call billing engineer for forward moves and rollback. Finance sign-off is recorded by a separate named Finance approver. The system checks the gates when the write arrives and refuses the write if any gate is not met, so the person does not only judge them. Reason: the brief makes the gates fixed rules and the flag change an audited write."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Usage events feed the new engine, which computes the invoice for one customer and billing period. The idempotency key is the customer ID plus the billing period ID. It is recorded before the first provider call, and retries reuse it. The new engine calls the provider with that key. After a timeout it checks the provider by key before retrying. On provider success, the new engine writes the ledger entry. The old engine in both mode never charges and never writes the ledger. Reason: the key must identify the period, not the engine, so reconciliation can match the two engines. The brief assumes one invoice per customer per billing period."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "The rate is failed new-engine charge attempts divided by all new-engine charge attempts in a 10-minute window. The charge path writes the counts to the rollout record, and the rollout controller evaluates every window and starts rollback automatically. A window with no attempts does not trigger. The minimum attempt count and the treatment of timeouts are left open in the open points."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The rollback controller sets the kill switch in the rollout record as its first step, whether rollback was started by hand or automatically. The new engine checks the switch before every charge. The old engine needs no switch because it does not charge in both or new_only until the person writes old_only. Forward moves are refused while the switch is set. billing_mode does not change. A charge that is due during the freeze is held in its attempt record, not dropped, and is charged once under its key in resume_old."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "For each billing period with a new-engine charge attempt since the last reconciliation, the controller checks the provider by key. A provider success means the new engine owns the period, and any missing ledger entry is added from the provider record without a charge. An attempt with no success means the period is unowned and still due. A period with no attempt is not yet charged. Ownership is recorded per period in the rollout record. This is the only place ownership is decided, so every charge has exactly one owner."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "From both, the old engine has already computed the invoices into the shadow store, so there is no replay step. Before charging, resume_old checks that the shadow store covers every period up to the latest usage event, and computes any gap, which is the same computation as replay. It then charges each due period once under its key, using the old engine's invoice amount, and writes only the ledger entries that are missing. Any difference between the two engines' amounts already shows up as a mismatch."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The cutoff timestamp, stored in the rollout record when new_only is entered, is the last usage event the old engine processed. The skipped events are the ones after it. replay_skipped reads those events and computes their invoices into the shadow store. It charges nothing in this step. It writes ledger entries only where they are missing. Periods that the new engine already charged are computed but not charged. Periods that are unowned or not yet charged are charged later, in resume_old."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "On-call writes billing_mode to old_only as an audited, person-initiated write after freeze, reconciliation and replay are complete. That write is the confirmation that reconciliation has been reviewed, so the brief's open point is answered without a separate step. Automation never writes the flag. Consequence: after an automatic rollback, charges wait for on-call. This is recorded as an open point."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "Once on-call writes old_only, workers see old_only on their next run. What stops the old engine from charging normally right away, before resume_old has checked coverage and charged each period once? What starts resume_old, and in what order do these happen?",
+     "about": "await_flag --> resume_old : person sets billing_mode to old_only"
+    },
+    {
+     "id": "12",
+     "text": "What is the rollout controller? Is it a separate service, a scheduled job or part of the billing workers? What starts it, and what happens if it is down when a rollback is needed?",
+     "about": "rollback"
+    },
+    {
+     "id": "13",
+     "text": "Who or what moves the state from new_only to decommissioned on day 35? Is it automatic, or does a person write something? And what does 'retired' mean in practice?",
+     "about": "decommissioned : day 35 in new_only, old engine may be retired"
+    },
+    {
+     "id": "14",
+     "text": "At the moment the person moves to both, when does the new engine start charging, and how is double charging avoided if some workers are mid-run and still treating the mode as shadow?",
+     "about": "shadow --> both : person approves, shadow gates met"
+    },
+    {
+     "id": "15",
+     "text": "An attempt without success is called unowned and still due. How can the controller tell a failed attempt from one whose outcome is still unknown and might yet succeed at the provider? What stops the old engine from charging a period the provider is still processing?",
+     "about": "reconcile_ownership: Attempt without success"
+    },
+    {
+     "id": "16",
+     "text": "In both mode the new engine charges and the old engine only writes to the shadow store. Does the nightly comparison still run, and who closes a mismatch in the rollout record? Do new mismatches after the 14 days started reset the 14-day count?",
+     "about": "both to new_only : 14 UTC days in both, no unresolved mismatches"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "The kill switch covers both engines, not only the new one. Once billing_mode is old_only, ordinary old-engine runs make no charges and write no ledger entries while the switch is set. The order is freeze, reconcile, replay if needed, await_flag (on-call writes old_only once the controller reports steps 1 to 4 complete), then the controller starts resume_old, which checks shadow coverage, charges each unowned or not-yet-charged period once under its key, writes missing ledger entries and clears the switch. Only then does normal charging resume. Reason: without this, the old engine could charge a period the new engine already charged. This supersedes the earlier answer that the old engine needs no switch."
+    },
+    {
+     "id": "12",
+     "tag": "unknown",
+     "text": "The brief does not say what the rollout controller is, and it is not yet written. The file now says the controller computes the rate, sets the kill switch and runs the steps, and lists its form as an open point. If it is down, no rollback step runs, so automatic rollback cannot start, while the charge path keeps writing attempt and failure counts to the rollout record. Whether it is a service, a scheduled job or part of the workers is not known."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "A person writes the move to decommissioned as an audited write, on or after day 35 in new_only. Nothing moves automatically. Reason: the brief says a person always makes forward moves, and decommissioning is a forward move. In the file, retired means the old engine is no longer run and rollback is no longer possible. What physical removal involves is not known and is an open point."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A mode change applies only to worker runs that start after the audited write. A run that started in shadow finishes in shadow, so the old engine may still charge it under its key. The new engine checks the provider by key before its first charge, so a charge already made under that key is reused rather than repeated, and only the ledger entry is written, from the provider record. Reason: both engines use the same key. This depends on the provider treating a repeated key as the same charge and on concurrent same-key calls being safe. That is an open point to confirm with the provider."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The controller tells three provider outcomes apart: success; a final failure or no record under the key; and no final outcome yet. Only the second counts as unowned and still due. A period with no final outcome is held, and reconciliation does not finish until it has one. The old engine charges a period only in resume_old, after reconciliation has an answer for it. Reason: the brief requires that no charge be made twice, and a timeout must be checked by key before any retry. Whether the provider reports a pending state, and whether no record is final, is an open point."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "Yes, the nightly comparison keeps running in both, because the old engine keeps computing into the shadow store. A person closes each mismatch in the rollout record, as an on-call billing engineer, the same role that makes forward moves. The 14-day gate counts days in both and checks at the move that no mismatch is unresolved. A new mismatch does not reset the day count. It blocks the move until it is closed. Reason: the brief's both-to-new_only gate has no consecutive-days requirement, unlike shadow-to-both."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "I follow one customer/billing-period charge as the rollout moves forward, then the same period through a failure and rollback.\n\n1. The rollout starts in `old_only`. The old engine reads usage events, computes invoices, writes the ledger and charges. The new engine is off. The mode is held in `billing_mode` in the config service, and every worker run reads it at the start. A mode change only applies to runs that start after the audited write. A run already in progress finishes in its old mode.\n\n2. A person sets `billing_mode` to `shadow`. This is an audited write. The system checks the gates when the write arrives. It refuses the write if a gate isn't met or the kill switch is set. The document gives no gate for old_only to shadow, so I assume only the kill-switch check applies. The rollout record (in the billing store) holds the current mode, the entry timestamp and the shadow streak, which starts at zero.\n\n3. In `shadow`, the billing workers run the new engine on the same usage events as the old engine. The old engine is unchanged and still charges and writes the ledger. The new engine writes its invoices only to the shadow store. It never charges and never writes the ledger. New-engine errors are recorded and never trigger rollback.\n\n4. A nightly job compares both engines' invoices per customer and billing period. A mismatch is a total that differs by more than one cent. The daily result (completed flag, invoices compared, mismatches) goes into the rollout record. A mismatch is recorded and breaks the streak, with no automatic action. A comparison that doesn't complete means the day isn't counted, the streak breaks and an alert fires.\n\n5. To move to `both`, a person writes `billing_mode` = both. The system checks the gate. It needs 7 consecutive UTC days, each with a completed comparison and a mismatch rate below 0.1%. It also needs at least 5,000 invoices compared across the 7 days. If the gate is not met, the write is refused.\n\n6. In `both`, take one customer and billing period, \"one charge\".\n   - The new engine computes the invoice from the usage events.\n   - It builds the idempotency key from the customer ID plus the billing period ID, and records the key before the first provider call.\n   - It checks the payment provider by that key. If a charge already exists, it writes the ledger entry from the provider record and does not charge. Otherwise it charges with the key.\n   - If the outcome is unknown, it checks the provider by key before any retry. Every retry reuses the key and never resends blind.\n   - On provider success, it writes the ledger entry.\n   - Meanwhile the old engine computes the same period's invoice into the shadow store only. It does not charge or write the ledger. Both engines use the same key, so reconciliation can match them.\n   - The charge path writes new-engine attempt and failure counts to the rollout record. Nightly comparison continues, and automatic rollback is armed.\n\n7. To move to `new_only`, a person writes the mode. The system checks the gate: 14 UTC days in `both`, no unresolved mismatches at that moment, and a recorded Finance sign-off by a named approver. Mismatches don't reset the day count, and a person closes each mismatch in the rollout record. On entry, the 35-day clock starts and the cutoff timestamp (the last usage event the old engine processed) is stored. The old engine stops computing and the new engine does everything.\n\n8. On or after day 35 in `new_only`, a person may move to `decommissioned`. That state is terminal and rollback is no longer possible.\n\n9. Failure and rollback path. Rollback starts in one of two ways.\n   - By hand from shadow, both or new_only (new_only only before day 35).\n   - Automatically in `both` or `new_only` (new_only only before day 35) when the failed new-engine charge attempts divided by all attempts in a 10-minute window is above 2%. Windows with no attempts never trigger. The controller computes the rate from the counts in the rollout record. The automatic trigger starts the steps below and never writes `billing_mode`.\n\n10. Rollback step `freeze_moves`. The controller sets the kill switch in the rollout record. Forward moves are refused while it is set. `billing_mode` does not change. Ordinary worker runs of either engine make no charges and no ledger writes. Charges that fall due are held, not dropped.\n\n11. Rollback step `reconcile_ownership`. For each period with a new-engine charge attempt since the last reconciliation, the controller checks the provider by key.\n   - Provider success: the new engine owns the period. The controller adds the ledger entry if it is missing and charges nothing.\n   - Final failure, or no record under the key: the period is unowned and still due. The old engine will charge it once, under the same key, in `resume_old`.\n   - No final outcome yet: the period is held, and reconciliation doesn't finish until every such period has an outcome.\n   - No attempt: the period is not yet charged. The old engine charges it in `resume_old`.\n   Ownership is recorded per period in the rollout record.\n\n12. Rollback step `source_check`. If the rollback came from `new_only`, it runs `replay_skipped`. If it came from shadow or both, it goes straight to `await_flag`.\n\n13. Rollback step `replay_skipped` (new_only only). The old engine computes invoices for usage events after the cutoff timestamp into the shadow store. It charges nothing. It writes ledger entries only where missing. Periods the new engine owns are computed but not charged.\n\n14. Rollback step `await_flag`. The controller reports steps 1 to 4 as complete. Nothing charges. On-call writes `billing_mode` to `old_only` with an audited write, which confirms the reconciliation has been reviewed.\n\n15. Rollback step `resume_old`. The controller starts this step when it sees `old_only`. The old engine first checks that the shadow store covers every period up to the latest usage event, and computes any gap. It then charges each unowned or not-yet-charged period once under its key and writes missing ledger entries. It then clears the kill switch and the gate counters reset. Ordinary charging resumes only after the switch is cleared. The state then returns to `old_only`.\n\n16. Other failure rules.\n   - Each rollback step is idempotent. An interrupted rollback resumes at its last completed step, and the kill switch stays set until `resume_old` completes.\n   - If the config service is unreadable, workers hold: no charges, no ledger writes, and an alert. They never fall back to `old_only`, because that could re-charge periods the new engine already charged.\n   - If the charge outcome is unknown, check the provider by key before any retry.\n   - Skipped usage events age out from the oldest one forward, so the practical deadline for rollback from new_only is earlier than day 35.",
+   "gaps": [
+    "What the rollout controller is (a service, a scheduled job, or part of the workers), and what happens to a rollback if it is down. This stops me explaining who actually runs the freeze, reconcile and resume steps, and how it notices `old_only`.",
+    "Whether the automation may write `old_only` itself after an automatic rollback. The document says only a person may write `billing_mode`, so I can't say how an automatic rollback ever finishes without on-call.",
+    "What gate applies to old_only to shadow. The document gives gates only for shadow to both, both to new_only and the forward-move kill-switch check.",
+    "The minimum attempt count before the 2% rule applies, and whether unknown-outcome timeouts count as failures. I can't say exactly when an automatic rollback fires.",
+    "Whether the provider can report a pending outcome, whether 'no record under the key' is a final answer, and whether repeated same-key calls from both engines are safe. Reconciliation and the old engine's re-charge depend on these.",
+    "Who may give Finance sign-off, and how a sign-off is recorded or checked against the named approver.",
+    "How 'held' charges and periods with no final outcome are eventually resolved while reconciliation waits, including any timeout.",
+    "How the kill switch and billing_mode gate checks interact when a rollback starts while a forward move is being written, beyond 'refused while set'.",
+    "The exact margin before day 35 at which rollback from new_only stops being practical, since skipped events age out from the oldest one.",
+    "What retiring the old engine involves in practice, and what decommissioned changes in the system."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

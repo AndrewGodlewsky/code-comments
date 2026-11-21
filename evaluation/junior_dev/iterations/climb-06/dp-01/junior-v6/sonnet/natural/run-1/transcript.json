@@ -1,0 +1,184 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "Where does the retry logic and the 15-minute wait actually run? Is it the scheduler itself, or the job process? What if the job process crashes or hangs so it never marks the run failed?",
+     "about": "A failed attempt makes the scheduler start the next one 15 minutes later / FAIL -> RETRY -> WAIT"
+    },
+    {
+     "id": "2",
+     "text": "What do the retries mean for the 06:00 watchdog? Attempt 3 could start at 02:30 or later. What is the longest a run takes, and does anything stop an attempt that is still running at 06:00?",
+     "about": "A separate scheduler task fires at 06:00 UTC / WATCH"
+    },
+    {
+     "id": "3",
+     "text": "If the same night's load is running as attempt 1 and the scheduler starts attempt 2, can two attempts overlap? How is that prevented?",
+     "about": "Start attempt n (n = 1..3) / etl.run status running"
+    },
+    {
+     "id": "4",
+     "text": "How does the watchdog know which row is 'tonight's nightly run'? Is it matched on run_date and kind, and what is run_date when attempts cross midnight UTC?",
+     "about": "Staleness alert / etl.run has committed success for tonight's nightly"
+    },
+    {
+     "id": "5",
+     "text": "What does the extract do when it has to pull rows from the replica into the warehouse? What tool or mechanism moves them, and what is 'extracted count' compared against?",
+     "about": "Extract rows where lower < updated_at <= cutoff / Staged count equals extracted count"
+    },
+    {
+     "id": "6",
+     "text": "The cutoff is taken once, but is the extract query run in one go at that same cutoff? Could rows with updated_at <= cutoff still be committed on the app DB after the extract and be missed? How does the 2-hour overlap cover that?",
+     "about": "Extract window / Ask replica for cutoff"
+    },
+    {
+     "id": "7",
+     "text": "How does Sunday reconciliation get started, and does 'the nightly job starts it' mean a separate process with its own etl.run row (kind reconcile) and its own attempts? What does the retry arrow from RECON to RETRY actually re-run?",
+     "about": "Sunday reconciliation / RECON -> RETRY"
+    },
+    {
+     "id": "8",
+     "text": "In the reconciliation step, the staging table is shared with the nightly. How are the reconcile rows tagged and cleaned up, and what happens to the staging rows after a successful merge?",
+     "about": "Extract every row created on each mismatched day into etl.stg_orders"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The scheduler owns the retry and the 15-minute wait. The job only runs one attempt and exits. A crash, hang or timeout counts as a failed attempt: the scheduler marks any leftover running etl.run row failed and retries. The timeout length is not known and is listed as open."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The longest run time is not known, so I cannot say whether attempt 3 can pass 06:00. Decided: nothing stops an attempt at 06:00. If it commits later, the data appears then. The watchdog alert fires meanwhile and dashboards show the previous committed state. Added to open questions."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "They cannot overlap. The scheduler starts attempt n+1 only after attempt n has ended, whether it succeeded, failed or timed out. I added no lock, because the merge is idempotent anyway."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Yes. It matches run_date = today's UTC date, kind = nightly, status = success. run_date is the UTC date of the scheduled 02:00 start and all attempts keep it, even if they cross midnight. The watchdog runs at 06:00 on the same date."
+    },
+    {
+     "id": "5",
+     "tag": "unknown",
+     "text": "The brief names no copy tool. Mechanism: the job runs one query on the replica, counts the rows it reads, and bulk-loads them into staging. The staged row count for this run_id is compared to the rows read. Which tool does the bulk copy is not decided and is listed as open."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "Yes, one query at that one cutoff. Rows with updated_at <= cutoff that were not yet visible (bulk imports, up to 90 minutes late) are missed that night. The next night's lower bound is the new HWM (this cutoff) minus 2 hours, which covers the 90-minute delay. Anything later is left to Sunday's reconciliation."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "After the nightly load commits on a Sunday, the same job continues into reconciliation as a second phase. It has its own etl.run row (kind reconcile) and its own attempts. The retry arrow reran the wrong thing in the old diagram. It now goes to a separate reconcile retry that reruns reconciliation only, 3 attempts 15 minutes apart, then a page. This policy is an assumption that needs confirming."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "Reconcile rows are tagged with the reconcile run's run_id, like nightly rows. Staging is emptied before every extract (attempts and reconciliation run one at a time), and the run's staging rows are deleted in the same transaction as the merge. This replaces the old rule that each attempt cleaned only its own run_id, which could not clean earlier failed attempts."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "The intro says reconciliation catches rows that become visible later than the 2-hour overlap covers. Step 5 says a day can mismatch only because of rows written after the nightly cutoff. Which is it, and how do those two fit together?",
+     "about": "Sunday reconciliation, step 5 (a day can mismatch only because rows were written between the nightly cutoff and the reconciliation query)"
+    },
+    {
+     "id": "10",
+     "text": "When the scheduler times out an attempt, does it actually kill the job process? If the old process is still alive and later runs its merge transaction, what happens while attempt 2 is running?",
+     "about": "Job crashes, hangs or times out / scheduler treats it as failed"
+    },
+    {
+     "id": "11",
+     "text": "Suppose the merge transaction commits and the run row is success, but the job crashes before it exits cleanly. Does the scheduler still count the attempt as failed and retry? What does the retry do then?",
+     "about": "ONE warehouse transaction / etl.run = success"
+    },
+    {
+     "id": "12",
+     "text": "On the very first run, the HWM is the seeded backfill start time. Does the first night just load everything from that time to the cutoff in one query, or is there a separate backfill?",
+     "about": "Read HWM from etl.control / lower = HWM - 2h"
+    },
+    {
+     "id": "13",
+     "text": "What does the count check compare when the extract returns zero rows? And is the dedup a step that changes the staging table, or part of the merge query?",
+     "about": "Rows in staging for this run equal rows read? / Dedup in staging"
+    },
+    {
+     "id": "14",
+     "text": "Wh.orders holds one row per order_id with the latest version, and the replica holds the same. How are soft-deleted rows counted on each side so the count and checksum can match? And which version's updated_at goes into the checksum?",
+     "about": "Sunday reconciliation, step 2 (count and checksum per creation day)"
+    },
+    {
+     "id": "15",
+     "text": "If the replica has fully stalled, so the replay timestamp is older than the HWM, what is the window and what does the job do to the HWM?",
+     "about": "Ask replica for cutoff = least(now, replay timestamp)"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Both are true and the old step 5 was misleading. Reconciliation exists to fix rows that became visible later than the 2-hour overlap covers (for example after replica lag); those make a day mismatch for real. Separately, rows written between the nightly cutoff and the reconciliation query also make a day differ, harmlessly. Step 5 now lists both causes."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Yes. On timeout the scheduler kills the job process and its warehouse session and waits for it to end before starting attempt n+1. If it cannot confirm the process ended, it starts no new attempt and pages on-call. So a dead attempt cannot merge later. Even a stray late merge would be harmless because the merge is idempotent and the HWM only moves forward, but we do not rely on that."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "No. The scheduler judges an attempt by its etl.run row, not by process exit. If the row is success, the attempt succeeded: no retry, and the Sunday reconciliation proceeds. If the row is not success, the attempt failed and is retried. Added to the doc and the flowchart."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The first night loads everything from the seeded backfill start time to its cutoff in one query. There is no separate backfill, which is the simplest option. If that is too large, the seed time would have to change; listed as open."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Zero rows read and zero staged is equal, so the check passes. The merge does nothing and the HWM still advances to the cutoff. Dedup is now part of the merge query (a select over staging), not a separate step, and does not change staging. This removes one flowchart node."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "Soft-deleted rows are counted like any other row on both sides: the replica keeps them with deleted_at set and the warehouse keeps them with is_deleted. Each side contributes its latest version, so the checksum uses that row's current updated_at; for a soft-deleted order that is the delete time, since the delete is a write."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "The cutoff is below the HWM, so the window (HWM - 2h, cutoff] is small or empty. The load still succeeds, and the HWM does not move because it only updates when the new value is larger. Nothing alerts on this, since a success row exists; that hole is listed under open questions."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. The scheduler starts attempt 1 of the nightly load at 02:00 UTC. The run_date is that scheduled UTC date, and every attempt that night keeps it, even after midnight. Attempts run one at a time. The scheduler owns retries and waiting. The job runs a single attempt and exits.\n\n2. Bookkeeping. All pipeline state lives in the warehouse, because there is no write access to the app database. The attempt reads the high-water mark (HWM) from etl.control, where it is stored and nowhere else. It subtracts the 2-hour lookback to get the lower bound. It inserts an etl.run row with status running, which holds run_id, run_date, attempt, kind nightly, and later the window, counts and error.\n\n3. Cutoff. The job asks the read replica once for cutoff = least(now(), pg_last_xact_replay_timestamp()). If the replica lags, the cutoff is its replay point, so the job never claims data the replica has not replayed. If the replay point is older than the HWM, the window is small or empty.\n\n4. Extract. The job runs one query on the replica: lower < updated_at <= cutoff. Soft deletes are ordinary writes that bump updated_at, so they arrive through the same query. It counts the rows it reads, and the count may be 0. The overlap means the same order can arrive on two nights. A bulk import can make rows visible up to 90 minutes late, and the 2-hour lookback covers that.\n\n5. Staging. The job deletes everything in etl.stg_orders. It can do this because only one attempt or reconciliation runs at a time. It then bulk-loads the extracted rows tagged with this run_id. It compares the staged count for this run with the number of rows read. Zero and zero counts as equal. If the counts differ, the attempt fails (see step 9).\n\n6. Merge transaction. One warehouse transaction does four things.\n   - It merges into wh.orders from a select over staging. The select keeps the latest updated_at per order_id and sets is_deleted = (deleted_at is not null). The merge updates a matched row only if src.updated_at >= tgt.updated_at, and inserts a new row if there is no match.\n   - It sets the HWM to the cutoff, but only if the cutoff is larger, so the HWM never moves backwards.\n   - It marks the etl.run row success.\n   - It deletes this run's staging rows, then commits.\n   Because wh.orders changes only in this transaction, dashboards see the whole night or none of it. Reprocessing the overlap is harmless because of the >= guard. An empty extract still advances the HWM to the cutoff.\n\n7. Dashboards. They refresh at 06:00 UTC and read only wh.orders. They show the last committed state. If a late attempt commits after 06:00, the data appears then.\n\n8. Judging an attempt. The scheduler judges by the etl.run row, not by the process exit. If the row says success, the attempt succeeded, even if the process crashed afterwards. There is no retry, and the Sunday step proceeds. Otherwise the attempt failed. On a hang or timeout, the scheduler kills the job process and its warehouse session. It waits until the process has ended, then judges by the row. If it cannot confirm the process ended, it starts no new attempt and pages on-call.\n\n9. Failure and retry. An extract error, a staging load error, a count mismatch or a merge error marks the run failed. A merge error rolls back the whole transaction, so the HWM and wh.orders are unchanged. The job marks the row failed, or the scheduler does if the job cannot. If n < 3, the scheduler waits 15 minutes and starts the next attempt. That attempt reads the same HWM and takes a fresh cutoff. If the third attempt fails, it pages on-call, and reconciliation does not run.\n\n10. Watchdog. At 06:00 UTC, independently of the retries, the watchdog looks in etl.run for a success row with kind nightly and run_date equal to today's UTC date. If it finds none, it posts a staleness alert to #data-alerts. If it finds one, it does nothing. This covers an attempt still running, a failed attempt waiting to retry, and a night out of retries. The on-call page is separate, and both can happen on the same night.\n\n11. Sunday reconciliation. If the nightly load committed and the run date is a Sunday, the same job continues into a second phase with its own etl.run row of kind reconcile.\n   - For each created_at day in the last 30 days, it computes a row count and an order-independent checksum of order_id plus updated_at on the replica and on wh.orders. Soft-deleted rows are included.\n   - It empties staging and extracts every row created on each mismatched day from the replica into staging, tagged with the reconcile run_id.\n   - One transaction merges those days into wh.orders with the same rule and deletes the run's staging rows. The HWM is not touched.\n   - If no day differs, there is nothing to reload.\n   A mismatch can be a real miss, such as rows that became visible later than the 2-hour overlap, for example after replica lag. It can also be harmless, such as rows written between the nightly cutoff and the reconciliation query. Reloading a harmless day does no damage.\n   If reconciliation fails, the assumed policy is to mark the reconcile run failed and rerun only reconciliation, up to 3 attempts 15 minutes apart, then page. The nightly load is not undone.\n\n12. Setup. etl.control is seeded once with a backfill start time as the HWM. The first night loads everything from that time to its cutoff in one query.",
+   "gaps": [
+    "The attempt timeout length is not given, so I cannot say when the scheduler kills a hung attempt or whether a late attempt can run past 06:00. The document lists this as an open question.",
+    "A fully stalled replica makes the load succeed with no new data and fires no alert. The document leaves open whether to alert on replica lag, so I cannot say how that case is detected or handled.",
+    "The reconciliation failure policy is only assumed to match the nightly policy and still needs confirming. The document says the brief is silent on it.",
+    "How the scheduler judges a killed attempt whose run row is still running and whose job could not mark it failed is covered only as 'the scheduler marks it'. The document does not say how the scheduler writes to the warehouse to do this.",
+    "The document does not say which component runs the Sunday reconciliation if the job process is not still alive after the nightly commit. It says 'second phase of the same job' but not how the scheduler triggers it, and it says reconciliation retries are 'reruns reconciliation only' without saying who starts them."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 2,
+ "end_reason": "teachback-correct"
+}

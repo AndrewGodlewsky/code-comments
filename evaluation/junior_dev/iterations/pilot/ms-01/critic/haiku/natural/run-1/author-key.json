@@ -1,0 +1,30 @@
+{
+ "q6": {
+  "answer": "The Order service drives each checkout step: it inserts the order as PLACED, calls Inventory to reserve, calls Payment to charge, calls Inventory to claim, then confirms or cancels. The record of progress is the order row in Order's own database, which holds the status (PLACED, AWAITING_PAYMENT, CONFIRMED, and so on) and the settlement state.",
+  "decided": true
+ },
+ "q7": {
+  "answer": "The provider sends a charge webhook to Payment, which verifies the signature and reads the event id. Payment then makes a conditional update of the charge row and writes a PaymentSucceeded or PaymentDeclined event to its outbox, which goes out on the broker to Order. Polling by Payment and ops entries reach the same conditional update, but they have no event id.",
+  "decided": true
+ },
+ "q8": {
+  "answer": "Payment stores each webhook event id under a unique constraint, so a repeated webhook returns 200 and changes nothing. Every outcome change is a conditional update from PENDING or UNRESOLVED to a final state, done once, so a same-outcome repeat is a no-op and a conflicting outcome alerts ops. Order's consumers are idempotent: they check that the order is still AWAITING_PAYMENT and otherwise treat the event as a redelivery and do nothing.",
+  "decided": true
+ },
+ "q9": {
+  "answer": "Payment records the charge as DECLINED and emits PaymentDeclined. Order receives that event, sets PAYMENT_DECLINED, and sends a release to Inventory keyed by order id, retrying until acknowledged or the release window ends. Inventory then sets the HELD reservation to RELEASED, and the stock is free at the latest at expires_at even if the release never arrives.",
+  "decided": true
+ },
+ "q10": {
+  "answer": "The claim decides it. Order asks Inventory to claim the reservation keyed by order id, and Inventory moves a HELD reservation to CLAIMED only if its expires_at is still after now, otherwise it replies lapsed. Claimed means Order confirms the order; lapsed means Order cancels as out of stock, emits OrderCancelled, and Payment refunds the full amount. This is the mechanism as drawn for Option A. Which hold option is used is still open under Decision 1.",
+  "decided": true
+ },
+ "q11": {
+  "answer": "Payment marks the refund REFUND_FAILED, stores the error, and increments attempts. If attempts are below 8, it waits a backoff and resends the refund with the same key, and if attempts reach 8 it becomes REFUND_ESCALATED, ops is alerted, and it stays open until ops resolves it. The refund is tracked in Payment's refunds table, which has one row per order id with state, attempts and last error, and the settlement stays OPEN throughout. Whether a failed refund can take a same-key retry is unconfirmed with the provider (Decision 3), so the retry key may need to change per attempt.",
+  "decided": true
+ },
+ "q12": {
+  "answer": "Only the OrderConfirmed event empties the cart. Order publishes it through its outbox after the claim succeeds and the order becomes CONFIRMED, and the Cart service consumes it and empties the cart. Cart records processed event ids so that a redelivered event changes nothing.",
+  "decided": true
+ }
+}

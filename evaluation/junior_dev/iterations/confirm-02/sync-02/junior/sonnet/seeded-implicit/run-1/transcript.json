@@ -1,0 +1,244 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What does POST /catalogue/full/start do, and what does it return? Is start_seq something it hands back?",
+     "about": "1. POST /catalogue/full/start and 4. catch up from start_seq"
+    },
+    {
+     "id": "2",
+     "text": "What is a 'seq' here: who assigns it, and what does change_seq on a product mean?",
+     "about": "5. Incremental sync from last_seq; compare change_seq when applying"
+    },
+    {
+     "id": "3",
+     "text": "What exactly is stored in sync_state, and what is the cursor made of (a product id, a page number)?",
+     "about": "2. sync_state / 3. Keep a cursor so it can resume"
+    },
+    {
+     "id": "4",
+     "text": "How does 'swap' work: what happens to products and products_staging, and is it atomic? What if the app dies mid-swap?",
+     "about": "4. When it's done, catch up from start_seq and swap"
+    },
+    {
+     "id": "5",
+     "text": "What does 'catch up from start_seq' call and apply, and into which table (staging or products)?",
+     "about": "4. catch up from start_seq"
+    },
+    {
+     "id": "6",
+     "text": "When does the server return 410 resync_required, and what happens to the existing products data and the partial staging data during the re-download?",
+     "about": "6. Handle 410 resync_required with a re-download"
+    },
+    {
+     "id": "7",
+     "text": "What is shown to a rep while the first download runs, and what if Wi-Fi drops or is not available when the download is needed?",
+     "about": "3. Wi-Fi only, and Open: can reps browse during the first download?"
+    },
+    {
+     "id": "8",
+     "text": "Which failures are retried with backoff (network, 5xx, 4xx), and what happens after the 5th failed attempt?",
+     "about": "7. Retries with exponential backoff, max 5 attempts"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "It keeps no server state and returns start_seq, the highest committed change_seq at that moment. Because change_seq is assigned at commit and rows become visible in order, replaying changes after start_seq catches every edit made during the download. Stateless was chosen as the simplest option."
+    },
+    {
+     "id": "2",
+     "tag": "checked",
+     "text": "change_seq comes from the Catalogue service: every insert, update or delete stamps the row from one global, strictly increasing sequence, assigned at commit. A higher change_seq means a newer version of the product. 'seq' on the client is just a saved change_seq position. Defined in the Terms."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "sync_state is one row: phase, start_seq, cursor, catchup_seq, last_seq, last_incremental_at. The cursor is the product id of the last product in the last fully saved page, not a page number. It is saved in the same transaction as the page."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "Swap is one SQLite transaction: drop products, rename products_staging to products, create new empty staging, set last_seq and phase = idle. SQLite DDL is transactional, so it is atomic. If the app dies mid-swap it rolls back and the next launch redoes catch-up (nothing new) and the swap."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "It calls GET /catalogue/changes?after_seq=catchup_seq (starting at start_seq), repeating while has_more, and applies each page to products_staging, in a transaction with the new catchup_seq. Changes are skipped if the staged row has an equal or higher change_seq."
+    },
+    {
+     "id": "6",
+     "tag": "checked",
+     "text": "The server returns 410 resync_required when the client asks for changes from a position older than the 7-day tombstone window (from the brief). On the client, products stays untouched and visible; staging and its cursor are emptied and the full download restarts from step 2, and the swap replaces products only when ready."
+    },
+    {
+     "id": "7",
+     "tag": "unknown",
+     "text": "Whether reps can browse during the first download is an undecided product question and is listed under open questions. As written, products stays empty until the swap. If Wi-Fi drops or is unavailable, the full download pauses (after finishing its current page) and resumes when Wi-Fi returns; existing data stays visible during a re-download."
+    },
+    {
+     "id": "8",
+     "tag": "checked",
+     "text": "Network errors and 5xx are retried: 2 s, then doubling (2, 4, 8, 16 s waits), at most 5 attempts in total. Other 4xx responses are not retried, except 410 which triggers a resync (the 4xx handling is my decision; the brief only specifies network errors and 5xx). After the 5th failure it stops, keeps everything saved and waits for the next trigger."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "9",
+     "text": "Step 4 skips a change if the staged row has an equal or higher change_seq. But /catalogue/full returns products; does each product it returns carry its change_seq, and is that stored in the staged row?",
+     "about": "4. Catch up (skip a change if the staged row already has a change_seq equal or higher)"
+    },
+    {
+     "id": "10",
+     "text": "A product is deleted on the server while the page download runs, after its page was already fetched. Catch-up deletes it from staging. What if the delete happened before the page was fetched? The full endpoint omits deleted rows, so does catch-up still find a staged row to delete, or nothing?",
+     "about": "4. Catch up / GET /catalogue/full returns non-deleted products"
+    },
+    {
+     "id": "11",
+     "text": "Full download pages by product id while edits continue. If a new product gets an id lower than the cursor after its range was passed, how does it reach the client? Is it only via catch-up from start_seq?",
+     "about": "3. Download pages (cursor / after_id)"
+    },
+    {
+     "id": "12",
+     "text": "Step 1 says if phase is not idle a full download is needed (go to step 2), but step 2 empties staging and resets the cursor. How does a resume after a kill skip that reset and go to step 3 or 4 instead?",
+     "about": "1. Trigger / 2. Start a full download"
+    },
+    {
+     "id": "13",
+     "text": "During the catch-up phase, does the 410 check apply too? If a download took over 7 days, which exact request returns 410, and what is reset: staging, cursor, start_seq, phase?",
+     "about": "7. Resync required"
+    },
+    {
+     "id": "14",
+     "text": "In step 6, when the changes endpoint returns has_more with 1,000 changes per page, and the app is killed mid-way, where does it resume? Does last_seq advance after each page, and is last_incremental_at only set at the end?",
+     "about": "6. Incremental sync"
+    },
+    {
+     "id": "15",
+     "text": "What does a rep see in the app while an incremental sync is applying pages to products? Can they browse or quote mid-sync, and are pages visible as each transaction commits?",
+     "about": "6. Incremental sync / Client storage products"
+    },
+    {
+     "id": "16",
+     "text": "The swap drops and renames an 800 MB table. How long does it take and does it block reads from products while it runs? Also, does the client need free disk for two full copies during the download?",
+     "about": "5. Swap"
+    }
+   ],
+   "answers": [
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "Yes. /catalogue/full now returns each product with its change_seq, and the client stores it in every staged and live row. Without it the skip rule in step 4 could not work. The brief says every row is stamped, so the value exists on the server; returning it is my API design choice."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "If the product was deleted before its page was fetched, the full endpoint omits it, so staging never had it and the catch-up delete finds no row. Deleting a missing row is a no-op, which is the correct result. Added a short clause to step 4."
+    },
+    {
+     "id": "11",
+     "tag": "decided",
+     "text": "Yes, only via catch-up. A new product gets a change_seq above start_seq, so the replay from start_seq delivers it whatever its id. Added a sentence to step 4."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "It could not, which was a gap. Step 1 now routes by phase: downloading resumes at step 3, catching_up resumes at step 4, and only an empty last_seq with phase idle goes to step 2, which is the only step that resets staging and the cursor."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Yes, the 410 check applies in step 4 too. The request that returns 410 is GET /catalogue/changes with after_seq = catchup_seq (the start_seq on the first call) when that position is older than 7 days. Step 7 now says step 2 resets staging, cursor, start_seq and phase = downloading. products and last_seq are untouched."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "last_seq advances after every page, in the same transaction as the page. After a kill the next trigger resumes from the saved last_seq. last_incremental_at is set only at the end, so an interrupted sync is retried at the next trigger without waiting 15 minutes. Written into step 6 and the failure table."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Reps can browse and quote during the sync. Each page becomes visible when its transaction commits, so they may briefly see a mix of old and new versions across products. Each page is applied whole. I chose this as the simplest option because the brief does not require a consistent snapshot. Added to step 6."
+    },
+    {
+     "id": "16",
+     "tag": "unknown",
+     "text": "I do not know how long the swap takes, or whether it blocks reads of products while it runs. That depends on the SQLite journal mode and has not been measured. Added to Open questions. On disk: yes, during a full download the device holds the live table and staging, about 800 MB each, so it needs roughly 1.6 GB free. Added to Client storage."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "17",
+     "text": "What does each change in the response contain? For an update, is it the full product row with its change_seq, and for a delete, just the product id and change_seq?",
+     "about": "GET /catalogue/changes?after_seq=<n> (updates and deletes)"
+    },
+    {
+     "id": "18",
+     "text": "If there are no changes after n, what is next_seq, and what does the client store as last_seq or catchup_seq? Does it stay at n?",
+     "about": "GET /catalogue/changes: next_seq and has_more"
+    },
+    {
+     "id": "19",
+     "text": "When has_more is false in step 4, what is catchup_seq, and what moves the client on to the swap? Edits made after the last catch-up page but before the swap commits: how do they reach the client?",
+     "about": "4. Catch up / 5. Swap"
+    },
+    {
+     "id": "20",
+     "text": "Step 1 lists Wi-Fi returning as a trigger, but step 6 says incremental sync runs at app launch and on foreground. When Wi-Fi returns while idle with a last_seq, does anything run?",
+     "about": "1. Trigger / 6. Incremental sync"
+    }
+   ],
+   "answers": [
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "An update change is the full product row with its change_seq, so the client can upsert it. A delete change is the product id, its change_seq and deleted = true. This is my API design; the brief only says changes include deletes. Written into the changes endpoint."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "With no changes the server returns an empty list, next_seq = n and has_more = false, so last_seq or catchup_seq stays where it was. Chosen as the simplest rule: the client always stores next_seq. Written into the changes endpoint."
+    },
+    {
+     "id": "19",
+     "tag": "decided",
+     "text": "catchup_seq is set to next_seq in the same transaction as each page, so when has_more is false it is the last change applied, and the client then goes straight to the swap (step 4 now says so). Edits made after the last catch-up page are not in the swap. last_seq becomes catchup_seq, and the swap clears last_incremental_at, so the next trigger runs step 6 at once and fetches them. Added to steps 4 and 5."
+    },
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "No, that was a gap. Wi-Fi returning only matters for a paused full download (phase = downloading). When idle with a last_seq it starts nothing, since incremental sync runs on any network and only at launch or foreground. Step 1 now says so."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Trigger. The flow starts when the app launches or returns to the foreground. Wi-Fi returning also counts, but only while phase = downloading. The app reads the single sync_state row in its local SQLite database and chooses a branch. If last_seq is empty and phase = idle, there is no catalogue yet, so it goes to step 2. If phase = downloading, it resumes at step 3 without resetting anything. If phase = catching_up, it resumes at step 4. Otherwise phase = idle and a last_seq exists, so it goes to step 6. I follow the first-ever run, which goes from a full download to a swap and then an incremental sync.\n\n2. Start a full download. The client calls POST /catalogue/full/start. The server keeps no state for this call. It returns {start_seq}, the highest committed change_seq at that moment. The client then runs one SQLite transaction that empties products_staging, saves start_seq, sets cursor to empty and sets phase = downloading. This is the only step that resets staging and the cursor. If the call fails, it is retried under step 8. Nothing has been saved yet, so the next trigger starts step 2 again.\n\n3. Download pages. This runs only on Wi-Fi, one page at a time, never in parallel. The client calls GET /catalogue/full?after_id=<cursor>. The server returns up to 500 non-deleted products ordered by id ascending, each with its change_seq. It also returns done: true when no products remain. In one transaction the client inserts the page into products_staging and sets cursor to the page's last product id. A page is therefore saved with its cursor or not at all. After a kill or restart, the next trigger resumes from the saved cursor. If the device leaves Wi-Fi, the current page finishes and the download pauses until Wi-Fi returns. When the server says done, the client sets phase = catching_up and catchup_seq = start_seq. The live products table is untouched throughout, so it stays empty on a first run.\n\n4. Catch up. Edits continue during the download, so staging can be missing changes. One example is a new product whose id is below the cursor. The client calls GET /catalogue/changes?after_seq=<catchup_seq> on any network. The server returns up to 1,000 changes in change_seq order, plus next_seq and has_more. An update change is the full row with its change_seq. A delete change is the id, the change_seq and deleted = true. The client applies each page to products_staging in one transaction, together with catchup_seq = next_seq. To apply a change, it upserts the product if it is not deleted. If it is deleted, it deletes the staged row, and does nothing if there is no such row. It skips any change when the staged row already has an equal or higher change_seq. It repeats while has_more is true. When has_more is false, it goes to step 5. If the app is killed here, it resumes from the saved catchup_seq.\n\n5. Swap. In one transaction the client drops products, renames products_staging to products, creates a new empty staging table, sets last_seq = catchup_seq, clears last_incremental_at and sets phase = idle. If the app dies mid-swap, the transaction rolls back. The next launch redoes step 4, which finds nothing new, and then the swap. Reps keep seeing the old products until the swap commits. Edits made after the last catch-up page are not in the swap. They arrive in step 6.\n\n6. Incremental sync. This runs at launch and on each return to the foreground, at most once every 15 minutes, on any network, and only when phase = idle. last_incremental_at is empty right after a swap, so it runs at once. The client calls GET /catalogue/changes?after_seq=<last_seq>. It applies each page to products in one transaction, using the same apply and skip rules as step 4, and sets last_seq = next_seq in that transaction. It repeats while has_more, then sets last_incremental_at. If the server finds no changes, it returns an empty list with next_seq = n and has_more = false, so the saved position does not move. Reps can browse and quote during the sync. Each page becomes visible when its transaction commits, so they may briefly see a mix of old and new versions. If the app is killed part-way, the committed pages stay. The next trigger continues from last_seq without waiting 15 minutes, because last_incremental_at is only set at the end.\n\n7. Resync required. If /catalogue/changes returns 410 resync_required, the client goes back to step 2. This happens when the requested n is older than the 7-day tombstone window. It can occur in step 4, for example after a download that took more than 7 days, or in step 6 after a long offline gap. Step 2 empties staging, clears the cursor, takes a new start_seq and sets phase = downloading. products and last_seq are not touched, so reps keep the old catalogue until a later swap replaces it. A first download that takes more than 7 days will hit this repeatedly and never finish.\n\n8. Retries and failure. After a network error or 5xx response, the client repeats the same request after waiting 2 s, 4 s, 8 s and 16 s, for at most 5 attempts in total. Other 4xx responses are not retried, except the 410 in step 7. After the 5th failure it stops and waits for the next trigger. Staging, cursor, catchup_seq and last_seq are all kept. Going onto cellular during a full download pauses only that download. Incremental sync is unaffected.\n\nState and storage. Tombstones are kept on the server for 7 days, which is why old positions force a resync. A full download needs about 1.6 GB of free space, because staging and products both exist on the device.",
+   "gaps": [
+    "The document does not say how change_seq is stamped or how the server avoids skipping a change that commits late. It says only that the value is assigned at commit and that rows become visible in change_seq order.",
+    "It does not say what the app does when a page request in step 3 returns 410 or another non-retried 4xx error. It does not say what happens when free disk space is below the 1.6 GB needed.",
+    "It does not say whether browsing is blocked, or what reps see, during a first download beyond saying products stays empty. It lists this as an open product decision.",
+    "It does not say how long the swap takes or whether it blocks reads of products. It lists this as unmeasured and dependent on the journal mode.",
+    "It does not say what the client does in step 3 when it is on cellular and phase = downloading, beyond pausing. It does not say how it detects the pause or what exactly starts the download again, other than a Wi-Fi return trigger.",
+    "It does not say what the client does in step 6 if a 15-minute-gated trigger arrives while a previous sync is still running, or what happens if two triggers fire concurrently.",
+    "It does not say how the client handles a 5xx failure inside step 2 beyond retrying and waiting for the next trigger.",
+    "It does not say who authenticates the three endpoints or how."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 3,
+ "end_reason": "teachback-correct"
+}

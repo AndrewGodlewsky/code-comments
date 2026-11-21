@@ -1,0 +1,52 @@
+## Review of sync-01 (junior, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: teachback-correct.
+
+### What changed
+- Changed: Rewrote the file in the skill's layout: summary, terms, diagram, where state lives, steps, failure table, open questions. Reason: the first version mixed the flow and the rules and left terms undefined.
+- Changed: Replaced the diagram. The first one had no local save detail, no conflict copy and no server version change. The new one shows both offline edits, A's accepted write, B's conflict, the conflict note, and the pulls after each. Reason: the brief asks for two phones editing the same note, then syncing one after the other.
+- Changed: Added a terms section defining note version, change log, outbox, change, base version, change ID, cursor and conflict note. Reason: Q1, Q2, Q4 and Q6 asked what these names mean.
+- Changed: Added the rule that the outbox row is removed only after a result arrives, and that the next batch is sent in the same sync. Reason: Q8.
+- Changed: Added the rule for editing a note whose change is already sent. Reason: Q5, and the brief's rule that sent changes are not edited.
+- Changed: Stated the conflict copy's creator, location and version, and what happens to B's original edit and A's note. Reason: Q3.
+- Changed: Made the server's change ID check explicit: it returns the stored result and writes nothing. Reason: Q4 and the brief's rule that a retry must never apply a change twice.
+- Changed: Added a failure table covering dropped connections during push and pull, conflicts and server failure mid-batch. Reason: the brief requires these cases, and Q6 asked about a failed pull.
+- Changed: Listed the four triggers as one line and confirmed push before pull. Reason: Q7.
+- Changed: Kept every fact from the brief and the first version: the out-of-scope list, the existing local-only system, the offline read and edit requirement, the no-text-merge rule, the 100 and 500 limits, the version rule, the (conflict) title suffix, and the server-side processed change IDs. Reason: the skill forbids cutting stated facts.
+- Changed: Added two open questions the brief does not answer, instead of inventing a rule: what a pull does to a note that still has an unsent change, and what a conflict result contains. Reason: the skill says to record unknowns, not guess.
+- Not run: the junior-dev helper loop (ask, answer, teachback, verdict, report). This session was asked to use no tools, so the rewritten file has not been checked by a fresh junior.
+- Summary now says how the app works today and gives the main flow in two sentences.
+- Terms: log entries now carry the full note (ID, title, body, version). Defined sent change once, and defined cursor and conflict note once each (Q13).
+- Removed the separate Rules list. Its collapse and sent-change rules now sit in steps 1 and 3 (repetition cut).
+- Step 3: an accepted result sets the note's version at once, in the same transaction that deletes the change (Q9).
+- Step 3: a conflict result carries no version. A waiting change keeps its base instead of taking a version from the conflict result. This replaces the earlier rule (Q10). The phone no longer needs a current version, so that open question is closed.
+- Steps 2 and 3: a failed push stops the sync and skips the pull. This replaces the earlier rule that always pulls after a push. Retries come from the existing triggers (Q12).
+- Step 4: a pull inserts a note the phone does not have, and sets the title as well as the body and version (Q13).
+- Failure table: the batch-failure cases are merged into the push rows, and offline retry now points to the triggers in step 2.
+- Open questions: the pull-overwrites-unsent-change case is kept, with the lost first edit described (Q11). The conflict-result question is removed because step 3 now answers it.
+- Diagram unchanged. Its notes now sit after it, and the summary and terms sit before it.
+- Summary: now says how the app works today (local-only, no server) before the main flow, in three or four sentences.
+- Layout: reordered into summary, terms, where state lives, diagram, diagram notes, steps, failure table, open questions, as the skill requires.
+- Terms: cursor now starts at 0, so the first pull reads the whole log (Q17). Conflict note now says it is an ordinary note after creation (Q14).
+- Step 2: syncs do not overlap, and a trigger during a sync is skipped (Q20).
+- Step 3: the conflict branch now adds one log entry for the conflict note, not 'entries' (Q18). The conflict result leaves the note row alone, so the user sees their own text until the pull (Q16).
+- Step 4: each entry carries the full note, and an entry for a version the phone already has changes nothing (Q15). The cursor location is named.
+- Steps 1 to 4: each now names its trigger, where its data is kept, and what happens on failure, as the skill requires.
+- Failure table: the conflict row now says the phone gets the notes on its next completed pull, since a pull can be skipped after a failed batch.
+- Repetition cut: the rule that a sent change is never edited is stated in Terms and once in Push. The rule that applying a page twice changes nothing is stated once in Pull.
+- Open questions: added that new-note creation and its first base version are not covered (Q19).
+- Added a summary of two sentences plus a line on how the app works today (local-only SQLite, no sync server yet) and the out-of-scope list, all from the brief.
+- Turned the first version's bare terms into one-line definitions for each term a newcomer would not know, and added where state lives (phone SQLite and server).
+- Defined the cursor's start value (0), the first pull's paging (500 per page), the outbox row's contents, and the conflict note's later life as an ordinary note.
+- Replaced the first version's diagram with the revised diagram (base versions, conflict note, one-transaction page apply) and kept its three notes after it.
+- Merged the first version's four bullets (conflicts, retries, cursor, batching) and its step list into four steps. Each step now names its trigger, what it does, what data it keeps, and what happens on failure.
+- Added facts from the review rounds: the collapse rule, the sent-change rule, the next-batch loop within one sync, no overlapping syncs, the rule that a pull applies a row only when the entry's version is newer, one log entry for a conflict with the existing note unchanged, and a waiting change keeping its base after a conflict.
+- Corrected the first version's 'adds log entries' (plural) to one log entry for the conflict note.
+- Failure table: kept the six rows from the revised file and added a row for a conflict followed by a failed pull. Each cause is stated once in the steps; the table only gives the outcome.
+- Cut the first version's bullets that restated the steps, and the step-number codes. Nothing stated in the brief or the first version was dropped.
+- Open questions: kept both unknowns (pull over an unsent change, and new-note creation) with the same substance. No new mechanism was added.
+- The file is longer than the first version because the brief's facts and the review answers had to be kept; I did not add detail the plan does not need yet.
+
+### Holes
+- Q11: In this case, what does the phone do today when the pull applies the entry: does it overwrite the local body that the unsent change came from? What does the user see? (author: The brief does not say. As step 4 was written, the pull overwrites the local body, so the screen shows the server's text while the user's edit still sits in the outbox and becomes a conflict note on the next push. If the user edits that note again first, the new edit replaces the outbox body and the first edit's text is lost. The push drains the outbox before the pull, so this needs an edit made during the pull. I found no simple rule that avoids it without a new mechanism. Added to Open questions.)
+- Q19: How does a phone create a brand new note, and what base version does its first change carry? Is a new note covered by this document? (author: Neither the brief nor the document says how a phone creates a new note, or what base version its first change carries. The document covers edits to notes the server already has. Added to Open questions.)

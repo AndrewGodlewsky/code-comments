@@ -1,0 +1,42 @@
+## Review of mr-01 (self-review, author haiku, seeded-implicit)
+
+Rounds: 3. Ended: passes.
+
+### What changed
+- Added a plain-language opening that says what the plan does and what it never allows, so a reader with no project background can follow it.
+- Expanded the Pieces list to say what each component does, and defined the control store and where it must sit (outside Regions A and B).
+- Rewrote every flowchart node with a descriptive label that says what the step does, instead of one or two words.
+- Added the triggers for each step: probe thresholds, the manual decision to run the command, the 30 s lag threshold, the override, and the health check gate.
+- Added a branch for the failed health check (hold, do not switch DNS) and a branch for the lag check stop.
+- Added a 'Start B's job workers' step after the database is promoted, since the brief requires workers to start only once B's database is writable. The original diagram did not show this.
+- Explained how fencing works when A cannot be reached: a lease that A's apps must renew, with a recorded revocation and a wait for expiry. The original only said fencing 'goes through the control store'.
+- Added an open gap: a lease only stops apps that honor it, so a database in A that accepts other connections is not stopped. This needs a decision before sign-off.
+- Explained the job handling in A mid-run: rows left in 'running' are reset to 'queued' on B, jobs finished in A but not copied to B run again, and idempotency is why that is safe.
+- Added the failed and interrupted run rules: a step log in the control store, resume from the first unfinished step with a real-state check, steps that are safe to repeat, and abort allowed only before Promote.
+- Recorded the active region in the control store at the promote step, and stated the rule that the command is the only path to promotion.
+- Added the DNS 60 s TTL and cache delay, and the session loss with the accepted sign-in impact.
+- Defined terms that a non-specialist would need: replica, WAL, lease, fencing, RPO, RTO and idempotent.
+- Kept the original title, the Pieces line, the Mermaid flowchart format and the Notes section, and kept the original intent: no automatic failback, rebuild A as a replica of B, and no automatic promotion.
+- Added a Terms section defining active-passive, warm standby, WAL, replica, promote, fence, lease, RPO, RTO, idempotent and TTL, so a reader new to the project and the stack can follow the plan.
+- Rewrote the Pieces list in plain words and removed jargon where a simpler word works (for example, 'web/API tier' is kept but explained by the sentence after it).
+- Added a sentence explaining how to read the diagram (boxes are steps, diamonds are yes or no checks).
+- Step 4 now states that the lease covers only A's apps and points to the open gap, so the limit of the fence is not hidden.
+- Step 5 now says the lag check uses the recorded value and does not measure what was lost, moved from the Notes into the step itself.
+- Step 6 now states where the active-region record lives (the control store) and that it is written at promotion.
+- Step 7 now explains why a job may run twice and gives the idempotency-key method in one sentence.
+- Failed or interrupted runs section now says when each log entry is written and that the command moves on only after the result is recorded.
+- Abort is described as releasing the fence so that A can resume as the active region, making the consequence explicit.
+- Open gap now says plainly that the plan must not be signed off until the gap is closed.
+- Diagram kept with the same structure and steps; only the abort node label was reworded to say B is untouched.
+- Notes: the RTO note now says the fence wait counts against the RTO. Section order and overall format are kept.
+- Summary: opened with the plain fact that A serves users and B is a standby, then stated the one-writer rule in plain words.
+- Terms: rewrote each definition in plain language, explained WAL as the change log the replica applies, and defined lease, control store, and idempotent with concrete examples.
+- Parts: described each component by its job without internal jargon, and stated that Redis sessions are per region.
+- Diagram: kept the same flowchart and node IDs, with the same labels and logic, so the structure is unchanged.
+- Triggers: spelled out 'at least 2 of 3' and explained why the fence does not need to reach A, and why the lag check uses a recorded value.
+- Steps 7 to 11: made the job reset, worker start order, and the 60-second DNS wait easier to follow, and explained the idempotency key in plain terms.
+- Failed runs: stated the abort and no-abort rules in one place, with the reason for each.
+- Kept the open gap, the rules that stay in force, and the RTO note unchanged in substance.
+
+### Holes
+- None.

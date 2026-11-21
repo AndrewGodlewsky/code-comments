@@ -1,0 +1,263 @@
+{
+ "transcript": [
+  {
+   "round": 1,
+   "questions": [
+    {
+     "id": "1",
+     "text": "What are the \"features\" the feature store holds (per user? per item?), and how does /recommendations look them up for a request?",
+     "about": "1. Feature store: hourly materialization from the warehouse / 3. API endpoint"
+    },
+    {
+     "id": "2",
+     "text": "How does the endpoint get 20 items from the model? Does the model score all items, or a candidate set, and where does that set come from?",
+     "about": "3. API endpoint `/recommendations`: get features, run the model, return 20 items"
+    },
+    {
+     "id": "3",
+     "text": "What exactly triggers the fall back to popular items, and where does the popular list come from and how fresh is it?",
+     "about": "Fall back to popular items if needed"
+    },
+    {
+     "id": "4",
+     "text": "What does the \"feature check\" at model loading verify, and what happens to an instance if the check fails?",
+     "about": "4. Model loading on the API instances, with a feature check"
+    },
+    {
+     "id": "5",
+     "text": "How does an API instance learn which model version the active alias points to, and when does it load a new one (polling, restart, push)?",
+     "about": "2. Model registry with numbered versions and aliases / 4. Model loading"
+    },
+    {
+     "id": "6",
+     "text": "For the 10% of users in shadow, what happens during their request: who runs the shadow model, what goes on the shadow queue, and does the user's response wait on it?",
+     "about": "5. Shadow: 10% of users, shadow queue, shadow workers, prediction log"
+    },
+    {
+     "id": "7",
+     "text": "How are the 10% of users chosen, and what is stored in the prediction log (active and shadow outputs, user, features)?",
+     "about": "5. Shadow: 10% of users ... prediction log"
+    },
+    {
+     "id": "8",
+     "text": "What does the daily comparison job compare, against what ground truth, and who sees its output?",
+     "about": "6. Daily comparison job"
+    },
+    {
+     "id": "9",
+     "text": "What is \"the brief\" and what are its criteria? How does the ML lead sign off, and what happens at the TBD A/B step if Product has not decided?",
+     "about": "7. Promote once the brief's criteria pass and the ML lead signs off"
+    },
+    {
+     "id": "10",
+     "text": "What concretely happens on \"switch via the registry\" and \"rollback via the registry\": who moves the alias, how fast do instances pick it up, and what do in-flight requests see?",
+     "about": "8. Switch via the registry / 9. Rollback via the registry"
+    }
+   ],
+   "answers": [
+    {
+     "id": "1",
+     "tag": "decided",
+     "text": "The store is keyed by user ID, so each record holds one user's features, stamped with its write time. The brief names only user features; item features are an open question. The lookup is one read by user_id with a 30 ms limit."
+    },
+    {
+     "id": "2",
+     "tag": "unknown",
+     "text": "The brief does not say whether the model scores every item or a candidate set, or where a set would come from. The plan states only that the model returns a top 20 list. This is an open question."
+    },
+    {
+     "id": "3",
+     "tag": "decided",
+     "text": "Fallback triggers: feature read timeout (30 ms), no record, record older than 6 hours, a feature the active model needs is missing, or the model errors or runs past the 150 ms budget. The popular list is written daily into the online store; if that job fails, the last list stays. The first three triggers come from the brief. The last two are my choice, to keep the 150 ms budget."
+    },
+    {
+     "id": "4",
+     "tag": "decided",
+     "text": "The check confirms that every feature the version needs exists in the online store with the expected type. If it fails, the instance keeps the version it already has and raises an alert. A version that fails the check is never served, because a candidate must never run against features the store lacks."
+    },
+    {
+     "id": "5",
+     "tag": "decided",
+     "text": "Polling. Each instance reads the registry aliases every 15 seconds, loads a new target in the background, runs the feature check, then swaps. This needs no redeploy, and 15 seconds leaves room inside the 1-minute rollback limit. A push channel would add a system to build for no gain here."
+    },
+    {
+     "id": "6",
+     "tag": "decided",
+     "text": "The request writes a job to the shadow queue after its response is decided, and does not wait. A shadow worker, separate from the request path, runs the candidate on the same feature record and writes a log row. Shadow output never appears in the user's response. If the queue is full, the job is dropped and counted."
+    },
+    {
+     "id": "7",
+     "tag": "decided",
+     "text": "Shadow group: hash(user_id) mod 100 < 10, with a fixed hash, so a user is always in or always out. A log row holds request ID, user ID, time, both versions' top 20, skip or error reason, fallback flag, feature record write time, the feature values used, and each model's latency."
+    },
+    {
+     "id": "8",
+     "tag": "decided",
+     "text": "It compares the candidate with the active model over the previous day's shadow rows: attempts, error rate, p99 latency, top-20 overlap, and days in shadow so far. The brief sets no ground truth, so it does not show whether the recommendations are better. The ML lead and the candidate's owner see the report, stored with the candidate version."
+    },
+    {
+     "id": "9",
+     "tag": "decided",
+     "text": "The brief means the requirements in the request: at least 7 days in shadow, error rate under 0.5%, p99 inference under 80 ms, and ML lead approval. The plan lists them in the Promotion section. The approval is recorded on the candidate version in the registry. Product has not decided the A/B step, so the plan defines nothing there and chooses neither option."
+    },
+    {
+     "id": "10",
+     "tag": "decided",
+     "text": "Switch: the ML lead records approval, then an operator moves the active alias to the candidate in the registry. Rollback: the operator moves active back to previous and points previous at the version rolled away from. Each instance sees the change at its next 15-second poll and swaps for new requests. In-flight requests finish on the version they started with. The old version is still loaded, so nothing reloads. The 1-minute rollback limit holds only while the registry is reachable."
+    }
+   ]
+  },
+  {
+   "round": 2,
+   "questions": [
+    {
+     "id": "11",
+     "text": "What is the \"time left in the 150 ms budget\" measured from, and what happens if the feature read already used most of it? Is there a minimum time needed before the model is attempted?",
+     "about": "3. Score"
+    },
+    {
+     "id": "12",
+     "text": "Where does the popular-items list read happen relative to the 150 ms budget? If the online store itself is down or slow, what does the user get?",
+     "about": "4. Fallback"
+    },
+    {
+     "id": "13",
+     "text": "What does a shadow worker do when the candidate version is not loaded on the worker? How does the worker learn and load the version the shadow alias points to?",
+     "about": "Shadow worker"
+    },
+    {
+     "id": "14",
+     "text": "Who or what triggers the daily comparison, and how does it get the shadow rows and the candidate's days-in-shadow count? What counts as one day in shadow?",
+     "about": "Daily comparison"
+    },
+    {
+     "id": "15",
+     "text": "The shadow job contains the active top 20 and the feature record. Does the shadow group only get queued when the response came from step 3 (not fallback)? Then why does the prediction log have a fallback flag?",
+     "about": "5. Queue shadow work / Prediction log"
+    },
+    {
+     "id": "16",
+     "text": "Promotion says the checks must pass, but who or what enforces that \"cannot become active\" when an operator moves the active alias? Is it a check in the registry or a manual rule?",
+     "about": "Promotion"
+    },
+    {
+     "id": "17",
+     "text": "During a switch, can different instances serve different active versions for up to 15 seconds or longer? Is that acceptable, and what if some instances fail the feature check while others succeed?",
+     "about": "Picking up a change"
+    },
+    {
+     "id": "18",
+     "text": "What does the shadow error rate use as its denominator and what counts as an error versus a timeout? What time limit applies to the candidate model in the worker?",
+     "about": "Daily comparison / Shadow worker"
+    }
+   ],
+   "answers": [
+    {
+     "id": "11",
+     "tag": "checked",
+     "text": "The 150 ms budget starts when the request arrives. Step 2 takes at most 30 ms, so the model is always given at least 90 ms when it runs, which is above the 80 ms p99 promotion bar. No separate minimum is needed. The model deadline is now set at 120 ms after arrival, so the fallback read still fits in the budget."
+    },
+    {
+     "id": "12",
+     "tag": "decided",
+     "text": "The popular-list read is a separate step-4 read with its own 30 ms limit, and it runs after step 2 or 3 fails. Step 3 now ends by 120 ms, so the read fits inside 150 ms. If the store is down or slow and this read also fails, the endpoint returns 503 and raises an alert. I chose an error over a made-up list because the brief does not allow a list the store cannot provide. The brief does not say what to serve in this case, so it is listed as an open question."
+    },
+    {
+     "id": "13",
+     "tag": "decided",
+     "text": "Shadow workers are separate processes, so they poll the registry's aliases every 15 seconds, the same as API instances. A worker loads the `shadow` candidate in the background and runs the feature check before use. A job that arrives before the candidate is loaded gets a `skipped` row with the reason 'candidate not loaded'. The daily report counts these rows, so a long gap is visible."
+    },
+    {
+     "id": "14",
+     "tag": "decided",
+     "text": "A scheduled job runs once a day, after the previous UTC day ends, over that day's prediction log rows. One day in shadow is one UTC calendar day. Days in shadow is the number of daily reports stored with the candidate since the `shadow` alias was set to it. The 7-day check needs a report for each of those days, as the Promotion section already says."
+    },
+    {
+     "id": "15",
+     "tag": "decided",
+     "text": "Yes. Step 5 queues shadow work only when the response came from step 3. Fallback responses have no active model output to compare with, so they are never shadowed. Every row in the prediction log therefore comes from a non-fallback response, and a fallback flag would always be false. I removed the flag from the log row."
+    },
+    {
+     "id": "16",
+     "tag": "decided",
+     "text": "The brief says the candidate can become active only after the checks pass, so the registry enforces it. A move of `active` to a candidate is refused until all four conditions are recorded and pass: 7 days of reports with none missing, error rate under 0.5%, p99 under 80 ms, and the ML lead's approval on the version. The operator cannot skip this by moving the alias by hand. Rollback is exempt, because `previous` was already active."
+    },
+    {
+     "id": "17",
+     "tag": "decided",
+     "text": "Yes, for up to 15 seconds, instances may serve different active versions, because each one polls on its own schedule. The brief does not require an atomic switch, so I accept this. An instance that fails the feature check keeps its old version and raises an alert, so it can differ from the rest until the problem is fixed. This is stated in the switching section."
+    },
+    {
+     "id": "18",
+     "tag": "decided",
+     "text": "The error rate's denominator is shadow attempts, which excludes skipped rows. An error is a candidate exception, or a run that goes past the worker's 150 ms limit. The brief sets no time limit for the worker, so I chose 150 ms, the same as the request budget. The p99 is taken over all attempts, with timeouts counted at 150 ms, so timeouts cannot make the latency look better than it was."
+    }
+   ]
+  },
+  {
+   "round": 3,
+   "questions": [
+    {
+     "id": "19",
+     "text": "The shadow job holds request ID, user ID, the feature record and the active top 20. But the prediction log row also needs the active version and the active model's latency. Where do those come from?",
+     "about": "5. Queue shadow work / Prediction log"
+    }
+   ],
+   "answers": [
+    {
+     "id": "19",
+     "tag": "checked",
+     "text": "The active version and the active model's latency come from the request path, not from the job's other fields. Step 3 runs the active model, so it knows which version ran (the one the instance had loaded when the request started, which is the version that produced the top 20) and it times that call. Step 5 now puts both in the job, next to the active top 20. The prediction log's active fields are then copied from the job, so the worker never calls the active model. I checked this against steps 3 and 5 and the prediction log field list."
+    }
+   ]
+  },
+  {
+   "round": 4,
+   "questions": [
+    {
+     "id": "20",
+     "text": "Promotion checks 2 and 3 (error rate under 0.5%, p99 under 80 ms) come from the daily reports. Does every one of the 7 days have to pass, or is it the latest report, or a figure combined over all days?",
+     "about": "Promotion / Daily comparison"
+    },
+    {
+     "id": "21",
+     "text": "The Rollback section mentions a 1-minute limit. What is that limit, and where does it come from? It is not defined elsewhere in the document.",
+     "about": "Rollback / Pickup"
+    }
+   ],
+   "answers": [
+    {
+     "id": "20",
+     "tag": "decided",
+     "text": "All seven days count, and checks 2 and 3 are pooled over the whole 7-day window rather than taken from the latest report or checked day by day. Check 2 is total error rows over total attempts across the window; check 3 is the p99 of all the window's latencies, computed from pooled latency counts. The brief states one error rate and one p99 for the candidate, so a latest-day figure would let a bad earlier week pass. Averaging daily p99 values would not give a p99, so each daily report now stores the counts needed to pool. The plan did not say this before, so I added it."
+    },
+    {
+     "id": "21",
+     "tag": "checked",
+     "text": "The 1-minute limit comes from the brief's fixed requirements: a rollback must take effect within 1 minute. The Rollback section named the limit without stating its source, so I added the source to the Pickup line. The 15-second poll is what meets it, and the limit holds only while the registry is reachable."
+    }
+   ]
+  }
+ ],
+ "teachbacks": [
+  {
+   "text": "1. Request arrives. The home page calls GET /recommendations?user_id=.... The input is the user ID. No state is kept by the API for this request. The 150 ms budget starts at arrival.\n\n2. Read features. The API reads that user's record from the online store, a key-value store keyed by user ID. The record holds the user's features and the time it was written. The read has a 30 ms limit and is read-only. If the read times out, there is no record, or the record is older than 6 hours, the request jumps to step 4 (fallback).\n\n3. Check the record and score. The record must contain every feature in the active model's feature list. That list is saved with the model version. If any feature is missing, the request goes to step 4. Otherwise the API runs the active model on the record and takes its top 20 item IDs. It returns them with fallback: false. The model must finish by 120 ms after arrival, so the model always has at least 90 ms when it runs. If the model errors or runs past 120 ms, the request goes to step 4. This step records which model version ran and how long the model call took. The model itself is held in memory in the API instance.\n\n4. Fallback (only on failure in step 2 or 3). The API reads the popular-items list from the online store with a 30 ms limit and returns it with fallback: true. The model is not called. The list is 20 items, recomputed daily by a job that writes it under one fixed key. If that job fails, the last list stays. Because step 3 ends by 120 ms, this read fits inside 150 ms. If this read also fails, the API returns HTTP 503 and raises an alert.\n\n5. Queue shadow work. This happens only if all three hold. The user is in the shadow group (hash(user_id) mod 100 < 10, a fixed hash, so a user is always in or always out). A shadow alias exists. The response came from step 3. Just before the response is sent, the API writes one job to the shadow queue. The job holds the request ID, user ID, the feature record used, the active version ID, the active top 20, and the active model's latency. The write does not block. If the queue is full or the write fails, the job is dropped and the drop is counted. The user is unaffected. Fallback responses are never shadowed. The response is then sent.\n\n6. Shadow worker (separate process, outside the request). It takes a job from the shadow queue. If the candidate is not yet loaded, it writes a skipped row with the reason \"candidate not loaded\". Otherwise it checks that the job's record has every feature the candidate needs. If not, it writes a skipped row and stops. If yes, it runs the candidate on the same record with a 150 ms limit and takes the top 20. It then writes a prediction log row. If the candidate errors or exceeds 150 ms, it writes an error row and does not retry. The worker never calls the active model. It copies the active fields from the job.\n\n7. Prediction log. There is one row per shadow job. It holds the request ID, user ID, time, active version and top 20, shadow version and top 20 (or the skip or error reason), the feature record's write time, the feature values used, and the latency of each model call. Both models see the same feature values, so the comparison is fair. The log has no fallback flag.\n\n8. Where the features come from. Alongside the request flow, an hourly materialization job copies features from the warehouse into the online store and stamps each record with its write time. If it fails, the store keeps the old records and the on-call engineer is alerted. After 6 hours the old records count as missing, so users get fallback responses until a load succeeds.\n\n9. How models get loaded. A trained model is saved in the registry as the next immutable numbered version, together with its feature list. Aliases point at versions: active serves users, previous is the one before it, and shadow is the candidate under test. At startup, each API instance loads active and previous before serving traffic. Every 15 seconds each instance reads the aliases. If active points at a version it has not loaded, it loads that version in the background and runs the feature check. The feature check confirms that every feature in the version's list exists in the online store with the expected type. It then swaps the version in for new requests and keeps the old one as previous. In-flight requests finish on the version they started with. Instances poll independently, so for up to 15 seconds some serve the new version and others the old. If loading or the check fails, the instance keeps what it has and raises an alert, and the failing version is never served. An instance with no version loaded serves only fallback. If the registry is unreachable, the instance keeps its versions and retries at the next poll, and no request fails.\n\n10. Starting shadow. An operator points the shadow alias at a candidate version. Shadow workers poll every 15 seconds, load it in the background, and run the feature check, the same way instances do.\n\n11. Daily comparison. A scheduled job runs once a day after the previous UTC day ends, over that day's prediction log rows. It computes attempts (shadow jobs minus skipped rows), error rate (error rows divided by attempts), p99 latency (timeouts counted at 150 ms), overlap (how many of the candidate's top 20 are in the active top 20), and days in shadow. It stores the daily report in the registry with the candidate version. It also stores attempts, errors, and the count of latencies in each 1 ms bucket, with timeouts in the 150 ms bucket. The ML lead and the candidate's owner can see it. If the job fails, that day has no report, and promotion cannot pass while any day in the 7-day window lacks one. It measures agreement and errors only, not whether the recommendations are better.\n\n12. Promotion. A candidate can become active only when four checks pass. (a) A daily report exists for each of the last 7 UTC days since the shadow alias was set to it. (b) The error rate over those 7 days, total errors divided by total attempts, is under 0.5%. (c) The p99 inference latency, computed from the pooled latency counts of the 7 days, is under 80 ms. (d) The ML lead approves, and the approval is recorded on the version in the registry. The registry refuses to move active to a candidate until all four pass. An operator cannot bypass this by moving the alias by hand.\n\n13. Switch. After the checks pass, an operator moves the active alias to the candidate in the registry. Instances pick it up at their next 15-second poll, as in step 9. No redeploy is needed.\n\n14. Rollback. An operator (the ML lead or on-call engineer) moves active back to previous in the registry. They then point previous at the version that was rolled away from. Instances see the change at their next poll and swap at once, with no reload, because the old version is still in memory. New requests get the rolled-back version, and in-flight requests finish on the old one. The promotion checks do not apply. This meets the 1-minute rollback requirement, but only while the registry is reachable. If it is not, rollback waits and instances keep serving the current version.",
+   "gaps": [
+    "What happens when the candidate is not loaded versus the skipped row: the document does not say what the shadow worker does with a job when no model is loaded at all beyond writing a skipped row, and does not say how shadow workers learn the queue's capacity or what 'full' means.",
+    "Who or what performs the check that the registry enforces on alias moves, and how the registry knows the 7 daily reports and approval exist. The document says the registry enforces it but not how the checks are evaluated or who runs the pooled p99 and 7-day error calculations.",
+    "How the feature check learns the 'expected type' of each feature. The document does not say where the expected types are defined or stored.",
+    "How overlap is used. The document computes overlap daily but sets no threshold and no promotion check uses it, so what it is for in the flow is not explained.",
+    "What the active model does with the record to produce the top 20: whether it scores every item or a candidate set, and where that set comes from. The document lists this as an open question, so step 3 cannot be explained further.",
+    "What happens in the range between approval and the full switch (A/B test or straight to 100%). The document leaves this undecided and defines no step.",
+    "How a user in the shadow group is treated when the shadow alias changes mid-day, and how 'days in shadow' counts a day with partial or no shadow traffic. The document does not say.",
+    "How the request ID is produced and how the model call latency is measured and passed into the job, which the job needs but the document does not describe.",
+    "What the endpoint's response looks like beyond the 20 item IDs and the fallback flag (format, headers), and what the end user sees on a 503.",
+    "Who may read prediction log rows (open question), and who is alerted for 503s, model-load failures and dropped shadow jobs beyond the on-call engineer for materialization failures."
+   ],
+   "verdict": "correct",
+   "notes": ""
+  }
+ ],
+ "rounds": 4,
+ "end_reason": "teachback-correct"
+}
