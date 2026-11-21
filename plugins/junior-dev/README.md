@@ -21,26 +21,53 @@ it makes no claim that it improves anything. The design is in
 
 ## Install
 
-In Claude Code:
+### GitHub Copilot (the intended platform)
+
+With the [Copilot CLI](https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli)
+(`npm install -g @github/copilot`):
+
+```
+copilot plugin marketplace add AndrewGodlewsky/code-comments
+copilot plugin install junior-dev@code-comments
+```
+
+This installs it at user level, so it is on in every project. VS Code (1.120 or newer) picks up
+plugins the Copilot CLI installed; you can also add it under Agent Customizations > Plugins >
+User. Run `copilot plugin update --all` after a new release.
+
+The helper script lives in the plugin's folder, outside your project, so the first time it
+runs Copilot asks you to allow it. Allow it once for the plugin's folder.
+
+You need Python 3.10 or newer, the Copilot CLI signed in (or a `gh` login, which the helper
+borrows), and a Copilot plan that includes Claude Sonnet 5.5 or Haiku 5.5. Each junior turn
+is a short Copilot CLI call and uses Copilot AI credits.
+
+Hooks in VS Code are still in preview. The cloud coding agent cannot install user-level
+plugins, and JetBrains is untested.
+
+### Claude Code
 
 ```
 /plugin marketplace add AndrewGodlewsky/code-comments
 /plugin install junior-dev@code-comments
 ```
 
-You need Python 3.10 or newer, and the `claude` command on your PATH, logged in. Each junior
-turn is its own short `claude -p` session, billed to your account or subscription like any
-other Claude Code use.
+You need Python 3.10 or newer, and the `claude` command on your PATH, logged in.
+
+### Which model runs the junior
+
+The helper uses the `claude` command if it is installed, and the Copilot CLI otherwise. Set
+`JUNIOR_DEV_BACKEND=copilot` or `claude` to choose. The junior runs on Sonnet 5.5 by default.
 
 ## What the junior can see
 
-The helper script `scripts/junior.py` runs every junior turn as an isolated session:
+The helper script `scripts/junior.py` runs every junior turn as an isolated session, from an
+empty temporary folder, with the prompt sent on stdin:
 
 ```text
 claude -p --safe-mode --tools "" --system-prompt-file <junior prompt> --json-schema ...
+copilot -s --no-custom-instructions --disable-builtin-mcps --no-ask-user --available-tools=__none__ --model claude-sonnet-5.5
 ```
-
-It runs from an empty temporary folder, with the prompt sent on stdin.
 
 The junior gets two things:
 
@@ -54,9 +81,10 @@ It does not get:
 - your `CLAUDE.md`;
 - tools, plugins or MCP servers.
 
-The one thing still in its context is Claude Code's generic environment block: a temporary
-folder path, the platform, the date and its budget. See the
-[spike](../../docs/junior-dev/spike-2026-11-12.md).
+The one thing still in its context is the host's own system prompt and environment block:
+Claude Code's (a temporary folder path, the platform, the date and its budget), or the Copilot
+CLI's. See the [spike](../../docs/junior-dev/spike-2026-11-12.md) and the
+[Copilot assessment](../../docs/junior-dev/copilot-compat-2026-11-19.md).
 
 The loop's state is kept in a `.junior-dev/` folder in the project, which ignores itself in
 git.

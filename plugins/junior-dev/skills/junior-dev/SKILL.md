@@ -165,3 +165,5 @@ The helper runs the junior through the `claude` command, or through the GitHub C
 - Keep the plan's intent. Clarifying must not quietly change what the plan does. When a
   question reveals a real problem and you change the plan, record it as `Changed:`.
 - Send the junior nothing yourself. The helper decides what it sees.
+- Leave the `.junior-dev/` folder in place when you finish. Git ignores it, and it is how the
+  junior-dev reminder knows the file was already reviewed.
