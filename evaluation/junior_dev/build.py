@@ -195,7 +195,9 @@ def build_judge_batch(iteration_dir: Path, pairs: list[tuple[str, str]], out_dir
     for arm_a, arm_b in pairs:
         for key_a in sorted(finals):
             case, arm, author, mode, rep = key_a
-            key_b = (case, arm_b, author, mode, rep)
+            # "arm@author" pairs with another author's run of that arm (Opus alone, for the worth-it test).
+            b_arm, _, b_author = arm_b.partition("@")
+            key_b = (case, b_arm, b_author or author, mode, rep)
             if arm != arm_a or key_b not in finals:
                 continue
             a, b = doc_id(key_a), doc_id(key_b)

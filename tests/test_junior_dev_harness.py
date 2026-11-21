@@ -252,6 +252,25 @@ class BuildAndDryRunTest(unittest.TestCase):
         self.assertEqual({p["arm_b"] for p in pairs}, {"self-review", "junior-v0"})
         self.assertEqual(len(pairs), 8)
 
+    def test_judge_batch_pairs_against_another_authors_arm(self):
+        # The user's "worth it" test: Haiku or Sonnet with Junior-dev against Opus alone (arm@author).
+        out = self.tmp / "wf-output-judge-x.json"
+        out.write_text(json.dumps({"result": self.dry["result"]}), encoding="utf-8")
+        it = self.tmp / "iteration-cross-author"
+        collect.collect(out, it)
+        for run_json in list(it.rglob("run.json")):
+            meta = json.loads(run_json.read_text(encoding="utf-8"))
+            if meta["arm"] == "no-review":
+                dst = it / meta["case"] / "no-review" / "opus" / meta["mode"] / f"run-{meta['rep']}"
+                shutil.copytree(run_json.parent, dst)
+                (dst / "run.json").write_text(json.dumps(dict(meta, author="opus")), encoding="utf-8")
+        files = build.build_judge_batch(it, [("junior", "no-review@opus")], self.tmp / "built-judge-x", "xauth")
+        pairs = build.embedded_data(files[0])["pairs"]
+        self.assertEqual(len(pairs), 4)                          # 2 cases x haiku x 2 orders
+        self.assertEqual({(p["arm_b"], p["author"]) for p in pairs}, {("no-review@opus", "haiku")})
+        dry = build.dry_run(files[0])
+        self.assertEqual({j["arm_b"] for j in dry["result"]["judgments"]}, {"no-review@opus"})
+
     def test_judge_summary_filters_by_judge_model(self):
         it = self.tmp / "iteration-judges"
         (it / "judgments").mkdir(parents=True)
