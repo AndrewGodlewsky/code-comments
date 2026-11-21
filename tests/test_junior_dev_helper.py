@@ -234,6 +234,91 @@ class HelperTest(unittest.TestCase):
         self.assertAlmostEqual(s.state["cost_usd"], 0.0125)
         self.assertIn("0.0125", s.report())
 
+    # --- GitHub Copilot backend (the intended platform, 2026-11-19) ---
+
+    def test_copilot_command_is_isolated(self):
+        argv = junior.junior_command("sonnet", junior.QUESTIONS_SCHEMA, junior.JUNIOR_PROMPT, backend="copilot")
+        self.assertEqual(argv[0], "copilot")
+        for flag in ("-s", "--no-custom-instructions", "--disable-builtin-mcps", "--no-ask-user",
+                     "--available-tools=__none__"):
+            self.assertIn(flag, argv)
+        self.assertEqual(argv[argv.index("--model") + 1], "claude-sonnet-5.5")
+        self.assertEqual(junior.junior_command("haiku", junior.QUESTIONS_SCHEMA, junior.JUNIOR_PROMPT,
+                                               backend="copilot")[-1], "claude-haiku-5.5")
+        self.assertNotIn("-p", argv)          # the prompt goes on stdin; -p would make the CLI ignore it
+
+    def test_copilot_turn_sends_prompt_schema_and_artifact_on_stdin(self):
+        bare = json.dumps({"questions": [{"id": "q1", "text": "Who sends it?", "about": "step 2"}], "done": False})
+        runner = FakeRunner(bare)
+        s = junior.JuniorSession.start(self.artifact, model="sonnet", state_root=self.root / ".junior-dev",
+                                       runner=runner, backend="copilot")
+        self.assertIn("Q1 (about: step 2): Who sends it?", s.ask())
+        prompt = runner.calls[0]["prompt"]
+        self.assertTrue(prompt.startswith(junior.JUNIOR_PROMPT.read_text(encoding="utf-8").strip()[:200]))
+        self.assertIn("The API emails a one-time token.", prompt)
+        self.assertIn('"questions"', prompt)                  # the JSON schema travels with the message
+        self.assertNotIn(ARTIFACT, " ".join(runner.calls[0]["argv"]))
+
+    def test_copilot_reply_may_be_fenced_or_bare(self):
+        obj = {"explanation": "Step 1 then step 2.", "gaps": []}
+        for raw in (json.dumps(obj), "```json\n" + json.dumps(obj) + "\n```", "Here it is:\n" + json.dumps(obj)):
+            self.assertEqual(junior.parse_teachback(raw)[0], "Step 1 then step 2.")
+
+    def test_backend_auto_prefers_claude_then_copilot(self):
+        found = {"claude": None, "copilot": "/bin/copilot"}
+        with mock.patch.object(junior.shutil, "which", side_effect=lambda n: found.get(n)), \
+                mock.patch.dict(junior.os.environ, {}, clear=False):
+            junior.os.environ.pop("JUNIOR_DEV_BACKEND", None)
+            self.assertEqual(junior.choose_backend("auto"), "copilot")
+            found["claude"] = "/bin/claude"
+            self.assertEqual(junior.choose_backend("auto"), "claude")
+            junior.os.environ["JUNIOR_DEV_BACKEND"] = "copilot"
+            self.assertEqual(junior.choose_backend("auto"), "copilot")
+            self.assertEqual(junior.choose_backend("claude"), "claude")
+        with mock.patch.object(junior.shutil, "which", return_value=None), mock.patch.dict(junior.os.environ, {}):
+            junior.os.environ.pop("JUNIOR_DEV_BACKEND", None)
+            with self.assertRaises(junior.JuniorError):
+                junior.choose_backend("auto")
+
+    def test_copilot_runner_borrows_the_gh_login_when_no_token_is_set(self):
+        completed = mock.Mock(returncode=0, stdout="{}", stderr="")
+        token = mock.Mock(returncode=0, stdout="gho_TEST\n", stderr="")
+        clean = {k: v for k, v in junior.os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN")}
+        with mock.patch.dict(junior.os.environ, clean, clear=True), \
+                mock.patch.object(junior.shutil, "which", return_value="/bin/gh"), \
+                mock.patch.object(junior.subprocess, "run", side_effect=[token, completed]) as run:
+            junior.run_claude(["copilot", "-s"], "PROMPT")
+        self.assertEqual(run.call_args.kwargs["env"]["GH_TOKEN"], "gho_TEST")
+        self.assertEqual(run.call_args.kwargs["input"], "PROMPT")
+        with mock.patch.dict(junior.os.environ, dict(clean, COPILOT_GITHUB_TOKEN="x"), clear=True), \
+                mock.patch.object(junior.subprocess, "run", return_value=completed) as run:
+            junior.run_claude(["copilot", "-s"], "PROMPT")
+        self.assertEqual(run.call_count, 1)                    # an explicit token is used as is
+        self.assertNotIn("GH_TOKEN", run.call_args.kwargs["env"])
+
+    def test_runner_resolves_windows_command_shims(self):
+        # npm installs copilot as copilot.cmd; subprocess does not search PATHEXT, so the name is resolved first.
+        completed = mock.Mock(returncode=0, stdout="{}", stderr="")
+        with mock.patch.dict(junior.os.environ, {"COPILOT_GITHUB_TOKEN": "x"}), \
+                mock.patch.object(junior.shutil, "which", return_value=r"C:\npm\copilot.CMD"), \
+                mock.patch.object(junior.subprocess, "run", return_value=completed) as run:
+            junior.run_claude(["copilot", "-s"], "PROMPT")
+        self.assertEqual(run.call_args.args[0], [r"C:\npm\copilot.CMD", "-s"])
+
+    def test_start_saves_the_first_version_for_the_rewrite_check(self):
+        s = self.session(FakeRunner(questions_output("A?")))
+        self.assertEqual((s.state_dir / "first-version.md").read_text(encoding="utf-8"), ARTIFACT)
+        self.artifact.write_text("# changed\n", encoding="utf-8")
+        self.assertEqual((s.state_dir / "first-version.md").read_text(encoding="utf-8"), ARTIFACT)
+
+    def test_cli_start_records_the_backend(self):
+        root = self.root / ".junior-dev"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(junior.main(["start", str(self.artifact), "--state-root", str(root),
+                                          "--backend", "copilot"]), 0)
+        state_dir = next(p for p in root.iterdir() if p.is_dir())
+        self.assertEqual(json.loads((state_dir / "state.json").read_text(encoding="utf-8"))["backend"], "copilot")
+
     def test_cli_round_trip(self):
         runner = FakeRunner(questions_output("A?"))
         root = self.root / ".junior-dev"

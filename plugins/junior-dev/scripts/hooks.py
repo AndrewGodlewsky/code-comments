@@ -1,6 +1,6 @@
-"""Claude Code hooks that make sure a new plan or diagram gets a junior-dev review.
+"""Hooks that make sure a new plan or diagram gets a junior-dev review, in Claude Code and GitHub Copilot.
 
-    python hooks.py post-write   # PostToolUse on Write|Edit|MultiEdit: record the file, remind once
+    python hooks.py post-write   # PostToolUse on a file write (Claude Code or Copilot tool names): record, remind once
     python hooks.py stop         # Stop: if a recorded file was never reviewed, block once and say so
 
 They exist because a skill's description alone rarely loads it: in this repository Haiku
@@ -15,6 +15,7 @@ import difflib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -29,8 +30,33 @@ def _nested() -> bool:
     return os.environ.get("JUNIOR_DEV_NESTED") == "1"
 
 
+HELPER = (HERE / "junior.py").resolve()
+PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+?)\s*$", re.MULTILINE)
+
+
+def _copilot(event: dict) -> bool:
+    """GitHub Copilot sends tool_result / toolResult where Claude Code sends tool_response."""
+    return "tool_response" not in event and ("tool_result" in event or "toolResult" in event or "toolArgs" in event)
+
+
+def _tool_input(event: dict) -> dict:
+    raw = event.get("tool_input", event.get("toolArgs")) or {}
+    if isinstance(raw, str):    # Copilot's camelCase toolArgs is a JSON string
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return {"input": raw}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _target(event: dict) -> Path | None:
-    raw = (event.get("tool_input") or {}).get("file_path")
+    args = _tool_input(event)
+    # Claude Code: file_path. Copilot create / edit / str_replace_editor: path. apply_patch: in the patch text.
+    raw = args.get("file_path") or args.get("path") or args.get("filePath")
+    if not raw:
+        patch = next((v for v in args.values() if isinstance(v, str) and "*** " in v), "")
+        found = PATCH_FILE.findall(patch)
+        raw = found[0] if found else None
     if not raw:
         return None
     path = Path(raw)
@@ -63,10 +89,13 @@ def post_write(event: dict, root: Path) -> dict | None:
         shown = path.relative_to(Path(event.get("cwd") or os.getcwd()).resolve())
     except ValueError:
         shown = path
-    return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": (
+    context = (
         f"junior-dev: {shown.as_posix()} looks like a {reason}. When you have finished writing it, and before you "
         f"act on it or report it done, run the junior-dev skill on it: a junior developer who sees only this file "
-        f"will question you until a fresh junior can explain it back.")}}
+        f"will question you until a fresh junior can explain it back. The skill's helper is: python \"{HELPER}\"")
+    if _copilot(event):
+        return {"additionalContext": context}
+    return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": context}}
 
 
 def stop(event: dict, root: Path) -> dict | None:
@@ -90,7 +119,8 @@ def stop(event: dict, root: Path) -> dict | None:
         "junior-dev: these plan or diagram files were written in this session but not reviewed: "
         + ", ".join(shown(p) for p in pending)
         + ". Run the junior-dev skill on each one now, then report what changed and the holes. If a file is not "
-          "really a plan or diagram, or the user asked you not to review it, say so in one line and stop.")}
+          "really a plan or diagram, or the user asked you not to review it, say so in one line and stop. "
+          f"The skill's helper is: python \"{HELPER}\"")}
 
 
 def main(argv: list[str]) -> int:

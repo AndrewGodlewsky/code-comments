@@ -60,7 +60,7 @@ class JuniorDevPluginTest(unittest.TestCase):
         self.assertTrue(any("must equal directory name" in p for p in relaxed))
 
     def test_skill_commands_exist(self):
-        named = set(re.findall(r"junior\.py\"?\s+([a-z]+)", _text(SKILL / "SKILL.md")))
+        named = set(re.findall(r"\"<helper>\"\s+([a-z]+)", _text(SKILL / "SKILL.md")))
         self.assertTrue(named, "SKILL.md names no helper commands")
         usage = subprocess.run([sys.executable, str(HELPER), "-h"], capture_output=True, text=True,
                                encoding="utf-8").stdout
@@ -68,8 +68,13 @@ class JuniorDevPluginTest(unittest.TestCase):
         self.assertLessEqual(named, available)
         self.assertEqual(available, {"start", "ask", "answer", "teachback", "verdict", "report"})
 
-    def test_skill_uses_plugin_root(self):
-        self.assertIn('${CLAUDE_PLUGIN_ROOT}/scripts/junior.py', _text(SKILL / "SKILL.md"))
+    def test_skill_finds_its_helper_in_claude_code_and_copilot(self):
+        # Copilot does not fill in ${CLAUDE_PLUGIN_ROOT} in skill text, so the skill names three ways to the helper.
+        text = _text(SKILL / "SKILL.md")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/scripts/junior.py", text)
+        self.assertIn("../../scripts/junior.py", text)
+        self.assertTrue((SKILL / "../../scripts/junior.py").resolve().is_file())
+        self.assertNotIn('python "${CLAUDE_PLUGIN_ROOT}', text)
 
     def test_prompts_do_not_leak_cases(self):
         self.assertIn(ROOT / "evaluation/junior_dev/cases", lint_skills.CASES)

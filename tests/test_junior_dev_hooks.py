@@ -197,13 +197,53 @@ class HookTest(unittest.TestCase):
         self.assertIn("additionalContext", json.loads(done.stdout)["hookSpecificOutput"])
 
 
+class CopilotHookTest(HookTest):
+    """GitHub Copilot (CLI and VS Code) runs the same hooks.json, with its own tool names and payloads
+    (docs/junior-dev/copilot-compat-2026-11-19.md). Inherits the Claude Code cases above unchanged."""
+
+    def copilot_event(self, tool_input, tool="create", camel=False):
+        if camel:
+            return {"hookEventName": "PostToolUse", "toolName": tool, "cwd": str(self.project),
+                    "toolArgs": json.dumps(tool_input), "toolResult": {"resultType": "success"}}
+        return {"hook_event_name": "PostToolUse", "tool_name": tool, "cwd": str(self.project),
+                "tool_input": tool_input, "tool_result": {"result_type": "success"}}
+
+    def test_copilot_create_gets_a_top_level_reminder_with_the_helper_path(self):
+        out = hooks.post_write(self.copilot_event({"path": str(self.plan), "file_text": MERMAID}), self.root)
+        self.assertNotIn("hookSpecificOutput", out)
+        self.assertIn("checkout.md", out["additionalContext"])
+        self.assertIn(str((SCRIPTS / "junior.py").resolve()), out["additionalContext"])
+
+    def test_copilot_tool_args_may_be_a_json_string_in_camel_case(self):
+        out = hooks.post_write(self.copilot_event({"path": "docs/checkout.md"}, tool="edit", camel=True), self.root)
+        self.assertIn("checkout.md", out["additionalContext"])
+
+    def test_copilot_apply_patch_names_the_file_inside_the_patch(self):
+        patch = "*** Begin Patch\n*** Update File: docs/checkout.md\n@@\n-a\n+b\n*** End Patch\n"
+        out = hooks.post_write(self.copilot_event({"input": patch}, tool="apply_patch"), self.root)
+        self.assertIn("checkout.md", out["additionalContext"])
+
+    def test_claude_reminder_also_names_the_helper_path(self):
+        out = hooks.post_write(self.write_event(self.plan), self.root)
+        self.assertIn(str((SCRIPTS / "junior.py").resolve()), out["hookSpecificOutput"]["additionalContext"])
+
+    def test_stop_reason_names_the_helper_path(self):
+        hooks.post_write(self.copilot_event({"path": str(self.plan)}), self.root)
+        self.assertIn(str((SCRIPTS / "junior.py").resolve()), hooks.stop(self.stop_event(), self.root)["reason"])
+
+
 class HooksJsonTest(unittest.TestCase):
     def test_hooks_json_shape(self):
         config = json.loads((SCRIPTS.parent / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
         post = config["PostToolUse"][0]
-        self.assertEqual(set(post["matcher"].split("|")), {"Write", "Edit", "MultiEdit"})
-        self.assertIn('${CLAUDE_PLUGIN_ROOT}/scripts/hooks.py" post-write', post["hooks"][0]["command"])
-        self.assertIn('${CLAUDE_PLUGIN_ROOT}/scripts/hooks.py" stop', config["Stop"][0]["hooks"][0]["command"])
+        # Claude Code's file tools, then GitHub Copilot's (create, edit, str_replace_editor, apply_patch).
+        self.assertEqual(set(post["matcher"].split("|")),
+                         {"Write", "Edit", "MultiEdit", "create", "edit", "str_replace_editor", "apply_patch"})
+        for entry, mode in ((post["hooks"][0], "post-write"), (config["Stop"][0]["hooks"][0], "stop")):
+            self.assertIn(f'${{CLAUDE_PLUGIN_ROOT}}/scripts/hooks.py" {mode}', entry["command"])
+            self.assertIn(f'$CLAUDE_PLUGIN_ROOT/scripts/hooks.py" {mode}', entry["bash"])
+            # Copilot runs hook commands through PowerShell on Windows, where ${...} is not an env var.
+            self.assertIn(f'$env:CLAUDE_PLUGIN_ROOT/scripts/hooks.py" {mode}', entry["powershell"])
 
 
 if __name__ == "__main__":

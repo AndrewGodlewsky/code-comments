@@ -2,10 +2,17 @@
 
 The main agent never talks to the junior directly. It calls this script, which hands the
 junior exactly two things, the artifact's current text and this loop's questions and
-answers, through an isolated `claude -p` session (no tools, no plugins, no CLAUDE.md, an
-empty working directory). The spike behind those flags is docs/junior-dev/spike-2026-11-12.md.
+answers, through an isolated one-shot session from an empty working directory, with no tools
+and no instruction files. Two backends do that:
 
-    python junior.py start <artifact> [--rounds 6] [--model sonnet] [--state-root DIR]
+- claude: `claude -p --safe-mode --tools ""` (docs/junior-dev/spike-2026-11-12.md);
+- copilot: the GitHub Copilot CLI in prompt mode, with custom instructions, built-in MCP
+  servers and every tool turned off (docs/junior-dev/copilot-compat-2026-11-19.md). If no
+  token is set, it borrows the `gh` login.
+
+`--backend auto` (the default) uses JUNIOR_DEV_BACKEND if set, else claude, else copilot.
+
+    python junior.py start <artifact> [--rounds 6] [--model sonnet] [--backend auto] [--state-root DIR]
     python junior.py ask <state>                 # next batch of questions
     python junior.py answer <state> <answers.md> # "Q<id> [checked|decided|unknown]: ..." lines
     python junior.py teachback <state>           # a fresh junior explains the artifact back
@@ -23,6 +30,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +42,9 @@ TEACHBACK_PROMPT = REFERENCES / "teachback-prompt.md"
 TURN_BUDGET_USD = 0.25
 MAX_TEACHBACKS = 3  # wrong teach-backs allowed before the loop ends; question rounds alone cannot bound it
 TIMEOUT_S = 300.0
+BACKENDS = ("claude", "copilot")
+COPILOT_MODELS = {"sonnet": "claude-sonnet-5.5", "haiku": "claude-haiku-5.5", "opus": "claude-opus-5.5"}
+TOKEN_VARS = ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
 
 QUESTIONS_SCHEMA = {
     "type": "object",
@@ -101,9 +112,13 @@ def _structured(raw: str) -> dict:
     try:
         outer = json.loads(raw)
     except (json.JSONDecodeError, TypeError) as e:
-        raise JuniorError(f"junior output is not JSON: {str(raw)[:200]!r}") from e
+        outer = _embedded_object(raw)   # the copilot backend prints the reply itself, maybe fenced
+        if outer is None:
+            raise JuniorError(f"junior output is not JSON: {str(raw)[:200]!r}") from e
     if not isinstance(outer, dict):
         raise JuniorError("junior output is not a JSON object")
+    if "questions" in outer or "explanation" in outer:
+        return outer
     if outer.get("is_error"):
         raise JuniorError(f"junior session failed: {str(outer.get('result'))[:300]}")
     inner = outer.get("structured_output")
@@ -118,6 +133,21 @@ def _structured(raw: str) -> dict:
     if not isinstance(inner, dict):
         raise JuniorError("junior result is not a JSON object")
     return inner
+
+
+def _embedded_object(raw) -> dict | None:
+    """The first JSON object in a reply that wraps it in a code fence or a sentence."""
+    text = re.sub(r"```(?:json)?", "", str(raw or ""))
+    start = text.find("{")
+    while start != -1:
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        start = text.find("{", start + 1)
+    return None
 
 
 def parse_questions(raw: str) -> tuple[list[dict], bool]:
@@ -156,26 +186,71 @@ def parse_answers(text: str) -> tuple[list[dict], list[str]]:
     return answers, changes
 
 
-def junior_command(model: str, schema: dict, prompt_file: Path) -> list[str]:
+def choose_backend(requested: str = "auto") -> str:
+    """claude or copilot: an explicit choice, else JUNIOR_DEV_BACKEND, else whichever command is installed."""
+    if requested in BACKENDS:
+        return requested
+    env = os.environ.get("JUNIOR_DEV_BACKEND", "").strip().lower()
+    if env in BACKENDS:
+        return env
+    for name in BACKENDS:
+        if shutil.which(name):
+            return name
+    raise JuniorError("neither the claude nor the copilot command is on PATH; install one "
+                      "(GitHub Copilot: npm install -g @github/copilot)")
+
+
+def junior_command(model: str, schema: dict, prompt_file: Path, backend: str = "claude") -> list[str]:
     """argv for one isolated junior turn; the prompt itself goes on stdin, never here."""
+    if backend == "copilot":
+        # -p is left out on purpose: the CLI ignores piped input when -p is given.
+        return ["copilot", "-s", "--no-custom-instructions", "--disable-builtin-mcps", "--no-ask-user",
+                "--available-tools=__none__", "--model", COPILOT_MODELS.get(model, model)]
     return ["claude", "-p", "--safe-mode", "--tools", "", "--system-prompt-file", str(prompt_file),
             "--model", model, "--output-format", "json", "--no-session-persistence",
             "--max-budget-usd", f"{TURN_BUDGET_USD:.2f}", "--json-schema", json.dumps(schema)]
 
 
+def junior_input(backend: str, prompt_file: Path, schema: dict, message: str) -> str:
+    """What goes on stdin. The copilot CLI has no system-prompt or schema flag, so both travel in the message."""
+    if backend != "copilot":
+        return message
+    return (Path(prompt_file).read_text(encoding="utf-8").strip() + "\n\n---\n\n" + message.strip()
+            + "\n\nReply with only one JSON object that matches this JSON Schema, and no other text:\n"
+            + json.dumps(schema) + "\n")
+
+
+def _gh_token() -> str | None:
+    """The gh CLI's login token, which the Copilot CLI accepts, or None."""
+    if not shutil.which("gh"):
+        return None
+    try:
+        done = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return (done.stdout.strip() or None) if done.returncode == 0 else None
+
+
 def run_claude(argv: list[str], prompt: str, timeout_s: float = TIMEOUT_S) -> str:
-    """Run one junior turn from an empty temporary directory, with the prompt on stdin."""
+    """Run one junior turn (either backend) from an empty temporary directory, with the prompt on stdin."""
     env = dict(os.environ, JUNIOR_DEV_NESTED="1")
+    if argv and argv[0] == "copilot" and not any(env.get(k) for k in TOKEN_VARS):
+        token = _gh_token()
+        if token:
+            env["GH_TOKEN"] = token
     with tempfile.TemporaryDirectory(prefix="junior-dev-") as empty:
         try:
+            # Resolve the command first: on Windows, npm installs copilot as copilot.cmd, which
+            # subprocess cannot find by its bare name.
+            argv = [shutil.which(argv[0]) or argv[0], *argv[1:]] if argv else argv
             done = subprocess.run(argv, input=prompt, capture_output=True, text=True, encoding="utf-8",
                                   errors="replace", timeout=timeout_s, cwd=empty, env=env)
         except FileNotFoundError as e:
-            raise JuniorError("the claude command was not found on PATH") from e
+            raise JuniorError(f"the {argv[0]} command was not found on PATH") from e
         except subprocess.TimeoutExpired as e:
             raise JuniorError(f"junior turn timed out after {timeout_s:.0f}s") from e
     if done.returncode != 0:
-        raise JuniorError(f"claude exited {done.returncode}: {(done.stderr or done.stdout)[-400:]}")
+        raise JuniorError(f"{argv[0]} exited {done.returncode}: {(done.stderr or done.stdout)[-400:]}")
     return done.stdout
 
 
@@ -246,7 +321,7 @@ class JuniorSession:
 
     @classmethod
     def start(cls, artifact: Path, rounds: int = 6, model: str = "sonnet", state_root: Path | None = None,
-              runner=None) -> "JuniorSession":
+              runner=None, backend: str = "claude") -> "JuniorSession":
         artifact = Path(artifact).resolve()
         if not artifact.is_file():
             raise JuniorError(f"artifact not found: {artifact}")
@@ -256,7 +331,10 @@ class JuniorSession:
         root = ensure_root(Path(state_root) if state_root else Path.cwd() / ".junior-dev")
         state_dir = root / f"{_slug(artifact)}-{_hash(str(artifact))[:8]}"
         state_dir.mkdir(parents=True, exist_ok=True)
-        state = {"artifact": str(artifact), "artifact_hash": _hash(text), "model": model, "rounds_cap": rounds,
+        # The skill's rewrite step checks the rewritten file against this, line by line, for dropped facts.
+        (state_dir / "first-version.md").write_text(text, encoding="utf-8", newline="")
+        state = {"artifact": str(artifact), "artifact_hash": _hash(text), "model": model, "backend": backend,
+                 "rounds_cap": rounds,
                  "round": 0, "phase": "asking", "transcript": [], "teachbacks": [], "changes": [], "holes": [],
                  "end_reason": None, "cost_usd": 0.0}
         session = cls.__new__(cls)
@@ -299,8 +377,10 @@ class JuniorSession:
             self._save()
             return "ROUND CAP REACHED: run report"
         message = build_junior_message(self._artifact_text(), s["transcript"])
-        argv = junior_command(s["model"], QUESTIONS_SCHEMA, JUNIOR_PROMPT)
-        questions, done = self._call(argv, message, parse_questions)
+        backend = s.get("backend", "claude")
+        argv = junior_command(s["model"], QUESTIONS_SCHEMA, JUNIOR_PROMPT, backend)
+        questions, done = self._call(argv, junior_input(backend, JUNIOR_PROMPT, QUESTIONS_SCHEMA, message),
+                                     parse_questions)
         if not questions:
             s["phase"] = "teachback"
             self._save()
@@ -339,8 +419,11 @@ class JuniorSession:
         if s["phase"] != "teachback":
             raise JuniorError("the junior still has questions: run ask" if s["phase"] == "asking"
                               else f"the loop has finished ({s['end_reason']})")
-        argv = junior_command(s["model"], TEACHBACK_SCHEMA, TEACHBACK_PROMPT)
-        explanation, gaps = self._call(argv, build_teachback_message(self._artifact_text()), parse_teachback)
+        backend = s.get("backend", "claude")
+        argv = junior_command(s["model"], TEACHBACK_SCHEMA, TEACHBACK_PROMPT, backend)
+        message = junior_input(backend, TEACHBACK_PROMPT, TEACHBACK_SCHEMA,
+                               build_teachback_message(self._artifact_text()))
+        explanation, gaps = self._call(argv, message, parse_teachback)
         s["teachbacks"].append({"text": explanation, "gaps": gaps, "verdict": None, "notes": ""})
         self._save()
         out = ["A fresh junior, reading only the artifact, explains it back:", "", explanation]
@@ -405,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rounds", type=int, default=6)
     p.add_argument("--model", default="sonnet")
     p.add_argument("--state-root")
+    p.add_argument("--backend", choices=("auto",) + BACKENDS, default="auto")
     for name in ("ask", "teachback", "report"):
         sub.add_parser(name).add_argument("state")
     p = sub.add_parser("answer")
@@ -419,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "start":
             s = JuniorSession.start(Path(args.artifact), rounds=args.rounds, model=args.model,
                                     state_root=Path(args.state_root) if args.state_root else None,
-                                    runner=run_claude)
+                                    runner=run_claude, backend=choose_backend(args.backend))
             print(s.state_dir)
             return 0
         s = JuniorSession(Path(args.state), runner=run_claude)
