@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "Do cursor updates pass through the document service, or get stored in Postgres?",
+  "key": "No. Cursors are ephemeral: they never go through the document service and are never written to Postgres.",
+  "why": "It separates the presence path from the existing edit path."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "How often may a client send cursor updates, and what does the server do with updates that come faster?",
+  "key": "At most one every 50 ms per connection. The server silently drops faster ones.",
+  "why": "The rate limit shapes the load and explains why some updates never reach anyone."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "What does a receiving client do with a cursor whose revision is newer than the revision it has applied?",
+  "key": "It does not draw it yet. It holds the cursor and draws it once it has applied that revision.",
+  "why": "Drawing a caret at a revision the client hasn't reached puts it in the wrong place."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "What happens to a cursor whose revision is older than the receiver's applied revision, including one that is very old?",
+  "key": "It is moved forward with transformPosition(pos, cursorRev, appliedRev). If that throws HistoryGone (older than the last 500 revisions kept), the cursor is dropped.",
+  "why": "Positions must be adjusted for edits made since, and the limited history defines a failure case."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "How is a user with two tabs open shown, and when do they disappear from others' presence lists?",
+  "key": "Once, as one user. They disappear only when their last connection to the document is gone.",
+  "why": "Presence is per user, while connections are per tab."
+ },
+ {
+  "id": "q6",
+  "kind": "brief",
+  "question": "How quickly must other users see a user leave after a clean tab close, and after the user's gateway node dies?",
+  "key": "Within 2 s for a clean close. Within 45 s for a node crash.",
+  "why": "These bounds drive the heartbeat, staleness and sweep timings."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "Where does the shared presence state live, at what granularity, and what keeps each entry fresh?",
+  "key": "A Redis hash presence:{docId} with one field per connId (userId, nodeId, lastSeen, last cursor with rev and seq). The owning node refreshes lastSeen on each pong (every 10 s) and refreshes a 120 s EXPIRE on the whole key.",
+  "why": "The reader needs to know who owns presence state and how it ages."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "When a gateway node crashes, what removes its users' presence entries, and who tells the other clients?",
+  "key": "Every node with local sockets on the document runs a sweep every 5 s and HDELs entries whose lastSeen is older than 30 s. Only the node whose HDEL returns 1 publishes the leave event. Other nodes forward it to their clients. The key's 120 s EXPIRE removes leftovers if nobody is left.",
+  "why": "A crashed node can't clean up, so someone else must, and without duplicate announcements."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "How does an accepted cursor update reach a viewer on another node, and a viewer on the sender's own node?",
+  "key": "The sender's node PUBLISHes it on the Redis channel presence:{docId}. Every node subscribed to that channel (subscribed while it has a local socket on the document), including the sender's own node, forwards it to its local sockets on the document, except the sender's connection.",
+  "why": "This is the cross-node fan-out mechanism, and it works without sticky routing."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "How does a joining client avoid missing a join, leave or cursor event that happens while it is loading the current presence list?",
+  "key": "The node subscribes to the document's presence channel and starts buffering events before it reads the snapshot with HGETALL. It sends the snapshot, then the buffered events, then live ones. Events are applied by connId, and cursors are checked by seq.",
+  "why": "Without this ordering a snapshot-then-subscribe race loses updates."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "How does a newly joined user see the caret of someone who is idle and not moving?",
+  "key": "The snapshot from the Redis presence hash includes each connection's last cursor (pos, rev, seq). The owning node writes the cursor into the hash at most once per second per connection, and after the last move it still writes the final position when that 1 s window ends, so the hash holds where the idle user stopped.",
+  "why": "Live cursor messages alone would never show an idle user's caret."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "How does a receiver make sure a caret never jumps back to an older position when messages arrive out of order?",
+  "key": "Each connection numbers its cursor updates with a rising seq. The receiver drops any cursor whose seq is not higher than the last one it has seen for that connection, including a snapshot cursor older than a buffered live one.",
+  "why": "Pub/sub plus the snapshot gives two paths that can reorder updates."
+ }
+]

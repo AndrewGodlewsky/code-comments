@@ -1,0 +1,86 @@
+[
+ {
+  "id": "q1",
+  "kind": "brief",
+  "question": "Every worker was down while three consecutive fire times of one schedule passed. What runs when the workers come back?",
+  "key": "Only the most recent missed fire time runs. The two older ones are dropped and leave no history entry.",
+  "why": "Catch-up behaviour decides whether an outage causes a burst of duplicate work."
+ },
+ {
+  "id": "q2",
+  "kind": "brief",
+  "question": "A schedule's next fire time arrives while its previous run is still in progress. What happens to the new fire time?",
+  "key": "It is not executed or queued. It is recorded in history as a skipped run.",
+  "why": "This overlap rule decides whether runs of one schedule can pile up or run at the same time."
+ },
+ {
+  "id": "q3",
+  "kind": "brief",
+  "question": "A job's handler keeps throwing errors. How many times is it tried, how long is the wait between tries, and how does it end?",
+  "key": "3 attempts in total: retry 1 minute after the first failure and 5 minutes after the second. After the third failure the run is failed.",
+  "why": "Retry limits and timing are the core failure behaviour of the feature."
+ },
+ {
+  "id": "q4",
+  "kind": "brief",
+  "question": "A worker process dies halfway through a job. When can another worker pick the job up, and does that use up an attempt?",
+  "key": "Once there has been no heartbeat for 2 minutes (heartbeats come every 30 seconds). Another worker retries it, and the crashed try counts as one of the 3 attempts.",
+  "why": "Crash recovery timing and accounting decide how fast work resumes and when a run gives up."
+ },
+ {
+  "id": "q5",
+  "kind": "brief",
+  "question": "A tenant is paused while one of its jobs is executing and another is waiting to start. What happens to each, and what happens to fire times during the pause once it is lifted?",
+  "key": "The executing run finishes normally. The waiting run is cancelled. No new runs are created during the pause, and resuming does not catch up the fire times missed while paused.",
+  "why": "Pausing touches every run state, so a reader needs to know what each state becomes."
+ },
+ {
+  "id": "q6",
+  "kind": "design",
+  "question": "Two workers check the same due schedule at the same instant. What stops them from both creating a run for that fire time?",
+  "key": "The schedule row is locked with FOR UPDATE SKIP LOCKED while its run is created and next_fire_at is advanced, so only one worker handles it. A unique key on (schedule_id, scheduled_for) in JOB_RUN, with insert ON CONFLICT DO NOTHING, guarantees at most one run per fire time anyway.",
+  "why": "Having one run per fire time across workers, with no leader, is the central guarantee of the design."
+ },
+ {
+  "id": "q7",
+  "kind": "design",
+  "question": "Where is a schedule's next due time kept, and when does it change?",
+  "key": "In JOB_SCHEDULE.next_fire_at. It moves to the first fire time after the one just handled, in the same transaction that creates the run. It is recomputed from now when the schedule is edited or re-enabled, or when its tenant is resumed.",
+  "why": "Readers need to know what workers poll and why a crash cannot lose or repeat a fire time."
+ },
+ {
+  "id": "q8",
+  "kind": "design",
+  "question": "How does a worker take a run so that no other worker starts the same run?",
+  "key": "In one transaction it selects a JOB_RUN that is pending or retry_wait with available_at <= now() using FOR UPDATE SKIP LOCKED, sets it to running with lease_owner = its worker id and lease_expires_at = now + 2 min, increments attempt_count and inserts a RUN_ATTEMPT row.",
+  "why": "How a run is claimed decides whether the same run can execute twice."
+ },
+ {
+  "id": "q9",
+  "kind": "design",
+  "question": "Where is the 'this run is still alive' state kept, and what notices when it goes stale?",
+  "key": "On JOB_RUN as lease_owner and lease_expires_at, which each heartbeat pushes out to now + 2 min (RUN_ATTEMPT.last_heartbeat_at is updated too). A recovery step that every worker runs on each tick finds running runs whose lease has expired, marks the attempt lease_lost, and applies the retry rule.",
+  "why": "Crash detection depends on knowing where liveness is stored and who checks it."
+ },
+ {
+  "id": "q10",
+  "kind": "design",
+  "question": "When a run is waiting to be retried, where is the wait recorded, and how does the retry start?",
+  "key": "The same JOB_RUN row goes to status retry_wait with available_at = now + 1 or 5 minutes. The ordinary claim loop picks it up once available_at has passed, and the retry creates a new RUN_ATTEMPT row.",
+  "why": "Without a broker, readers need to see how a delayed retry is held and started."
+ },
+ {
+  "id": "q11",
+  "kind": "design",
+  "question": "What is recorded once per fire time, and what is recorded once per execution try?",
+  "key": "JOB_RUN has one row per fire time: scheduled_for, final status (succeeded, failed, skipped or cancelled), attempt_count and finished_at. RUN_ATTEMPT has one row per try: worker_id, started_at, last_heartbeat_at, ended_at, outcome (succeeded, error or lease_lost) and error_message.",
+  "why": "The history tenants see is built from these two levels."
+ },
+ {
+  "id": "q12",
+  "kind": "design",
+  "question": "A worker that was presumed dead wakes up and tries to report that its job succeeded after another worker has taken the run. How is its report kept from overwriting the newer outcome?",
+  "key": "Every heartbeat and completion update is conditioned on lease_owner = this worker's id and status = running. The stale worker's update matches no row, so it writes nothing and abandons the job.",
+  "why": "This guard is what makes takeover safe for the outcome that gets recorded."
+ }
+]
