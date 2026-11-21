@@ -153,9 +153,11 @@ The helper runs the junior through the `claude` command, or through the GitHub C
    python "<helper>" report "<state>"
    ```
 
-9. **Tell the user.** Give them the report: what changed and why, what you cut or merged,
-   and the holes, meaning the questions you could not answer or are unsure about. Keep it
-   short.
+9. **Tell the user.** Your last message must have two short parts, even when the loop went
+   smoothly:
+   - **What changed**, and why, including what you cut or merged.
+   - **Holes**: the questions you could not answer or are unsure about. If there are none,
+     say so.
 
 ## Rules
 
