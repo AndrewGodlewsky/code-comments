@@ -51,6 +51,19 @@ with no claim of downstream benefit, plus a `stale-refs` command. Its `SKILL.md`
 sources. [docs/skill/hygiene-skill.md](docs/skill/hygiene-skill.md) owns its purpose
 and limits. `evaluation/hygiene/` holds the eval used to climb it.
 
+`plugins/junior-dev/` is a second, separate plugin (#52), listed by the same marketplace and
+built for GitHub Copilot (CLI and VS Code) as well as Claude Code. When an agent writes a plan
+or diagram file, its hooks remind the agent to run the skill. The skill then runs the loop:
+- a junior who sees only the file asks questions;
+- the author answers them and rewrites the file once for a newcomer;
+- a fresh junior explains the file back;
+- the user gets a report of the changes and holes.
+
+`scripts/junior.py` runs each junior turn as an isolated call, through the Copilot CLI or
+`claude -p`. `evaluation/junior_dev/` holds its cases, tournament, judges and live runners.
+[docs/junior-dev/report-2026-11-21.md](docs/junior-dev/report-2026-11-21.md) owns its
+measured results.
+
 GitHub Issues in `AndrewGodlewsky/code-comments` is the configured tracker.
 Its operations and triage vocabulary are documented under `docs/agents/`.
 
@@ -85,6 +98,8 @@ New sources follow the [extraction workflow](docs/workflows/extract-comment-cont
 | `skill-variants/variants.json` | Each variant's hypothesis, axis positions and principle ids | A variant is added, changed or retired |
 | `docs/skill/hygiene-skill.md` | The shipped plugin's purpose, strengths and non-goals | The skill's scope or evidence changes |
 | `evaluation/hygiene/README.md` | Hygiene eval cases, grading and iteration results | A case, grader or iteration result changes |
+| `docs/junior-dev/` | Junior-dev design, plan, Copilot assessment and evidence report | A design decision, a new measured result, or a platform change |
+| `plugins/junior-dev/README.md` | Junior-dev install (Copilot and Claude Code), isolation, limits | The plugin's behaviour, platforms or measured results change |
 
 Use references between these owners. A summary should point to the authoritative
 detail rather than create another independently maintained specification.

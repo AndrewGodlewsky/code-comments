@@ -230,7 +230,17 @@ hypothesis to test across Haiku, Sonnet and some Opus 5.5, with many variations
 benchmarked. Evals run on the user's subscription, with headless plugin runs capped at
 $10 in total. On 2026-11-19 the user set the intended platform: **GitHub Copilot**. The
 plugin is installed once at user level and runs whenever a plan or diagram file is
-written, so it must work in Copilot, not only in Claude Code. The [design](docs/junior-dev/design.md) and the
+written, so it must work in Copilot, not only in Claude Code.
+
+**Result (2026-11-21).** The [report](docs/junior-dev/report-2026-11-21.md) gives the answer.
+The intuition holds only in part:
+- The questioning helps thin drafts from Haiku.
+- It makes cheap-model plans judged clearer than Opus's first draft.
+- A plain self-review or a single newcomer rewrite does as well on fresh cases, for far less.
+- The "useful" rule against SelfReview is not met.
+- The "worth it against Opus" rule fails on cost, with a Sonnet junior.
+
+The plugin works on GitHub Copilot. The [design](docs/junior-dev/design.md) and the
 [evidence review](docs/junior-dev/research-2026-11-12.md) hold the details.
 
 The paragraph below is the founding position. The 2026-11-09 update above settles

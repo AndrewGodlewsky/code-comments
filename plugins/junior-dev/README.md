@@ -13,11 +13,16 @@ how things work and why, the way a new team member would. The bet is that having
 every step to someone without the context exposes the parts of a plan that are unclear,
 incomplete or more complicated than they need to be.
 
-**Status: under evaluation.** This plugin is being measured, mostly with Haiku 5.5 and
-Sonnet 5.5 as the authors, in
-[#52](https://github.com/AndrewGodlewsky/code-comments/issues/52). Until those results are in,
-it makes no claim that it improves anything. The design is in
-[docs/junior-dev/design.md](../../docs/junior-dev/design.md).
+**Measured results** ([report](../../docs/junior-dev/report-2026-11-21.md), #52, 16 fresh
+cases):
+- **Against SelfReview** ("reread it and make it clear for a newcomer"), which costs about a
+  fifteenth as much: Junior-dev is not clearer.
+- **On thin drafts written by Haiku,** the questions add what the draft left out: +9.9
+  comprehension points over the same rewrite without questions.
+- **Against Opus alone:** plans from Haiku or Sonnet with Junior-dev are judged clearer than
+  Opus's first draft, but with the default Sonnet junior the loop costs more than Opus.
+- **On GitHub Copilot:** it triggered on 16 of 16 plan prompts and 0 of 12 routine ones, and
+  every loop ran to a teach-back.
 
 ## Install
 
