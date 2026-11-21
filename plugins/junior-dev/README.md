@@ -1,6 +1,6 @@
 # junior-dev
 
-A Claude Code plugin for making an agent's plans and diagrams clearer. When the agent writes
+A plugin for GitHub Copilot and Claude Code for making an agent's plans and diagrams clearer. When the agent writes
 a plan, spec or diagram file, a junior developer who sees only that file asks the agent
 rounds of questions. The junior is smart and technical, but new to the project and the
 stack. The agent answers, flags any decision it cannot defend, and makes the file simpler
@@ -16,13 +16,15 @@ incomplete or more complicated than they need to be.
 **Measured results** ([report](../../docs/junior-dev/report-2026-11-21.md), #52, 16 fresh
 cases):
 - **Against SelfReview** ("reread it and make it clear for a newcomer"), which costs about a
-  fifteenth as much: Junior-dev is not clearer.
+  fifteenth as much with Haiku and 40% as much with Sonnet: Junior-dev is not clearer.
 - **On thin drafts written by Haiku,** the questions add what the draft left out: +9.9
   comprehension points over the same rewrite without questions.
-- **Against Opus alone:** plans from Haiku or Sonnet with Junior-dev are judged clearer than
-  Opus's first draft, but with the default Sonnet junior the loop costs more than Opus.
+- **Against Opus alone:** Sonnet plans with Junior-dev are judged clearer than Opus's first
+  draft by both judges. Haiku plans are judged clearer by one judge and tie under the other.
+  With the default Sonnet junior, the loop costs more than Opus.
 - **On GitHub Copilot:** it triggered on 16 of 16 plan prompts and 0 of 12 routine ones, and
-  every loop ran to a teach-back.
+  every loop ran to a report. 14 of 16 ended on a correct teach-back; 2 stopped at the
+  round cap.
 
 ## Install
 

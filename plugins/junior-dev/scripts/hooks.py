@@ -72,7 +72,12 @@ def post_write(event: dict, root: Path) -> dict | None:
     if path is None or ".junior-dev" in path.parts or not path.is_file():
         return None
     text = path.read_text(encoding="utf-8", errors="replace")
-    ok, reason = classify.is_artifact(str(path), text)
+    # Classify by the path inside the project: plan-like folder names above it say nothing about this file.
+    try:
+        inside = path.relative_to(Path(event.get("cwd") or os.getcwd()).resolve())
+    except ValueError:
+        inside = Path(path.name)
+    ok, reason = classify.is_artifact(str(inside), text)
     if not ok:
         return None
     entry = junior.load_registry(root).get(str(path))

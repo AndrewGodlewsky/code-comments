@@ -235,7 +235,8 @@ written, so it must work in Copilot, not only in Claude Code.
 **Result (2026-11-21).** The [report](docs/junior-dev/report-2026-11-21.md) gives the answer.
 The intuition holds only in part:
 - The questioning helps thin drafts from Haiku.
-- It makes cheap-model plans judged clearer than Opus's first draft.
+- Sonnet plans with it are judged clearer than Opus's first draft. Haiku plans tie or win,
+  depending on the judge.
 - A plain self-review or a single newcomer rewrite does as well on fresh cases, for far less.
 - The "useful" rule against SelfReview is not met.
 - The "worth it against Opus" rule fails on cost, with a Sonnet junior.

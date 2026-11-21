@@ -147,6 +147,22 @@ class HookTest(unittest.TestCase):
     def test_post_write_relative_path_uses_cwd(self):
         self.assertIsNotNone(hooks.post_write(self.write_event("docs/checkout.md"), self.root))
 
+    def test_plan_words_outside_the_project_do_not_make_a_file_a_plan(self):
+        # Installed at user level, the hook sees every project: a folder above the project named
+        # "design-workflows" must not turn every long note inside it into a plan.
+        project = Path(self._tmp.name) / "design-workflows" / "app"
+        project.mkdir(parents=True)
+        notes = project / "notes.md"
+        notes.write_text(README.replace("# Ledger", "# Notes"), encoding="utf-8")
+        event = {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(project),
+                 "tool_input": {"file_path": str(notes)}}
+        self.assertIsNone(hooks.post_write(event, project / ".junior-dev"))
+        plan = project / "docs" / "rollout-plan.md"
+        plan.parent.mkdir()
+        plan.write_text(README.replace("# Ledger", "# Rollout"), encoding="utf-8")
+        event["tool_input"] = {"file_path": str(plan)}
+        self.assertIsNotNone(hooks.post_write(event, project / ".junior-dev"))
+
     def test_post_write_ignores_non_artifacts_and_missing_files(self):
         notes = self.project / "README.md"
         notes.write_text(README, encoding="utf-8")
